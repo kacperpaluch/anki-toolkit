@@ -1,0 +1,193 @@
+# TTS — Text-to-Speech
+
+Generuje pliki audio MP3 dla kart Anki. Obsługuje dwa źródła:
+- **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
+- **OpenRouter** — API TTS przez chmurę (płatne per znak, lepsza jakość głosów)
+
+## Wymagania
+
+### Kokoro (lokalnie)
+Lokalnie uruchomiony serwer Kokoro. Wtyczka nie startuje serwera samodzielnie — Kokoro musi działać pod adresem podanym w `api_url`.
+
+### OpenRouter (API)
+Klucz API z https://openrouter.ai/keys. Żadnych innych zależności.
+
+## Jak używać
+
+### Przeglądarka (batch)
+W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → TTS**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań TTS**:
+
+| Element menu | Opis |
+|---|---|
+| Każde zadanie jako osobna akcja | Np. "Generuj audio dla ang", "Generuj audio dla definicji" itd. |
+| `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei (widoczne tylko gdy >1 zadanie) |
+
+### Edytor kart (pojedyncza notatka)
+Przycisk **TTS** w toolbarze edytora. Generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania.
+
+Notatki które już mają `[sound:...]` w polu docelowym są pomijane.
+
+### Zadania TTS
+
+Każde zadanie definiuje:
+- **Etykieta** — nazwa wyświetlana w menu
+- **Pole źródłowe** — skąd czytać tekst do syntezy
+- **Pole docelowe** — gdzie zapisać `[sound:...]`
+- **Tryb**:
+  - `single` — jedno audio na notatkę (np. dla pola `ang`)
+  - `split` — każde zdanie/segment dostaje osobne audio (np. dla pola `przyklad` rozdzielanego `<br><br>`)
+- **Separator** — regex dzielący tekst w trybie `split` (domyślnie `<br><br>`)
+
+Zadania konfiguruje się w **Ustawienia → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
+
+## Konfiguracja (`config.json` → sekcja `tts`)
+
+```json
+"tts": {
+    "tts_provider": "kokoro",
+    "button_label": "TTS",
+    "api_url": "http://localhost:8880/v1/audio/speech",
+    "model": "kokoro",
+    "openrouter_api_key": "",
+    "use_ai_openrouter_key": false,
+    "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
+    "voices": ["af_bella", "af_heart", "bm_lewis"],
+    "speed": 0.9,
+    "ang_source_field": "ang",
+    "ang_target_field": "audio",
+    "przyklad_target_field": "przyklad",
+    "max_workers": 12,
+    "max_retries": 3,
+    "timeout": 60,
+    "tasks": [
+        {"label": "Generuj audio dla ang",    "source_field": "ang",      "target_field": "audio",    "mode": "single"},
+        {"label": "Generuj audio dla przykł.", "source_field": "przyklad", "target_field": "przyklad", "mode": "split", "split_separator": "<br><br>"}
+    ]
+}
+```
+
+| Pole | Domyślnie | Opis |
+|---|---|---|
+| `tts_provider` | `kokoro` | Dostawca TTS: `kokoro` (lokalny) lub `openrouter` (API) |
+| `button_label` | `"TTS"` | Etykieta przycisku w edytorze kart |
+| `api_url` | `http://localhost:8880/v1/audio/speech` | Adres serwera Kokoro (tylko dla `kokoro`) |
+| `model` | `kokoro` | Nazwa modelu Kokoro (tylko dla `kokoro`) |
+| `openrouter_api_key` | `""` | Klucz API OpenRouter (tylko dla `openrouter`) |
+| `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
+| `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
+| `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania. Dla OpenRouter: po wybraniu modelu i kliknięciu **Pobierz**, lista głosów wypełnia się automatycznie |
+| `speed` | `0.9` | Tempo mowy (0.1–3.0) |
+| `ang_source_field` | `ang` | Pole źródłowe dla słowa |
+| `ang_target_field` | `audio` | Pole docelowe dla audio słowa |
+| `przyklad_target_field` | `przyklad` | Pole z przykładami (legacy, tylko gdy `tasks` puste) |
+| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy. Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach |
+| `max_workers` | `12` | Liczba równoległych wątków generowania audio |
+| `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
+| `timeout` | `60` | Timeout pojedynczego żądania TTS w sekundach |
+
+## Głosy
+
+Każda notatka/zdanie losuje głos z listy `voices`. Można podać jeden głos (zawsze ten sam) lub wiele (losowanie).
+
+### Kokoro — ręczne wpisywanie
+
+Dodawanie głosów do `config.json`:
+```json
+"voices": ["af_bella", "af_heart", "bm_lewis", "bf_emma"]
+```
+
+### OpenRouter — wybór z listy (checklist)
+
+W ustawieniach TTS, po wybraniu OpenRouter:
+1. Wpisz klucz API
+2. Kliknij **Pobierz** obok pola Model — wtyczka pobiera dostępne modele TTS z OpenRouter (wraz z cenami)
+3. Wybierz model z rozwijanej listy
+4. Pod spodem pojawi się lista głosów z checkboxami — zaznacz które chcesz używać
+5. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
+6. Pole "Głosy" poniżej aktualizuje się automatycznie
+
+Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova`, `echo`; Voxtral używa `en_paul_happy` itd.)
+
+### Amerykański angielski (`en-us`)
+
+| ID głosu | Płeć |
+|---|---|
+| `af_alloy` | kobieta |
+| `af_aoede` | kobieta |
+| `af_bella` | kobieta |
+| `af_heart` | kobieta |
+| `af_jessica` | kobieta |
+| `af_kore` | kobieta |
+| `af_nicole` | kobieta |
+| `af_nova` | kobieta |
+| `af_river` | kobieta |
+| `af_sarah` | kobieta |
+| `af_sky` | kobieta |
+| `am_adam` | mężczyzna |
+| `am_echo` | mężczyzna |
+| `am_eric` | mężczyzna |
+| `am_fenrir` | mężczyzna |
+| `am_liam` | mężczyzna |
+| `am_michael` | mężczyzna |
+| `am_onyx` | mężczyzna |
+| `am_puck` | mężczyzna |
+| `am_santa` | mężczyzna |
+
+### Brytyjski angielski (`en-gb`)
+
+| ID głosu | Płeć |
+|---|---|
+| `bf_alice` | kobieta |
+| `bf_emma` | kobieta |
+| `bf_isabella` | kobieta |
+| `bf_lily` | kobieta |
+| `bm_daniel` | mężczyzna |
+| `bm_fable` | mężczyzna |
+| `bm_george` | mężczyzna |
+| `bm_lewis` | mężczyzna |
+
+### Pozostałe języki
+
+| ID głosu | Język | Płeć |
+|---|---|---|
+| `ef_dora` | Hiszpański (`es`) | kobieta |
+| `em_alex` | Hiszpański (`es`) | mężczyzna |
+| `em_santa` | Hiszpański (`es`) | mężczyzna |
+| `ff_siwis` | Francuski (`fr-fr`) | kobieta |
+| `hf_alpha` | Hindi (`hi`) | kobieta |
+| `hf_beta` | Hindi (`hi`) | kobieta |
+| `hm_omega` | Hindi (`hi`) | mężczyzna |
+| `hm_psi` | Hindi (`hi`) | mężczyzna |
+| `if_sara` | Włoski (`it`) | kobieta |
+| `im_nicola` | Włoski (`it`) | mężczyzna |
+| `jf_alpha` | Japoński (`ja`) | kobieta |
+| `jf_gongitsune` | Japoński (`ja`) | kobieta |
+| `jf_nezumi` | Japoński (`ja`) | kobieta |
+| `jf_tebukuro` | Japoński (`ja`) | kobieta |
+| `jm_kumo` | Japoński (`ja`) | mężczyzna |
+| `pf_dora` | Portugalski BR (`pt-br`) | kobieta |
+| `pm_alex` | Portugalski BR (`pt-br`) | mężczyzna |
+| `pm_santa` | Portugalski BR (`pt-br`) | mężczyzna |
+| `zf_xiaobei` | Chiński mandaryński (`zh`) | kobieta |
+| `zf_xiaoni` | Chiński mandaryński (`zh`) | kobieta |
+| `zf_xiaoxiao` | Chiński mandaryński (`zh`) | kobieta |
+| `zf_xiaoyi` | Chiński mandaryński (`zh`) | kobieta |
+| `zm_yunjian` | Chiński mandaryński (`zh`) | mężczyzna |
+| `zm_yunxi` | Chiński mandaryński (`zh`) | mężczyzna |
+| `zm_yunxia` | Chiński mandaryński (`zh`) | mężczyzna |
+| `zm_yunyang` | Chiński mandaryński (`zh`) | mężczyzna |
+
+### Schemat nazw głosów
+
+```
+af_bella
+│└─── nazwa głosu
+└──── język + płeć:
+      a = American English   b = British English
+      e = Spanish            f = French
+      h = Hindi              i = Italian
+      j = Japanese           p = Brazilian Portuguese
+      z = Mandarin Chinese
+
+      f = kobieta (female)   m = mężczyzna (male)
+```

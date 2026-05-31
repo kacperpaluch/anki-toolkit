@@ -1,0 +1,129 @@
+# LLM Context — dictionary
+
+## Co robi
+
+Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (przycisk) i przeglądarce (`Edit → Pobierz wymowę` oraz menu kontekstowe, zaznaczone notatki).
+
+## Pliki
+
+| Plik | Rola |
+|---|---|
+| `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
+| `service.py` | Czysta logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); używa `clean_html_normalized()` z `common` |
+| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; używa `ADDON_NAME` z `common` |
+| `browser_ui.py` | Hooki przeglądarki — submenu batch, QProgressDialog; używa `ADDON_NAME` z `common` |
+| `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `RETRYABLE_STATUS_CODES` z `common` |
+| `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `RETRYABLE_STATUS_CODES` z `common` |
+
+## Przepływ danych
+
+```
+Kliknięcie przycisku/menu
+  → editor_ui / browser_ui wywołuje service.process_note_group()
+      → process_note_group(note, config, dictionaries)
+          → max_retries = config.get("max_retries", 3)
+          → page_timeout = config.get("page_timeout", 10)
+          → mp3_timeout = config.get("mp3_timeout", 10)
+      → dictionary_service.fetch_audio_group(word, sources, max_retries, page_timeout, mp3_timeout, batch_cache)
+          # batch_cache: dict wspólny dla całego batcha — pomija re-fetch tego samego słowa
+          # pobiera stronę raz na słownik, uruchamia parsery UK i US na tym samym HTML
+          → _fetch_page(url, max_retries, page_timeout)   # 1× GET na słownik (Oxford/Cambridge/Longman)
+          → _get_{oxford,cambridge,longman}_audio_url()   # parser UK na tym HTML
+          → _get_{oxford,cambridge,longman}_audio_url()   # parser US na tym samym HTML
+          → _download_mp3(url, max_retries, mp3_timeout)  # GET bajty UK
+          → _download_mp3(url, max_retries, mp3_timeout)  # GET bajty US
+          # zwraca też page_cache: {"oxford": html, ...}
+      → mw.col.media.write_data(filename, bytes)          # zapisuje do Anki media
+      → note[target_field] = "[sound:uk.mp3] [sound:us.mp3]"
+      → ipa_service.fetch_ipa(word, source, html=page_cache.get(source), max_retries, timeout)
+          # html przekazany z cache → brak dodatkowego HTTP GET dla Oxford/Cambridge
+          # jeśli primary source zwraca None → fallback na Wiktionary
+          → note[ipa_field] = "/θɔːt/"
+  → jeśli pole audio już miało treść:
+      → tooltip("Pole audio już zawiera treść.")
+  → jeśli audio było potrzebne, ale nie znaleziono żadnego pliku:
+      → tooltip("Brak audio do pobrania dla tego hasła.")
+```
+
+W przeglądarce submenu `Pobierz wymowę` jest dostępne zarówno w `Edit`, jak i pod prawym przyciskiem myszy:
+- `Wszystkie włączone słowniki` — batch po wszystkich aktywnych pozycjach z `buttons`
+- `Pobierz z {label}` — batch tylko dla jednej skonfigurowanej grupy słowników
+
+Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się. `QProgressDialog` z przyciskiem Anuluj; anulowanie sprawdzane między notatkami przez flagę `cancel_requested`. Po zakończeniu wyświetlany jest jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
+
+## Konfiguracja (sekcja `dictionary` w config.json)
+
+```json
+{
+  "source_field": "ang",
+  "target_field": "audio",
+  "ipa_field": "IPA",
+  "ipa_format": "compact",
+  "max_retries": 3,
+  "page_timeout": 10,
+  "mp3_timeout": 10,
+  "buttons": [
+    {"dictionaries": ["diki_uk", "diki_us"], "label": "Diki", "enabled": true}
+  ]
+}
+```
+
+- `max_retries` — liczba prób przy HTTP 429/5xx, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
+- `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `_fetch_page(timeout=page_timeout)`
+- `mp3_timeout` — timeout GET pliku MP3; przekazywany do `_download_mp3(timeout=mp3_timeout)`
+- `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne przez zakładkę Słownik w ustawieniach
+- Każdy przycisk może mieć listę słowników — pobiera UK i US naraz, zapisuje oba `[sound:...]` w jednym polu
+- Te same wpisy `buttons` sterują też submenu w przeglądarce (`Pobierz z Diki`, `Pobierz z Oxford`, itd.)
+- `ipa_format`: `"compact"` (jeden zapis gdy UK=US), `"both"`, `"uk_only"`, `"us_only"`
+- IPA jest fetchowane tylko gdy słownik ma support: Oxford → oxford, Cambridge → cambridge; Diki i Longman nie mają IPA
+- Wiktionary jest **wyłącznie IPA fallback** — nie dostarcza audio, nie pojawia się w `buttons`
+
+## Smart fetch — kiedy co pobiera
+
+| Stan pola audio | Stan pola IPA | Akcja |
+|---|---|---|
+| puste | puste | pobierz audio + IPA |
+| pełne (`audio_skipped=True`) | puste | pobierz tylko IPA |
+| puste | pełne | pobierz tylko audio |
+| pełne | pełne | nic nie rób |
+
+## Deduplikacja HTTP requestów
+
+`fetch_audio_group` grupuje sources po base dictionary i pobiera stronę HTML **raz na słownik**, nawet gdy button ma `["oxford_uk", "oxford_us"]`. Wynikowy `page_cache` jest przekazywany do `ipa_service.fetch_ipa(html=...)`, który pomija własny GET gdy HTML jest dostępny.
+
+W trybie batch (`browser_ui`) `batch_cache: dict = {}` jest tworzony raz przed pętlą po notatkach i przekazywany do `process_note_group(batch_cache=...)`. Klucz cache: `(word, tuple(sorted(sources)))`. Notatki z tym samym słowem nie generują ponownych requestów HTTP.
+
+| Słownik | Sources w buttonie | Requesty (strona + MP3) |
+|---|---|---|
+| Oxford | `oxford_uk` + `oxford_us` | 1× strona + 2× MP3 = **3** (było 5) |
+| Cambridge | `cambridge_uk` + `cambridge_us` | 1× strona + 2× MP3 = **3** (było 5) |
+| Longman | `longman_uk` + `longman_us` | 1× strona + 2× MP3 = **3** (było 4, brak IPA) |
+| Diki | `diki_uk` + `diki_us` | 2× MP3 bezpośrednio (bez scrapowania) |
+
+## Scrapery HTML
+
+Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLParser`:
+
+- `OxfordAudioExtractor` — szuka `<div class="sound audio_play_button pron-uk icon-audio" data-src-mp3="...">`, bierze **pierwszy znaleziony URL** dla danego wariantu (bez walidacji słowa w URL — strona Oxford jest dedykowana jednemu hasłu)
+- `CambridgeAudioExtractor` — szuka `<source type="audio/mpeg" src="...uk_pron...">`, ma dwustopniową logikę: `audio_url` (z walidacją `word_normalized` w URL) + `fallback_url` (pierwszy pasujący URL bez walidacji). Zwraca `audio_url or fallback_url`. Cambridge ma wiele wpisów na stronie, stąd walidacja ma tu sens jako preferencja.
+- `LongmanAudioExtractor` — szuka `<span class="brefile" data-src-mp3="...">` (UK) lub `<span class="amefile" ...>` (US), bierze **pierwszy znaleziony URL** bez walidacji słowa
+- Diki nie wymaga parsowania — URL jest deterministyczny: `diki.pl/images-common/en/mp3/{word}.mp3`
+
+`_normalize_word(word)` → `word.lower().replace(' ', '_').replace('-', '_').replace("'", "")` używane przez: `CambridgeAudioExtractor` (walidacja URL), `_fetch_diki_audio` (budowanie URL).
+
+## Zależności
+
+- Stdlib tylko: `urllib.parse`, `html.parser`, `re`, `json`, `logging`
+- Anki API: `mw.col.media.write_data`, `aqt.sound.av_player`
+- Własne: `common.html` (clean_html_normalized), `common.http` (fetch_url, fetch_text)
+- Brak pip packages
+
+## Uwagi implementacyjne
+
+- `fetch_text()` i `fetch_url()` z `common.http` są używane bezpośrednio przez `fetch_audio_group()` — parametry sieci (`max_retries`, `page_timeout`, `mp3_timeout`) przekazywane z `process_note_group()` → `config.get("max_retries", 3)` itp.
+- `ipa_service` używa `fetch_text()` z `common.http`; parametry przekazywane przez `fetch_ipa()` z `service.py`; IPA respektuje te same limity co audio
+- IPA fallback: gdy primary source (oxford/cambridge) zwraca `None`, automatycznie próbuje Wiktionary; wynik z Wiktionary jest oznaczony `source="wiktionary"` w `IPAResult`
+- Wiktionary API: waliduje klucz `"*"` w `wikitext` przed dostępem
+- Sygnatura `fetch_audio_group`: `(word, sources, max_retries=3, page_timeout=10, mp3_timeout=10, batch_cache=None)` — wartości domyślne jako bezpieczny fallback
+- `ProcessNoteResult.audio_skipped = True` gdy pole audio ma treść → editor_ui wyświetla osobny tooltip
+- `RETRYABLE_STATUS_CODES` importowane z `common.http` zamiast lokalnej definicji

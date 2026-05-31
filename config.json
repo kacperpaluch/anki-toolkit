@@ -1,0 +1,155 @@
+{
+    "modules": {
+        "dictionary":        true,
+        "ai_generator":      true,
+        "tts":               true,
+        "filtered_deck":     true,
+        "audio_normalizer":  true,
+        "nbsp_remover":      true
+    },
+
+    "dictionary": {
+        "source_field": "ang",
+        "target_field": "audio",
+        "ipa_field": "IPA",
+        "ipa_format": "compact",
+        "wiktionary_ipa_fallback": true,
+        "diki_ipa_fallback": false,
+        "diki_ipa_fallback_source": "wiktionary",
+        "max_retries": 3,
+        "page_timeout": 10,
+        "mp3_timeout": 10,
+        "buttons": [
+            {"dictionaries": ["diki_uk",      "diki_us"],     "label": "Diki",     "enabled": true},
+            {"dictionaries": ["oxford_uk",     "oxford_us"],   "label": "Oxford",   "enabled": true},
+            {"dictionaries": ["cambridge_uk",  "cambridge_us"],"label": "Cambridge","enabled": false},
+            {"dictionaries": ["longman_uk",    "longman_us"],  "label": "Longman",  "enabled": false}
+        ]
+    },
+
+    "tts": {
+        "tts_provider": "kokoro",
+        "button_label": "TTS",
+        "api_url": "http://localhost:8880/v1/audio/speech",
+        "model": "kokoro",
+        "openrouter_api_key": "",
+        "use_ai_openrouter_key": false,
+        "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
+        "voices": ["af_bella", "af_heart", "bm_lewis"],
+        "speed": 0.9,
+        "ang_source_field": "ang",
+        "ang_target_field": "audio",
+        "przyklad_target_field": "przyklad",
+        "max_workers": 12,
+        "max_retries": 3,
+        "timeout": 60,
+        "tasks": [
+            {"label": "Generuj audio dla ang",    "source_field": "ang",      "target_field": "audio",    "mode": "single"},
+            {"label": "Generuj audio dla przykł.", "source_field": "przyklad", "target_field": "przyklad", "mode": "split", "split_separator": "<br><br>"}
+        ]
+    },
+
+    "workflow": {
+        "enabled": true,
+        "editor_label": "Generuj wszystko",
+        "steps": [
+            {"module": "ai",         "action": "generate"},
+            {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
+            {"module": "tts",        "action": "generate"}
+        ]
+    },
+
+    "audio_normalizer": {
+        "max_workers": 4,
+        "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
+        "ffmpeg_path": ""
+    },
+
+    "filtered_deck": {
+        "deck_name": "Angielski - Powtórka z wyprzedzeniem",
+        "search_deck": "angielski"
+    },
+
+    "nbsp_remover": {
+        "show_tooltip": true,
+        "auto_run_startup": false,
+        "skip_field": "ang"
+    },
+
+    "ai_generator": {
+        "button_label": "AI",
+        "skip_tags": ["skip-ai"],
+        "batch_limit": 3,
+        "batch_sleep": 1.0,
+        "max_retries": 3,
+        "request_timeout": 30,
+
+        "providers": {
+            "google": {
+                "api_key": "YOUR_GOOGLE_API_KEY",
+                "model": "gemini-2.0-flash",
+                "temperature": 0.2
+            },
+            "cometapi": {
+                "api_key": "YOUR_COMETAPI_KEY",
+                "model": "grok-4-1-fast-non-reasoning",
+                "temperature": 0.2,
+                "reasoning_effort": "medium"
+            },
+            "openai": {
+                "api_key": "YOUR_OPENAI_KEY",
+                "model": "gpt-4o",
+                "temperature": 0.2,
+                "reasoning_effort": "medium"
+            },
+            "openrouter": {
+                "api_key": "YOUR_OPENROUTER_KEY",
+                "model": "anthropic/claude-3.5-haiku",
+                "temperature": 0.2,
+                "reasoning_effort": "medium"
+            },
+            "anthropic": {
+                "api_key": "YOUR_ANTHROPIC_KEY",
+                "model": "claude-3-5-haiku-20241022",
+                "temperature": 0.2,
+                "max_tokens": 2048
+            },
+            "mistral": {
+                "api_key": "YOUR_MISTRAL_KEY",
+                "model": "mistral-small-latest",
+                "temperature": 0.2
+            },
+            "opencode_go": {
+                "api_key": "YOUR_OPENCODE_GO_KEY",
+                "model": "deepseek-v4-pro",
+                "temperature": 0.6,
+                "reasoning_effort": "max"
+            }
+        },
+
+        "note_types": {
+            "angielski": {
+                "cz_mowy": {
+                    "target": "cz_mowy",
+                    "provider": "openai",
+                    "prompt": "++role++\nExpert linguist categorizing English vocabulary.\n\n++task++\nClassify English words/phrases into grammatical categories based on Polish translations.\n\n++goal++\nAccurately return one abbreviation indicating grammatical or expression type.\n\n++rules++\n- Use exactly ONE category from:\nn (noun), v (verb), adj (adjective), adv (adverb),\nprep (preposition), conj (conjunction), pron (pronoun),\nint (interjection), pv (phrasal verb),\ni (idiom), coll (collocation or expression)\n- NO punctuation, explanations, or commentary.\n- Polish translations clearly identify categories without ambiguity.\n\n++step-by-step instructions++\n1. Read provided English input and Polish meaning.\n2. Determine exact grammatical/expression category.\n3. Return exactly one matching abbreviation.\n\n++output format++\nONLY single abbreviation (no punctuation).\n\nExample format:\nEN: look forward to PL: czekać z niecierpliwością\npv\n\nEN: beautiful PL: piękny\nadj\n\nEN: he PL: on\npron\n\nInput:\nEN: {{ang}} PL: {{pol}}"
+                },
+                "def": {
+                    "target": "def",
+                    "provider": "openai",
+                    "prompt": "++role++\nYou are an experienced English teacher creating clear, learner-friendly definitions suitable for intermediate (B1/B2) English learners.\n\n++task++\nWrite a concise dictionary-style definition of an English word based solely on the given Polish translation.\n\n++goal++\nA clear, simple, and accurate English definition matching the given Polish meaning.\n\n++rules++\n1. Your definition must closely align with the provided Polish translation.\n2. Do NOT use the English word itself in the definition.\n3. Write in simple language appropriate for intermediate (B1/B2) learners.\n4. Keep the definition short, clear, and dictionary-like.\n\n++step-by-step instructions++\n1. Carefully examine the provided English word and its Polish translation.\n2. Identify the precise meaning according to this Polish translation.\n3. Write a simple English definition clearly reflecting the provided Polish translation without using the English word itself.\n4. Verify that your definition:\n- Does NOT include the exact defined English word.\n- Closely matches the Polish meaning.\n- Uses simple English understandable at the intermediate (B1/B2) level.\n\n++output format++\nOnly provide your simple dictionary-style definition in plain text, with no extra commentary.\n\nExample input:\nEnglish word: bag\nPolish translation: torba\n\nCorrect example definition:\nA soft container made of cloth, leather, or plastic, used for holding or carrying things.\n\nNow provide definition for:\nEnglish word: {{ang}}\nPolish translation: {{pol}}"
+                },
+                "przyklad": {
+                    "target": "przyklad",
+                    "provider": "openai",
+                    "prompt": "{% if def %}\n++role++\nYou are an expert English language educator specializing in vocabulary acquisition for intermediate learners.\n\n++task++\nCraft exactly three clear, natural English example sentences illustrating the precise context and meaning of a given English word (\"EN\") as specified by its Polish translation (\"PL\") and supported by a concise English definition (\"DEF\").\n\n++goal++\nHelp learners deeply understand specific meanings of English words by providing precise, illustrative example sentences based on definition and translation.\n\n++rules++\n- Use only the context and meaning indicated by the provided Polish translation and English definition.\n- Provide exactly three separate English sentences.\n- Each sentence must be clear, natural, and appropriate for intermediate learners (B1/B2).\n- Place \"<br><br>\" after sentences 1 and 2 only; do not place it after sentence 3.\n- Do not include definitions, explanations, translations, numbering, or commentary.\n- Avoid illustrating irrelevant, figurative, or alternative meanings.\n\n++step-by-step instructions++\n1. Carefully read the provided English word (\"EN\"), Polish translation (\"PL\"), and English definition (\"DEF\") to ensure accurate understanding of the specified meaning and context.\n2. Write exactly three separate, clear, and natural English sentences using the word in accordance with only the indicated meaning/context, as defined by \"DEF\" and \"PL\".\n3. Place \"<br><br>\" after sentences 1 and 2; do not add \"<br><br>\" after sentence 3.\n4. Confirm that the sentences are grammatically correct and suitable for intermediate learners (B1/B2 level).\n5. Verify that each sentence precisely and exclusively illustrates the defined context/meaning, without introducing alternative usages.\n\n++output format++\nsentence 1<br><br>\nsentence 2<br><br>\nsentence 3\n\n++illustrative example++\nInput:\nEN: file\nPL: pilnik\nDEF: a small hand tool with a rough surface, used for smoothing or shaping things, especially metal\n\nOutput:\nShe used a file to smooth the sharp edges of the metal.<br><br>\nHe keeps a file on his desk to fix small tools.<br><br>\nThe mechanic grabbed a file to shape the metal part.\n\n++input++\nEN: {{ang}}\nPL: {{pol}}\nDEF: {{def}}\n{% else %}\nYou are an English assistant creating example sentences for intermediate (B1/B2) language learners.\n\n++task++\nYou get an English word (\"EN\") with its Polish meaning (\"PL\"). Provide exactly three clear, natural example sentences illustrating exclusively this indicated meaning/context.\n\n++goal++\nHelp learners clearly understand specific meanings of English words through concise examples.\n\n++rules++\n- Provide exactly three English sentences.\n- Only illustrate the context indicated by the provided Polish meaning.\n- Place \"<br><br>\" after sentences 1 and 2 only.\n- No definitions, explanations, translations into Polish, numbering, or additional commentary.\n- Keep grammar and vocabulary suitable for intermediate learners (B1/B2).\n\n++step-by-step instructions++\n1. Read the provided word (\"EN\") and its indicated Polish meaning/context (\"PL\").\n2. Clearly understand the exact specified meaning/context.\n3. Write exactly three clear, natural-sounding English example sentences using only the indicated context.\n4. Insert \"<br><br>\" after sentences 1 and 2; do not insert after sentence 3.\n5. Verify that the examples precisely match the indicated meaning/context.\n\n++output format++\nsentence 1<br><br>\nsentence 2<br><br>\nsentence 3\n\n++illustrative example++\nInput:\nEN: book\nPL: rezerwować\n\nOutput:\nI'd like to book a flight to London.<br><br>\nHe booked tickets for us online.<br><br>\nCan you book a hotel room for tonight?\n\n++input++\nEN: {{ang}}\nPL: {{pol}}\n{% endif %}"
+                },
+                "IPA": {
+                    "target": "IPA",
+                    "provider": "openai",
+                    "prompt": "++role++\nYou are an expert in British English Received Pronunciation (RP) and IPA transcription.\n\n++task++\nProvide the standard IPA pronunciation transcription (British English RP) for the given English word or phrase.\n\n++goal++\nDeliver an accurate, concise IPA transcription following standard British RP pronunciation.\n\n++rules++\n- Use only standard British RP pronunciation (as per Collins, Cambridge, or Oxford dictionaries).\n- Always use standard IPA symbols.\n- Provide only one, most common IPA transcription.\n- Enclose your transcription strictly between forward slashes (/ /).\n- Do not include additional text, punctuation, or comments.\n\n++step-by-step instructions++\n1. Read the input carefully (word or phrase).\n2. Check or mentally verify the standard British RP pronunciation.\n3. Write the IPA transcription precisely, using the correct standard symbols.\n4. Double-check transcription accuracy.\n5. Clearly enclose the transcription within forward slashes (/IPA transcription/).\n6. Do NOT add any extra explanations, text, or spacing errors.\n\n++output format++\nOnly IPA transcription enclosed in forward slashes. Absolutely no other text.\n\nGood examples:\n\nInput: dog\nOutput: /dɒɡ/\n\nInput: schedule\nOutput: /ˈʃɛdjuːl/\n\nInput: table tennis\nOutput: /ˈteɪbəl ˌtɛnɪs/\n\nBad examples to avoid:\n\n- dog → \"/dog/\" (incorrect IPA) ✗\n- schedule → \"IPA: /ˈʃɛdjuːl/\" (extra text) ✗\n- table tennis → \"ˈteɪbl tɛnɪs\" (missing slashes) ✗\n\nNow generate the IPA transcription for this English expression:\n\n{{ang}}"
+                }
+            }
+        }
+    }
+}

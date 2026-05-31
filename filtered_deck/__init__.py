@@ -1,0 +1,136 @@
+from aqt import mw
+from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QSpinBox, QDialogButtonBox, QComboBox
+from aqt.utils import showInfo, tooltip
+
+from ..common import ADDON_NAME
+
+
+def _get_config() -> dict:
+    full = mw.addonManager.getConfig(ADDON_NAME) or {}
+    return full.get("filtered_deck", {})
+
+
+class FilterSettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Ustawienia talii filtrowanej")
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Dni do przodu
+        layout.addWidget(QLabel("Ile dni do przodu uwzględnić?"))
+        layout.addWidget(QLabel("(prop:due <= X)"))
+        self.days_spin = QSpinBox()
+        self.days_spin.setRange(0, 36500) # 0 do 100 lat
+        self.days_spin.setValue(9999)     # Domyślna wartość
+        layout.addWidget(self.days_spin)
+
+        # Limit kart
+        layout.addWidget(QLabel("Limit kart:"))
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(1, 999999)
+        self.limit_spin.setValue(99999)   # Domyślna wartość
+        layout.addWidget(self.limit_spin)
+
+        # Kolejność (Sort order)
+        layout.addWidget(QLabel("Kolejność kart:"))
+        self.order_combo = QComboBox()
+        self.order_combo.addItem("Najdawniej oglądane (Oldest seen)", 0)
+        self.order_combo.addItem("Losowo (Random)", 1)
+        self.order_combo.addItem("Rosnące interwały (Increasing intervals)", 2)
+        self.order_combo.addItem("Malejące interwały (Decreasing intervals)", 3)
+        self.order_combo.addItem("Najwięcej pomyłek (Most lapses)", 4)
+        self.order_combo.addItem("Kolejność dodania (Order added)", 5)
+        self.order_combo.addItem("Termin powtórki (Due date)", 6)
+        self.order_combo.setCurrentIndex(1)
+        layout.addWidget(self.order_combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+    def get_values(self):
+        return (
+            self.days_spin.value(),
+            self.limit_spin.value(),
+            self.order_combo.currentData()
+        )
+
+
+def create_filtered_deck(days_ahead, card_limit, sort_order):
+    cfg = _get_config()
+    deck_name = cfg.get("deck_name", "Angielski - Powtórka z wyprzedzeniem")
+    search_deck = cfg.get("search_deck", "angielski")
+    search_query = f"prop:due<={days_ahead} deck:{search_deck}"
+    reschedule = False
+
+    try:
+        col = mw.col
+
+        base_name = deck_name
+        counter = 1
+        while col.decks.by_name(deck_name):
+            deck_name = f"{base_name} ({counter})"
+            counter += 1
+
+        deck_id = col.decks.new_filtered(deck_name)
+        deck = col.decks.get(deck_id)
+
+        if isinstance(deck, dict):
+            terms = deck.get('terms')
+            if terms and len(terms) > 0 and len(terms[0]) >= 3:
+                deck['terms'][0][0] = search_query
+                deck['terms'][0][1] = card_limit
+                deck['terms'][0][2] = sort_order
+                deck['resched'] = reschedule
+                deck['separate'] = True
+                col.decks.save(deck)
+            else:
+                showInfo(f"Talia zwróciła nieoczekiwaną strukturę 'terms': {terms}")
+                return
+        else:
+            try:
+                config = deck.config
+                if not config.search_terms or len(config.search_terms) == 0:
+                    showInfo("Talia nie ma warunków wyszukiwania (search_terms jest puste).")
+                    return
+                config.search_terms[0].search = search_query
+                config.search_terms[0].limit = card_limit
+                config.search_terms[0].order = sort_order
+                config.reschedule = reschedule
+                col.decks.save(deck)
+            except AttributeError as e:
+                showInfo(f"Nieobsługiwana struktura talii filtrowanej: {e}")
+                return
+
+        col.sched.rebuild_filtered_deck(deck_id)
+        card_count = col.decks.card_count(deck_id, include_subdecks=False)
+        mw.col.decks.select(deck_id)
+        mw.reset()
+        tooltip(f"Utworzono talię '{deck_name}'\nKarty: {card_count}\nZakres: {days_ahead} dni.", period=3000)
+
+    except Exception as e:
+        showInfo(f"Błąd podczas tworzenia talii filtrowanej: {str(e)}")
+
+
+def show_dialog_and_create():
+    dialog = FilterSettingsDialog(mw)
+    if dialog.exec():
+        days, limit, order = dialog.get_values()
+        create_filtered_deck(days, limit, order)
+
+
+def setup_menu(parent_menu=None):
+    cfg = _get_config()
+    search_deck = cfg.get("search_deck", "angielski")
+    menu = parent_menu or mw.form.menuTools
+    action = QAction(f"Stwórz talię {search_deck} (Wybierz opcje)...", mw)
+    action.triggered.connect(show_dialog_and_create)
+    menu.addAction(action)
