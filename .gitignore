@@ -6,6 +6,7 @@ __pycache__/
 # Anki runtime — zawierają klucze API i dane użytkownika, NIE commitować
 meta.json
 user_files/
+audio_normalizer/processed_history.json
 
 # Claude Code
 .claude/
