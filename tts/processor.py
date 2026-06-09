@@ -28,7 +28,6 @@ def process_task_async(browser, nids: list, task: dict):
         return
 
     label = task.get("label", "TTS")
-    mode = task.get("mode", "single")
     from ..common import unique
     voices = unique(config.get("voices", []))
     if not voices:
@@ -54,42 +53,10 @@ def process_task_async(browser, nids: list, task: dict):
     progress.canceled.connect(lambda: cancel_flag.update(cancelled=True))
 
     def bg_task():
-        results = {}
-        errors = 0
-        done = 0
-
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=int(config.get("max_workers", 12))
-        ) as pool:
-            future_map = {}
-            for idx, item in enumerate(items):
-                if cancel_flag["cancelled"]:
-                    break
-                future = pool.submit(
-                    generate_audio, item["text"], config, item["voice"]
-                )
-                future_map[future] = (idx, item)
-
-            for future in concurrent.futures.as_completed(future_map):
-                if cancel_flag["cancelled"]:
-                    break
-                idx, item = future_map[future]
-                try:
-                    audio_bytes = future.result()
-                    fname = unique_filename()
-                    mw.col.media.write_data(fname, audio_bytes)
-                    key = (item["nid"], item.get("seg_i", -1))
-                    results[key] = fname
-                except Exception as e:
-                    logger.error(f"TTS error (nid={item['nid']}): {e}")
-                    errors += 1
-                done += 1
-                _update = lambda d=done: (
-                    progress.setLabelText(f"{label}... {d}/{len(items)}"),
-                    progress.setValue(d),
-                )
-                mw.taskman.run_on_main(_update)
-
+        state = {"done": 0}
+        results, errors = _generate_items(
+            items, config, label, cancel_flag, progress, state
+        )
         return results, errors, cancel_flag["cancelled"]
 
     def on_done(fut):
@@ -101,12 +68,12 @@ def process_task_async(browser, nids: list, task: dict):
             return
 
         if cancelled:
-            _save_batch_results(items, results, mode, task)
+            _save_batch_results(items, results, task)
             browser.mw.reset()
             tooltip(f"\"{label}\": przerwano. Wygenerowano: {len(results)}, błędów: {errors}", period=8000)
             return
 
-        _save_batch_results(items, results, mode, task)
+        _save_batch_results(items, results, task)
         browser.mw.reset()
         tooltip(
             f"\"{label}\": zaktualizowano {len(set(k[0] for k in results))} notatek,"
@@ -115,6 +82,138 @@ def process_task_async(browser, nids: list, task: dict):
         )
 
     mw.taskman.run_in_background(bg_task, on_done)
+
+
+def process_tasks_async(browser, nids: list, tasks: list[dict]):
+    """Run multiple TTS tasks as one browser operation with one progress dialog."""
+    from aqt.qt import QProgressDialog, Qt
+    from ..common import unique
+
+    config = get_tts_config()
+    if not validate_config(config):
+        return
+
+    voices = unique(config.get("voices", []))
+    if not voices:
+        return
+
+    jobs = []
+    total_items = 0
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        label = task.get("label", "TTS")
+        items = _collect_work_items(nids, task, voices)
+        if not items:
+            continue
+        jobs.append((task, label, items))
+        total_items += len(items)
+
+    if not jobs:
+        tooltip("TTS: brak pól wymagających generowania.")
+        return
+
+    mw.checkpoint("TTS Generate All")
+
+    progress = QProgressDialog("TTS: uruchamianie zadań...", "Anuluj", 0, total_items, browser)
+    progress.setWindowTitle("TTS")
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setAutoClose(False)
+    progress.setAutoReset(False)
+    progress.setValue(0)
+
+    cancel_flag = {"cancelled": False}
+    progress.canceled.connect(lambda: cancel_flag.update(cancelled=True))
+
+    def bg_task():
+        state = {"done": 0}
+        job_results = []
+        total_errors = 0
+        for task, label, items in jobs:
+            if cancel_flag["cancelled"]:
+                break
+            results, errors = _generate_items(
+                items, config, label, cancel_flag, progress, state
+            )
+            job_results.append((task, items, results))
+            total_errors += errors
+        return job_results, total_errors, cancel_flag["cancelled"]
+
+    def on_done(fut):
+        progress.close()
+        try:
+            job_results, errors, cancelled = fut.result()
+        except Exception as e:
+            tooltip(f"TTS: błąd — {e}", period=5000)
+            return
+
+        updated_notes = set()
+        generated_files = 0
+        for task, items, results in job_results:
+            _save_batch_results(items, results, task)
+            updated_notes.update(k[0] for k in results)
+            generated_files += len(results)
+
+        browser.mw.reset()
+        parts = [
+            f"zaktualizowano {len(updated_notes)} notatek",
+            f"wygenerowano {generated_files} plików",
+        ]
+        if errors:
+            parts.append(f"błędy: {errors}")
+        if cancelled:
+            parts.append("przerwano")
+        tooltip("TTS: " + ", ".join(parts), period=10000)
+
+    mw.taskman.run_in_background(bg_task, on_done)
+
+
+def _generate_items(
+    items: list[dict],
+    config: dict,
+    label: str,
+    cancel_flag: dict,
+    progress,
+    state: dict,
+) -> tuple[dict, int]:
+    results = {}
+    errors = 0
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(config.get("max_workers", 12))
+    ) as pool:
+        future_map = {}
+        for idx, item in enumerate(items):
+            if cancel_flag["cancelled"]:
+                break
+            future = pool.submit(
+                generate_audio, item["text"], config, item["voice"]
+            )
+            future_map[future] = (idx, item)
+
+        for future in concurrent.futures.as_completed(future_map):
+            if cancel_flag["cancelled"]:
+                break
+            _idx, item = future_map[future]
+            try:
+                audio_bytes = future.result()
+                fname = unique_filename()
+                mw.col.media.write_data(fname, audio_bytes)
+                key = (item["nid"], item.get("seg_i", -1))
+                results[key] = fname
+            except Exception as e:
+                logger.error(f"TTS error (nid={item['nid']}): {e}")
+                errors += 1
+            state["done"] += 1
+            done = state["done"]
+            _update = lambda d=done: (
+                progress.setLabelText(f"{label}... {d}/{progress.maximum()}"),
+                progress.setValue(d),
+            )
+            mw.taskman.run_on_main(_update)
+
+    return results, errors
 
 
 def _collect_work_items(nids: list, task: dict, voices: list) -> list[dict]:
@@ -175,7 +274,7 @@ def _collect_work_items(nids: list, task: dict, voices: list) -> list[dict]:
     return items
 
 
-def _save_batch_results(items: list, results: dict, mode: str, task: dict):
+def _save_batch_results(items: list, results: dict, task: dict):
     target_field = task.get("target_field", "")
     split_sep = task.get("split_separator", "<br><br>")
 

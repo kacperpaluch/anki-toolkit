@@ -9,7 +9,7 @@ from .utils import _get_config
 def _confirm_purge():
     result = QMessageBox.question(
         mw,
-        "Purge collection",
+        "Wyczyść HTML w kolekcji",
         "Ta operacja usunie &nbsp; i wyczyści <div> we wszystkich kartach.\n"
         "Zmiany są nieodwracalne.\n\n"
         "Kontynuować?",
@@ -23,7 +23,7 @@ def _confirm_purge():
 def setup_menu(parent_menu=None):
     menu = parent_menu or mw.form.menuTools
 
-    action = QAction("Purge collection from &nbsp;", mw)
+    action = QAction("Wyczyść HTML w kolekcji...", mw)
     action.triggered.connect(_confirm_purge)
     menu.addAction(action)
 

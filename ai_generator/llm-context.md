@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Generuje treść pól kart przez AI. Każde pole karty może mieć własny provider i prompt. Działa w edytorze (jeden przycisk dla aktualnej karty) i przeglądarce (batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
+Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę i prompt. Działa w edytorze (główny przycisk workflow + pomocniczy przycisk AI) i przeglądarce (batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
 
 ## Pliki
 
@@ -10,7 +10,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własny provi
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `_generator` |
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
-| `editor_ui.py` | UI edytora — przycisk AI w toolbarze; `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem |
+| `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI; `_GENERATING` guard zapobiega podwójnemu kliknięciu AI; `saveNow(start)` zapewnia świeży stan note przed zadaniem |
 | `browser_ui.py` | UI przeglądarki — batch z QProgressDialog, cancel_flag |
 | `field_generator.py` | Logika generowania — niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_float()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}` |
@@ -25,7 +25,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własny provi
 | `providers/mistral.py` | Mistral AI (OpenAI-compatible format) |
 | `providers/opencode_go.py` | OpenCode Go — Chat Completions dla większości modeli, Anthropic Messages dla MiniMax/Qwen3.x; auto-detect na podstawie nazwy modelu; reasoning jako wolny string; `User-Agent` header (Cloudflare) |
 | `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; w tym `fetch_opencode_go_models()` |
-| `workflow.py` | Workflow "Generuj wszystko" — sekwencyjne uruchamianie AI → Dict → TTS na pojedynczej notatce w edytorze; używa `common.ADDON_NAME` |
+| `workflow.py` | Workflow "Generuj fiszkę" — sekwencyjne uruchamianie AI → Dict → TTS na pojedynczej notatce w edytorze; guard `_RUNNING` blokuje podwójne odpalenie; używa `common.ADDON_NAME` |
 
 ## Przepływ danych
 
@@ -64,13 +64,21 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola):
           → FieldGenerator.process_note(note)
           → mw.col.update_note(note)
   → on_done (główny wątek): progress.close(), mw.reset(), tooltip z podsumowaniem i ostatnim błędem API jeśli wystąpił
+
+Przycisk workflow w edytorze:
+  → editor_ui.on_editor_buttons_init() dodaje go przed przyciskiem AI, jeśli `workflow.enabled=true` i `workflow.steps` nie jest puste
+  → workflow.run_workflow(editor)
+      → jeśli editor_id jest w `_RUNNING`: tooltip "Workflow już trwa..." i return
+      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS
+      → po ostatnim kroku usuwa editor_id z `_RUNNING`, wywołuje `editor.loadNote()` i pokazuje jedno podsumowanie
 ```
 
 ## Konfiguracja
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
-- Zakładka **AI Generator** — klucze API (z przyciskiem Pokaż/Ukryj), modele, temperatura, OpenAI reasoning level
-- Zakładka **Prompty** — dwupanelowy edytor: lista nota→zadanie po lewej, edytor (nazwa zadania, target, provider, prompt) po prawej
+- Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
+- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, prompt) po prawej
+- Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele, temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.
 
@@ -125,7 +133,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 
 Szablony są zagnieżdżalne (if wewnątrz if) z limitem głębokości `MAX_DEPTH = 50`.
 
-## Dodanie nowego providera
+## Dodanie nowego dostawcy AI
 
 1. Utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider`
 2. Zaimplementuj `call_api(self, prompt: str) -> Optional[str]`
@@ -167,7 +175,8 @@ Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdza
 - `BaseProvider._request_with_reasoning_fallback()` opakowuje `_request_with_retry()`: jeśli żądanie zwróci błąd zawierający `"reasoning_effort"`, usuwa ten parametr z body i ponawia; używany też przez `opencode_go`
 - Wszystkie `showWarning` w `field_generator.py` są wywoływane przez `mw.taskman.run_on_main` — bezpieczne wywołanie Qt z wątku w tle
 - Przycisk AI w edytorze działa asynchronicznie (`run_in_background`) — UI nie zamarza podczas wywołania API; sekwencja: `saveNow(start)` → `start()` czyta `editor.note` → `run_in_background(task)` → `on_done` → `saveNow(apply)` → `loadNote()`
-- `_GENERATING: set[int]` w `editor_ui` — zbiór ID aktywnych edytorów; zapobiega wyścigowi podwójnego kliknięcia (drugie kliknięcie podczas trwającego generowania pokazuje tooltip i jest ignorowane); ID jest usuwany w `on_done` niezależnie od wyniku
+- `_GENERATING: set[int]` w `editor_ui` — zbiór ID aktywnych edytorów dla przycisku AI; zapobiega wyścigowi podwójnego kliknięcia (drugie kliknięcie podczas trwającego generowania pokazuje tooltip i jest ignorowane); ID jest usuwany w `on_done` niezależnie od wyniku
+- `_RUNNING: set[int]` w `workflow.py` — analogiczna ochrona dla przycisku workflow
 - `editor.saveNow(start)` na początku `_on_generate_editor` — synchronizuje webview → `editor.note` PRZED startem zadania tła; `note = editor.note` jest czytany wewnątrz callbacku `start()`, dzięki czemu sprawdzenie pustości pól widzi rzeczywisty stan widoczny użytkownikowi
 - `fields_map` budowany przez `common.clean_html_normalized()` — pola notatki ze znacznikami HTML (`<div>`, `<br>`, `&nbsp;`) są oczyszczane przed wstawieniem do promptu; wyniki AI trafiają do karty surowo (bez strippowania HTML — AI powinno zwracać czysty tekst)
 - `process_note` zwraca `dict[str, str]` (nie `bool`) — editor_ui używa tego dict do bezwarunkowego nadpisania pól AI po `saveNow`; browser_ui używa go jako truthy check przed `mw.col.update_note`

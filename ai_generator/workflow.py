@@ -6,6 +6,8 @@ from aqt.editor import Editor
 
 from ..common import ADDON_NAME
 
+_RUNNING: set[int] = set()
+
 
 def get_workflow_config() -> dict:
     full = mw.addonManager.getConfig(ADDON_NAME) or {}
@@ -14,21 +16,28 @@ def get_workflow_config() -> dict:
 
 def run_workflow_editor(editor: Editor):
     """Run workflow steps sequentially on the current editor note."""
+    editor_id = id(editor)
+    if editor_id in _RUNNING:
+        tooltip("Workflow już trwa...", period=2000)
+        return
+
     wf = get_workflow_config()
     steps = wf.get("steps", [])
     if not steps:
         tooltip("Brak skonfigurowanego workflow. Sprawdź ustawienia.")
         return
 
-    editor.saveNow(lambda: _execute_steps(editor, steps))
+    _RUNNING.add(editor_id)
+    editor.saveNow(lambda: _execute_steps(editor, steps, editor_id))
 
 
-def _execute_steps(editor: Editor, steps: list):
+def _execute_steps(editor: Editor, steps: list, editor_id: int):
     """Run workflow steps one by one in background. Each step waits for previous."""
     total = len(steps)
 
     def run_step(i: int):
         if i >= total:
+            _RUNNING.discard(editor_id)
             editor.loadNote()
             tooltip(f"Workflow zakończony. Wykonano {total} kroków.", period=5000)
             return

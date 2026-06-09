@@ -56,7 +56,7 @@ Narzędzia → Anki Toolkit → Normalizuj Audio
 - `loudnorm_opts` — pełny string opcji ffmpeg filtra loudnorm
 - `max_workers` — liczba równoległych procesów ffmpeg
 
-Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Audio Normalizer**. Zakładka zawiera przycisk **"Sprawdź"** przy polu ścieżki ffmpeg — testuje dostępność i wyświetla wersję przez `tooltip()`.
+Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Normalizacja**. Zakładka zawiera przycisk **"Sprawdź"** przy polu ścieżki ffmpeg — testuje dostępność i wyświetla wersję przez `tooltip()`.
 
 `config.py` zawiera wartości domyślne używane gdy klucz nie istnieje w konfiguracji profilu. `AUDIO_EXTENSIONS` (`.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`) nie jest konfigurowalny przez UI.
 

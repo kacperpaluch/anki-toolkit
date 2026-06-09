@@ -51,7 +51,7 @@
 
     "workflow": {
         "enabled": true,
-        "editor_label": "Generuj wszystko",
+        "editor_label": "Generuj fiszkę",
         "steps": [
             {"module": "ai",         "action": "generate"},
             {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},

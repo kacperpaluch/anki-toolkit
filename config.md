@@ -137,7 +137,7 @@ Pola które już mają zawartość są automatycznie pomijane.
 
 ## Sekcja `audio_normalizer` — normalizacja audio
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Audio Normalizer**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Normalizacja**.
 
 **`ffmpeg_path`** — ścieżka do pliku wykonywalnego ffmpeg. Puste `""` = automatyczne wykrycie (PATH, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`).
 

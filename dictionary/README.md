@@ -8,7 +8,7 @@ Pobiera pliki audio MP3 z wymową oraz transkrypcje IPA z czterech słowników o
 Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku (np. **Diki**) pobiera audio dla aktualnej karty i automatycznie odtwarza je.
 
 ### Przeglądarka (batch)
-Zaznacz notatki → **Edit → Pobierz wymowę** albo **menu kontekstowe → Pobierz wymowę**.
+Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Pobierz wymowę**.
 
 W submenu dostępne są:
 - **Wszystkie włączone słowniki** — używa wszystkich aktywnych pozycji z `buttons`
@@ -64,6 +64,8 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
     "ipa_field": "IPA",
     "ipa_format": "compact",
     "wiktionary_ipa_fallback": true,
+    "diki_ipa_fallback": false,
+    "diki_ipa_fallback_source": "wiktionary",
     "max_retries": 3,
     "page_timeout": 10,
     "mp3_timeout": 10,
@@ -83,6 +85,8 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | `ipa_field` | Pole docelowe dla IPA — puste `""` wyłącza IPA |
 | `ipa_format` | Format zapisu IPA (patrz niżej) |
 | `wiktionary_ipa_fallback` | `true` — gdy primary source nie znajdzie IPA, próbuje Wiktionary API |
+| `diki_ipa_fallback` | `true` — gdy pobierasz audio z Diki, pobierz IPA z osobnego źródła |
+| `diki_ipa_fallback_source` | Źródło IPA dla Diki: `wiktionary`, `oxford` albo `cambridge` |
 | `max_retries` | Liczba prób przy błędach sieci 429/5xx (domyślnie `3`) |
 | `page_timeout` | Timeout pobierania strony słownika w sekundach (domyślnie `10`) |
 | `mp3_timeout` | Timeout pobierania pliku MP3 w sekundach (domyślnie `10`) |

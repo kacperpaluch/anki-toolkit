@@ -1,4 +1,4 @@
-# Audio Normalizer — normalizacja głośności audio
+# Normalizacja audio — wyrównywanie głośności
 
 Normalizuje głośność wszystkich plików audio w katalogu media Anki do standardu EBU R128 przez `ffmpeg`. Eliminuje problem zbyt cichych lub zbyt głośnych nagrań.
 
@@ -45,7 +45,7 @@ Standard używany przez nadawców radiowych i serwisy streamingowe.
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → zakładka Audio Normalizer**
+**Narzędzia → Anki Toolkit → Ustawienia... → zakładka Normalizacja**
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
@@ -65,4 +65,4 @@ Standard używany przez nadawców radiowych i serwisy streamingowe.
 
 ## Logi błędów
 
-Błędy ffmpeg są logowane przez standardowy logger Python (`logging`). Widoczne w konsoli Anki (Debug Console) lub zewnętrznym narzędziu do logów.
+Błędy ffmpeg są logowane przez standardowy logger Python (`logging`). Są widoczne w konsoli Anki, Debug Console albo w narzędziu zbierającym logi z uruchomionej aplikacji.

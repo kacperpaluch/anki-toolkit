@@ -10,6 +10,7 @@ from aqt.utils import showWarning
 
 from ..common import ADDON_NAME, get_full_config, save_full_config
 
+from .status_tab import StatusTab
 from .modules_tab import ModulesTab
 from .dictionary_tab import DictionaryTab
 from .ai_generator_tab import AIGeneratorTab
@@ -41,11 +42,12 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
 
         self._tabs_list = [
+            ("Start",            StatusTab(cfg)),
             ("Moduły",           ModulesTab(cfg)),
             ("Słownik",          DictionaryTab(cfg)),
             ("AI Generator",     AIGeneratorTab(cfg)),
             ("TTS",              TTSTab(cfg)),
-            ("Audio Normalizer", AudioNormalizerTab(cfg)),
+            ("Normalizacja",     AudioNormalizerTab(cfg)),
             ("Narzędzia",        NarzedziaTab(cfg)),
         ]
         for title, widget in self._tabs_list:

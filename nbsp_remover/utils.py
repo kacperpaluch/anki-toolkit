@@ -5,6 +5,7 @@ from aqt import mw
 from aqt.utils import tooltip
 
 from ..common import get_module_config
+from .cleaning import NBSP, DIV_TAG_RE, DIV_WRAP_RE, TRAILING_BR_RE
 
 NBSP_REMOVER_KEY = "nbsp_remover"
 
@@ -13,12 +14,6 @@ _NBSP_DEFAULTS = {
     "auto_run_startup": False,
     "skip_field": "ang",
 }
-
-NBSP = "&nbsp;"
-DIV_TAG_RE = r"</?div[^>]*>"
-DIV_WRAP_RE = r"<div[^>]*>(.*?)</div>"
-TRAILING_BR_RE = r"<br>\s*$"
-
 
 def _get_config() -> dict:
     return get_module_config(NBSP_REMOVER_KEY, _NBSP_DEFAULTS)
@@ -38,19 +33,17 @@ def purge_tooltip(parent, nbsp_count, div_count=0, div_br_count=0) -> None:
 
     skip_field = _get_skip_field()
     total_count = nbsp_count + div_count + div_br_count
-    notes = "note" if total_count == 1 else "notes"
 
     if total_count > 0:
-        message = f"{total_count} {notes} updated:<br>"
+        message = f"Wyczyszczono elementy HTML: {total_count}<br>"
         if nbsp_count > 0:
-            message += f"- Removed {nbsp_count} &amp;nbsp;<br>"
+            message += f"- Zamieniono &amp;nbsp; na spację: {nbsp_count}<br>"
         if div_count > 0:
-            message += f"- Removed {div_count} &lt;div&gt; tags from '{skip_field}' field<br>"
+            message += f"- Usunięto tagi &lt;div&gt; z pola '{skip_field}': {div_count}<br>"
         if div_br_count > 0:
-            message += f"- Replaced {div_br_count} &lt;div&gt; tags with &lt;br&gt; in other fields<br>"
-        message += "<div>! ̿̿ ̿̿ ̿̿ ̿'̿'\̵͇̿̿\з= ( ▀ ͜͞ʖ▀) =ε/̵͇̿̿/'̿'̿ ̿ ̿̿ ̿̿ ̿̿</div>"
+            message += f"- Zamieniono bloki &lt;div&gt; na &lt;br&gt;: {div_br_count}<br>"
     else:
-        message = f"No unwanted tags found.<br><div>&amp;nbsp; and &lt;div&gt; tags are quiet today...\n(▀̿Ĺ̯▀̿ ̿)</div>"
+        message = "Nie znaleziono elementów HTML wymagających czyszczenia."
 
     tooltip(message, parent=parent)
 
@@ -63,13 +56,12 @@ def editing_tooltip(parent, nbsp_count, div_count=0, div_br_count=0) -> None:
     total_count = nbsp_count + div_count + div_br_count
 
     if total_count > 0:
-        message = f"Exterminated {total_count} unwanted tags!<br>"
+        message = f"Wyczyszczono elementy HTML: {total_count}<br>"
         if nbsp_count > 0:
-            message += f"- {nbsp_count} &amp;nbsp;<br>"
+            message += f"- &amp;nbsp;: {nbsp_count}<br>"
         if div_count > 0:
-            message += f"- {div_count} &lt;div&gt; tags from '{skip_field}' field<br>"
+            message += f"- &lt;div&gt; z pola '{skip_field}': {div_count}<br>"
         if div_br_count > 0:
-            message += f"- {div_br_count} &lt;div&gt; tags replaced with &lt;br&gt;<br>"
-        message += "<div>! ̿̿ ̿̿ ̿̿ ̿'̿'\̵͇̿̿\з= ( ▀ ͜͞ʖ▀) =ε/̵͇̿̿/'̿'̿ ̿ ̿̿ ̿̿ ̿̿</div>"
+            message += f"- &lt;div&gt; zamienione na &lt;br&gt;: {div_br_count}<br>"
         
         tooltip(message, parent=parent)

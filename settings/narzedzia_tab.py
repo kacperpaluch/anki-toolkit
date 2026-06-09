@@ -1,4 +1,4 @@
-"""Narzędzia tab — Filtered Deck, nbsp Remover."""
+"""Narzędzia tab — filtered deck and HTML cleanup."""
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QFormLayout, QGroupBox, QCheckBox,
@@ -31,7 +31,7 @@ class NarzedziaTab(QWidget):
         layout.addSpacing(8)
 
         s = cfg.get("nbsp_remover", {})
-        nbsp_group = QGroupBox("nbsp Remover")
+        nbsp_group = QGroupBox("Czyszczenie HTML")
         nbsp_vlayout = QVBoxLayout(nbsp_group)
         self._show_tooltip_cb = QCheckBox("Pokazuj tooltip po wyczyszczeniu")
         self._show_tooltip_cb.setChecked(s.get("show_tooltip", True))

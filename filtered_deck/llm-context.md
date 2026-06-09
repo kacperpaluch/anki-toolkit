@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez dialog Qt. Dostępne przez **Narzędzia → Anki Toolkit → Stwórz talię ... (Wybierz opcje)...**. Nazwa talii i deck docelowy są konfigurowalne w ustawieniach wtyczki.
+Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez formularz Qt. Dostępne przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...**. Nazwa talii i deck docelowy są konfigurowalne w ustawieniach wtyczki.
 
 ## Pliki
 
@@ -13,9 +13,9 @@ Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez dialog Qt.
 ## Przepływ danych
 
 ```
-Narzędzia → Anki Toolkit → Stwórz talię ...
+Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...
   → FilterSettingsDialog.exec()
-      → użytkownik wybiera: dni, limit, kolejność
+      → użytkownik wybiera w QFormLayout: Dni do przodu, Limit kart, Kolejność
   → create_filtered_deck(days, limit, order)
       → _get_config() — czyta deck_name i search_deck z configu (używa ADDON_NAME)
       → col.decks.new_filtered(name)          # tworzy nową talię filtrowaną
@@ -49,7 +49,7 @@ Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka N
 | Limit kart | 99999 | Max liczba kart w talii |
 | Kolejność | Losowo (1) | Sort order Anki (0–6) |
 
-Wartości sort order: 0=Oldest seen, 1=Random, 2=Increasing intervals, 3=Decreasing intervals, 4=Most lapses, 5=Order added, 6=Due date.
+Wartości sort order: 0=Najdawniej oglądane, 1=Losowo, 2=Rosnące interwały, 3=Malejące interwały, 4=Najwięcej pomyłek, 5=Kolejność dodania, 6=Termin powtórki.
 
 ## Obsługa wersji Anki
 
@@ -61,5 +61,5 @@ Kod obsługuje dwa formaty deck config z bounds checking:
 
 - Anki API: `mw.col.decks`, `mw.col.sched.rebuild_filtered_deck`, `mw.addonManager.getConfig`
 - Własne: `common.ADDON_NAME`
-- PyQt6: `QDialog`, `QSpinBox`, `QComboBox`, `QDialogButtonBox`
+- PyQt6: `QDialog`, `QVBoxLayout`, `QFormLayout`, `QLabel`, `QSpinBox`, `QComboBox`, `QDialogButtonBox`
 - Brak pip packages

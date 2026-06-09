@@ -15,17 +15,17 @@ Klucz API z https://openrouter.ai/keys. Żadnych innych zależności.
 ## Jak używać
 
 ### Przeglądarka (batch)
-W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → TTS**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań TTS**:
+W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki Toolkit → TTS**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań TTS**:
 
 | Element menu | Opis |
 |---|---|
 | Każde zadanie jako osobna akcja | Np. "Generuj audio dla ang", "Generuj audio dla definicji" itd. |
-| `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei (widoczne tylko gdy >1 zadanie) |
+| `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei jako jedną operację z jednym paskiem postępu i jednym podsumowaniem (widoczne tylko gdy >1 zadanie) |
 
 ### Edytor kart (pojedyncza notatka)
-Przycisk **TTS** w toolbarze edytora. Generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania.
+Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania.
 
-Notatki które już mają `[sound:...]` w polu docelowym są pomijane.
+Notatki które już mają `[sound:...]` w polu docelowym są pomijane. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane.
 
 ### Zadania TTS
 
@@ -39,6 +39,8 @@ Każde zadanie definiuje:
 - **Separator** — regex dzielący tekst w trybie `split` (domyślnie `<br><br>`)
 
 Zadania konfiguruje się w **Ustawienia → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
+
+W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopiero po zakończeniu generowania danej operacji. Przy anulowaniu zapisują już wygenerowane pliki i pokazują jedno podsumowanie.
 
 ## Konfiguracja (`config.json` → sekcja `tts`)
 

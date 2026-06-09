@@ -9,8 +9,8 @@ class ModulesTab(QWidget):
         "ai_generator":      "AI Generator — wypełnianie pól przez AI",
         "tts":               "TTS — generowanie audio (Kokoro / OpenRouter)",
         "filtered_deck":     "Talia filtrowana",
-        "audio_normalizer":  "Audio Normalizer — normalizacja audio (ffmpeg)",
-        "nbsp_remover":      "nbsp Remover — czyszczenie &nbsp;",
+        "audio_normalizer":  "Normalizacja audio — wyrównywanie głośności (ffmpeg)",
+        "nbsp_remover":      "Czyszczenie HTML — &nbsp; i tagi <div>",
     }
 
     def __init__(self, cfg: dict):

@@ -23,8 +23,8 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
 | `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — używa `common.text.normalize_float()`, `common.http.extract_http_error()` |
-| `processor.py` | Przetwarzanie notatek: `process_task_async()`, `process_single_note()`, `_collect_work_items()`, `_save_batch_results()` — używa `common.text.unique_filename()`, `common.html.clean_html()` |
-| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `process_single_note()` w tle (`run_in_background`) — używa `common.text.unique_filename()`, `common.html.clean_html()`, `common.text.unique()` |
+| `processor.py` | Przetwarzanie notatek w przeglądarce: `process_task_async()`, `process_tasks_async()`, `_generate_items()`, `_collect_work_items()`, `_save_batch_results()`; zostawia też `process_single_note()` dla workflow/kompatybilności |
+| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`), task-indexed klucze wyników |
 
 ## Przepływ danych
 
@@ -36,14 +36,33 @@ Menu `TTS` → zadanie z listy
       → validate_config(config)
       → _collect_work_items(nids, task, voices)
       → QProgressDialog + run_in_background
-      → ThreadPoolExecutor(max_workers=config.get("max_workers", 12))
-          → generate_audio(text, config, voice)  # dispatcher → Kokoro / OpenRouter
-      → _save_batch_results(items, results, mode, task)
+      → _generate_items(items, config, label, cancel_flag, progress, state)
+          → ThreadPoolExecutor(max_workers=config.get("max_workers", 12))
+              → generate_audio(text, config, voice)  # dispatcher → Kokoro / OpenRouter
+      → _save_batch_results(items, results, task)
       → zapis [sound:fname.mp3] do target_field
       → mw.col.update_note(note)
 
 Menu → "Uruchom wszystkie"
-  → dla każdego zadania z listy: process_task_async(browser, nids, task)
+  → _make_run_all(browser, tasks) → process_tasks_async(browser, nids, tasks)
+      → config = get_tts_config(); validate_config(config)
+      → precollect jobs: dla każdego taska zbierz _collect_work_items(...)
+      → jeden QProgressDialog z maksimum = suma work items
+      → dla każdego joba sekwencyjnie: _generate_items(...)
+      → po zakończeniu: _save_batch_results(...) dla każdego taska
+      → jeden browser.mw.reset() i jeden tooltip z podsumowaniem
+
+Przycisk edytora
+  → _on_tts_editor(editor)
+      → jeśli editor_id w _GENERATING: tooltip i return
+      → editor.saveNow(start) synchronizuje webview → note przed odczytem pól
+      → _start_tts_editor(editor, editor_id)
+          → validate_config(config), get_tasks(config), unique(voices)
+          → zbuduj work_items ze wszystkich zadań TTS
+          → run_in_background(bg_task)
+              → ThreadPoolExecutor → generate_audio(...) → mw.col.media.write_data(...)
+              → results[(task_i, target_field, seg_i)] = filename
+          → on_done: editor.saveNow(apply), zastosuj wyniki, editor.loadNote(), jeden tooltip
 ```
 
 ### get_tasks() — backward compat
@@ -92,9 +111,11 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
   "api_url": "http://localhost:8880/v1/audio/speech",
   "model": "kokoro",
   "openrouter_api_key": "",
+  "use_ai_openrouter_key": false,
   "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
   "voices": ["af_bella", "af_heart", "bm_lewis"],
   "speed": 0.9,
+  "button_label": "TTS",
   "ang_source_field": "ang",
   "ang_target_field": "audio",
   "przyklad_target_field": "przyklad",
@@ -106,7 +127,9 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 
 - `tts_provider` — `"kokoro"` lub `"openrouter"`; domyślnie `"kokoro"` dla kompatybilności wstecznej
 - `api_url` / `model` — tylko dla Kokoro
+- `button_label` — etykieta przycisku TTS w edytorze
 - `openrouter_api_key` — klucz API z https://openrouter.ai/keys (tylko dla OpenRouter)
+- `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
 - `voices` — lista głosów do losowania
 - `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli pusta/missing → backward compat z `ang_source_field`/`ang_target_field`/`przyklad_target_field`

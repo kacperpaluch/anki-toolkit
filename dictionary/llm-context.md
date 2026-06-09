@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (przycisk) i przeglądarce (`Edit → Pobierz wymowę` oraz menu kontekstowe, zaznaczone notatki).
+Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (przyciski w toolbarze) i przeglądarce przez menu kontekstowe **Anki Toolkit → Pobierz wymowę** dla zaznaczonych notatek.
 
 ## Pliki
 
@@ -12,8 +12,8 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 | `service.py` | Czysta logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); używa `clean_html_normalized()` z `common` |
 | `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch, QProgressDialog; używa `ADDON_NAME` z `common` |
-| `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `RETRYABLE_STATUS_CODES` z `common` |
-| `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `RETRYABLE_STATUS_CODES` z `common` |
+| `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
+| `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |
 
 ## Przepływ danych
 
@@ -27,11 +27,11 @@ Kliknięcie przycisku/menu
       → dictionary_service.fetch_audio_group(word, sources, max_retries, page_timeout, mp3_timeout, batch_cache)
           # batch_cache: dict wspólny dla całego batcha — pomija re-fetch tego samego słowa
           # pobiera stronę raz na słownik, uruchamia parsery UK i US na tym samym HTML
-          → _fetch_page(url, max_retries, page_timeout)   # 1× GET na słownik (Oxford/Cambridge/Longman)
+          → fetch_text(url, max_retries, timeout=page_timeout)  # 1× GET na słownik (Oxford/Cambridge/Longman)
           → _get_{oxford,cambridge,longman}_audio_url()   # parser UK na tym HTML
           → _get_{oxford,cambridge,longman}_audio_url()   # parser US na tym samym HTML
-          → _download_mp3(url, max_retries, mp3_timeout)  # GET bajty UK
-          → _download_mp3(url, max_retries, mp3_timeout)  # GET bajty US
+          → fetch_url(audio_url, max_retries, timeout=mp3_timeout)  # GET bajty UK
+          → fetch_url(audio_url, max_retries, timeout=mp3_timeout)  # GET bajty US
           # zwraca też page_cache: {"oxford": html, ...}
       → mw.col.media.write_data(filename, bytes)          # zapisuje do Anki media
       → note[target_field] = "[sound:uk.mp3] [sound:us.mp3]"
@@ -45,7 +45,7 @@ Kliknięcie przycisku/menu
       → tooltip("Brak audio do pobrania dla tego hasła.")
 ```
 
-W przeglądarce submenu `Pobierz wymowę` jest dostępne zarówno w `Edit`, jak i pod prawym przyciskiem myszy:
+W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `Anki Toolkit`:
 - `Wszystkie włączone słowniki` — batch po wszystkich aktywnych pozycjach z `buttons`
 - `Pobierz z {label}` — batch tylko dla jednej skonfigurowanej grupy słowników
 
@@ -59,6 +59,9 @@ Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się.
   "target_field": "audio",
   "ipa_field": "IPA",
   "ipa_format": "compact",
+  "wiktionary_ipa_fallback": true,
+  "diki_ipa_fallback": false,
+  "diki_ipa_fallback_source": "wiktionary",
   "max_retries": 3,
   "page_timeout": 10,
   "mp3_timeout": 10,
@@ -69,13 +72,15 @@ Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się.
 ```
 
 - `max_retries` — liczba prób przy HTTP 429/5xx, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
-- `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `_fetch_page(timeout=page_timeout)`
-- `mp3_timeout` — timeout GET pliku MP3; przekazywany do `_download_mp3(timeout=mp3_timeout)`
+- `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `fetch_text(timeout=page_timeout)`
+- `mp3_timeout` — timeout GET pliku MP3; przekazywany do `fetch_url(timeout=mp3_timeout)`
 - `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne przez zakładkę Słownik w ustawieniach
+- `diki_ipa_fallback` — gdy `true`, przy pobieraniu z Diki moduł próbuje uzupełnić IPA z `diki_ipa_fallback_source`
+- `diki_ipa_fallback_source` — źródło IPA dla Diki (`wiktionary`, `oxford`, `cambridge`); jeśli źródło inne niż Wiktionary zwróci `None`, może zadziałać `wiktionary_ipa_fallback`
 - Każdy przycisk może mieć listę słowników — pobiera UK i US naraz, zapisuje oba `[sound:...]` w jednym polu
 - Te same wpisy `buttons` sterują też submenu w przeglądarce (`Pobierz z Diki`, `Pobierz z Oxford`, itd.)
 - `ipa_format`: `"compact"` (jeden zapis gdy UK=US), `"both"`, `"uk_only"`, `"us_only"`
-- IPA jest fetchowane tylko gdy słownik ma support: Oxford → oxford, Cambridge → cambridge; Diki i Longman nie mają IPA
+- IPA jest fetchowane, gdy słownik ma support: Oxford → oxford, Cambridge → cambridge; dla Diki tylko przez opcjonalny fallback `diki_ipa_fallback`; Longman nie ma IPA
 - Wiktionary jest **wyłącznie IPA fallback** — nie dostarcza audio, nie pojawia się w `buttons`
 
 ## Smart fetch — kiedy co pobiera
@@ -126,4 +131,3 @@ Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLPa
 - Wiktionary API: waliduje klucz `"*"` w `wikitext` przed dostępem
 - Sygnatura `fetch_audio_group`: `(word, sources, max_retries=3, page_timeout=10, mp3_timeout=10, batch_cache=None)` — wartości domyślne jako bezpieczny fallback
 - `ProcessNoteResult.audio_skipped = True` gdy pole audio ma treść → editor_ui wyświetla osobny tooltip
-- `RETRYABLE_STATUS_CODES` importowane z `common.http` zamiast lokalnej definicji

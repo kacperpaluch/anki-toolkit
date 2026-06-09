@@ -1,29 +1,31 @@
 # AI Generator — generowanie pól kart przez AI
 
-Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje wiele providerów — każde pole karty może korzystać z innego modelu.
+Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje wielu dostawców AI — każde pole karty może korzystać z innego modelu.
 
 ## Jak używać
 
 ### Edytor kart
-Kliknij przycisk **AI** w toolbarze edytora — generuje pola dla aktualnie otwartej karty. Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
+Główna akcja w toolbarze to zwykle **Generuj fiszkę** z workflow AI → Słownik → TTS. Przycisk **AI** zostaje jako akcja pomocnicza: generuje tylko pola AI dla aktualnie otwartej karty.
+
+Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
 - Edytor odświeża się automatycznie po zakończeniu generowania
 - **Pola docelowe AI** są zawsze nadpisywane wynikiem — kliknięcie przycisku AI to wyraźna intencja wypełnienia tych pól
 - **Pola których AI nie dotyka** (np. wpisujesz coś w polu `pol` podczas gdy AI generuje `def`) są zachowane — `saveNow` synchronizuje je przed odświeżeniem
-- Pojawia się tooltip z błędem API, jeśli provider zwróci błąd; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
+- Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
 - Kliknięcie przycisku podczas trwającej generacji pokazuje tooltip **"Generowanie już trwa..."** — podwójne kliknięcie jest ignorowane
 
-### Workflow "Generuj wszystko"
+### Workflow "Generuj fiszkę"
 
 Przycisk w toolbarze edytora (pokazuje się gdy workflow ma skonfigurowane kroki). Uruchamia AI → Słownik → TTS sekwencyjnie. Konfiguracja w **Ustawienia → AI Generator → Workflow**:
 - Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**
 - Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman)
 - Zmieniaj kolejność ▲▼, usuwaj kroki
-- Etykieta przycisku konfigurowalna
+- Etykieta przycisku konfigurowalna; domyślnie **Generuj fiszkę**
 
 Kroki wykonują się sekwencyjnie w tle. Każdy krok czeka na poprzedni.
 
 ### Przeglądarka (batch)
-Zaznacz notatki → **Edit → Generuj pola** lub **menu kontekstowe → Generuj pola**.
+Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola**.
 
 - Pola które już mają treść są **zawsze pomijane** — generator uzupełnia tylko puste pola.
 - Jeśli nie zaznaczysz żadnych notatek, pojawi się krótki tooltip z informacją.
@@ -57,7 +59,9 @@ Zaznacz notatki → **Edit → Generuj pola** lub **menu kontekstowe → Generuj
 | `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
 
-### Konfiguracja providerów
+### Konfiguracja dostawców
+
+W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma własną podzakładkę, żeby nie pokazywać wszystkich kluczy i modeli naraz. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
 
 ```json
 "providers": {
@@ -87,18 +91,18 @@ Zaznacz notatki → **Edit → Generuj pola** lub **menu kontekstowe → Generuj
 }
 ```
 
-`reasoning_effort` zachowuje się różnie w zależności od providera:
+`reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
 - **openai / cometapi / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
 - **opencode_go** — wolny tekst (QLineEdit). Wartości różnią się per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują reasoning. Puste pole = parametr nie jest wysyłany. Fallback automatyczny jeśli API zwróci błąd.
 - **mistral** — nie obsługuje `reasoning_effort` (własne modele, nie proxy OpenAI).
 - **anthropic / google** — nie mają pola `reasoning_effort` w UI.
 
-`max_tokens` jest wymagany przez Anthropic API (inne providery go ignorują). Domyślnie `2048`. Zwiększ jeśli generujesz długie odpowiedzi (np. rozbudowane przykłady zdań).
+`max_tokens` jest wymagany przez Anthropic API (inni dostawcy go ignorują). Domyślnie `2048`. Zwiększ jeśli generujesz długie odpowiedzi (np. rozbudowane przykłady zdań).
 
-### Dostępni providerzy
+### Dostępni dostawcy
 
-| Provider | Endpoint | Gdzie pobrać klucz API |
+| Dostawca | Endpoint | Gdzie pobrać klucz API |
 |---|---|---|
 | `openai` | `api.openai.com` | platform.openai.com |
 | `anthropic` | `api.anthropic.com` | console.anthropic.com |
@@ -110,9 +114,9 @@ Zaznacz notatki → **Edit → Generuj pola** lub **menu kontekstowe → Generuj
 
 ### Pobieranie dostępnych modeli
 
-Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym providerze jest przycisk **Pobierz** — pobiera listę dostępnych modeli bezpośrednio z API danego providera:
+Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawcy jest przycisk **Pobierz** — pobiera listę dostępnych modeli bezpośrednio z API danego dostawcy:
 
-| Provider | Źródło listy modeli | Wymaga klucza? |
+| Dostawca | Źródło listy modeli | Wymaga klucza? |
 |---|---|---|
 | `openai` | `GET /v1/models` | tak |
 | `anthropic` | `GET /v1/models` | tak |
@@ -126,7 +130,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 
 ### Przykładowe modele
 
-| Provider | Model | Charakterystyka |
+| Dostawca | Model | Charakterystyka |
 |---|---|---|
 | `openai` | `gpt-4o` | Silny, droższy |
 | `openai` | `gpt-4o-mini` | Szybki, tani |
@@ -165,7 +169,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - Klucz zewnętrzny (`"angielski"`) — nazwa typu notatki **dokładnie jak w Anki**
 - Klucz wewnętrzny (`"cz_mowy"`) — **nazwa zadania**: dowolny identyfikator, decyduje o kolejności generowania
 - `target` — nazwa pola karty do wypełnienia
-- `provider` — który provider użyć dla tego pola
+- `provider` — którego dostawcy użyć dla tego pola
 - `prompt` — treść prompta z opcjonalnymi szablonami
 
 ## Szablony promptów
@@ -181,7 +185,7 @@ Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego po
 
 > **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.
 
-## Dodanie nowego providera
+## Dodanie nowego dostawcy
 
 1. Utwórz `providers/moj_provider.py`:
 ```python
@@ -218,6 +222,6 @@ PROVIDERS = { ..., "moj_provider": MojProvider }
 }
 ```
 
-4. Dodaj nazwę do listy `_PROVIDER_NAMES` w `settings/__init__.py`
+4. Dodaj nazwę do list `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
 
-`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). Jeśli nowy provider proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._request_with_reasoning_fallback()` zamiast `_request_with_retry()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning.
+`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._request_with_reasoning_fallback()` zamiast `_request_with_retry()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning.

@@ -4,13 +4,13 @@ Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez dialog.
 
 ## Jak używać
 
-**Narzędzia → Anki Toolkit → Stwórz talię ... (Wybierz opcje)...**
+**Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: ...**
 
 Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i automatycznie otwierana.
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → zakładka Talia filtrowana**
+**Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Talia filtrowana**
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
@@ -28,7 +28,7 @@ Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i auto
 
 | Parametr | Domyślnie | Opis |
 |---|---|---|
-| **Ile dni do przodu** | `9999` | Zakres `prop:due<=X` — uwzględnia karty z terminem do X dni w przód. `9999` = wszystkie zaległe i przyszłe |
+| **Dni do przodu** | `9999` | Zakres `prop:due<=X` — uwzględnia karty z terminem do X dni w przód. `9999` = wszystkie zaległe i przyszłe |
 | **Limit kart** | `99999` | Maksymalna liczba kart w talii |
 | **Kolejność** | Losowo | Porządek kart w talii |
 
@@ -36,13 +36,13 @@ Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i auto
 
 | Nazwa | Wartość wewnętrzna |
 |---|---|
-| Najdawniej oglądane (Oldest seen) | 0 |
-| Losowo (Random) | 1 |
-| Rosnące interwały (Increasing intervals) | 2 |
-| Malejące interwały (Decreasing intervals) | 3 |
-| Najwięcej pomyłek (Most lapses) | 4 |
-| Kolejność dodania (Order added) | 5 |
-| Termin powtórki (Due date) | 6 |
+| Najdawniej oglądane | 0 |
+| Losowo | 1 |
+| Rosnące interwały | 2 |
+| Malejące interwały | 3 |
+| Najwięcej pomyłek | 4 |
+| Kolejność dodania | 5 |
+| Termin powtórki | 6 |
 
 ## Zachowanie
 

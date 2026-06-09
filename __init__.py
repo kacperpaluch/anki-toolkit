@@ -28,18 +28,18 @@ def _enabled(name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# dictionary
-# ---------------------------------------------------------------------------
-if _enabled("dictionary"):
-    from . import dictionary
-    gui_hooks.editor_did_init_buttons.append(dictionary.on_editor_buttons_init)
-
-# ---------------------------------------------------------------------------
 # ai_generator
 # ---------------------------------------------------------------------------
 if _enabled("ai_generator"):
     from . import ai_generator
     gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
+
+# ---------------------------------------------------------------------------
+# dictionary
+# ---------------------------------------------------------------------------
+if _enabled("dictionary"):
+    from . import dictionary
+    gui_hooks.editor_did_init_buttons.append(dictionary.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
 # tts

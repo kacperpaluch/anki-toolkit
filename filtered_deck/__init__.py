@@ -1,5 +1,5 @@
 from aqt import mw
-from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QSpinBox, QDialogButtonBox, QComboBox
+from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QSpinBox, QDialogButtonBox, QComboBox, QFormLayout
 from aqt.utils import showInfo, tooltip
 
 from ..common import ADDON_NAME
@@ -18,34 +18,37 @@ class FilterSettingsDialog(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout()
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # Dni do przodu
-        layout.addWidget(QLabel("Ile dni do przodu uwzględnić?"))
-        layout.addWidget(QLabel("(prop:due <= X)"))
         self.days_spin = QSpinBox()
-        self.days_spin.setRange(0, 36500) # 0 do 100 lat
-        self.days_spin.setValue(9999)     # Domyślna wartość
-        layout.addWidget(self.days_spin)
+        self.days_spin.setRange(0, 36500)
+        self.days_spin.setValue(9999)
+        self.days_spin.setToolTip("Zakres wyszukiwania Anki: prop:due<=X")
+        form.addRow("Dni do przodu:", self.days_spin)
 
-        # Limit kart
-        layout.addWidget(QLabel("Limit kart:"))
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(1, 999999)
-        self.limit_spin.setValue(99999)   # Domyślna wartość
-        layout.addWidget(self.limit_spin)
+        self.limit_spin.setValue(99999)
+        form.addRow("Limit kart:", self.limit_spin)
 
-        # Kolejność (Sort order)
-        layout.addWidget(QLabel("Kolejność kart:"))
         self.order_combo = QComboBox()
-        self.order_combo.addItem("Najdawniej oglądane (Oldest seen)", 0)
-        self.order_combo.addItem("Losowo (Random)", 1)
-        self.order_combo.addItem("Rosnące interwały (Increasing intervals)", 2)
-        self.order_combo.addItem("Malejące interwały (Decreasing intervals)", 3)
-        self.order_combo.addItem("Najwięcej pomyłek (Most lapses)", 4)
-        self.order_combo.addItem("Kolejność dodania (Order added)", 5)
-        self.order_combo.addItem("Termin powtórki (Due date)", 6)
+        self.order_combo.addItem("Najdawniej oglądane", 0)
+        self.order_combo.addItem("Losowo", 1)
+        self.order_combo.addItem("Rosnące interwały", 2)
+        self.order_combo.addItem("Malejące interwały", 3)
+        self.order_combo.addItem("Najwięcej pomyłek", 4)
+        self.order_combo.addItem("Kolejność dodania", 5)
+        self.order_combo.addItem("Termin powtórki", 6)
         self.order_combo.setCurrentIndex(1)
-        layout.addWidget(self.order_combo)
+        form.addRow("Kolejność:", self.order_combo)
+
+        layout.addLayout(form)
+
+        hint = QLabel("Talia filtrowana nie zmienia harmonogramu powtórek.")
+        hint.setStyleSheet("color: gray;")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -131,6 +134,6 @@ def setup_menu(parent_menu=None):
     cfg = _get_config()
     search_deck = cfg.get("search_deck", "angielski")
     menu = parent_menu or mw.form.menuTools
-    action = QAction(f"Stwórz talię {search_deck} (Wybierz opcje)...", mw)
+    action = QAction(f"Utwórz talię filtrowaną: {search_deck}...", mw)
     action.triggered.connect(show_dialog_and_create)
     menu.addAction(action)

@@ -22,12 +22,13 @@ anki-toolkit/
 │
 ├── settings/                        # Dialog ustawień dla wszystkich modułów
 │   ├── __init__.py                  # SettingsDialog, open_settings()
+│   ├── status_tab.py                # Zakładka: Start — status konfiguracji
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
 │   ├── prompts_tab.py               # Zakładka: Prompty
 │   ├── tts_tab.py                   # Zakładka: TTS
-│   ├── audio_normalizer_tab.py      # Zakładka: Audio Normalizer
+│   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   └── narzedzia_tab.py             # Zakładka: Narzędzia
 │
 ├── dictionary/                      # Moduł 1: pobieranie audio + IPA
@@ -43,11 +44,11 @@ anki-toolkit/
 │   ├── _generator.py                # zarządzanie stanem generatora (config-aware cache)
 │   ├── editor_ui.py                 # przycisk AI + workflow button
 │   ├── browser_ui.py                # menu przeglądarki + batch
-│   ├── field_generator.py           # logika generowania, niezależna od providera
+│   ├── field_generator.py           # logika generowania, niezależna od dostawcy
 │   ├── template_engine.py           # silnik szablonów {{pole}} / {% if %}
-│   ├── workflow.py                  # workflow "Generuj wszystko" (AI → Dict → TTS)
+│   ├── workflow.py                  # workflow "Generuj fiszkę" (AI → Dict → TTS)
 │   └── providers/
-│       ├── __init__.py              # rejestr providerów + fabryka get_provider()
+│       ├── __init__.py              # rejestr dostawców + fabryka get_provider()
 │       ├── base.py                  # BaseProvider (ABC)
 │       ├── openai_compat.py         # helpery OpenAI-compatible
 │       ├── openai.py
@@ -56,13 +57,14 @@ anki-toolkit/
 │       ├── anthropic.py
 │       ├── google.py
 │       ├── mistral.py
+│       ├── opencode_go.py
 │       └── model_discovery.py
 │
 ├── tts/                             # Moduł 3: generowanie audio przez Kokoro TTS lub OpenRouter
 │   ├── __init__.py                  # submenu TTS w menu kontekstowym przeglądarki + przycisk edytora
 │   ├── config.py                    # _DEFAULTS, get_tts_config(), validate_config(), get_tasks()
 │   ├── api.py                       # generate_audio(), _generate_kokoro(), _generate_openrouter(), fetch_openrouter_tts_models()
-│   ├── processor.py                 # process_task_async(), process_single_note() — logika przetwarzania notatek
+│   ├── processor.py                 # process_task_async(), process_tasks_async(), process_single_note()
 │   └── editor_ui.py                 # przycisk TTS w toolbarze edytora (async)
 │
 ├── filtered_deck/                   # Moduł 4: tworzenie talii filtrowanej
@@ -76,9 +78,12 @@ anki-toolkit/
 │
 ├── nbsp_remover/                    # Moduł 6: czyszczenie &nbsp; i tagów <div>
 │   ├── __init__.py
+│   ├── cleaning.py                  # czysta logika czyszczenia pól + liczniki
 │   ├── addcards.py                  # hook na dodawanie kart — czyszczenie w locie
-│   ├── collection.py                # akcja "Purge collection" — czyszczenie całej kolekcji
+│   ├── collection.py                # akcja czyszczenia HTML w całej kolekcji
 │   └── utils.py
+│
+└── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
 > Każdy moduł można niezależnie włączyć lub wyłączyć — patrz sekcja **Ustawienia**.
@@ -106,12 +111,13 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 
 | Zakładka | Zawartość |
 |---|---|
+| **Start** | Szybki status konfiguracji workflow, AI, promptów, słownika i TTS |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
-| **AI Generator** | Klucze API, modele (przycisk **Pobierz**), temperatura, reasoning level; podzakładki: **Prompty** (edytor promptów), **Workflow** (AI→Dict→TTS) |
-| **TTS** | Provider (Kokoro/OpenRouter), klucz API (lub współdzielony z AI), model, wybór głosów (checklista), zadania TTS (Dodaj/Edytuj/Usuń), speed, liczba wątków |
-| **Audio Normalizer** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
-| **Narzędzia** | Talia filtrowana (nazwa talii, talia źródłowa) · nbsp Remover (tooltip, auto-purge, pole pomijane) |
+| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach |
+| **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów, zadania TTS, szybkość, liczba wątków |
+| **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
+| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
 
 > **Gdzie są przechowywane ustawienia?** `config.json` w folderze wtyczki to szablon domyślny — nie jest nadpisywany. Twoje zmiany są zapisywane przez Anki w katalogu profilu (`addons21/.../meta.json`). Po ponownym otwarciu dialogu zobaczysz zapisane wartości.
 
@@ -166,13 +172,13 @@ Wpisy `buttons` sterują jednocześnie:
 
 ---
 
-### Workflow "Generuj wszystko"
+### Workflow "Generuj fiszkę"
 
-Przycisk w toolbarze edytora uruchamiający AI → Słownik → TTS w jednym kliknięciu. Konfigurowalny przez UI: **Ustawienia → AI Generator → Workflow**.
+Główna akcja w toolbarze edytora uruchamiająca AI → Słownik → TTS w jednym kliknięciu. Konfigurowalny przez UI: **Ustawienia → AI Generator → Workflow**.
 
 - Dodaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**
 - Zmieniaj kolejność przyciskami ▲▼
-- Etykieta przycisku konfigurowalna (domyślnie "Generuj wszystko")
+- Etykieta przycisku konfigurowalna (domyślnie "Generuj fiszkę")
 
 Domyślna konfiguracja: AI → Oxford → TTS.
 
@@ -180,30 +186,30 @@ Domyślna konfiguracja: AI → Oxford → TTS.
 
 ### Generator AI (`ai_generator`)
 
-Przycisk w toolbarze edytora (pojedyncza karta) oraz **prawy klik → Anki Toolkit → Generuj pola** w przeglądarce (batch).
+Pomocniczy przycisk **AI** w toolbarze edytora generuje tylko pola AI dla pojedynczej karty. W przeglądarce batch jest dostępny przez **prawy klik → Anki Toolkit → Generuj pola**.
 
 - **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji.
 - **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj. Po zakończeniu jeden tooltip z podsumowaniem.
 - Pola z treścią są zawsze pomijane — generator uzupełnia tylko puste pola.
 - Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
 
-Konfiguracja w **Ustawienia → AI Generator** (zakładka Providery + podzakładka Prompty):
+Konfiguracja w **Ustawienia → AI Generator**:
 
 | Pole | Opis |
 |---|---|
 | `button_label` | Etykieta przycisku w edytorze |
 | `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji) |
-| `batch_limit` | Liczba kart w jednej grupie — po grupie następuje przerwa `batch_sleep` |
-| `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
+| `batch_limit` | Liczba kart w jednej paczce — po paczce następuje przerwa `batch_sleep` |
+| `batch_sleep` | Pauza (sekundy) między paczkami kart — zapobiega limitom API |
 | `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
 | `request_timeout` | Timeout żądania do API w sekundach (domyślnie 30) |
-| Providery | Klucz API, model (przycisk **Pobierz** pobiera listę dostępnych modeli z API), temperatura osobno dla każdego providera; dla OpenAI, CometAPI i OpenRouter także reasoning level |
+| Dostawcy | Klucz API, model (przycisk **Pobierz** pobiera listę dostępnych modeli z API), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
 
 `reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
 
-#### Dostępni providerzy
+#### Dostępni dostawcy
 
-| Provider | Endpoint |
+| Dostawca | Endpoint |
 |---|---|
 | `openai` | `https://api.openai.com/v1/chat/completions` |
 | `cometapi` | `https://api.cometapi.com/v1/chat/completions` |
@@ -218,9 +224,9 @@ Konfiguracja w **Ustawienia → AI Generator** (zakładka Providery + podzakład
 - `{{nazwa_pola}}` — wstawia wartość pola karty (oczyszczoną z HTML)
 - `{% if pole %} ... {% else %} ... {% endif %}` — warunek
 
-Każde pole notatki może używać innego providera. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
+Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 
-#### Dodanie nowego providera AI
+#### Dodanie nowego dostawcy AI
 
 1. Utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider`
 2. Zaimplementuj `call_api(self, prompt) -> Optional[str]`
@@ -230,7 +236,7 @@ Każde pole notatki może używać innego providera. Pola generowane są w kolej
 
 #### OpenCode Go — szczegóły
 
-Provider `opencode_go` obsługuje niskokosztową subskrypcję [OpenCode Go](https://opencode.ai/zen). Automatycznie wybiera format API na podstawie nazwy modelu:
+Dostawca `opencode_go` obsługuje niskokosztową subskrypcję [OpenCode Go](https://opencode.ai/zen). Automatycznie wybiera format API na podstawie nazwy modelu:
 - **Chat Completions** — GLM-5/5.1, Kimi K2.5/K2.6, DeepSeek V4 Pro/Flash, MiMo-V2.5/V2.5-Pro
 - **Anthropic Messages** — MiniMax M2.5/M2.7, Qwen3.5/3.6 Plus
 
@@ -240,7 +246,7 @@ Pole `reasoning_effort` to wolny tekst (nie dropdown jak przy OpenAI) — warto�
 
 ### TTS
 
-Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z QProgressDialog i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta). Obsługuje dwa źródła:
+Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z QProgressDialog i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
 - **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
 - **OpenRouter** — API TTS przez chmurę (płatne per znak, nie wymaga lokalnego serwera)
 
@@ -264,13 +270,13 @@ Konfiguracja w **Ustawienia → TTS**:
 
 Dla OpenRouter: po kliknięciu **Pobierz** wtyczka pobiera listę dostępnych modeli TTS z OpenRouter (wraz z cenami w `$/1k zn`). Po wybraniu modelu pojawia się lista głosów z checkboxami — zaznacz które chcesz używać.
 
-**Zadania TTS**: zamiast sztywnych pól `ang`/`przyklad`, moduł używa konfigurowalnej listy zadań. Każde zadanie definiuje etykietę menu, pola źródłowe/docelowe oraz tryb (`single` — jedno audio, `split` — dzielone separatorem). Menu TTS jest budowane dynamicznie. Przyciski **Dodaj/Edytuj/Usuń** w ustawieniach. Backward compat: stare pola `ang_source_field`/`przyklad_target_field` nadal działają gdy `tasks` jest puste.
+**Zadania TTS**: zamiast sztywnych pól `ang`/`przyklad`, moduł używa konfigurowalnej listy zadań. Każde zadanie definiuje etykietę menu, pola źródłowe/docelowe oraz tryb (`single` — jedno audio, `split` — dzielone separatorem). Menu TTS jest budowane dynamicznie. Opcja **Uruchom wszystkie** wykonuje zadania sekwencyjnie jako jedną operację z jednym paskiem postępu i jednym podsumowaniem. Backward compat: stare pola `ang_source_field`/`przyklad_target_field` nadal działają gdy `tasks` jest puste.
 
 ---
 
 ### Talia filtrowana (`filtered_deck`)
 
-Dostępny przez **Narzędzia → Anki Toolkit → Stwórz talię ... (Wybierz opcje)...** — nazwa talii w menu odpowiada skonfigurowanej nazwie wyszukiwanej talii.
+Dostępny przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: ...** — nazwa talii w menu odpowiada skonfigurowanej nazwie wyszukiwanej talii.
 
 Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
 
@@ -295,11 +301,11 @@ Dostępny przez **Narzędzia → Anki Toolkit → Normalizuj Audio (ffmpeg)**.
 
 Normalizuje wszystkie pliki audio w katalogu media Anki do głośności EBU R128 (`I=-14 LUFS, TP=-1.5, LRA=8`).
 Przetworzone pliki są zapamiętywane w `audio_normalizer/processed_history.json` — ponowne uruchomienie pomija już znormalizowane pliki.
-Błędy są logowane do `audio_normalizer/normalization.log`.
+Błędy są logowane przez standardowy logger Pythona i są widoczne w konsoli/debug logach Anki.
 
 **Synchronizacja z Anki Media DB:** Po normalizacji wtyczka automatycznie re-readuje zmodyfikowane pliki przez `mw.col.media.write_data()`, co aktualizuje hashe w bazie mediów Anki.
 
-Konfiguracja w **Ustawienia → Audio Normalizer**:
+Konfiguracja w **Ustawienia → Normalizacja**:
 
 | Pole | Opis |
 |---|---|
@@ -309,24 +315,24 @@ Konfiguracja w **Ustawienia → Audio Normalizer**:
 
 ---
 
-### Czyszczenie nbsp (`nbsp_remover`)
+### Czyszczenie HTML (`nbsp_remover`)
 
-Działa automatycznie przy dodawaniu kart. Ręczne czyszczenie całej kolekcji przez **Narzędzia → Anki Toolkit → Purge collection from &nbsp;**
+Działa automatycznie przy dodawaniu kart. Ręczne czyszczenie całej kolekcji przez **Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...**
 
 | Akcja | Opis |
 |---|---|
 | Dodawanie karty | Usuwa `&nbsp;` i czyści `<div>` z każdego pola w locie |
-| Purge collection | Jednorazowe czyszczenie całej kolekcji |
+| Wyczyść HTML w kolekcji | Jednorazowe czyszczenie całej kolekcji |
 
 Dla pola konfigurowalnego (domyślnie `ang`): tagi `<div>` są usuwane całkowicie.
 Dla pozostałych pól: `<div>tekst</div>` zastępowane przez `tekst<br>`.
 
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja nbsp Remover):
+Konfiguracja w **Ustawienia → Narzędzia** (sekcja Czyszczenie HTML):
 
 | Opcja | Domyślnie | Opis |
 |---|---|---|
 | Pokazuj tooltip | `true` | Wyświetlaj powiadomienie po wyczyszczeniu |
-| Czyść przy starcie | `false` | Automatycznie uruchamiaj purge przy starcie Anki |
+| Czyść przy starcie | `false` | Automatycznie uruchamiaj czyszczenie kolekcji przy starcie Anki |
 | Pole pomijane | `"ang"` | Pole z którego tagi `<div>` są usuwane całkowicie (zamiast zamiany na `<br>`) |
 
 ---

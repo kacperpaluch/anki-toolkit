@@ -3,7 +3,7 @@
 from aqt.qt import QAction, QMenu
 from aqt.utils import tooltip
 
-from .processor import process_task_async
+from .processor import process_task_async, process_tasks_async
 from .config import get_tts_config, get_tasks
 from .editor_ui import on_editor_buttons_init
 
@@ -46,6 +46,5 @@ def _make_run_all(browser, tasks: list):
         if not nids:
             tooltip("Nie zaznaczono żadnych notatek.")
             return
-        for task in tasks:
-            process_task_async(browser, nids, task)
+        process_tasks_async(browser, nids, tasks)
     return _run

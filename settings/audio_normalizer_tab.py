@@ -1,4 +1,4 @@
-"""Audio Normalizer tab — ffmpeg path, loudnorm opts, workers."""
+"""Audio normalization tab — ffmpeg path, loudnorm opts, workers."""
 
 from shutil import which
 import subprocess

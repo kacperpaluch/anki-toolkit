@@ -26,17 +26,17 @@ class AIGeneratorTab(QWidget):
 
         tabs = QTabWidget()
 
-        # -- Sub-tab: Providers + General --
-        providers_page = self._build_providers_page(ai)
-        tabs.addTab(providers_page, "Providery")
+        # -- Sub-tab: Workflow --
+        wf_page = self._build_workflow_page(cfg.get("workflow", {}))
+        tabs.addTab(wf_page, "Workflow")
 
         # -- Sub-tab: Prompts --
         self._prompts = PromptsTab(cfg)
         tabs.addTab(self._prompts, "Prompty")
 
-        # -- Sub-tab: Workflow --
-        wf_page = self._build_workflow_page(cfg.get("workflow", {}))
-        tabs.addTab(wf_page, "Workflow")
+        # -- Sub-tab: Providers + General --
+        providers_page = self._build_providers_page(ai)
+        tabs.addTab(providers_page, "Dostawcy")
 
         layout.addWidget(tabs)
 
@@ -51,26 +51,10 @@ class AIGeneratorTab(QWidget):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(12, 12, 12, 12)
 
-        gen_group = QGroupBox("Ogólne")
+        gen_group = QGroupBox("Podstawowe")
         gen_form = QFormLayout(gen_group)
         gen_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._label = _expanding_line_edit(ai.get("button_label", "AI"))
-        self._batch_limit = QSpinBox()
-        self._batch_limit.setRange(1, 9999)
-        self._batch_limit.setValue(ai.get("batch_limit", 3))
-        self._batch_sleep = QDoubleSpinBox()
-        self._batch_sleep.setRange(0.0, 30.0)
-        self._batch_sleep.setSingleStep(0.1)
-        self._batch_sleep.setValue(ai.get("batch_sleep", 1.0))
-        self._ai_max_retries = QSpinBox()
-        self._ai_max_retries.setRange(1, 10)
-        self._ai_max_retries.setValue(ai.get("max_retries", 3))
-        self._ai_max_retries.setToolTip("Liczba prób przy błędach API (429, 5xx)")
-        self._request_timeout = QSpinBox()
-        self._request_timeout.setRange(5, 300)
-        self._request_timeout.setSuffix(" s")
-        self._request_timeout.setValue(ai.get("request_timeout", 30))
-        self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
         _skip_tags_raw = ai.get("skip_tags", ai.get("skip_tag", ["skip-ai"]))
         if isinstance(_skip_tags_raw, list):
             _skip_tags_str = ", ".join(_skip_tags_raw)
@@ -81,27 +65,25 @@ class AIGeneratorTab(QWidget):
             "Tagi wykluczające — oddziel przecinkami (np. skip-ai, pomin). "
             "Zostaw puste żeby wyłączyć."
         )
-        gen_form.addRow("Etykieta przycisku:", self._label)
-        gen_form.addRow("Limit batch:", self._batch_limit)
-        gen_form.addRow("Przerwa między batch (s):", self._batch_sleep)
-        gen_form.addRow("Maks. prób (retry):", self._ai_max_retries)
-        gen_form.addRow("Timeout żądania:", self._request_timeout)
-        gen_form.addRow("Tag wykluczający (skip):", self._skip_tag)
+        gen_form.addRow("Etykieta przycisku AI:", self._label)
+        gen_form.addRow("Tagi wykluczające:", self._skip_tag)
         layout.addWidget(gen_group)
         layout.addSpacing(8)
 
-        prov_group = QGroupBox("Providery API")
-        prov_form = QFormLayout(prov_group)
-        prov_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        prov_group = QGroupBox("Dostawcy AI")
+        prov_layout = QVBoxLayout(prov_group)
+        provider_tabs = QTabWidget()
 
         self._provider_widgets: dict[str, dict] = {}
+        current_provider_tab = 0
         for i, name in enumerate(_PROVIDER_NAMES):
-            sep = QLabel(f"── {name} ──")
-            sep.setStyleSheet("color: gray; margin-top: 4px;")
-            prov_form.addRow(sep)
-
+            page = QWidget()
+            prov_form = QFormLayout(page)
+            prov_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             p = providers.get(name, {})
             api_key_container, api_key_field = _api_key_widget(p.get("api_key", ""))
+            if p.get("api_key", "").strip() and not p.get("api_key", "").startswith("YOUR_"):
+                current_provider_tab = i
 
             model_row = QWidget()
             mh = QHBoxLayout(model_row)
@@ -129,9 +111,9 @@ class AIGeneratorTab(QWidget):
             temp.setSingleStep(0.05)
             temp.setValue(p.get("temperature", 0.2))
 
-            prov_form.addRow("API Key:", api_key_container)
+            prov_form.addRow("Klucz API:", api_key_container)
             prov_form.addRow("Model:", model_row)
-            prov_form.addRow("Temperature:", temp)
+            prov_form.addRow("Temperatura:", temp)
             widgets = {
                 "api_key": api_key_field,
                 "model": model_combo,
@@ -150,7 +132,7 @@ class AIGeneratorTab(QWidget):
                     "OpenAI reasoning_effort. Wysyłane tylko dla modeli OpenAI, "
                     "które obsługują reasoning."
                 )
-                prov_form.addRow("Reasoning level:", reasoning_effort)
+                prov_form.addRow("Poziom reasoning:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
             elif name == "opencode_go":
                 reasoning_line = _expanding_line_edit(p.get("reasoning_effort", ""))
@@ -161,11 +143,40 @@ class AIGeneratorTab(QWidget):
                     "Pozostałe modele: sprawdź dokumentację modelu.\n"
                     "Puste pole = reasoning_effort nie jest wysyłane."
                 )
-                prov_form.addRow("Reasoning effort:", reasoning_line)
+                prov_form.addRow("Poziom reasoning:", reasoning_line)
                 widgets["reasoning_effort"] = reasoning_line
             self._provider_widgets[name] = widgets
+            provider_tabs.addTab(page, name)
 
+        provider_tabs.setCurrentIndex(current_provider_tab)
+        prov_layout.addWidget(provider_tabs)
         layout.addWidget(prov_group)
+        layout.addSpacing(8)
+
+        adv_group = QGroupBox("Zaawansowane")
+        adv_form = QFormLayout(adv_group)
+        adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._batch_limit = QSpinBox()
+        self._batch_limit.setRange(1, 9999)
+        self._batch_limit.setValue(ai.get("batch_limit", 3))
+        self._batch_sleep = QDoubleSpinBox()
+        self._batch_sleep.setRange(0.0, 30.0)
+        self._batch_sleep.setSingleStep(0.1)
+        self._batch_sleep.setValue(ai.get("batch_sleep", 1.0))
+        self._ai_max_retries = QSpinBox()
+        self._ai_max_retries.setRange(1, 10)
+        self._ai_max_retries.setValue(ai.get("max_retries", 3))
+        self._ai_max_retries.setToolTip("Liczba prób przy błędach API (429, 5xx)")
+        self._request_timeout = QSpinBox()
+        self._request_timeout.setRange(5, 300)
+        self._request_timeout.setSuffix(" s")
+        self._request_timeout.setValue(ai.get("request_timeout", 30))
+        self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
+        adv_form.addRow("Limit paczki:", self._batch_limit)
+        adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
+        adv_form.addRow("Maks. prób:", self._ai_max_retries)
+        adv_form.addRow("Timeout żądania:", self._request_timeout)
+        layout.addWidget(adv_group)
         layout.addStretch()
 
         return _scrollable(inner)
@@ -220,7 +231,7 @@ class AIGeneratorTab(QWidget):
         self._wf_enabled = QCheckBox("Włącz przycisk workflow w edytorze")
         self._wf_enabled.setChecked(wf.get("enabled", True))
         lbl_form.addRow(self._wf_enabled)
-        self._wf_label = _expanding_line_edit(wf.get("editor_label", "Generuj wszystko"))
+        self._wf_label = _expanding_line_edit(wf.get("editor_label", "Generuj fiszkę"))
         lbl_form.addRow("Etykieta przycisku:", self._wf_label)
         layout.addLayout(lbl_form)
         layout.addSpacing(8)
@@ -280,11 +291,16 @@ class AIGeneratorTab(QWidget):
         for s in self._wf_data:
             mod = s.get("module", "?")
             act = s.get("action", "?")
-            extra = ""
+            label = f"{mod}/{act}"
             if mod == "dictionary":
                 dicts = s.get("dicts", [])
-                extra = f"  [{', '.join(dicts)}]" if dicts else "  [wszystkie]"
-            self._wf_list.addItem(QListWidgetItem(f"{mod}/{act}{extra}"))
+                extra = f" ({', '.join(dicts)})" if dicts else " (wszystkie)"
+                label = f"Słownik: pobierz wymowę{extra}"
+            elif mod == "ai":
+                label = "AI: uzupełnij pola"
+            elif mod == "tts":
+                label = "TTS: wygeneruj audio"
+            self._wf_list.addItem(QListWidgetItem(label))
 
     def _wf_add(self, module: str, action: str):
         step = {"module": module, "action": action}

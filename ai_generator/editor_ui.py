@@ -54,22 +54,12 @@ def _on_generate_editor(editor: Editor):
 
 def on_editor_buttons_init(buttons: list, editor: Editor):
     config = get_config()
-    label = config.get("button_label", "AI")
-
-    btn = editor.addButton(
-        None,
-        "ai_gen_field",
-        lambda ed=editor: _on_generate_editor(ed),
-        tip="Generuj pola przez AI",
-        label=label,
-    )
-    buttons.append(btn)
 
     # Workflow button (if enabled and configured)
     from .workflow import get_workflow_config, run_workflow_editor
     wf = get_workflow_config()
     if wf.get("enabled", True) and wf.get("steps"):
-        wf_label = wf.get("editor_label", "Generuj wszystko")
+        wf_label = wf.get("editor_label", "Generuj fiszkę")
         wf_btn = editor.addButton(
             None,
             "wf_run",
@@ -78,3 +68,13 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
             label=wf_label,
         )
         buttons.append(wf_btn)
+
+    label = config.get("button_label", "AI")
+    btn = editor.addButton(
+        None,
+        "ai_gen_field",
+        lambda ed=editor: _on_generate_editor(ed),
+        tip="Generuj tylko pola AI",
+        label=label,
+    )
+    buttons.append(btn)

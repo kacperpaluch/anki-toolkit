@@ -9,11 +9,14 @@ from aqt import mw
 from aqt.editor import Editor
 from aqt.utils import tooltip
 
-from .config import get_tts_config, get_tasks
+from .config import get_tts_config, get_tasks, validate_config
 from .api import generate_audio
 from ..common import unique_filename, clean_html, unique
 
 logger = logging.getLogger(__name__)
+
+# Tracks editor instances currently generating TTS — prevents double-click races.
+_GENERATING: set[int] = set()
 
 
 def on_editor_buttons_init(buttons: list, editor: Editor):
@@ -35,23 +38,43 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
 
 
 def _on_tts_editor(editor: Editor):
+    editor_id = id(editor)
+    if editor_id in _GENERATING:
+        tooltip("TTS: generowanie już trwa...", period=2000)
+        return
+    _GENERATING.add(editor_id)
+
+    def start():
+        _start_tts_editor(editor, editor_id)
+
+    editor.saveNow(start)
+
+
+def _start_tts_editor(editor: Editor, editor_id: int):
     note = editor.note
     if not note:
+        _GENERATING.discard(editor_id)
         tooltip("Brak notatki w edytorze.")
         return
 
     config = get_tts_config()
+    if not validate_config(config):
+        _GENERATING.discard(editor_id)
+        return
+
     voices = unique(config.get("voices", []))
     if not voices:
+        _GENERATING.discard(editor_id)
         tooltip("Brak skonfigurowanych głosów TTS.")
         return
 
     tasks = get_tasks(config)
     if not tasks:
+        _GENERATING.discard(editor_id)
         return
 
     work_items = []
-    for task in tasks:
+    for task_i, task in enumerate(tasks):
         mode = task.get("mode", "single")
         source_field = task.get("source_field", "")
         target_field = task.get("target_field", "")
@@ -73,6 +96,7 @@ def _on_tts_editor(editor: Editor):
                     continue
                 voice = note_voices[seg_i % len(note_voices)]
                 work_items.append({
+                    "task_i": task_i,
                     "mode": "split",
                     "source_field": source_field,
                     "target_field": target_field,
@@ -91,6 +115,7 @@ def _on_tts_editor(editor: Editor):
                 continue
             voice = random.choice(voices)
             work_items.append({
+                "task_i": task_i,
                 "mode": "single",
                 "source_field": source_field,
                 "target_field": target_field,
@@ -99,6 +124,7 @@ def _on_tts_editor(editor: Editor):
             })
 
     if not work_items:
+        _GENERATING.discard(editor_id)
         tooltip("TTS: brak pól do wygenerowania.", period=5000)
         return
 
@@ -122,7 +148,7 @@ def _on_tts_editor(editor: Editor):
                     audio_bytes = future.result()
                     fname = unique_filename()
                     mw.col.media.write_data(fname, audio_bytes)
-                    key = (item["target_field"], item.get("seg_i", -1))
+                    key = (item.get("task_i", 0), item["target_field"], item.get("seg_i", -1))
                     results[key] = fname
                 except Exception as e:
                     logger.error(f"TTS editor error: {e}")
@@ -131,6 +157,7 @@ def _on_tts_editor(editor: Editor):
         return results, errors
 
     def on_done(future):
+        _GENERATING.discard(editor_id)
         try:
             results, errors = future.result()
         except Exception as e:
@@ -147,7 +174,7 @@ def _on_tts_editor(editor: Editor):
         def apply():
             note = editor.note
             for idx, item in enumerate(work_items):
-                key = (item["target_field"], item.get("seg_i", -1))
+                key = (item.get("task_i", 0), item["target_field"], item.get("seg_i", -1))
                 fname = results.get(key)
                 if not fname:
                     continue
@@ -159,21 +186,22 @@ def _on_tts_editor(editor: Editor):
             for idx, item in enumerate(work_items):
                 if item["mode"] != "split":
                     continue
-                key = (item["target_field"], item["seg_i"])
+                key = (item.get("task_i", 0), item["target_field"], item["seg_i"])
                 fname = results.get(key)
                 if fname:
-                    if item["target_field"] not in split_updates:
-                        split_updates[item["target_field"]] = (
+                    split_key = (item.get("task_i", 0), item["target_field"])
+                    if split_key not in split_updates:
+                        split_updates[split_key] = (
                             item["source_field"],
                             item["split_sep"],
                             note[item["source_field"]],
                             []
                         )
-                    split_updates[item["target_field"]][3].append(
+                    split_updates[split_key][3].append(
                         (item["seg_i"], fname)
                     )
 
-            for target_field, (source_field, split_sep, raw_text, seg_updates) in split_updates.items():
+            for (_task_i, target_field), (source_field, split_sep, raw_text, seg_updates) in split_updates.items():
                 sep_pattern = re.escape(split_sep).replace(r"\ ", r"\s*")
                 sep_re = re.compile(f"(?:{sep_pattern}){{1,}}")
                 segments = sep_re.split(raw_text)

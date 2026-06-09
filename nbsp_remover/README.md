@@ -1,4 +1,4 @@
-# Nbsp Remover — czyszczenie &nbsp; i tagów div
+# Czyszczenie HTML — &nbsp; i tagi div
 
 Automatycznie usuwa `&nbsp;` i czyści tagi `<div>` z pól kart. Eliminuje artefakty HTML wklejane z zewnętrznych źródeł (strony internetowe, PDF, inne aplikacje).
 
@@ -10,9 +10,11 @@ Każda karta dodawana przez okno **Add** jest automatycznie czyszczona przed zap
 
 ### Tryb ręczny (czyszczenie całej kolekcji)
 
-**Narzędzia → Anki Toolkit → Purge collection from &nbsp;**
+**Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...**
 
 Czyści wszystkie notatki w kolekcji. Operacja jest nieodwracalna — wykonaj backup przed użyciem na dużej kolekcji.
+
+Logika czyszczenia pojedynczego pola znajduje się w `cleaning.py`, dzięki czemu można ją testować bez uruchamiania Anki.
 
 ## Reguły czyszczenia
 
@@ -50,12 +52,12 @@ to wait for something<br>with excitement
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → zakładka nbsp Remover**
+**Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Czyszczenie HTML**
 
 | Opcja | Domyślnie | Opis |
 |---|---|---|
 | Pokazuj tooltip | `true` | Wyświetlaj powiadomienie po wyczyszczeniu |
-| Czyść przy starcie | `false` | Automatycznie uruchamiaj purge przy starcie Anki |
+| Czyść przy starcie | `false` | Automatycznie uruchamiaj czyszczenie kolekcji przy starcie Anki |
 | Pole pomijane | `"ang"` | Pole z którego tagi `<div>` są usuwane całkowicie (zamiast zamiany na `<br>`) |
 
 ```json
