@@ -39,10 +39,12 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        tabs = QTabWidget()
+        self._tabs = QTabWidget()
+        self._tab_indices: dict[str, int] = {}
 
+        self._status_tab = StatusTab(cfg, open_tab=self._open_tab)
         self._tabs_list = [
-            ("Start",            StatusTab(cfg)),
+            ("Start",            self._status_tab),
             ("Moduły",           ModulesTab(cfg)),
             ("Słownik",          DictionaryTab(cfg)),
             ("AI Generator",     AIGeneratorTab(cfg)),
@@ -51,9 +53,9 @@ class SettingsDialog(QDialog):
             ("Narzędzia",        NarzedziaTab(cfg)),
         ]
         for title, widget in self._tabs_list:
-            tabs.addTab(widget, title)
+            self._tab_indices[title] = self._tabs.addTab(widget, title)
 
-        layout.addWidget(tabs)
+        layout.addWidget(self._tabs)
 
         info = QLabel(
             "Uwaga: config.json w folderze wtyczki to szablon domyślny — nie jest nadpisywany. "
@@ -69,6 +71,11 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _open_tab(self, title: str) -> None:
+        index = self._tab_indices.get(title)
+        if index is not None:
+            self._tabs.setCurrentIndex(index)
 
     def _save(self) -> None:
         cfg = get_full_config()

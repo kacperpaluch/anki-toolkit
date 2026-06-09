@@ -46,7 +46,7 @@ anki-toolkit/
 │
 ├── settings/                        # dialog ustawień (wszystkie moduły, jeden UI)
 │   ├── __init__.py                  # SettingsDialog, open_settings()
-│   ├── status_tab.py                # Zakładka: Start
+│   ├── status_tab.py                # Zakładka: Start — dashboard konfiguracji
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
@@ -183,7 +183,7 @@ Struktura:
 ```
 settings/
 ├── __init__.py              # SettingsDialog, open_settings()
-├── status_tab.py            # StatusTab
+├── status_tab.py            # StatusTab — dashboard gotowości, pipeline, lista problemów
 ├── modules_tab.py           # ModulesTab
 ├── dictionary_tab.py        # DictionaryTab
 ├── ai_generator_tab.py      # AIGeneratorTab + _PROVIDER_NAMES + model discovery + embedded PromptsTab
@@ -194,7 +194,7 @@ settings/
 ```
 
 Zakładki (7 zakładek):
-- **Start** — szybki status konfiguracji modułów, workflow, promptów, TTS i normalizacji
+- **Start** — dashboard gotowości: wynik pipeline'u, kafelki statusu, podgląd workflow i lista problemów z przyciskami nawigacji do zakładek
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
 - **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; dostawcy AI są rozdzieleni na karty, a limity batch/retry/request timeout są w sekcji **Zaawansowane**
@@ -244,7 +244,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/ui.py` | Widgety Qt: `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_templates_for_field` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog` |
-| `settings/status_tab.py` | Zakładka Start — status najważniejszych obszarów konfiguracji |
+| `settings/status_tab.py` | Zakładka Start — dashboard gotowości, statusy Workflow/AI/Promptów/Słownika/TTS, pipeline i problemy konfiguracyjne |
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |
 | `settings/dictionary_tab.py` | Zakładka Słownik — `DictionaryTab` |
 | `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`, `_PROVIDER_NAMES` |
@@ -339,7 +339,7 @@ audio_normalizer/__init__.py
             └── config.py       (wartości domyślne: FFMPEG_CMD, LOUDNORM_OPTS, MAX_WORKERS)
 
 settings/__init__.py            (SettingsDialog, open_settings); używa common/ADDON_NAME, get_full_config, save_full_config
-    ├── status_tab.py           (StatusTab)
+    ├── status_tab.py           (StatusTab — dashboard gotowości + nawigacja do zakładek)
     ├── modules_tab.py          (ModulesTab)
     ├── dictionary_tab.py       (DictionaryTab); używa common/ui widgetów
     ├── ai_generator_tab.py     (AIGeneratorTab); używa common/ui widgetów, common/ADDON_NAME

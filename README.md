@@ -22,7 +22,7 @@ anki-toolkit/
 │
 ├── settings/                        # Dialog ustawień dla wszystkich modułów
 │   ├── __init__.py                  # SettingsDialog, open_settings()
-│   ├── status_tab.py                # Zakładka: Start — status konfiguracji
+│   ├── status_tab.py                # Zakładka: Start — dashboard konfiguracji
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
@@ -111,7 +111,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 
 | Zakładka | Zawartość |
 |---|---|
-| **Start** | Szybki status konfiguracji workflow, AI, promptów, słownika i TTS |
+| **Start** | Dashboard gotowości: wynik pipeline'u, kafelki statusu, podgląd workflow i lista problemów z przyciskami nawigacji |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
 | **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach |
