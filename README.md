@@ -120,7 +120,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów, zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
-| **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj. i wygenerowane pola per model, licznik zaktualizowanych notatek; wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko) i przycisk resetu |
+| **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj. i wygenerowane pola per model, licznik zaktualizowanych notatek; wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 
 > **Gdzie są przechowywane ustawienia?** `config.json` w folderze wtyczki to szablon domyślny — nie jest nadpisywany. Twoje zmiany są zapisywane przez Anki w katalogu profilu (`addons21/.../meta.json`). Po ponownym otwarciu dialogu zobaczysz zapisane wartości.
 

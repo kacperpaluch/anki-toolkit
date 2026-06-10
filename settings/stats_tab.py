@@ -3,16 +3,19 @@
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QMessageBox, Qt,
+    QMessageBox, QDateEdit, QDate, Qt,
 )
 
-# (etykieta, liczba dni; None = całość)
+_CUSTOM = "custom"
+
+# (etykieta, liczba dni; None = całość, _CUSTOM = własny zakres dat)
 _RANGES = [
     ("Dziś", 1),
     ("Ostatnie 7 dni", 7),
     ("Ostatnie 30 dni", 30),
     ("Ostatnie 365 dni", 365),
     ("Wszystko", None),
+    ("Własny zakres", _CUSTOM),
 ]
 
 
@@ -33,11 +36,29 @@ class StatsTab(QWidget):
         self._range = QComboBox()
         for label, days in _RANGES:
             self._range.addItem(label, days)
-        self._range.setCurrentIndex(len(_RANGES) - 1)  # domyślnie: Wszystko
-        self._range.currentIndexChanged.connect(self._refresh)
+        self._range.setCurrentIndex(4)  # domyślnie: Wszystko
+        self._range.currentIndexChanged.connect(self._on_range_changed)
         range_row.addWidget(self._range)
+
+        today = QDate.currentDate()
+        self._date_from_label = QLabel("od:")
+        self._date_from = QDateEdit(QDate(today.year(), today.month(), 1))
+        self._date_from.setCalendarPopup(True)
+        self._date_from.setDisplayFormat("yyyy-MM-dd")
+        self._date_from.dateChanged.connect(self._refresh)
+        self._date_to_label = QLabel("do:")
+        self._date_to = QDateEdit(today)
+        self._date_to.setCalendarPopup(True)
+        self._date_to.setDisplayFormat("yyyy-MM-dd")
+        self._date_to.dateChanged.connect(self._refresh)
+        range_row.addWidget(self._date_from_label)
+        range_row.addWidget(self._date_from)
+        range_row.addWidget(self._date_to_label)
+        range_row.addWidget(self._date_to)
+
         range_row.addStretch()
         layout.addLayout(range_row)
+        self._set_custom_visible(False)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
@@ -79,24 +100,39 @@ class StatsTab(QWidget):
 
         self._refresh()
 
+    def _set_custom_visible(self, visible: bool) -> None:
+        for w in (self._date_from_label, self._date_from,
+                  self._date_to_label, self._date_to):
+            w.setVisible(visible)
+
+    def _on_range_changed(self) -> None:
+        self._set_custom_visible(self._range.currentData() == _CUSTOM)
+        self._refresh()
+
     def _refresh(self) -> None:
         from ..ai_generator import stats
 
-        days = self._range.currentData()
-        data = stats.get_stats(days=days)
+        selected = self._range.currentData()
+        if selected == _CUSTOM:
+            start = self._date_from.date().toString("yyyy-MM-dd")
+            end = self._date_to.date().toString("yyyy-MM-dd")
+            data = stats.get_stats(start=start, end=end)
+            range_label = f"Zakres: {start} – {end}"
+        else:
+            data = stats.get_stats(days=selected)
+            range_label = (
+                f"Od: {data.get('since', '?')}"
+                if selected is None
+                else self._range.currentText()
+            )
         models = data.get("models", {})
 
         total_req = sum(m.get("requests", 0) for m in models.values())
         total_err = sum(m.get("errors", 0) for m in models.values())
         total_in = sum(m.get("input_tokens", 0) for m in models.values())
         total_out = sum(m.get("output_tokens", 0) for m in models.values())
-        prefix = (
-            f"Od: {data.get('since', '?')}"
-            if days is None
-            else self._range.currentText()
-        )
         self._summary.setText(
-            f"{prefix}    ·    "
+            f"{range_label}    ·    "
             f"Zaktualizowane notatki: {_fmt(data.get('notes_processed', 0))}    ·    "
             f"Requesty: {_fmt(total_req)} (błędy: {_fmt(total_err)})    ·    "
             f"Tokeny: {_fmt(total_in)} wej. / {_fmt(total_out)} wyj."

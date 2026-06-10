@@ -82,22 +82,28 @@ def record_note() -> None:
         _save(data)
 
 
-def get_stats(days: Optional[int] = None) -> dict:
-    """Aggregate stats over the last `days` calendar days (None = all time).
+def get_stats(days: Optional[int] = None,
+              start: Optional[str] = None,
+              end: Optional[str] = None) -> dict:
+    """Aggregate stats over a range of calendar days.
+
+    Either pass `days` (last N days) or `start`/`end` as inclusive
+    "YYYY-MM-DD" bounds. No arguments = all time.
 
     Returns {"since": str, "notes_processed": int, "models": {name: {counters}}}.
     """
     with _LOCK:
         data = _load()
 
-    cutoff = None
     if days is not None:
-        cutoff = (datetime.now() - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=days - 1)).strftime("%Y-%m-%d")
 
     models: dict = {}
     notes = 0
     for day, entry in data.get("days", {}).items():
-        if cutoff and day < cutoff:
+        if start and day < start:
+            continue
+        if end and day > end:
             continue
         notes += int(entry.get("notes_processed", 0))
         for name, m in entry.get("models", {}).items():

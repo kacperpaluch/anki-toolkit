@@ -192,7 +192,7 @@ Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego po
 
 Każde wywołanie AI jest zliczane lokalnie (per dzień, per `provider/model`): requesty, błędy, tokeny wejściowe/wyjściowe (z pola `usage` odpowiedzi API), wygenerowane pola oraz liczba zaktualizowanych notatek.
 
-Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
+Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / **własny zakres dat** od–do z kalendarzykiem), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
 
 - Dane są zapisywane w `ai_generator/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer
 - Ceny nie są liczone — każdy model ma inny cennik; tokeny i liczba requestów są obiektywną miarą

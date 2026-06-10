@@ -118,6 +118,15 @@ class AiStatsTests(unittest.TestCase):
             today = ai_stats.get_stats(days=1)
             self.assertEqual(today["models"]["openai/gpt-4o"]["input_tokens"], 100)
 
+            # własny zakres dat (inclusive) obejmujący tylko stary wpis
+            custom = ai_stats.get_stats(start=old_day, end=old_day)
+            self.assertEqual(custom["models"]["openai/gpt-4o"]["requests"], 9)
+            self.assertEqual(custom["notes_processed"], 5)
+
+            # zakres poza danymi → pusto
+            empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
+            self.assertEqual(empty["models"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

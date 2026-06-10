@@ -204,7 +204,7 @@ Zakładki (8 zakładek):
 - **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (checklista), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
-- **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola), licznik zaktualizowanych notatek, przyciski Odśwież/Resetuj; dane z `ai_generator/stats.py`
+- **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola), licznik zaktualizowanych notatek, przyciski Odśwież/Resetuj; dane z `ai_generator/stats.py`
 
 ### Sekcja `modules` — włączanie/wyłączanie modułów
 
@@ -257,7 +257,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
 | `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
-| `ai_generator/stats.py` | Lokalne statystyki użycia AI — `record_request()`, `record_note()`, `get_stats(days=None)`, `reset_stats()`; liczniki per dzień kalendarzowy (agregacja zakresów), zapis do `usage_stats.json` (gitignored), thread-safe (`threading.Lock`) |
+| `ai_generator/stats.py` | Lokalne statystyki użycia AI — `record_request()`, `record_note()`, `get_stats(days=None, start=None, end=None)`, `reset_stats()`; liczniki per dzień kalendarzowy (agregacja zakresów, w tym własny zakres dat inclusive), zapis do `usage_stats.json` (gitignored), thread-safe (`threading.Lock`) |
 | `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
 | `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()` |
 | `ai_generator/providers/base.py` | ABC dla nowych providerów — implementuj `call_api()` |
