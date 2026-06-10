@@ -7,7 +7,7 @@ the first {% endif %} it encounters.
 """
 
 import re
-from typing import Dict
+from typing import Dict, List
 
 MAX_DEPTH = 50
 
@@ -15,6 +15,43 @@ IF_PATTERN = re.compile(
     r'{%\s*if\s+([^%]+)%}(.*?)(?:{%\s*else\s*%}(.*?))?{%\s*endif\s*%}',
     re.DOTALL
 )
+
+_BLOCK_TOKEN_PATTERN = re.compile(r'{%\s*(if\b[^%]*?|else|endif)\s*%}')
+
+
+def template_structure_problems(template: str) -> List[str]:
+    """Return human-readable problems with {% if %} block structure (empty = OK)."""
+    problems: List[str] = []
+    depth = 0
+    else_seen = False
+
+    for match in _BLOCK_TOKEN_PATTERN.finditer(template):
+        token = match.group(1).strip()
+        if token.startswith("if"):
+            if not token[2:].strip():
+                problems.append("{% if %} bez nazwy pola.")
+            if depth >= 1:
+                problems.append("Zagnieżdżone {% if %} nie są obsługiwane przez silnik szablonów.")
+            depth += 1
+            else_seen = False
+        elif token == "else":
+            if depth == 0:
+                problems.append("{% else %} bez otwartego {% if %}.")
+            elif else_seen:
+                problems.append("Podwójny {% else %} w jednym bloku {% if %}.")
+            else:
+                else_seen = True
+        else:  # endif
+            if depth == 0:
+                problems.append("{% endif %} bez otwartego {% if %}.")
+            else:
+                depth -= 1
+                else_seen = False
+
+    if depth > 0:
+        problems.append("Niedomknięty {% if %} — brakuje {% endif %}.")
+
+    return list(dict.fromkeys(problems))
 
 
 def render_template(template: str, fields: Dict[str, str], _depth: int = 0) -> str:

@@ -42,7 +42,7 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_templates_for_field
+│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_templates_for_field
 │
 ├── settings/                        # dialog ustawień (wszystkie moduły, jeden UI)
 │   ├── __init__.py                  # SettingsDialog, open_settings()
@@ -252,7 +252,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |
 | `settings/dictionary_tab.py` | Zakładka Słownik — `DictionaryTab` |
 | `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`, `_PROVIDER_NAMES` |
-| `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`, `_PROVIDER_NAMES` |
+| `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`, `_PROVIDER_NAMES`; comboboxy typu notatki i pola docelowego z danymi z kolekcji, przyciski „Wstaw pole ▾" i „Wstaw warunek ▾" (owija zaznaczenie w `{% if %}`), walidacja na żywo: `{{pola}}` + struktura bloków `{% if %}` |
 | `settings/tts_tab.py` | Zakładka TTS — `TTSTab` |
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
@@ -275,7 +275,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
 | `tts/config.py` | Konfiguracja TTS — `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` |
 | `tts/api.py` | API TTS — `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` |
-| `tts/processor.py` | Przetwarzanie notatek — `process_task_async()`, `process_tasks_async()`, `process_single_note()`, `_collect_work_items()`, `_save_batch_results()` |
+| `tts/processor.py` | Przetwarzanie notatek — `process_task_async()`, `process_tasks_async()`, `process_single_note()` (równoległe przez `ThreadPoolExecutor`, używane przez workflow), `_collect_work_items()`, `_save_batch_results()` |
 | `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`, task-indexed wyników |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
@@ -329,7 +329,7 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
     └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard
     └── browser_ui.py           ← add_to_context_menu (akcja przeglądarki + batch)
     └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_float, safe_str
-        └── template_engine.py  (render_template — czysta funkcja)
+        └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
         └── providers/          (BaseProvider + 7 implementacji + model_discovery); używa common/http RETRYABLE_STATUS_CODES
     └── workflow.py             (AI → Dict → TTS sekwencyjnie, _RUNNING guard); używa common/ADDON_NAME
@@ -350,7 +350,7 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
     ├── modules_tab.py          (ModulesTab)
     ├── dictionary_tab.py       (DictionaryTab); używa common/ui widgetów
     ├── ai_generator_tab.py     (AIGeneratorTab); używa common/ui widgetów, common/ADDON_NAME
-    ├── prompts_tab.py          (PromptsTab); używa common/ui widgetów
+    ├── prompts_tab.py          (PromptsTab); używa common/ui widgetów + get_note_type_names, get_fields_for_note_type
     ├── tts_tab.py              (TTSTab); używa common/ui widgetów, tts/api fetch_openrouter_tts_models
     ├── audio_normalizer_tab.py (AudioNormalizerTab); używa common/ui widgetów
     ├── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów

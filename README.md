@@ -18,7 +18,7 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_templates_for_field
+│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_templates_for_field
 │
 ├── settings/                        # Dialog ustawień dla wszystkich modułów
 │   ├── __init__.py                  # SettingsDialog, open_settings()
@@ -227,6 +227,8 @@ Konfiguracja w **Ustawienia → AI Generator**:
 
 - `{{nazwa_pola}}` — wstawia wartość pola karty (oczyszczoną z HTML)
 - `{% if pole %} ... {% else %} ... {% endif %}` — warunek
+
+Edytor promptów podpowiada typ notatki i pole docelowe (comboboxy z danymi z kolekcji), ma przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet `{% if pole %}…{% else %}…{% endif %}`; zaznaczony tekst zostaje owinięty warunkiem) oraz walidację na żywo ostrzegającą o nieznanych polach w prompcie i błędach struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony).
 
 Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 

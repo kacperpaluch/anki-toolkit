@@ -184,6 +184,13 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
+Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć literówek:
+- **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
+- Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
+- Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")
+- Walidacja na żywo pod edytorem ostrzega gdy: typ notatki nie istnieje w kolekcji, pole docelowe nie istnieje w typie notatki, prompt używa nieznanych `{{pól}}` lub `{% if pól %}`
+- Walidacja sprawdza też strukturę bloków: niedomknięty `{% if %}`, osierocony `{% else %}`/`{% endif %}`, podwójny `{% else %}`, `{% if %}` bez nazwy pola oraz zagnieżdżone `{% if %}` (nieobsługiwane przez silnik — patrz Ograniczenie wyżej); ta część działa nawet bez dostępu do kolekcji (`template_engine.template_structure_problems()`)
+
 > **Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane.
 
 > **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.

@@ -60,6 +60,25 @@ def get_field_names() -> list[str]:
     return sorted(field_names)
 
 
+def get_note_type_names() -> list[str]:
+    """Return sorted list of note type names, or [] if collection unavailable."""
+    try:
+        return sorted(m["name"] for m in mw.col.models.all())
+    except Exception:
+        return []
+
+
+def get_fields_for_note_type(note_type_name: str) -> list[str]:
+    """Return field names of a note type, or [] if not found / collection unavailable."""
+    try:
+        model = mw.col.models.by_name(note_type_name)
+    except Exception:
+        return []
+    if not model:
+        return []
+    return [fld["name"] for fld in model["flds"]]
+
+
 def get_templates_for_field(field_name: str) -> list[tuple[int, str]]:
     """Return list of (ord, template_name) for note types containing field_name."""
     seen: dict[int, str] = {}

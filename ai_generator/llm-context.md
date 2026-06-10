@@ -13,7 +13,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI; `_GENERATING` guard zapobiega podwójnemu kliknięciu AI; `saveNow(start)` zapewnia świeży stan note przed zadaniem |
 | `browser_ui.py` | UI przeglądarki — batch z QProgressDialog, cancel_flag |
 | `field_generator.py` | Logika generowania — niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_float()`, `common.safe_str()` |
-| `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}` |
+| `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `usage_stats.json`; `get_stats(days=None)` agreguje zakres; thread-safe |
 | `providers/__init__.py` | Rejestr providerów + fabryka `get_provider()` |
 | `providers/base.py` | ABC `BaseProvider` — interfejs + `_request_with_retry()` + `_request_with_reasoning_fallback()`; używa `common.http.RETRYABLE_STATUS_CODES` |
@@ -73,7 +73,8 @@ Przycisk workflow w edytorze:
       → jeśli editor_id jest w `_RUNNING`: tooltip "Workflow już trwa..." i return
       → saveNow → notatka jest łapana RAZ na starcie — wszystkie kroki działają na niej,
         więc przełączenie karty w edytorze w trakcie nie miesza danych między notatkami
-      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS (każdy w tle; update_note pomijany dla note.id == 0)
+      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS (każdy w tle; update_note pomijany dla note.id == 0);
+        wewnątrz kroku TTS pliki audio są generowane równolegle (tts.processor.process_single_note → ThreadPoolExecutor)
       → po ostatnim kroku usuwa editor_id z `_RUNNING`, wywołuje `editor.loadNote()` (tylko gdy edytor nadal pokazuje tę notatkę) i pokazuje jedno podsumowanie
 ```
 
@@ -81,7 +82,7 @@ Przycisk workflow w edytorze:
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
 - Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
-- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, prompt) po prawej
+- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, prompt) po prawej; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
 - Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele, temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.

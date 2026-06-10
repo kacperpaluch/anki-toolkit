@@ -38,6 +38,44 @@ class TemplateEngineTests(unittest.TestCase):
         self.assertEqual(rendered, "book")
 
 
+class TemplateStructureProblemsTests(unittest.TestCase):
+    def _problems(self, template):
+        return template_engine.template_structure_problems(template)
+
+    def test_valid_templates_have_no_problems(self):
+        self.assertEqual(self._problems("plain text {{ang}}"), [])
+        self.assertEqual(self._problems("{% if def %}x{% endif %}"), [])
+        self.assertEqual(self._problems("{% if def %}x{% else %}y{% endif %}"), [])
+        self.assertEqual(
+            self._problems("{% if a %}1{% endif %} mid {% if b %}2{% else %}3{% endif %}"),
+            [],
+        )
+
+    def test_unclosed_if(self):
+        problems = self._problems("{% if def %}x")
+        self.assertTrue(any("Niedomknięty" in p for p in problems))
+
+    def test_orphan_endif(self):
+        problems = self._problems("x{% endif %}")
+        self.assertTrue(any("{% endif %} bez otwartego" in p for p in problems))
+
+    def test_orphan_else(self):
+        problems = self._problems("x{% else %}y")
+        self.assertTrue(any("{% else %} bez otwartego" in p for p in problems))
+
+    def test_duplicate_else(self):
+        problems = self._problems("{% if a %}1{% else %}2{% else %}3{% endif %}")
+        self.assertTrue(any("Podwójny" in p for p in problems))
+
+    def test_nested_if_flagged(self):
+        problems = self._problems("{% if a %}{% if b %}x{% endif %}{% endif %}")
+        self.assertTrue(any("Zagnieżdżone" in p for p in problems))
+
+    def test_if_without_field_name(self):
+        problems = self._problems("{% if %}x{% endif %}")
+        self.assertTrue(any("bez nazwy pola" in p for p in problems))
+
+
 class HtmlHelperTests(unittest.TestCase):
     def test_clean_html_normalized_removes_tags_and_collapses_space(self):
         self.assertEqual(
