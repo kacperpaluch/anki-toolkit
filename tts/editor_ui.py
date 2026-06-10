@@ -154,6 +154,9 @@ def _start_tts_editor(editor: Editor, editor_id: int):
                     logger.error(f"TTS editor error: {e}")
                     errors += 1
 
+        logger.info(
+            f"TTS (edytor): wygenerowano {len(results)}/{len(work_items)}, błędów: {errors}"
+        )
         return results, errors
 
     def on_done(future):

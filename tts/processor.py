@@ -213,6 +213,9 @@ def _generate_items(
             )
             mw.taskman.run_on_main(_update)
 
+    logger.info(
+        f"TTS \"{label}\": wygenerowano {len(results)}/{len(items)}, błędów: {errors}"
+    )
     return results, errors
 
 
@@ -384,7 +387,14 @@ def process_single_note(note, config: dict = None) -> bool:
     if not work_items:
         return False
 
+    logger.debug(
+        f"Workflow TTS: nid={note.id}, {len(work_items)} segmentów, "
+        f"max_workers={int(config.get('max_workers', 12))}"
+    )
+
     results = {}
+    errors = 0
+    first_error = None
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=int(config.get("max_workers", 12))
     ) as pool:
@@ -400,11 +410,18 @@ def process_single_note(note, config: dict = None) -> bool:
                 mw.col.media.write_data(fname, audio_bytes)
                 results[(item["task_i"], item["seg_i"])] = fname
             except Exception as e:
+                errors += 1
+                if first_error is None:
+                    first_error = str(e)
                 logger.error(
                     f"TTS error (nid={note.id}, task={item['task_i']}, seg={item['seg_i']}): {e}"
                 )
 
     if not results:
+        if errors:
+            raise Exception(
+                f"nie wygenerowano audio, {errors} błędów ({first_error})"
+            )
         return False
 
     changed = False
@@ -436,5 +453,12 @@ def process_single_note(note, config: dict = None) -> bool:
 
     if changed and note.id:
         mw.col.update_note(note)
+
+    if errors:
+        # Surface partial failures — the workflow shows step exceptions as a
+        # tooltip, while plain log entries would go unnoticed.
+        raise Exception(
+            f"wygenerowano {len(results)}, błędów: {errors} ({first_error})"
+        )
 
     return changed

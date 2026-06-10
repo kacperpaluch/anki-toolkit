@@ -49,6 +49,10 @@
         ]
     },
 
+    "debug": {
+        "enabled": false
+    },
+
     "workflow": {
         "enabled": true,
         "editor_label": "Generuj fiszkę",

@@ -22,8 +22,8 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — używa `common.text.normalize_float()`, `common.http.extract_http_error()` |
-| `processor.py` | Przetwarzanie notatek w przeglądarce: `process_task_async()`, `process_tasks_async()`, `_generate_items()`, `_collect_work_items()`, `_save_batch_results()`; `process_single_note()` (używane przez workflow) — zbiera work itemy ze wszystkich zadań i generuje równolegle przez `ThreadPoolExecutor(max_workers)` |
+| `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — używa `common.text.normalize_float()`, `common.http.extract_http_error()`; loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
+| `processor.py` | Przetwarzanie notatek w przeglądarce: `process_task_async()`, `process_tasks_async()`, `_generate_items()`, `_collect_work_items()`, `_save_batch_results()`; `process_single_note()` (używane przez workflow) — zbiera work itemy ze wszystkich zadań i generuje równolegle przez `ThreadPoolExecutor(max_workers)`; przy błędach generowania rzuca `Exception` z podsumowaniem (workflow pokazuje ją jako tooltip kroku) |
 | `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`), task-indexed klucze wyników |
 
 ## Przepływ danych

@@ -19,7 +19,9 @@ from anki.hooks import addHook
 from aqt import mw, gui_hooks
 from aqt.qt import QTimer, QAction
 
-from .common import ADDON_NAME
+from .common import ADDON_NAME, setup_logging
+
+setup_logging()
 
 
 def _enabled(name: str) -> bool:

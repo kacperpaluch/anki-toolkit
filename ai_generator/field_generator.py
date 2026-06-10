@@ -117,6 +117,10 @@ class FieldGenerator:
                 note[target_field] = result
                 fields_map[target_field] = clean_html_normalized(result)  # update map for dependent fields
                 changed[target_field] = result
+                logger.info(
+                    f"AI: pole '{target_field}' wygenerowane "
+                    f"({provider_name}/{provider.model}, tokeny {in_tokens}→{out_tokens})"
+                )
             else:
                 provider_error = getattr(provider, "last_error", None)
                 if provider_error:
@@ -129,6 +133,7 @@ class FieldGenerator:
                         f"Provider '{provider_name}', model '{provider.model}', "
                         f"pole '{target_field}' nie zwrócił treści."
                     )
+                logger.error(f"AI: {self.last_error}")
 
         if changed:
             stats.record_note()

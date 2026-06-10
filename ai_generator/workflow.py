@@ -1,10 +1,14 @@
 """Workflow — run AI → Dictionary → TTS in sequence for one note (editor)."""
 
+import logging
+
 from aqt import mw
 from aqt.utils import tooltip
 from aqt.editor import Editor
 
 from ..common import ADDON_NAME
+
+logger = logging.getLogger(__name__)
 
 _RUNNING: set[int] = set()
 
@@ -61,6 +65,7 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
         step = steps[i]
         module = step.get("module", "")
         action = step.get("action", "")
+        logger.info(f"Workflow: krok {i + 1}/{total} ({module}/{action}), nid={note.id}")
 
         def bg_task():
             try:
@@ -75,6 +80,7 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
             except Exception as e:
                 err = str(e)
             if err:
+                logger.error(f"Workflow: krok {i + 1}/{total} ({module}/{action}): {err}")
                 tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
             run_step(i + 1)
 

@@ -18,6 +18,7 @@ from .tts_tab import TTSTab
 from .audio_normalizer_tab import AudioNormalizerTab
 from .narzedzia_tab import NarzedziaTab
 from .stats_tab import StatsTab
+from .logs_tab import LogsTab
 
 
 def _reload_module_configs() -> None:
@@ -53,6 +54,7 @@ class SettingsDialog(QDialog):
             ("Normalizacja",     AudioNormalizerTab(cfg)),
             ("Narzędzia",        NarzedziaTab(cfg)),
             ("Statystyki",       StatsTab(cfg)),
+            ("Logi",             LogsTab(cfg)),
         ]
         for title, widget in self._tabs_list:
             self._tab_indices[title] = self._tabs.addTab(widget, title)

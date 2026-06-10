@@ -73,10 +73,16 @@ class BaseProvider(ABC):
     def _request_with_retry(self, req: urllib.request.Request) -> Optional[bytes]:
         """Execute an HTTP request with exponential backoff on transient errors."""
         self.last_error = None
+        self.logger.debug(f"{self.model}: wysyłam żądanie (timeout={self.timeout}s)")
         for attempt in range(self.max_retries):
             try:
+                t0 = time.time()
                 with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                    return response.read()
+                    raw = response.read()
+                self.logger.debug(
+                    f"{self.model}: odpowiedź {len(raw)} B w {time.time() - t0:.1f}s"
+                )
+                return raw
             except urllib.error.HTTPError as e:
                 if e.code in RETRYABLE_STATUS_CODES and attempt < self.max_retries - 1:
                     delay = 2 ** (attempt + 1)

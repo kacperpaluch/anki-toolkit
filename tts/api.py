@@ -32,6 +32,7 @@ def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
 
     max_retries = int(config.get("max_retries", 3))
     timeout = int(config.get("timeout", 60))
+    logger.debug(f"Kokoro TTS: voice={voice}, {len(text)} zn., timeout={timeout}s")
     for attempt in range(max_retries):
         try:
             req = urllib.request.Request(
@@ -39,11 +40,21 @@ def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
                 data=json.dumps(payload).encode("utf-8"),
                 headers=headers,
             )
+            t0 = time.time()
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.read()
+                data = resp.read()
+            logger.debug(
+                f"Kokoro TTS OK: voice={voice}, {len(data)} B w {time.time() - t0:.1f}s"
+            )
+            return data
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
-                time.sleep(2 ** (attempt + 1))
+                delay = 2 ** (attempt + 1)
+                logger.warning(
+                    f"Kokoro TTS HTTP {e.code}, ponawiam za {delay}s "
+                    f"(próba {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
                 continue
             raise Exception(f"Kokoro API Error: {extract_http_error(e)}")
         except urllib.error.URLError as e:
@@ -77,6 +88,9 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
 
     max_retries = int(config.get("max_retries", 3))
     timeout = int(config.get("timeout", 60))
+    logger.debug(
+        f"OpenRouter TTS: model={model}, voice={voice}, {len(text)} zn., timeout={timeout}s"
+    )
     for attempt in range(max_retries):
         try:
             req = urllib.request.Request(
@@ -84,11 +98,21 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
                 data=json.dumps(payload).encode("utf-8"),
                 headers=headers,
             )
+            t0 = time.time()
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.read()
+                data = resp.read()
+            logger.debug(
+                f"OpenRouter TTS OK: voice={voice}, {len(data)} B w {time.time() - t0:.1f}s"
+            )
+            return data
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
-                time.sleep(2 ** (attempt + 1))
+                delay = 2 ** (attempt + 1)
+                logger.warning(
+                    f"OpenRouter TTS HTTP {e.code}, ponawiam za {delay}s "
+                    f"(próba {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
                 continue
             raise Exception(f"OpenRouter TTS Error: {extract_http_error(e)}")
         except urllib.error.URLError as e:

@@ -54,7 +54,8 @@ anki-toolkit/
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
-│   └── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
+│   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
+│   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów wtyczki
 │
 ├── dictionary/                      # Moduł 1
 │   ├── __init__.py
@@ -193,10 +194,11 @@ settings/
 ├── tts_tab.py               # TTSTab
 ├── audio_normalizer_tab.py  # AudioNormalizerTab
 ├── narzedzia_tab.py         # NarzedziaTab
-└── stats_tab.py             # StatsTab — dashboard użycia AI
+├── stats_tab.py             # StatsTab — dashboard użycia AI
+└── logs_tab.py              # LogsTab — tryb debugowania + podgląd bufora logów
 ```
 
-Zakładki (8 zakładek):
+Zakładki (9 zakładek):
 - **Start** — dashboard gotowości: wynik pipeline'u, kafelki statusu, podgląd workflow i lista problemów z przyciskami nawigacji do zakładek
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
@@ -205,6 +207,7 @@ Zakładki (8 zakładek):
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
 - **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola), licznik zaktualizowanych notatek, przyciski Odśwież/Resetuj; dane z `ai_generator/stats.py`
+- **Logi** — checkbox trybu debugowania (config `debug.enabled`, działa od razu po przełączeniu), podgląd bufora logów wtyczki w pamięci (`common/debug_log.py`, ostatnie 2000 wpisów, auto-odświeżanie co 2 s), przyciski Odśwież/Kopiuj/Wyczyść; bez debugowania rejestrowane INFO+, z debugowaniem DEBUG+
 
 ### Sekcja `modules` — włączanie/wyłączanie modułów
 
@@ -246,6 +249,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/text.py` | `unique()`, `safe_float()`, `safe_str()`, `unique_filename()`, `normalize_float()` |
 | `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
+| `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
 | `common/ui.py` | Widgety Qt: `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_templates_for_field` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog` |
 | `settings/status_tab.py` | Zakładka Start — dashboard gotowości, statusy Workflow/AI/Promptów/Słownika/TTS, pipeline i problemy konfiguracyjne |
@@ -257,6 +261,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
 | `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
+| `settings/logs_tab.py` | Zakładka Logi — `LogsTab`, tryb debugowania + podgląd bufora logów (czyta `common/debug_log.py`) |
 | `ai_generator/stats.py` | Lokalne statystyki użycia AI — `record_request()`, `record_note()`, `get_stats(days=None, start=None, end=None)`, `reset_stats()`; liczniki per dzień kalendarzowy (agregacja zakresów, w tym własny zakres dat inclusive), zapis do `usage_stats.json` (gitignored), thread-safe (`threading.Lock`) |
 | `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
 | `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()` |
