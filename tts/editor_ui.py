@@ -133,7 +133,7 @@ def _start_tts_editor(editor: Editor, editor_id: int):
         errors = 0
 
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=int(config.get("max_workers", 8))
+            max_workers=int(config.get("max_workers", 12))
         ) as pool:
             future_map = {}
             for idx, item in enumerate(work_items):

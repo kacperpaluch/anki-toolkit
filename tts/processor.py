@@ -330,9 +330,10 @@ def process_single_note(note, config: dict = None) -> bool:
     if not voices:
         return False
 
-    changed = False
+    work_items = []
+    split_contexts = {}  # task_i -> (target_field, split_sep, raw_segments)
 
-    for task in tasks:
+    for task_i, task in enumerate(tasks):
         mode = task.get("mode", "single")
         source_field = task.get("source_field", "")
         target_field = task.get("target_field", "")
@@ -346,32 +347,23 @@ def process_single_note(note, config: dict = None) -> bool:
             raw_segments = sep_re.split(note[source_field])
             note_voices = voices[:]
             random.shuffle(note_voices)
-
-            parts = []
-            note_changed = False
+            task_has_items = False
             for seg_i, seg in enumerate(raw_segments):
-                content = seg
-                if "[sound:" in seg or not clean_html(seg):
-                    parts.append(content)
+                if "[sound:" in seg:
                     continue
                 text = clean_html(seg)
                 if not text:
-                    parts.append(content)
                     continue
-                voice = note_voices[seg_i % len(note_voices)]
-                try:
-                    audio_bytes = generate_audio(text, config, voice)
-                    fname = unique_filename()
-                    mw.col.media.write_data(fname, audio_bytes)
-                    content += f"[sound:{fname}]"
-                    note_changed = True
-                except Exception as e:
-                    logger.error(f"TTS error (nid={note.id}, seg={seg_i}): {e}")
-                parts.append(content)
-
-            if note_changed:
-                note[target_field] = split_sep.join(parts)
-                changed = True
+                work_items.append({
+                    "task_i": task_i,
+                    "mode": "split",
+                    "seg_i": seg_i,
+                    "text": text,
+                    "voice": note_voices[seg_i % len(note_voices)],
+                })
+                task_has_items = True
+            if task_has_items:
+                split_contexts[task_i] = (target_field, split_sep, raw_segments)
         else:
             if source_field not in note or target_field not in note:
                 continue
@@ -380,15 +372,67 @@ def process_single_note(note, config: dict = None) -> bool:
             text = clean_html(note[source_field])
             if not text:
                 continue
-            voice = random.choice(voices)
+            work_items.append({
+                "task_i": task_i,
+                "mode": "single",
+                "seg_i": -1,
+                "text": text,
+                "voice": random.choice(voices),
+                "target_field": target_field,
+            })
+
+    if not work_items:
+        return False
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(config.get("max_workers", 12))
+    ) as pool:
+        future_map = {
+            pool.submit(generate_audio, item["text"], config, item["voice"]): item
+            for item in work_items
+        }
+        for future in concurrent.futures.as_completed(future_map):
+            item = future_map[future]
             try:
-                audio_bytes = generate_audio(text, config, voice)
+                audio_bytes = future.result()
                 fname = unique_filename()
                 mw.col.media.write_data(fname, audio_bytes)
-                note[target_field] = f"[sound:{fname}]"
-                changed = True
+                results[(item["task_i"], item["seg_i"])] = fname
             except Exception as e:
-                logger.error(f"TTS error (nid={note.id}): {e}")
+                logger.error(
+                    f"TTS error (nid={note.id}, task={item['task_i']}, seg={item['seg_i']}): {e}"
+                )
+
+    if not results:
+        return False
+
+    changed = False
+
+    for item in work_items:
+        if item["mode"] != "single":
+            continue
+        fname = results.get((item["task_i"], -1))
+        if fname:
+            note[item["target_field"]] = f"[sound:{fname}]"
+            changed = True
+
+    for task_i, (target_field, split_sep, raw_segments) in split_contexts.items():
+        seg_map = {
+            seg_i: fname
+            for (ti, seg_i), fname in results.items()
+            if ti == task_i and seg_i >= 0
+        }
+        if not seg_map:
+            continue
+        parts = []
+        for i, seg in enumerate(raw_segments):
+            content = seg
+            if i in seg_map:
+                content += f"[sound:{seg_map[i]}]"
+            parts.append(content)
+        note[target_field] = split_sep.join(parts)
+        changed = True
 
     if changed and note.id:
         mw.col.update_note(note)
