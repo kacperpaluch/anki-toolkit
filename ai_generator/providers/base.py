@@ -72,7 +72,15 @@ class BaseProvider(ABC):
                     self.last_error = f"{self.last_error} — {details}"
                 self.logger.error(self.last_error)
                 return None
-            except urllib.error.URLError as e:
+            except (urllib.error.URLError, TimeoutError) as e:
+                if attempt < self.max_retries - 1:
+                    delay = 2 ** (attempt + 1)
+                    self.logger.warning(
+                        f"Connection error: {e}, retrying in {delay}s "
+                        f"(attempt {attempt + 1}/{self.max_retries})"
+                    )
+                    time.sleep(delay)
+                    continue
                 self.last_error = f"Connection error: {e}"
                 self.logger.error(self.last_error)
                 return None

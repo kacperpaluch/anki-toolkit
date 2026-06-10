@@ -120,8 +120,12 @@ class PromptsTab(QWidget):
         }
 
         if new_key != old_key:
-            del self._data[old_key]
-            self._data[new_key] = entry
+            # Rebuild in place so renaming keeps the entry's position —
+            # generation order follows note_types key order (dependent fields).
+            self._data = {
+                (new_key if k == old_key else k): (entry if k == old_key else v)
+                for k, v in self._data.items()
+            }
             self._current_key = new_key
             if list_item:
                 list_item.setText(f"{new_nt}\n→ {new_field}")

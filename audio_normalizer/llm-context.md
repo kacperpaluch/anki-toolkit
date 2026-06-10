@@ -31,7 +31,10 @@ Narzędzia → Anki Toolkit → Normalizuj Audio
               → dla każdego: needs_processing(path, name, history)  # mtime check
               → ThreadPoolExecutor(max_workers)
                   → normalize_file(path, ffmpeg_cmd, loudnorm_opts)
-                      → ffmpeg -i input -af loudnorm_opts -y temp.mp3
+                      → ffmpeg -i input -af loudnorm_opts -y input.temp{ext}
+                        # temp zachowuje oryginalne rozszerzenie — ffmpeg wnioskuje
+                        # format wyjściowy z rozszerzenia, więc .wav/.ogg/.flac
+                        # nie są po cichu re-enkodowane do MP3
                       → os.replace(temp, input)         # atomic replace
                       → return (True, new_mtime)
               → save_history(history)                   # zapisz mtime

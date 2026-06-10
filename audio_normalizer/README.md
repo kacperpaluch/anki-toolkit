@@ -19,7 +19,7 @@ Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje
 
 ## Co się dzieje z plikami
 
-1. Wtyczka tworzy plik tymczasowy `plik.mp3.temp.mp3`
+1. Wtyczka tworzy plik tymczasowy z zachowaniem oryginalnego rozszerzenia (np. `plik.mp3.temp.mp3`, `plik.wav.temp.wav`) — dzięki temu ffmpeg zachowuje format pliku i nie re-enkoduje `.wav`/`.ogg`/`.flac` do MP3
 2. `ffmpeg` przetwarza oryginał → temp z filtrem `loudnorm`
 3. Plik tymczasowy zastępuje oryginał (`os.replace` — atomowa operacja)
 4. Nowy `mtime` pliku jest zapisywany do historii

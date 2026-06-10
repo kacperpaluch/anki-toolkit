@@ -41,14 +41,20 @@ def resolve_openrouter_key(config: dict) -> str:
     return config.get("openrouter_api_key", "").strip()
 
 
-def validate_config(config: dict) -> bool:
+def _warn(msg: str) -> None:
+    # validate_config may run from a background thread (e.g. workflow step) —
+    # Qt UI calls must always happen on the main thread.
+    from aqt import mw
     from aqt.utils import showWarning
+    mw.taskman.run_on_main(lambda: showWarning(msg))
 
+
+def validate_config(config: dict) -> bool:
     provider = config.get("tts_provider", "kokoro")
     if provider == "openrouter":
         api_key = resolve_openrouter_key(config)
         if not api_key:
-            showWarning(
+            _warn(
                 "Brak klucza API OpenRouter.\n"
                 "Wpisz klucz w ustawieniach TTS lub zaznacz "
                 "\"Użyj klucza z AI Generatora\"."
@@ -56,18 +62,20 @@ def validate_config(config: dict) -> bool:
             return False
     else:
         if not config.get("api_url", "").strip():
-            showWarning("Brak adresu API Kokoro w ustawieniach TTS.")
+            _warn("Brak adresu API Kokoro w ustawieniach TTS.")
             return False
     voices = unique(config.get("voices", []))
     if not voices:
-        showWarning("Nie zaznaczono żadnego głosu w ustawieniach TTS.")
+        _warn("Nie zaznaczono żadnego głosu w ustawieniach TTS.")
         return False
     return True
 
 
 def get_tasks(config: dict) -> list[dict]:
     tasks = config.get("tasks")
-    if tasks and isinstance(tasks, list):
+    if isinstance(tasks, list):
+        # An explicitly saved empty list means "no tasks" — don't fall back
+        # to legacy fields, or removed tasks would silently reappear.
         return [t for t in tasks if isinstance(t, dict) and t.get("label")]
     result = []
     ang_src = config.get("ang_source_field", "ang")

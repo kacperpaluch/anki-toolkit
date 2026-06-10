@@ -12,7 +12,7 @@ System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pol
 - `mode` — `single` (jedno audio na notatkę) lub `split` (osobne audio na segment, dzielone `split_separator`)
 - `split_separator` — string dzielący tekst (tylko tryb `split`)
 
-Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Backward compat: jeśli `tasks` jest puste, generowane są domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field`.
+Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Backward compat: jeśli klucz `tasks` **nie istnieje** (lub nie jest listą), generowane są domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field`. Jawnie zapisana **pusta lista** oznacza "brak zadań" — usunięte zadania nie wracają.
 
 Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w głównym dialogu ustawień wtyczki (zakładka TTS) oraz w sekcji `tts` konfiguracji profilu Anki.
 
@@ -62,15 +62,18 @@ Przycisk edytora
           → run_in_background(bg_task)
               → ThreadPoolExecutor → generate_audio(...) → mw.col.media.write_data(...)
               → results[(task_i, target_field, seg_i)] = filename
-          → on_done: editor.saveNow(apply), zastosuj wyniki, editor.loadNote(), jeden tooltip
+          → on_done: editor.saveNow(apply), zastosuj wyniki do notatki złapanej na starcie
+              → jeśli editor.note is note: editor.loadNote()
+              → w przeciwnym razie (użytkownik przełączył kartę): mw.col.update_note(note)
+          → jeden tooltip z podsumowaniem
 ```
 
 ### get_tasks() — backward compat
 
 ```
 get_tasks(config)
-  → jeśli config["tasks"] niepusta → zwróć listę
-  → else: zbuduj z legacy pól:
+  → jeśli config["tasks"] jest listą (także pustą) → zwróć przefiltrowaną listę
+  → else (klucz nie istnieje / zły typ): zbuduj z legacy pól:
       ang_source_field + ang_target_field → mode=single
       przyklad_target_field → mode=split
 ```
@@ -132,9 +135,9 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
 - `voices` — lista głosów do losowania
-- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli pusta/missing → backward compat z `ang_source_field`/`ang_target_field`/`przyklad_target_field`
+- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli klucz nie istnieje → backward compat z `ang_source_field`/`ang_target_field`/`przyklad_target_field`; pusta lista = brak zadań
 - `max_workers` — liczba wątków w `ThreadPoolExecutor`
-- `max_retries` i `timeout` — retry logic w `generate_audio()`
+- `max_retries` i `timeout` — retry logic w `generate_audio()` (HTTP 429/5xx; timeouty zgłaszane jako błąd)
 - Wszystkie domyślne wartości zdefiniowane w `_DEFAULTS` (config.py) i mergowane przez `get_tts_config()` używającego `get_module_config()` z `common.config`
 
 ### Walidacja konfiguracji
@@ -143,6 +146,8 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - Dla `"openrouter"`: czy `openrouter_api_key` nie jest pusty (lub `use_ai_openrouter_key` wskazuje na klucz z AI)
 - Dla `"kokoro"`: czy `api_url` nie jest pusty
 - Zawsze: czy `voices` nie jest pusta
+
+Ostrzeżenia (`showWarning`) są wysyłane przez `mw.taskman.run_on_main` — `validate_config()` może być wywołane z wątku tła (np. krok TTS w workflow), a wywołania Qt UI muszą iść z głównego wątku.
 
 ## Kokoro API
 

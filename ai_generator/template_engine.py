@@ -1,6 +1,9 @@
 """
 Simple template engine supporting {{variable}} substitution
 and {% if field %} ... {% else %} ... {% endif %} conditionals.
+
+Limitation: nested {% if %} blocks are not supported — the regex matches
+the first {% endif %} it encounters.
 """
 
 import re

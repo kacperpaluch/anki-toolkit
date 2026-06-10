@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -63,7 +64,9 @@ def process_note_group(note, config: dict, dictionaries: list[str],
         )
         for audio_result in audio_results:
             result.audio_found = True
-            filename = f"dict_{audio_result.source}_{word.replace(' ', '_')}.mp3"
+            # Strip path separators and other filename-unsafe characters
+            safe_word = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
+            filename = f"dict_{audio_result.source}_{safe_word}.mp3"
             media_filename = mw.col.media.write_data(filename, audio_result.data)
             sound_tags.append(f"[sound:{media_filename}]")
             result.saved_filenames.append(media_filename)

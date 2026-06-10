@@ -28,17 +28,33 @@ def run_workflow_editor(editor: Editor):
         return
 
     _RUNNING.add(editor_id)
-    editor.saveNow(lambda: _execute_steps(editor, steps, editor_id))
+
+    def start():
+        note = editor.note
+        if note is None:
+            _RUNNING.discard(editor_id)
+            return
+        _execute_steps(editor, note, steps, editor_id)
+
+    editor.saveNow(start)
 
 
-def _execute_steps(editor: Editor, steps: list, editor_id: int):
-    """Run workflow steps one by one in background. Each step waits for previous."""
+def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
+    """Run workflow steps one by one in background. Each step waits for previous.
+
+    All steps operate on the note captured when the workflow started, so
+    switching notes in the editor mid-run cannot corrupt another note.
+    """
     total = len(steps)
 
     def run_step(i: int):
         if i >= total:
             _RUNNING.discard(editor_id)
-            editor.loadNote()
+            try:
+                if editor.note is note:
+                    editor.loadNote()
+            except Exception:
+                pass  # editor may have been closed mid-run
             tooltip(f"Workflow zakończony. Wykonano {total} kroków.", period=5000)
             return
 
@@ -48,7 +64,7 @@ def _execute_steps(editor: Editor, steps: list, editor_id: int):
 
         def bg_task():
             try:
-                _execute_step(editor.note, step)
+                _execute_step(note, step)
                 return None
             except Exception as e:
                 return str(e)
@@ -76,7 +92,8 @@ def _execute_step(note, step: dict):
         from ._generator import get_generator
         gen = get_generator()
         gen.process_note(note)
-        mw.col.update_note(note)
+        if note.id:
+            mw.col.update_note(note)
 
     elif module == "dictionary" and action == "fetch":
         dicts = step.get("dicts", [])
@@ -86,7 +103,7 @@ def _execute_step(note, step: dict):
         config_full = mw.addonManager.getConfig(ADDON_NAME) or {}
         dict_config = config_full.get("dictionary", {})
         result = process_note_group(note, dict_config, dicts)
-        if result.note_modified:
+        if result.note_modified and note.id:
             mw.col.update_note(note)
 
     elif module == "tts" and action == "generate":

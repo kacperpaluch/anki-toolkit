@@ -118,6 +118,7 @@ class AIGeneratorTab(QWidget):
                 "api_key": api_key_field,
                 "model": model_combo,
                 "temperature": temp,
+                "fetch_btn": fetch_btn,
             }
             if name in ("openai", "cometapi", "openrouter"):
                 reasoning_effort = QComboBox()
@@ -196,25 +197,47 @@ class AIGeneratorTab(QWidget):
         except ImportError:
             from ai_generator.providers.model_discovery import fetch_models
 
-        models = fetch_models(provider_name, api_key, force=True)
-        if not models:
-            showWarning(
-                f"Nie udało się pobrać modeli dla {provider_name}.\n"
-                "Sprawdź klucz API i połączenie z internetem."
-            )
-            return
+        from aqt import mw
 
-        combo = w["model"]
-        current = combo.currentText()
+        btn = w.get("fetch_btn")
+        if btn:
+            btn.setEnabled(False)
+            btn.setText("...")
 
-        combo.blockSignals(True)
-        combo.clear()
-        for mid in models:
-            combo.addItem(mid)
-        idx = combo.findText(current)
-        if idx >= 0:
-            combo.setCurrentIndex(idx)
-        combo.blockSignals(False)
+        def task():
+            return fetch_models(provider_name, api_key, force=True)
+
+        def on_done(fut):
+            try:
+                models = fut.result()
+            except Exception:
+                models = []
+            try:
+                if btn:
+                    btn.setEnabled(True)
+                    btn.setText("Pobierz")
+                if not models:
+                    showWarning(
+                        f"Nie udało się pobrać modeli dla {provider_name}.\n"
+                        "Sprawdź klucz API i połączenie z internetem."
+                    )
+                    return
+
+                combo = w["model"]
+                current = combo.currentText()
+
+                combo.blockSignals(True)
+                combo.clear()
+                for mid in models:
+                    combo.addItem(mid)
+                idx = combo.findText(current)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+            except RuntimeError:
+                pass  # dialog was closed while fetching
+
+        mw.taskman.run_in_background(task, on_done)
 
     # ------------------------------------------------------------------
     # Workflow page

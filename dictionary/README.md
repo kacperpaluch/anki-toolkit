@@ -5,7 +5,7 @@ Pobiera pliki audio MP3 z wymową oraz transkrypcje IPA z czterech słowników o
 ## Jak używać
 
 ### Edytor kart
-Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku (np. **Diki**) pobiera audio dla aktualnej karty i automatycznie odtwarza je.
+Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku (np. **Diki**) najpierw zapisuje bieżące pola (świeżo wpisane słowo jest od razu widoczne), pobiera audio w tle — Anki nie zamarza — i automatycznie je odtwarza.
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Pobierz wymowę**.
@@ -87,7 +87,7 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | `wiktionary_ipa_fallback` | `true` — gdy primary source nie znajdzie IPA, próbuje Wiktionary API |
 | `diki_ipa_fallback` | `true` — gdy pobierasz audio z Diki, pobierz IPA z osobnego źródła |
 | `diki_ipa_fallback_source` | Źródło IPA dla Diki: `wiktionary`, `oxford` albo `cambridge` |
-| `max_retries` | Liczba prób przy błędach sieci 429/5xx (domyślnie `3`) |
+| `max_retries` | Liczba prób przy błędach sieci — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `page_timeout` | Timeout pobierania strony słownika w sekundach (domyślnie `10`) |
 | `mp3_timeout` | Timeout pobierania pliku MP3 w sekundach (domyślnie `10`) |
 | `buttons` | Lista przycisków w edytorze |

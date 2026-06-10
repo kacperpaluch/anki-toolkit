@@ -6,7 +6,7 @@ Szybkie podsumowanie projektu dla modeli AI i deweloperów.
 
 ## Czym jest ten projekt
 
-Scalona wtyczka do Anki łącząca 7 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
+Scalona wtyczka do Anki łącząca 6 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
 
 ---
 
@@ -37,7 +37,7 @@ anki-toolkit/
 │
 ├── common/                          # współdzielone narzędzia i stałe
 │   ├── __init__.py                  # re-eksport wszystkich symboli
-│   ├── consts.py                    # ADDON_NAME = "anki-toolkit"
+│   ├── consts.py                    # ADDON_NAME (wyliczane z __name__ — nazwa folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
@@ -116,12 +116,12 @@ anki-toolkit/
 | Katalog | Co robi | Punkt wejścia |
 |---|---|---|
 | `common/` | Współdzielone narzędzia: HTML cleaning, HTTP z retry, konfiguracja, widgety Qt — używane przez wszystkie moduły | importowane selektywnie |
-| `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor + submenu batchowe (w tle, z paskiem postępu i anulowaniem) | `on_editor_buttons_init`, `add_to_context_menu` |
+| `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor (async, `saveNow` przed fetchowaniem) + submenu batchowe (w tle, z paskiem postępu i anulowaniem) | `on_editor_buttons_init`, `add_to_context_menu` |
 | `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); batch w tle z grupowaniem i anulowaniem; workflow "Generuj fiszkę" (AI → Słownik → TTS); `reasoning_effort` z fallbackiem | `on_editor_buttons_init`, `add_to_context_menu` |
 | `tts/` | Generuje audio MP3 przez Kokoro lub OpenRouter TTS API; przycisk w edytorze + submenu w przeglądarce; "Uruchom wszystkie" działa jako jedna operacja z jednym paskiem postępu i podsumowaniem | `on_editor_buttons_init`, `add_to_context_menu` |
 | `filtered_deck/` | Tworzy talię filtrowaną z formularzem ustawień; nazwa talii i deck docelowy konfigurowalne | `setup_menu(parent_menu)` |
 | `audio_normalizer/` | Normalizuje głośność plików audio ffmpegiem (EBU R128); po normalizacji synchronizuje zmodyfikowane pliki z Anki media DB przez `write_data()` | `setup_menu(parent_menu)` |
-| `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart i testy | `setup_menu(parent_menu)` + auto-hook |
+| `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -237,7 +237,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 |---|---|
 | `__init__.py` | Master entry point — tu dodajesz nowe moduły i wpisy w `modules` |
 | `config.json` | Szablon domyślny (nie nadpisywany — patrz wyżej) |
-| `common/consts.py` | `ADDON_NAME = "anki-toolkit"` — używane przez wszystkie moduły |
+| `common/consts.py` | `ADDON_NAME` — wyliczane z `__name__` (nazwa folderu wtyczki), używane przez wszystkie moduły; config działa nawet gdy folder nie nazywa się `anki-toolkit` |
 | `common/html.py` | `clean_html()`, `clean_html_normalized()` — czyszczenie HTML, używane przez dictionary, ai_generator, tts |
 | `common/text.py` | `unique()`, `safe_float()`, `safe_str()`, `unique_filename()`, `normalize_float()` |
 | `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
@@ -263,7 +263,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — sekwencyjne AI → Dict → TTS na pojedynczej notatce, guard `_RUNNING` |
 | `ai_generator/browser_ui.py` | UI przeglądarki — batch z QProgressDialog, tooltip podsumowania |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
-| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe |
+| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING` |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
 | `dictionary/dictionary_service.py` | Scrapery HTML dla 4 słowników; używa `fetch_url`, `fetch_text` z common |
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
@@ -273,7 +273,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`, task-indexed wyników |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
-| `nbsp_remover/collection.py` | Masowe czyszczenie kolekcji przez `find_and_replace` |
+| `nbsp_remover/collection.py` | Masowe czyszczenie kolekcji przez `CollectionOp` + `clean_field()` |
 | `tests/test_pure_logic.py` | Testy bez Anki: template engine, common HTML, `nbsp_remover.cleaning.clean_field()` |
 
 ---
@@ -313,7 +313,7 @@ common/                         ← współdzielone narzędzia (html, http, text
 
 dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_context_menu (używa common/ui dla widgetów, common/consts dla ADDON_NAME)
     └── service.py              ← czysta logika biznesowa (ProcessNoteResult, process_note_group); używa common/clean_html_normalized
-    └── editor_ui.py            ← przyciski edytora; używa common/ADDON_NAME
+    └── editor_ui.py            ← przyciski edytora (saveNow + run_in_background + _FETCHING); używa common/ADDON_NAME
     └── browser_ui.py           ← add_to_context_menu (submenu przeglądarki + batch); używa common/ADDON_NAME
     └── dictionary_service.py   (DictionaryService singleton); używa common/http fetch_url, fetch_text
     └── ipa_service.py          (IPAService singleton); używa common/http fetch_text
@@ -351,7 +351,7 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
 nbsp_remover/
     ├── cleaning.py             (clean_field + regexy; testowalne bez Anki)
     ├── addcards.py             (hook dodawania kart; używa clean_field)
-    ├── collection.py           (masowe find_and_replace; używa regexów z cleaning.py)
+    ├── collection.py           (masowe czyszczenie przez CollectionOp + clean_field; jeden krok undo)
     └── utils.py                (config + tooltipy)
 ```
 
@@ -360,8 +360,10 @@ nbsp_remover/
 ## Uwagi o Anki API
 
 - `mw.col.get_note(nid)` — pobierz notatkę po ID
-- `mw.col.update_note(note)` — zapisz zmiany (Anki 2.1.45+); używaj zamiast `note.flush()`
+- `mw.col.update_note(note)` — zapisz zmiany (Anki 2.1.45+); używaj zamiast `note.flush()`; pomijaj dla nowych notatek (`note.id == 0`, okno AddCards)
 - `mw.col.media.write_data(filename, bytes)` — zapisz plik do media
+- `aqt.operations.CollectionOp` — operacja na kolekcji w tle z undo (używane przez nbsp_remover)
 - `mw.progress.start/update/finish` — pasek postępu (blokuje UI)
 - `mw.addonManager.getConfig(name)` — odczyt konfiguracji (merged z defaults)
 - `mw.addonManager.writeConfig(name, dict)` — zapis do profilu Anki (nie do `config.json`)
+- Wywołania Qt UI (`showWarning`, `tooltip`) z wątku tła zawsze przez `mw.taskman.run_on_main`

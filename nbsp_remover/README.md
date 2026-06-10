@@ -12,9 +12,9 @@ Każda karta dodawana przez okno **Add** jest automatycznie czyszczona przed zap
 
 **Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...**
 
-Czyści wszystkie notatki w kolekcji. Operacja jest nieodwracalna — wykonaj backup przed użyciem na dużej kolekcji.
+Czyści wszystkie notatki w kolekcji. Operacja działa w tle (`CollectionOp`) i tworzy jeden krok undo (**Edycja → Cofnij**); mimo to przy dużej kolekcji warto mieć backup.
 
-Logika czyszczenia pojedynczego pola znajduje się w `cleaning.py`, dzięki czemu można ją testować bez uruchamiania Anki.
+Oba tryby używają tej samej funkcji `clean_field()` z `cleaning.py` — masowe czyszczenie zachowuje się identycznie jak czyszczenie przy dodawaniu kart (także dla wieloliniowych `<div>`; końcowy `<br>` jest usuwany tylko jako efekt zamiany div→br). Logikę można testować bez uruchamiania Anki.
 
 ## Reguły czyszczenia
 
@@ -23,7 +23,7 @@ Logika czyszczenia pojedynczego pola znajduje się w `cleaning.py`, dzięki czem
 | `&nbsp;` | Zamień na spację | Zamień na spację |
 | `<div>` i `</div>` | Usuń całkowicie | — |
 | `<div>tekst</div>` | — | Zamień na `tekst<br>` |
-| Trailing `<br>` | — | Usuń z końca pola |
+| Trailing `<br>` | — | Usuń z końca pola (tylko gdy powstał z zamiany div→br) |
 
 **Dlaczego inne reguły dla pola pomijanego?**
 Pole pomijane (domyślnie `ang`) zawiera pojedyncze słowo lub krótkie wyrażenie — `<div>` psuje wygląd i jest zbędny. Pozostałe pola mogą zawierać wieloliniowe definicje, gdzie `<br>` jest poprawnym separatorem linii.

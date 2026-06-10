@@ -147,11 +147,11 @@ class TTSTab(QWidget):
         self._or_model.addItem(saved_model)
         self._or_model.setCurrentText(saved_model)
         self._or_model.currentTextChanged.connect(self._on_or_model_changed)
-        fetch_btn = QPushButton("Pobierz")
-        fetch_btn.setFixedWidth(70)
-        fetch_btn.clicked.connect(self._fetch_models)
+        self._or_fetch_btn = QPushButton("Pobierz")
+        self._or_fetch_btn.setFixedWidth(70)
+        self._or_fetch_btn.clicked.connect(self._fetch_models)
         mh.addWidget(self._or_model)
-        mh.addWidget(fetch_btn)
+        mh.addWidget(self._or_fetch_btn)
         orf.addRow("Model:", model_row)
 
         self._or_voice_hint = QLabel(
@@ -329,33 +329,52 @@ class TTSTab(QWidget):
         except ImportError:
             from tts.api import fetch_openrouter_tts_models
 
-        models = fetch_openrouter_tts_models(force=True)
-        if not models:
-            showWarning(
-                "Nie udało się pobrać listy modeli TTS.\n"
-                "Sprawdź połączenie z internetem."
-            )
-            return
+        from aqt import mw
 
-        self._or_models = models
-        current = self._or_model.currentText()
+        self._or_fetch_btn.setEnabled(False)
+        self._or_fetch_btn.setText("...")
 
-        self._or_model.blockSignals(True)
-        self._or_model.clear()
-        for m in models:
-            label = f"{m['name']}  ({m['pricing']})"
-            self._or_model.addItem(label, m["id"])
-        idx = self._or_model.findText(current)
-        if idx >= 0:
-            self._or_model.setCurrentIndex(idx)
-        else:
-            for i, m in enumerate(models):
-                if m["id"] == current:
-                    self._or_model.setCurrentIndex(i)
-                    break
-        self._or_model.blockSignals(False)
+        def task():
+            return fetch_openrouter_tts_models(force=True)
 
-        self._update_voice_checklist()
+        def on_done(fut):
+            try:
+                models = fut.result()
+            except Exception:
+                models = []
+            try:
+                self._or_fetch_btn.setEnabled(True)
+                self._or_fetch_btn.setText("Pobierz")
+                if not models:
+                    showWarning(
+                        "Nie udało się pobrać listy modeli TTS.\n"
+                        "Sprawdź połączenie z internetem."
+                    )
+                    return
+
+                self._or_models = models
+                current = self._or_model.currentText()
+
+                self._or_model.blockSignals(True)
+                self._or_model.clear()
+                for m in models:
+                    label = f"{m['name']}  ({m['pricing']})"
+                    self._or_model.addItem(label, m["id"])
+                idx = self._or_model.findText(current)
+                if idx >= 0:
+                    self._or_model.setCurrentIndex(idx)
+                else:
+                    for i, m in enumerate(models):
+                        if m["id"] == current:
+                            self._or_model.setCurrentIndex(i)
+                            break
+                self._or_model.blockSignals(False)
+
+                self._update_voice_checklist()
+            except RuntimeError:
+                pass  # dialog was closed while fetching
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _on_or_model_changed(self, _text: str):
         self._update_voice_checklist()
@@ -501,7 +520,18 @@ class TTSTab(QWidget):
         t["model"] = self._model.text().strip()
         t["openrouter_api_key"] = self._or_key.text().strip()
         t["use_ai_openrouter_key"] = self._or_use_ai_key.isChecked()
-        t["openrouter_model"] = self._or_model.currentData() or self._or_model.currentText().split("  (")[0].strip()
+        # currentData() is only trustworthy when the visible text still matches
+        # the selected item — the combo is editable, so the user may have typed
+        # a custom model after fetching the list.
+        idx = self._or_model.currentIndex()
+        if (
+            idx >= 0
+            and self._or_model.itemData(idx)
+            and self._or_model.itemText(idx) == self._or_model.currentText()
+        ):
+            t["openrouter_model"] = self._or_model.itemData(idx)
+        else:
+            t["openrouter_model"] = self._or_model.currentText().split("  (")[0].strip()
         t["voices"] = [v.strip() for v in self._voices.text().split(",") if v.strip()]
         t["speed"] = round(self._speed.value(), 2)
         t["ang_source_field"] = self._ang_source.text().strip()

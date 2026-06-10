@@ -25,7 +25,7 @@ W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki T
 ### Edytor kart (pojedyncza notatka)
 Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania.
 
-Notatki które już mają `[sound:...]` w polu docelowym są pomijane. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane.
+Notatki które już mają `[sound:...]` w polu docelowym są pomijane. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
 
 ### Zadania TTS
 
@@ -81,8 +81,8 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
 | `ang_source_field` | `ang` | Pole źródłowe dla słowa |
 | `ang_target_field` | `audio` | Pole docelowe dla audio słowa |
-| `przyklad_target_field` | `przyklad` | Pole z przykładami (legacy, tylko gdy `tasks` puste) |
-| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy. Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach |
+| `przyklad_target_field` | `przyklad` | Pole z przykładami (legacy, tylko gdy klucz `tasks` nie istnieje) |
+| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań (usunięte zadania nie wracają). Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
 | `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
 | `timeout` | `60` | Timeout pojedynczego żądania TTS w sekundach |

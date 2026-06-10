@@ -390,7 +390,7 @@ def process_single_note(note, config: dict = None) -> bool:
             except Exception as e:
                 logger.error(f"TTS error (nid={note.id}): {e}")
 
-    if changed:
+    if changed and note.id:
         mw.col.update_note(note)
 
     return changed

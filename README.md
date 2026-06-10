@@ -1,6 +1,6 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca siedem narzędzi do zarządzania kartami Anki.
+Scalona wtyczka łącząca sześć narzędzi do zarządzania kartami Anki.
 
 ## Struktura
 
@@ -13,7 +13,7 @@ anki-toolkit/
 │
 ├── common/                          # współdzielone narzędzia
 │   ├── __init__.py
-│   ├── consts.py                    # ADDON_NAME = "anki-toolkit"
+│   ├── consts.py                    # ADDON_NAME (wyliczane z nazwy folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
@@ -146,7 +146,7 @@ Zmiana wymaga restartu Anki. Brakujący klucz jest traktowany jako `true`.
 
 ### Słownik (`dictionary`)
 
-Przyciski pojawiają się w toolbarze edytora kart. W przeglądarce dostępne jest też submenu **Pobierz wymowę** pod prawym przyciskiem myszy w sekcji **Anki Toolkit**, które pozwala uruchomić batch dla wszystkich włączonych słowników albo tylko dla wybranego, np. Diki lub Oxford. Moduł pobiera audio i IPA z wybranych słowników. Batch działa w tle — Anki nie zamraża się, widoczny pasek postępu z przyciskiem Anuluj.
+Przyciski pojawiają się w toolbarze edytora kart — kliknięcie najpierw zapisuje bieżące pola, a pobieranie działa w tle (Anki nie zamarza). W przeglądarce dostępne jest też submenu **Pobierz wymowę** pod prawym przyciskiem myszy w sekcji **Anki Toolkit**, które pozwala uruchomić batch dla wszystkich włączonych słowników albo tylko dla wybranego, np. Diki lub Oxford. Moduł pobiera audio i IPA z wybranych słowników. Batch działa w tle — Anki nie zamraża się, widoczny pasek postępu z przyciskiem Anuluj.
 
 Konfiguracja w **Ustawienia → Słownik**:
 
@@ -188,7 +188,7 @@ Domyślna konfiguracja: AI → Oxford → TTS.
 
 Pomocniczy przycisk **AI** w toolbarze edytora generuje tylko pola AI dla pojedynczej karty. W przeglądarce batch jest dostępny przez **prawy klik → Anki Toolkit → Generuj pola**.
 
-- **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji.
+- **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji. Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do właściwej notatki (zapis do kolekcji), nie do aktualnie wyświetlanej.
 - **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj. Po zakończeniu jeden tooltip z podsumowaniem.
 - Pola z treścią są zawsze pomijane — generator uzupełnia tylko puste pola.
 - Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
@@ -322,7 +322,7 @@ Działa automatycznie przy dodawaniu kart. Ręczne czyszczenie całej kolekcji p
 | Akcja | Opis |
 |---|---|
 | Dodawanie karty | Usuwa `&nbsp;` i czyści `<div>` z każdego pola w locie |
-| Wyczyść HTML w kolekcji | Jednorazowe czyszczenie całej kolekcji |
+| Wyczyść HTML w kolekcji | Jednorazowe czyszczenie całej kolekcji — działa w tle, z możliwością cofnięcia (jeden krok undo) |
 
 Dla pola konfigurowalnego (domyślnie `ang`): tagi `<div>` są usuwane całkowicie.
 Dla pozostałych pól: `<div>tekst</div>` zastępowane przez `tekst<br>`.

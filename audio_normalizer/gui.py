@@ -93,7 +93,7 @@ class ProgressDialog(QDialog):
 
         msg = f"Zakończono normalizację.\nPrzetworzono plików: {count}"
         if errors > 0:
-            msg += f"\nBłędy: {errors} (sprawdź plik normalization.log w folderze dodatku)"
+            msg += f"\nBłędy: {errors} (szczegóły w logach Anki — konsola / debug log)"
 
         if count == 0 and errors == 0:
             msg = "Wszystkie pliki są już znormalizowane."

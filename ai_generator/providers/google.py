@@ -13,12 +13,16 @@ API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 class GoogleProvider(BaseProvider):
     def call_api(self, prompt: str) -> Optional[str]:
         self.last_error = None
-        url = f"{API_BASE_URL}/{self.model}:generateContent?key={self.api_key}"
+        # Key goes in a header, not the URL — URLs end up in logs and tracebacks.
+        url = f"{API_BASE_URL}/{self.model}:generateContent"
         data = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": self.temperature},
         }
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         try:
             req = urllib.request.Request(
                 url,

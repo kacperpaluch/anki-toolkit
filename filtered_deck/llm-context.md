@@ -19,6 +19,8 @@ Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...
   → create_filtered_deck(days, limit, order)
       → _get_config() — czyta deck_name i search_deck z configu (używa ADDON_NAME)
       → col.decks.new_filtered(name)          # tworzy nową talię filtrowaną
+      → search_query = f'prop:due<={days} deck:"{search_deck}"'
+        # nazwa talii w cudzysłowach — nazwy ze spacjami nie psują zapytania
       → konfiguruje search_query, limit, order, reschedule=False
       → col.sched.rebuild_filtered_deck(id)    # wypełnia kartami
       → mw.col.decks.select(id) + mw.reset()  # przełącza widok
@@ -37,7 +39,7 @@ Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...
 | Pole | Opis |
 |---|---|
 | `deck_name` | Nazwa tworzonej talii filtrowanej |
-| `search_deck` | Nazwa talii do wyszukiwania (`deck:` w query) |
+| `search_deck` | Nazwa talii do wyszukiwania (`deck:"..."` w query — nazwy ze spacjami są obsługiwane) |
 
 Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja "Talia filtrowana").
 

@@ -76,7 +76,7 @@ class FieldGenerator:
         if skip_tags and any(t in note.tags for t in skip_tags):
             return {}
 
-        note_type_name = note.model()["name"]
+        note_type_name = note.note_type()["name"]
         note_types_cfg: dict = self._config.get("note_types", {})
         nt_config = note_types_cfg.get(note_type_name)
         if not nt_config:

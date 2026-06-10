@@ -49,10 +49,11 @@ Kliknięcie przycisku (edytor)
                   → zwraca dict {field: wynik} (pusty = nic nie wygenerowano)
               → on_done (główny wątek):
                   → usuń editor_id z _GENERATING
-                  → editor.saveNow(apply)                    # syncuje webview → editor.note, zachowując edycje pól których AI nie dotknęło
+                  → jeśli edytor nadal pokazuje tę samą notatkę: editor.saveNow(apply)
                   → apply():
-                      → dla każdego field w ai_results: editor.note[field] = wynik_AI  # zawsze nadpisuj — użytkownik kliknął AI
-                      → editor.loadNote()
+                      → dla każdego field w ai_results: note[field] = wynik_AI  # zapis do notatki złapanej na starcie
+                      → jeśli editor.note is note: editor.loadNote()
+                      → w przeciwnym razie (użytkownik przełączył kartę): mw.col.update_note(note)  # wynik nie ginie i nie trafia do cudzej karty
                   → tooltip z błędem providera jeśli API zwróciło błąd; inaczej "Brak pól do wygenerowania." jeśli ai_results pusty
 
 Batch w przeglądarce (menu kontekstowe → Generuj pola):
@@ -67,10 +68,12 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola):
 
 Przycisk workflow w edytorze:
   → editor_ui.on_editor_buttons_init() dodaje go przed przyciskiem AI, jeśli `workflow.enabled=true` i `workflow.steps` nie jest puste
-  → workflow.run_workflow(editor)
+  → workflow.run_workflow_editor(editor)
       → jeśli editor_id jest w `_RUNNING`: tooltip "Workflow już trwa..." i return
-      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS
-      → po ostatnim kroku usuwa editor_id z `_RUNNING`, wywołuje `editor.loadNote()` i pokazuje jedno podsumowanie
+      → saveNow → notatka jest łapana RAZ na starcie — wszystkie kroki działają na niej,
+        więc przełączenie karty w edytorze w trakcie nie miesza danych między notatkami
+      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS (każdy w tle; update_note pomijany dla note.id == 0)
+      → po ostatnim kroku usuwa editor_id z `_RUNNING`, wywołuje `editor.loadNote()` (tylko gdy edytor nadal pokazuje tę notatkę) i pokazuje jedno podsumowanie
 ```
 
 ## Konfiguracja
@@ -116,7 +119,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 - `skip_tags` — lista tagów wykluczających (tablica stringów); notatka z dowolnym z tych tagów jest pomijana w całości przez `process_note` (zwraca `{}`), bez żadnych wywołań API ani aktualizacji; obsługuje też stary format string `"skip_tag"` (backward compat); konfigurowalny przez UI jako pole tekstowe z tagami oddzielonymi przecinkami
 - `batch_limit` — liczba kart w jednej grupie; po każdej grupie następuje przerwa `batch_sleep` sekund; przetwarzane są **wszystkie** zaznaczone karty
 - `batch_sleep` — pauza między grupami kart (unikanie rate limitów API)
-- `max_retries` — liczba prób przy HTTP 429/5xx, przekazywana do `BaseProvider` przez `get_provider()` i `field_generator._resolve_provider()`; domyślnie `3`
+- `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana do `BaseProvider` przez `get_provider()` i `field_generator._resolve_provider()`; domyślnie `3`
 - `request_timeout` — timeout urlopen w `BaseProvider._request_with_retry()`; domyślnie `30` sekund
 - `providers.openai.reasoning_effort` / `providers.cometapi.reasoning_effort` / `providers.openrouter.reasoning_effort` — dropdown z wartościami `none/minimal/low/medium/high/xhigh`; wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`); dla tych modeli nie wysyłane `temperature`; fallback automatyczny przy HTTP 400
 - `providers.opencode_go.reasoning_effort` — wolny tekst (QLineEdit w UI); wartości per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują; puste = nie wysyłane; fallback automatyczny przy HTTP 400; `opencode_go` wymaga `User-Agent` header (Cloudflare blokuje brak UA); auto-detect formatu API: Chat Completions dla GLM/Kimi/DeepSeek/MiMo, Anthropic Messages dla MiniMax M2.5/M2.7/Qwen3.5/3.6 Plus
@@ -131,7 +134,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 {% if def %}...{% else %}...{% endif %}  → z fallbackiem
 ```
 
-Szablony są zagnieżdżalne (if wewnątrz if) z limitem głębokości `MAX_DEPTH = 50`.
+**Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane — regex dopasowuje pierwszy napotkany `{% endif %}`. Rekurencja z limitem `MAX_DEPTH = 50` dotyczy tylko renderowania zawartości bloków.
 
 ## Dodanie nowego dostawcy AI
 
@@ -156,7 +159,7 @@ Szablony są zagnieżdżalne (if wewnątrz if) z limitem głębokości `MAX_DEPT
 
 Providery zgodne z OpenAI Chat Completions używają `providers/openai_compat.py`. Jeśli nazwa modelu wygląda jak OpenAI reasoning, `temperature` nie jest wysyłane. `reasoning_effort` jest wysyłane przez `openai`, `cometapi` i `openrouter` (tylko dla rozpoznanych modeli reasoning); `mistral` go nie wysyła; `opencode_go` wysyła `reasoning_effort` bezpośrednio jako wolny string jeśli ustawiony (bez sprawdzania nazwy modelu). Jeśli model nie obsługuje `reasoning_effort` (HTTP 400 wspominający ten parametr), `_request_with_reasoning_fallback()` automatycznie ponawia żądanie bez niego.
 
-Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdzają niepustość tablic i istnienie kluczy. Błędy parsowania są logowane przez `self.logger` i zapisywane do `self.last_error`. `BaseProvider._request_with_retry()` implementuje retry (3 próby, exponential backoff) dla HTTP 429/5xx.
+Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdzają niepustość tablic i istnienie kluczy. Błędy parsowania są logowane przez `self.logger` i zapisywane do `self.last_error`. `BaseProvider._request_with_retry()` implementuje retry (3 próby, exponential backoff) dla HTTP 429/5xx oraz błędów połączenia/timeoutów. Klucz API Google jest wysyłany w nagłówku `x-goog-api-key` (nie w URL-u — URL-e trafiają do logów).
 
 ## Zależności
 
@@ -181,7 +184,7 @@ Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdza
 - `fields_map` budowany przez `common.clean_html_normalized()` — pola notatki ze znacznikami HTML (`<div>`, `<br>`, `&nbsp;`) są oczyszczane przed wstawieniem do promptu; wyniki AI trafiają do karty surowo (bez strippowania HTML — AI powinno zwracać czysty tekst)
 - `process_note` zwraca `dict[str, str]` (nie `bool`) — editor_ui używa tego dict do bezwarunkowego nadpisania pól AI po `saveNow`; browser_ui używa go jako truthy check przed `mw.col.update_note`
 - `FieldGenerator.last_error` przechowuje ostatni błąd providera/API; editor_ui pokazuje go zamiast mylącego "Brak pól do wygenerowania.", a browser_ui dolicza błędy w podsumowaniu batcha
-- `editor.saveNow(apply)` w `on_done` synchronizuje stan webview → `editor.note` przed aplikowaniem wyników AI; zachowuje edycje pól których AI nie dotknęło
+- `editor.saveNow(apply)` w `on_done` synchronizuje stan webview → `editor.note` przed aplikowaniem wyników AI; zachowuje edycje pól których AI nie dotknęło. `apply()` pisze do notatki złapanej na starcie i sprawdza tożsamość (`editor.note is note`) — jeśli użytkownik przełączył kartę w trakcie generowania, wynik jest zapisywany do kolekcji przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
 - Config values (`batch_sleep`, `temperature`, itp.) są walidowane przez `safe_float()` i `safe_str()` z `common.text` przed użyciem
 - Throttling jest wyłącznie na poziomie przeglądarki (sleep co `batch_limit` notatek) — `field_generator` nie ma własnych sleep'ów między polami

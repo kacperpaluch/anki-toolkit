@@ -71,7 +71,8 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
     cfg = _get_config()
     deck_name = cfg.get("deck_name", "Angielski - Powtórka z wyprzedzeniem")
     search_deck = cfg.get("search_deck", "angielski")
-    search_query = f"prop:due<={days_ahead} deck:{search_deck}"
+    escaped_deck = search_deck.replace('"', '\\"')
+    search_query = f'prop:due<={days_ahead} deck:"{escaped_deck}"'
     reschedule = False
 
     try:

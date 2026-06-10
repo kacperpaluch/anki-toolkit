@@ -172,7 +172,6 @@ def _start_tts_editor(editor: Editor, editor_id: int):
             return
 
         def apply():
-            note = editor.note
             for idx, item in enumerate(work_items):
                 key = (item.get("task_i", 0), item["target_field"], item.get("seg_i", -1))
                 fname = results.get(key)
@@ -214,13 +213,22 @@ def _start_tts_editor(editor: Editor, editor_id: int):
                     parts.append(content)
                 note[target_field] = split_sep.join(parts)
 
-            editor.loadNote()
+            # User may have switched notes while audio was generating — only
+            # refresh the editor if it still shows the processed note,
+            # otherwise persist directly so the audio isn't lost.
+            if editor.note is note:
+                editor.loadNote()
+            elif note.id:
+                mw.col.update_note(note)
 
             msg = f"TTS: wygenerowano {len(results)} plików audio."
             if errors:
                 msg += f" Błędy: {errors}."
             tooltip(msg, period=8000)
 
-        editor.saveNow(apply)
+        if editor.note is note:
+            editor.saveNow(apply)
+        else:
+            apply()
 
     mw.taskman.run_in_background(bg_task, on_done)

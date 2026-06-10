@@ -41,7 +41,15 @@ def fetch_url(
                 continue
             logger.error(f"HTTP {e.code} fetching {url}: {e.reason}")
             return None
-        except urllib.error.URLError as e:
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt < max_retries - 1:
+                delay = 2 ** (attempt + 1)
+                logger.warning(
+                    f"Connection error fetching {url}: {e}, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
             logger.error(f"Connection error fetching {url}: {e}")
             return None
     return None

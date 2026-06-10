@@ -5,7 +5,6 @@ from aqt import mw
 from aqt.utils import tooltip
 
 from ..common import get_module_config
-from .cleaning import NBSP, DIV_TAG_RE, DIV_WRAP_RE, TRAILING_BR_RE
 
 NBSP_REMOVER_KEY = "nbsp_remover"
 

@@ -10,7 +10,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `service.py` | Czysta logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); używa `clean_html_normalized()` z `common` |
-| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; używa `ADDON_NAME` z `common` |
+| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + guard `_FETCHING`; używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch, QProgressDialog; używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
 | `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |
@@ -51,6 +51,8 @@ W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `An
 
 Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się. `QProgressDialog` z przyciskiem Anuluj; anulowanie sprawdzane między notatkami przez flagę `cancel_requested`. Po zakończeniu wyświetlany jest jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
 
+Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw zapisuje bieżące pola (świeżo wpisane słowo jest widoczne), potem fetch w `run_in_background`. Guard `_FETCHING` blokuje podwójne kliknięcie. Po zakończeniu wynik trafia do notatki złapanej na starcie — jeśli użytkownik przełączył kartę w trakcie, zmiany są zapisywane przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki.
+
 ## Konfiguracja (sekcja `dictionary` w config.json)
 
 ```json
@@ -71,7 +73,7 @@ Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się.
 }
 ```
 
-- `max_retries` — liczba prób przy HTTP 429/5xx, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
+- `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
 - `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `fetch_text(timeout=page_timeout)`
 - `mp3_timeout` — timeout GET pliku MP3; przekazywany do `fetch_url(timeout=mp3_timeout)`
 - `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne przez zakładkę Słownik w ustawieniach
@@ -131,3 +133,4 @@ Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLPa
 - Wiktionary API: waliduje klucz `"*"` w `wikitext` przed dostępem
 - Sygnatura `fetch_audio_group`: `(word, sources, max_retries=3, page_timeout=10, mp3_timeout=10, batch_cache=None)` — wartości domyślne jako bezpieczny fallback
 - `ProcessNoteResult.audio_skipped = True` gdy pole audio ma treść → editor_ui wyświetla osobny tooltip
+- Nazwa pliku audio jest sanityzowana (`re.sub(r"[^\w-]+", "_", word)`) — znaki typu `/` lub `"` w polu źródłowym nie psują zapisu do mediów

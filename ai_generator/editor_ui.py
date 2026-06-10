@@ -21,6 +21,9 @@ def _on_generate_editor(editor: Editor):
         # Note captured here — after saveNow synced webview → editor.note,
         # so field-emptiness checks in process_note see the true current state.
         note = editor.note
+        if note is None:
+            _GENERATING.discard(editor_id)
+            return
 
         def task():
             return gen.process_note(note)
@@ -42,10 +45,19 @@ def _on_generate_editor(editor: Editor):
 
             def apply():
                 for field, result in ai_results.items():
-                    editor.note[field] = result
-                editor.loadNote()
+                    note[field] = result
+                # User may have switched to a different note while generating —
+                # only refresh the editor if it still shows the processed note,
+                # otherwise persist directly so results aren't lost.
+                if editor.note is note:
+                    editor.loadNote()
+                elif note.id:
+                    mw.col.update_note(note)
 
-            editor.saveNow(apply)
+            if editor.note is note:
+                editor.saveNow(apply)
+            else:
+                apply()
 
         mw.taskman.run_in_background(task, on_done)
 

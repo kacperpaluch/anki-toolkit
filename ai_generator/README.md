@@ -13,6 +13,7 @@ Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międ
 - **Pola których AI nie dotyka** (np. wpisujesz coś w polu `pol` podczas gdy AI generuje `def`) są zachowane — `saveNow` synchronizuje je przed odświeżeniem
 - Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
 - Kliknięcie przycisku podczas trwającej generacji pokazuje tooltip **"Generowanie już trwa..."** — podwójne kliknięcie jest ignorowane
+- Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej
 
 ### Workflow "Generuj fiszkę"
 
@@ -22,7 +23,7 @@ Przycisk w toolbarze edytora (pokazuje się gdy workflow ma skonfigurowane kroki
 - Zmieniaj kolejność ▲▼, usuwaj kroki
 - Etykieta przycisku konfigurowalna; domyślnie **Generuj fiszkę**
 
-Kroki wykonują się sekwencyjnie w tle. Każdy krok czeka na poprzedni.
+Kroki wykonują się sekwencyjnie w tle. Każdy krok czeka na poprzedni. Notatka jest łapana raz na starcie workflow — przełączenie karty w edytorze w trakcie nie miesza danych między notatkami.
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola**.
@@ -56,7 +57,7 @@ Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola**.
 | `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji); `[]` wyłącza funkcję |
 | `batch_limit` | Liczba kart w jednej grupie — po każdej grupie następuje przerwa `batch_sleep` |
 | `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
-| `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie `3`) |
+| `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
 
 ### Konfiguracja dostawców
@@ -181,7 +182,9 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 | `{% if def %}...{% endif %}` | Renderuje blok tylko gdy pole `def` jest niepuste |
 | `{% if def %}...{% else %}...{% endif %}` | Wariant z fallbackiem |
 
-Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`.
+Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
+
+> **Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane.
 
 > **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.
 

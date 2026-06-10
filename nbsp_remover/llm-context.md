@@ -13,8 +13,8 @@ Usuwa `&nbsp;` i czyści tagi `<div>` z pól kart. Działa na dwa sposoby:
 | `__init__.py` | `setup_menu(parent_menu=None)` — dodaje jedną akcję do menu Anki Toolkit, inicjuje hook dodawania kart, obsługuje auto-run przy starcie; używa `_get_config()` z utils |
 | `addcards.py` | Hook na dodawanie kart — czyści pola w locie przy każdym `Add` przez `clean_field()`, wywołuje `mw.col.update_note(note)` |
 | `cleaning.py` | Czysta logika czyszczenia: `clean_field()` oraz regexy `NBSP`, `DIV_TAG_RE`, `DIV_WRAP_RE`, `TRAILING_BR_RE`; testowalne bez Anki |
-| `collection.py` | Masowe czyszczenie kolekcji przez `find_and_replace` Anki; callbacki `.failure()` zapewniają kontynuację łańcucha przy błędzie |
-| `utils.py` | `_get_config()`, `_get_skip_field()`, `_show_tooltip()`, `purge_tooltip`, `editing_tooltip`; importuje regexy z `cleaning.py` dla kompatybilności |
+| `collection.py` | Masowe czyszczenie kolekcji przez `CollectionOp` — iteruje po wszystkich notatkach i stosuje tę samą funkcję `clean_field()` co hook dodawania kart; jeden krok undo |
+| `utils.py` | `_get_config()`, `_get_skip_field()`, `_show_tooltip()`, `purge_tooltip`, `editing_tooltip` |
 
 ## Konfiguracja
 
@@ -71,17 +71,16 @@ Użytkownik klika Add w oknie dodawania kart
 Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...
   → clean_collection()
       → _get_skip_field() z configu
-      → find_and_replace(&nbsp; → " ", wszystkie pola)                          # op1
-      → find_and_replace(</?div[^>]*> → "", pole skip_field, regex)            # op2 (łączone <div> i </div>)
-      → dla każdego pola poza skip_field (równolegle):
-          find_and_replace(<div[^>]*>.*?</div> → $1<br>, regex)                # div_br_ops
-      → dla każdego pola poza skip_field (równolegle, po zakończeniu div_br):
-          find_and_replace(<br>\s*$ → "", regex)                               # cleanup_ops
-      → purge_tooltip() z podsumowaniem po zakończeniu wszystkich op
+      → CollectionOp (w tle, z undo):
+          → dla każdej notatki w kolekcji (col.find_notes("")):
+              → dla każdego pola: clean_field(name, value, skip_field)
+              → zliczanie nbsp/div/div_br, zbieranie zmienionych notatek
+          → col.update_notes(changed_notes)   ← jeden krok undo
+      → purge_tooltip() z podsumowaniem po zakończeniu
 ```
 
-Operacje są łączone przez callbacki `.success()` i `.failure()` — sekwencyjny łańcuch: op1→op2→(równolegle div_br_ops)→(równolegle cleanup_ops)→tooltip. `.failure()` zapewnia, że łańcuch nie urywa się przy błędzie.
-`operations_remaining` jest jawnie resetowane przed każdą fazą równoległą.
+Dzięki użyciu `clean_field()` masowe czyszczenie zachowuje się identycznie jak czyszczenie
+przy dodawaniu kart (wieloliniowe `<div>`, trailing `<br>` usuwany tylko po zamianie div→br).
 
 ## Zasady czyszczenia
 
@@ -92,7 +91,7 @@ Operacje są łączone przez callbacki `.success()` i `.failure()` — sekwencyj
 
 Powód: pole `ang` zawiera pojedyncze słowo/wyrażenie — `<div>` psuje wygląd. Pozostałe pola mogą mieć wieloliniową treść gdzie `<br>` jest poprawnym separatorem.
 
-Rejestry regex współdzielone przez `addcards.py` i `collection.py` (zdefiniowane w `cleaning.py`; re-eksportowane przez `utils.py` dla kompatybilności):
+Regexy zdefiniowane w `cleaning.py` (używane przez `clean_field()`, współdzieloną przez `addcards.py` i `collection.py`):
 - `NBSP` = `"&nbsp;"` (literal)
 - `DIV_TAG_RE` = `r"</?div[^>]*>"` — łapie `<div>`, `<div class="...">`, `</div>`
 - `DIV_WRAP_RE` = `r"<div[^>]*>(.*?)</div>"` — łapie div z zawartością
@@ -101,6 +100,6 @@ Rejestry regex współdzielone przez `addcards.py` i `collection.py` (zdefiniowa
 ## Zależności
 
 - Stdlib: `re`
-- Anki API: `aqt.operations.note.find_and_replace`, `aqt.addcards.AddCards`, `mw.col.update_note`, hooki `add_cards_did_init`, `add_cards_did_add_note`
+- Anki API: `aqt.operations.CollectionOp`, `col.update_notes`, `aqt.addcards.AddCards`, `mw.col.update_note`, hooki `add_cards_did_init`, `add_cards_did_add_note`
 - Własne: `common.ADDON_NAME`, `nbsp_remover.cleaning.clean_field`
 - Brak pip packages

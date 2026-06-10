@@ -15,7 +15,7 @@ Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i auto
 | Pole | Domyślnie | Opis |
 |---|---|---|
 | `deck_name` | `Angielski - Powtórka z wyprzedzeniem` | Nazwa tworzonej talii filtrowanej |
-| `search_deck` | `angielski` | Nazwa talii do wyszukiwania (`deck:` w query) |
+| `search_deck` | `angielski` | Nazwa talii do wyszukiwania (`deck:"..."` w query — nazwy ze spacjami są obsługiwane) |
 
 ```json
 "filtered_deck": {

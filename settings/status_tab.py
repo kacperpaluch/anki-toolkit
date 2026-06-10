@@ -38,11 +38,37 @@ _DICT_LABELS = {
     "longman_us": "Longman US",
 }
 
-_STATUS_STYLES = {
-    "ok": ("OK", "#eaf5ee", "#1f7a3f"),
-    "warn": ("Uwaga", "#fff4dc", "#8a5a00"),
-    "off": ("Wyłączone", "#eef0f3", "#5c6570"),
-}
+def _palette() -> dict:
+    """Theme-aware colors — hardcoded light values are unreadable in night mode."""
+    try:
+        from aqt.theme import theme_manager
+        night = theme_manager.night_mode
+    except Exception:
+        night = False
+
+    if night:
+        return {
+            "ok_bg": "#1e3327", "ok_fg": "#7fce9e",
+            "warn_bg": "#3d3320", "warn_fg": "#e3b35c",
+            "off_bg": "#2b2e33", "off_fg": "#9aa3ad",
+            "frame_bg": "#2c2f33", "border": "#44484d",
+            "muted": "#9aa3ad",
+            "accent": "#7fb3e3", "accent_bg": "#2a3b4d",
+            "card_bg": "#25282c", "detail": "#b6bec7",
+            "issue_bg": "#3a3322", "issue_border": "#5c5230", "issue_fg": "#e0c98a",
+            "ready_fg": "#7fce9e",
+        }
+    return {
+        "ok_bg": "#eaf5ee", "ok_fg": "#1f7a3f",
+        "warn_bg": "#fff4dc", "warn_fg": "#8a5a00",
+        "off_bg": "#eef0f3", "off_fg": "#5c6570",
+        "frame_bg": "#f7f8fa", "border": "#d9dde3",
+        "muted": "#5c6570",
+        "accent": "#1f4f7a", "accent_bg": "#eaf2fa",
+        "card_bg": "white", "detail": "#4f5863",
+        "issue_bg": "#fffaf0", "issue_border": "#ead8aa", "issue_fg": "#5c3d00",
+        "ready_fg": "#1f7a3f",
+    }
 
 
 def _module_enabled(cfg: dict, key: str) -> bool:
@@ -135,6 +161,7 @@ class StatusTab(QWidget):
     def __init__(self, cfg: dict, open_tab: Optional[Callable[[str], None]] = None):
         super().__init__()
         self._open_tab = open_tab
+        self._pal = _palette()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -321,10 +348,11 @@ class StatusTab(QWidget):
         return issues
 
     def _add_header(self, layout: QVBoxLayout, data: dict) -> None:
+        pal = self._pal
         header = QFrame()
         header.setFrameShape(QFrame.Shape.StyledPanel)
         header.setStyleSheet(
-            "QFrame { background: #f7f8fa; border: 1px solid #d9dde3; border-radius: 6px; }"
+            f"QFrame {{ background: {pal['frame_bg']}; border: 1px solid {pal['border']}; border-radius: 6px; }}"
             "QLabel { border: none; }"
         )
         row = QHBoxLayout(header)
@@ -334,7 +362,7 @@ class StatusTab(QWidget):
         title = QLabel("Start")
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
         subtitle = QLabel("Dashboard konfiguracji workflow i najważniejszych modułów.")
-        subtitle.setStyleSheet("color: #5c6570;")
+        subtitle.setStyleSheet(f"color: {pal['muted']};")
         subtitle.setWordWrap(True)
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -343,14 +371,14 @@ class StatusTab(QWidget):
         score = QLabel(f"{data['critical_ready']}/{data['critical_total']}")
         score.setAlignment(Qt.AlignmentFlag.AlignCenter)
         score.setStyleSheet(
-            "font-size: 22px; font-weight: 700; color: #1f4f7a; "
-            "background: #eaf2fa; border-radius: 6px; padding: 8px 14px;"
+            f"font-size: 22px; font-weight: 700; color: {pal['accent']}; "
+            f"background: {pal['accent_bg']}; border-radius: 6px; padding: 8px 14px;"
         )
         score.setToolTip("Gotowe elementy głównego pipeline'u: Workflow, AI, Prompty, Słownik, TTS")
         row.addWidget(score)
 
         modules = QLabel(f"Moduły: {data['enabled_count']}/{data['module_count']}")
-        modules.setStyleSheet("color: #5c6570;")
+        modules.setStyleSheet(f"color: {pal['muted']};")
         row.addWidget(modules)
         layout.addWidget(header)
 
@@ -367,12 +395,13 @@ class StatusTab(QWidget):
         layout.addLayout(grid)
 
     def _card(self, status: dict) -> QFrame:
+        pal = self._pal
         frame = QFrame()
         frame.setFrameShape(QFrame.Shape.StyledPanel)
         frame.setMinimumHeight(104)
         frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         frame.setStyleSheet(
-            "QFrame { background: white; border: 1px solid #d9dde3; border-radius: 6px; }"
+            f"QFrame {{ background: {pal['card_bg']}; border: 1px solid {pal['border']}; border-radius: 6px; }}"
             "QLabel { border: none; }"
         )
 
@@ -386,7 +415,12 @@ class StatusTab(QWidget):
         header.addWidget(title)
         header.addStretch()
 
-        badge_text, bg, fg = _STATUS_STYLES.get(status["level"], _STATUS_STYLES["warn"])
+        _badges = {
+            "ok": ("OK", pal["ok_bg"], pal["ok_fg"]),
+            "warn": ("Uwaga", pal["warn_bg"], pal["warn_fg"]),
+            "off": ("Wyłączone", pal["off_bg"], pal["off_fg"]),
+        }
+        badge_text, bg, fg = _badges.get(status["level"], _badges["warn"])
         badge = QLabel(badge_text)
         badge.setStyleSheet(
             f"background: {bg}; color: {fg}; border-radius: 4px; "
@@ -397,7 +431,7 @@ class StatusTab(QWidget):
 
         detail = QLabel(status["detail"])
         detail.setWordWrap(True)
-        detail.setStyleSheet("color: #4f5863;")
+        detail.setStyleSheet(f"color: {pal['detail']};")
         box.addWidget(detail, 1)
 
         if status.get("target"):
@@ -413,7 +447,7 @@ class StatusTab(QWidget):
         box = QVBoxLayout(group)
         pipeline = QLabel(data["pipeline"])
         pipeline.setWordWrap(True)
-        pipeline.setStyleSheet("font-weight: 600; color: #1f4f7a;")
+        pipeline.setStyleSheet(f"font-weight: 600; color: {self._pal['accent']};")
         box.addWidget(pipeline)
 
         note = QLabel(
@@ -421,7 +455,7 @@ class StatusTab(QWidget):
             "Zmiany wykonasz w AI Generator -> Workflow."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color: #5c6570;")
+        note.setStyleSheet(f"color: {self._pal['muted']};")
         box.addWidget(note)
         layout.addWidget(group)
 
@@ -437,7 +471,7 @@ class StatusTab(QWidget):
                 "Możesz sprawdzić działanie na jednej karcie przyciskiem Generuj fiszkę."
             )
             ready.setWordWrap(True)
-            ready.setStyleSheet("color: #1f7a3f;")
+            ready.setStyleSheet(f"color: {self._pal['ready_fg']};")
             box.addWidget(ready)
         else:
             for text, target in issues:
@@ -446,10 +480,11 @@ class StatusTab(QWidget):
         layout.addWidget(group)
 
     def _issue_row(self, text: str, target: str) -> QFrame:
+        pal = self._pal
         frame = QFrame()
         frame.setFrameShape(QFrame.Shape.StyledPanel)
         frame.setStyleSheet(
-            "QFrame { background: #fffaf0; border: 1px solid #ead8aa; border-radius: 5px; }"
+            f"QFrame {{ background: {pal['issue_bg']}; border: 1px solid {pal['issue_border']}; border-radius: 5px; }}"
             "QLabel { border: none; }"
         )
         row = QHBoxLayout(frame)
@@ -457,7 +492,7 @@ class StatusTab(QWidget):
 
         label = QLabel(text)
         label.setWordWrap(True)
-        label.setStyleSheet("color: #5c3d00;")
+        label.setStyleSheet(f"color: {pal['issue_fg']};")
         row.addWidget(label, 1)
 
         if target:

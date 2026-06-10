@@ -60,7 +60,10 @@ def normalize_file(file_path, ffmpeg_cmd=None, loudnorm_opts=None):
     ffmpeg_cmd = ffmpeg_cmd or config.FFMPEG_CMD
     loudnorm_opts = loudnorm_opts or config.LOUDNORM_OPTS
 
-    temp_path = file_path + ".temp.mp3"
+    # Keep the original extension — ffmpeg infers the output format from it.
+    # A ".temp.mp3" suffix would silently re-encode .wav/.ogg/.flac to MP3.
+    ext = os.path.splitext(file_path)[1] or ".mp3"
+    temp_path = file_path + ".temp" + ext
 
     cmd = [
         ffmpeg_cmd,
