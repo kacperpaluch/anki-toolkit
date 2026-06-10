@@ -9,6 +9,7 @@ from aqt.utils import showWarning
 
 from ..common import clean_html_normalized, safe_float, safe_str
 
+from . import stats
 from .template_engine import render_template
 from .providers import get_provider, BaseProvider
 
@@ -105,7 +106,13 @@ class FieldGenerator:
             prompt_template = safe_str(field_cfg.get("prompt", ""))
             prompt = render_template(prompt_template, fields_map)
 
+            provider.last_usage = (0, 0)
             result = provider.call_api(prompt)
+            in_tokens, out_tokens = provider.last_usage
+            stats.record_request(
+                provider_name, provider.model, in_tokens, out_tokens,
+                error=result is None, field_generated=bool(result),
+            )
             if result:
                 note[target_field] = result
                 fields_map[target_field] = clean_html_normalized(result)  # update map for dependent fields
@@ -122,5 +129,8 @@ class FieldGenerator:
                         f"Provider '{provider_name}', model '{provider.model}', "
                         f"pole '{target_field}' nie zwrócił treści."
                     )
+
+        if changed:
+            stats.record_note()
 
         return changed

@@ -33,6 +33,7 @@ class OpenRouterProvider(BaseProvider):
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))
+            self._capture_usage(res_data)
             choices = res_data.get("choices")
             if not choices or not isinstance(choices, list):
                 self.last_error = f"OpenRouter: unexpected response structure: {list(res_data.keys())}"

@@ -1,5 +1,7 @@
 import importlib.util
+import os
 import pathlib
+import tempfile
 import unittest
 
 
@@ -17,6 +19,7 @@ def load_module(name: str, relative_path: str):
 template_engine = load_module("template_engine", "ai_generator/template_engine.py")
 html_helpers = load_module("html_helpers", "common/html.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
+ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 
 
 class TemplateEngineTests(unittest.TestCase):
@@ -57,6 +60,63 @@ class NbspCleaningTests(unittest.TestCase):
         )
         self.assertEqual(cleaned, "one line<br>second")
         self.assertEqual((nbsp_count, div_count, div_br_count), (1, 0, 2))
+
+
+class AiStatsTests(unittest.TestCase):
+    def test_record_and_reset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
+            ai_stats.reset_stats()
+
+            ai_stats.record_request("openai", "gpt-4o", 100, 50, error=False, field_generated=True)
+            ai_stats.record_request("openai", "gpt-4o", 10, 5, error=True, field_generated=False)
+            ai_stats.record_note()
+
+            data = ai_stats.get_stats()
+            m = data["models"]["openai/gpt-4o"]
+            self.assertEqual(m["requests"], 2)
+            self.assertEqual(m["errors"], 1)
+            self.assertEqual(m["input_tokens"], 110)
+            self.assertEqual(m["output_tokens"], 55)
+            self.assertEqual(m["fields"], 1)
+            self.assertEqual(data["notes_processed"], 1)
+
+            ai_stats.reset_stats()
+            data = ai_stats.get_stats()
+            self.assertEqual(data["models"], {})
+            self.assertEqual(data["notes_processed"], 0)
+
+    def test_day_range_aggregation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
+            ai_stats.reset_stats()
+
+            # dzisiejszy wpis przez normalne API
+            ai_stats.record_request("openai", "gpt-4o", 100, 50, error=False, field_generated=True)
+
+            # sztuczny wpis sprzed 10 dni — poza zakresem "7 dni"
+            from datetime import datetime, timedelta
+            old_day = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+            data = ai_stats._load()
+            data["days"][old_day] = {
+                "notes_processed": 5,
+                "models": {"openai/gpt-4o": {
+                    "requests": 9, "errors": 0,
+                    "input_tokens": 900, "output_tokens": 450, "fields": 9,
+                }},
+            }
+            ai_stats._save(data)
+
+            all_time = ai_stats.get_stats()
+            self.assertEqual(all_time["models"]["openai/gpt-4o"]["requests"], 10)
+            self.assertEqual(all_time["notes_processed"], 5)
+
+            last_week = ai_stats.get_stats(days=7)
+            self.assertEqual(last_week["models"]["openai/gpt-4o"]["requests"], 1)
+            self.assertEqual(last_week["notes_processed"], 0)
+
+            today = ai_stats.get_stats(days=1)
+            self.assertEqual(today["models"]["openai/gpt-4o"]["input_tokens"], 100)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ __pycache__/
 meta.json
 user_files/
 audio_normalizer/processed_history.json
+ai_generator/usage_stats.json
 
 # Claude Code
 .claude/

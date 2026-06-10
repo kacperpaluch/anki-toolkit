@@ -188,6 +188,16 @@ Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego po
 
 > **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.
 
+## Statystyki użycia
+
+Każde wywołanie AI jest zliczane lokalnie (per dzień, per `provider/model`): requesty, błędy, tokeny wejściowe/wyjściowe (z pola `usage` odpowiedzi API), wygenerowane pola oraz liczba zaktualizowanych notatek.
+
+Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
+
+- Dane są zapisywane w `ai_generator/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer
+- Ceny nie są liczone — każdy model ma inny cennik; tokeny i liczba requestów są obiektywną miarą
+- Niektóre modele/proxy nie zwracają pola `usage` — wtedy zliczane są tylko requesty (tokeny = 0)
+
 ## Dodanie nowego dostawcy
 
 1. Utwórz `providers/moj_provider.py`:

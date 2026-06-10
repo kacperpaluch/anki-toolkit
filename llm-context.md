@@ -53,7 +53,8 @@ anki-toolkit/
 │   ├── prompts_tab.py               # Zakładka: Prompty
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
-│   └── narzedzia_tab.py             # Zakładka: Narzędzia
+│   ├── narzedzia_tab.py             # Zakładka: Narzędzia
+│   └── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
 │
 ├── dictionary/                      # Moduł 1
 │   ├── __init__.py
@@ -70,6 +71,7 @@ anki-toolkit/
 │   ├── browser_ui.py
 │   ├── field_generator.py
 │   ├── template_engine.py
+│   ├── stats.py                     # lokalne statystyki użycia (usage_stats.json)
 │   ├── workflow.py
 │   └── providers/
 │       ├── __init__.py
@@ -190,10 +192,11 @@ settings/
 ├── prompts_tab.py           # PromptsTab (embedded in AI Generator tab, not standalone)
 ├── tts_tab.py               # TTSTab
 ├── audio_normalizer_tab.py  # AudioNormalizerTab
-└── narzedzia_tab.py         # NarzedziaTab
+├── narzedzia_tab.py         # NarzedziaTab
+└── stats_tab.py             # StatsTab — dashboard użycia AI
 ```
 
-Zakładki (7 zakładek):
+Zakładki (8 zakładek):
 - **Start** — dashboard gotowości: wynik pipeline'u, kafelki statusu, podgląd workflow i lista problemów z przyciskami nawigacji do zakładek
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
@@ -201,6 +204,7 @@ Zakładki (7 zakładek):
 - **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (checklista), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
+- **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola), licznik zaktualizowanych notatek, przyciski Odśwież/Resetuj; dane z `ai_generator/stats.py`
 
 ### Sekcja `modules` — włączanie/wyłączanie modułów
 
@@ -252,6 +256,8 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/tts_tab.py` | Zakładka TTS — `TTSTab` |
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
+| `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
+| `ai_generator/stats.py` | Lokalne statystyki użycia AI — `record_request()`, `record_note()`, `get_stats(days=None)`, `reset_stats()`; liczniki per dzień kalendarzowy (agregacja zakresów), zapis do `usage_stats.json` (gitignored), thread-safe (`threading.Lock`) |
 | `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
 | `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()` |
 | `ai_generator/providers/base.py` | ABC dla nowych providerów — implementuj `call_api()` |
@@ -324,6 +330,7 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
     └── browser_ui.py           ← add_to_context_menu (akcja przeglądarki + batch)
     └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_float, safe_str
         └── template_engine.py  (render_template — czysta funkcja)
+        └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
         └── providers/          (BaseProvider + 7 implementacji + model_discovery); używa common/http RETRYABLE_STATUS_CODES
     └── workflow.py             (AI → Dict → TTS sekwencyjnie, _RUNNING guard); używa common/ADDON_NAME
 
@@ -346,7 +353,8 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
     ├── prompts_tab.py          (PromptsTab); używa common/ui widgetów
     ├── tts_tab.py              (TTSTab); używa common/ui widgetów, tts/api fetch_openrouter_tts_models
     ├── audio_normalizer_tab.py (AudioNormalizerTab); używa common/ui widgetów
-    └── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów
+    ├── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów
+    └── stats_tab.py            (StatsTab); używa ai_generator/stats get_stats, reset_stats
 
 nbsp_remover/
     ├── cleaning.py             (clean_field + regexy; testowalne bez Anki)

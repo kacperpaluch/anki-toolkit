@@ -29,7 +29,8 @@ anki-toolkit/
 │   ├── prompts_tab.py               # Zakładka: Prompty
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
-│   └── narzedzia_tab.py             # Zakładka: Narzędzia
+│   ├── narzedzia_tab.py             # Zakładka: Narzędzia
+│   └── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
 │
 ├── dictionary/                      # Moduł 1: pobieranie audio + IPA
 │   ├── __init__.py                  # re-eksport hooków
@@ -46,6 +47,7 @@ anki-toolkit/
 │   ├── browser_ui.py                # menu przeglądarki + batch
 │   ├── field_generator.py           # logika generowania, niezależna od dostawcy
 │   ├── template_engine.py           # silnik szablonów {{pole}} / {% if %}
+│   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty)
 │   ├── workflow.py                  # workflow "Generuj fiszkę" (AI → Dict → TTS)
 │   └── providers/
 │       ├── __init__.py              # rejestr dostawców + fabryka get_provider()
@@ -118,6 +120,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów, zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
+| **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj. i wygenerowane pola per model, licznik zaktualizowanych notatek; wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko) i przycisk resetu |
 
 > **Gdzie są przechowywane ustawienia?** `config.json` w folderze wtyczki to szablon domyślny — nie jest nadpisywany. Twoje zmiany są zapisywane przez Anki w katalogu profilu (`addons21/.../meta.json`). Po ponownym otwarciu dialogu zobaczysz zapisane wartości.
 
@@ -192,6 +195,7 @@ Pomocniczy przycisk **AI** w toolbarze edytora generuje tylko pola AI dla pojedy
 - **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj. Po zakończeniu jeden tooltip z podsumowaniem.
 - Pola z treścią są zawsze pomijane — generator uzupełnia tylko puste pola.
 - Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
+- **Statystyki użycia** (requesty, tokeny, pola per model) są zliczane lokalnie i widoczne w **Ustawienia → Statystyki**.
 
 Konfiguracja w **Ustawienia → AI Generator**:
 

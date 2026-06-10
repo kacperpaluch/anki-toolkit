@@ -62,6 +62,7 @@ class OpenCodeGoProvider(BaseProvider):
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))
+            self._capture_usage(res_data)
             choices = res_data.get("choices")
             if not choices or not isinstance(choices, list):
                 self.last_error = f"OpenCode Go: unexpected response: {list(res_data.keys())}"
@@ -116,6 +117,7 @@ class OpenCodeGoProvider(BaseProvider):
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))
+            self._capture_usage(res_data)
             content = res_data.get("content")
             if not content or not isinstance(content, list):
                 self.last_error = f"OpenCode Go messages: unexpected response: {list(res_data.keys())}"

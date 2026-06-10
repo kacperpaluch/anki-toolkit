@@ -14,6 +14,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `browser_ui.py` | UI przeglądarki — batch z QProgressDialog, cancel_flag |
 | `field_generator.py` | Logika generowania — niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_float()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}` |
+| `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `usage_stats.json`; `get_stats(days=None)` agreguje zakres; thread-safe |
 | `providers/__init__.py` | Rejestr providerów + fabryka `get_provider()` |
 | `providers/base.py` | ABC `BaseProvider` — interfejs + `_request_with_retry()` + `_request_with_reasoning_fallback()`; używa `common.http.RETRYABLE_STATUS_CODES` |
 | `providers/openai_compat.py` | Helpery dla providerów zgodnych z Chat Completions: wykrywanie modeli OpenAI reasoning, pomijanie `temperature`, parsowanie `message.content` string/list, `is_reasoning_effort_unsupported_error()` |
@@ -188,3 +189,4 @@ Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdza
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
 - Config values (`batch_sleep`, `temperature`, itp.) są walidowane przez `safe_float()` i `safe_str()` z `common.text` przed użyciem
 - Throttling jest wyłącznie na poziomie przeglądarki (sleep co `batch_limit` notatek) — `field_generator` nie ma własnych sleep'ów między polami
+- **Statystyki użycia**: każdy `call_api()` wywołuje `self._capture_usage(res_data)` (BaseProvider) — wyciąga tokeny z `usage.prompt/completion_tokens` (OpenAI-compat), `usage.input/output_tokens` (Anthropic) lub `usageMetadata` (Gemini) do `provider.last_usage`; `field_generator.process_note()` rejestruje przez `stats.record_request()` (per provider/model) i `stats.record_note()`; dashboard w **Ustawienia → Statystyki** z wyborem zakresu (dziś/7/30/365 dni/wszystko)

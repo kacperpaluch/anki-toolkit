@@ -25,7 +25,26 @@ class BaseProvider(ABC):
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
         self.last_error: Optional[str] = None
+        self.last_usage: tuple[int, int] = (0, 0)  # (input_tokens, output_tokens)
         self.logger = logging.getLogger(self.__class__.__module__)
+
+    def _capture_usage(self, res_data: dict) -> None:
+        """Best-effort token usage extraction from a parsed API response.
+
+        Handles OpenAI-compatible ("usage.prompt/completion_tokens"),
+        Anthropic ("usage.input/output_tokens") and Gemini ("usageMetadata").
+        """
+        try:
+            usage = res_data.get("usage") or {}
+            inp = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+            out = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+            if not inp and not out:
+                meta = res_data.get("usageMetadata") or {}
+                inp = meta.get("promptTokenCount") or 0
+                out = meta.get("candidatesTokenCount") or 0
+            self.last_usage = (int(inp), int(out))
+        except Exception:
+            self.last_usage = (0, 0)
 
     def _request_with_reasoning_fallback(
         self, req: urllib.request.Request, data: dict, headers: dict, url: str

@@ -34,6 +34,7 @@ class AnthropicProvider(BaseProvider):
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))
+            self._capture_usage(res_data)
             content = res_data.get("content")
             if not content or not isinstance(content, list):
                 self.last_error = f"Anthropic: unexpected response structure: {list(res_data.keys())}"
