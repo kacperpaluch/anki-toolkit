@@ -164,6 +164,13 @@ class AIGeneratorTab(QWidget):
         self._batch_sleep.setRange(0.0, 30.0)
         self._batch_sleep.setSingleStep(0.1)
         self._batch_sleep.setValue(ai.get("batch_sleep", 1.0))
+        self._parallel_requests = QSpinBox()
+        self._parallel_requests.setRange(1, 16)
+        self._parallel_requests.setValue(int(ai.get("parallel_requests", 3)))
+        self._parallel_requests.setToolTip(
+            "Liczba notatek przetwarzanych równolegle w batchu przeglądarki.\n"
+            "Wyższe wartości = szybciej, ale łatwiej o limity API (429)."
+        )
         self._ai_max_retries = QSpinBox()
         self._ai_max_retries.setRange(1, 10)
         self._ai_max_retries.setValue(ai.get("max_retries", 3))
@@ -175,6 +182,7 @@ class AIGeneratorTab(QWidget):
         self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
         adv_form.addRow("Limit paczki:", self._batch_limit)
         adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
+        adv_form.addRow("Równoległe żądania:", self._parallel_requests)
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
         adv_form.addRow("Timeout żądania:", self._request_timeout)
         layout.addWidget(adv_group)
@@ -336,7 +344,7 @@ class AIGeneratorTab(QWidget):
 
     def _wf_pick_dicts(self) -> list[str]:
         """Show dialog with checkboxes for available dictionaries. Returns list of dict IDs."""
-        from ..common import ADDON_NAME, get_full_config
+        from ..common import get_full_config
         full = get_full_config()
         dict_cfg = full.get("dictionary", {})
         buttons = dict_cfg.get("buttons", [])
@@ -409,6 +417,7 @@ class AIGeneratorTab(QWidget):
         ai["skip_tags"] = [t.strip() for t in self._skip_tag.text().split(",") if t.strip()]
         ai["batch_limit"] = self._batch_limit.value()
         ai["batch_sleep"] = round(self._batch_sleep.value(), 2)
+        ai["parallel_requests"] = self._parallel_requests.value()
         ai["max_retries"] = self._ai_max_retries.value()
         ai["request_timeout"] = self._request_timeout.value()
         ai.setdefault("providers", {})

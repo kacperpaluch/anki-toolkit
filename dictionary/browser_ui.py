@@ -1,4 +1,5 @@
 from aqt import mw
+from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
@@ -21,7 +22,7 @@ def _get_enabled_button_configs(config: dict) -> list[dict]:
     ]
 
 
-def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], checkpoint_label: str):
+def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     config = _get_config()
     note_ids = browser.selected_notes()
     if not note_ids:
@@ -29,8 +30,6 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], che
 
     if not dictionary_groups:
         return
-
-    mw.checkpoint(checkpoint_label)
 
     progress = QProgressDialog("Pobieranie wymowy...", "Anuluj", 0, len(note_ids), browser)
     progress.setWindowTitle("Słownik")
@@ -47,16 +46,14 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], che
 
     progress.canceled.connect(_set_cancelled)
 
-    updated_count = 0
     missing_audio_count = 0
-    cancelled = False
+    changed_notes: list = []
 
     def task():
-        nonlocal updated_count, missing_audio_count, cancelled
+        nonlocal missing_audio_count
         batch_cache: dict = {}
         for i, nid in enumerate(note_ids):
             if cancel_flag["cancelled"]:
-                cancelled = True
                 break
 
             def _update(i=i):
@@ -74,8 +71,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], che
                 elif result.audio_requested and not result.audio_found:
                     note_missing_audio = True
             if note_modified:
-                mw.col.update_note(note)
-                updated_count += 1
+                changed_notes.append(note)
             elif note_missing_audio:
                 missing_audio_count += 1
 
@@ -86,14 +82,26 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], che
         except Exception as e:
             tooltip(f"Błąd podczas pobierania: {e}", parent=mw, period=5000)
             return
-        mw.reset()
         parts = []
-        if updated_count > 0:
-            parts.append(f"Zaktualizowano: {updated_count}")
+        if changed_notes:
+            parts.append(f"Zaktualizowano: {len(changed_notes)}")
         if missing_audio_count > 0:
             parts.append(f"Brak audio: {missing_audio_count}")
-        if parts:
-            tooltip(" · ".join(parts), parent=mw, period=4000)
+        if cancel_flag["cancelled"]:
+            parts.append("przerwano")
+        summary = " · ".join(parts) if parts else "Brak zmian."
+
+        if not changed_notes:
+            tooltip(summary, parent=mw, period=4000)
+            return
+        # One undoable operation for the whole batch (collection write on
+        # the main thread, UI refresh handled by CollectionOp).
+        CollectionOp(
+            parent=browser,
+            op=lambda col: col.update_notes(changed_notes),
+        ).success(
+            lambda _changes: tooltip(summary, parent=mw, period=4000)
+        ).run_in_background()
 
     mw.taskman.run_in_background(task, on_done)
 
@@ -104,12 +112,11 @@ def _on_fetch_audio_browser(browser: Browser):
     _run_browser_fetch(
         browser,
         [btn["dictionaries"] for btn in enabled_buttons],
-        "Pobierz wymowę",
     )
 
 
 def _on_fetch_audio_browser_for_button(browser: Browser, dictionaries: list[str], label: str):
-    _run_browser_fetch(browser, [dictionaries], f"Pobierz wymowę: {label}")
+    _run_browser_fetch(browser, [dictionaries])
 
 
 def add_to_context_menu(browser: Browser, menu):

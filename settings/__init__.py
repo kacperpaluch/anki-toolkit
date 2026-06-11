@@ -8,7 +8,7 @@ from aqt.qt import (
 from aqt.utils import tooltip
 from aqt.utils import showWarning
 
-from ..common import ADDON_NAME, get_full_config, save_full_config
+from ..common import ADDON_NAME, get_full_config, save_full_config, set_debug
 
 from .status_tab import StatusTab
 from .modules_tab import ModulesTab
@@ -38,6 +38,9 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(520, 420)
 
         cfg = get_full_config()
+        # LogsTab applies the debug toggle immediately — remember the saved
+        # state so Cancel can restore it.
+        self._orig_debug = bool(cfg.get("debug", {}).get("enabled", False))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -58,6 +61,8 @@ class SettingsDialog(QDialog):
         ]
         for title, widget in self._tabs_list:
             self._tab_indices[title] = self._tabs.addTab(widget, title)
+
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
         layout.addWidget(self._tabs)
 
@@ -80,6 +85,28 @@ class SettingsDialog(QDialog):
         index = self._tab_indices.get(title)
         if index is not None:
             self._tabs.setCurrentIndex(index)
+
+    def _on_tab_changed(self, index: int) -> None:
+        # Returning to Start: rebuild the dashboard from the current widget
+        # state of the other tabs, so it reflects unsaved changes too.
+        if index == self._tab_indices.get("Start"):
+            self._status_tab.refresh(self._collect_config())
+
+    def _collect_config(self) -> dict:
+        """Current config merged with unsaved widget state (no save)."""
+        cfg = get_full_config()
+        for _title, widget in self._tabs_list:
+            if widget is self._status_tab:
+                continue
+            try:
+                widget.apply(cfg)
+            except Exception:
+                pass  # a half-filled tab must not break the dashboard
+        return cfg
+
+    def reject(self) -> None:
+        set_debug(self._orig_debug)
+        super().reject()
 
     def _save(self) -> None:
         cfg = get_full_config()

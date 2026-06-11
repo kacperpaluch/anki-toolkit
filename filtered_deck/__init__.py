@@ -78,13 +78,21 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
     try:
         col = mw.col
 
-        base_name = deck_name
-        counter = 1
-        while col.decks.by_name(deck_name):
-            deck_name = f"{base_name} ({counter})"
-            counter += 1
-
-        deck_id = col.decks.new_filtered(deck_name)
+        # Reuse an existing filtered deck with this name instead of piling up
+        # "name (1)", "name (2)"... — only suffix when the name is taken by a
+        # regular (non-filtered) deck.
+        existing = col.decks.by_name(deck_name)
+        reused = False
+        if existing and existing.get("dyn"):
+            deck_id = existing["id"]
+            reused = True
+        else:
+            base_name = deck_name
+            counter = 1
+            while col.decks.by_name(deck_name):
+                deck_name = f"{base_name} ({counter})"
+                counter += 1
+            deck_id = col.decks.new_filtered(deck_name)
         deck = col.decks.get(deck_id)
 
         if isinstance(deck, dict):
@@ -118,7 +126,8 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
         card_count = col.decks.card_count(deck_id, include_subdecks=False)
         mw.col.decks.select(deck_id)
         mw.reset()
-        tooltip(f"Utworzono talię '{deck_name}'\nKarty: {card_count}\nZakres: {days_ahead} dni.", period=3000)
+        verb = "Zaktualizowano" if reused else "Utworzono"
+        tooltip(f"{verb} talię '{deck_name}'\nKarty: {card_count}\nZakres: {days_ahead} dni.", period=3000)
 
     except Exception as e:
         showInfo(f"Błąd podczas tworzenia talii filtrowanej: {str(e)}")

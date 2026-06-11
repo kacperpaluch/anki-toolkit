@@ -123,7 +123,14 @@ class OpenCodeGoProvider(BaseProvider):
                 self.last_error = f"OpenCode Go messages: unexpected response: {list(res_data.keys())}"
                 self.logger.error(self.last_error)
                 return None
-            text = content[0].get("text", "").strip()
+            # Reasoning models may put a "thinking" block first — take the
+            # first block of type "text" (fall back to any block with text).
+            text = next(
+                (block.get("text") for block in content
+                 if isinstance(block, dict) and block.get("type") == "text"
+                 and block.get("text")),
+                "",
+            ).strip()
             if not text:
                 self.last_error = "OpenCode Go messages: empty text in response"
                 self.logger.error(self.last_error)

@@ -289,7 +289,11 @@ class PromptsTab(QWidget):
         self._load_key_to_editor(key)
 
     def _on_add(self) -> None:
-        base_nt = "angielski"
+        # Prefer the note type already being edited, then one from the
+        # collection — instead of a hardcoded name.
+        base_nt = self._ed_note_type.currentText().strip()
+        if not base_nt:
+            base_nt = self._note_type_names[0] if self._note_type_names else "Notatka"
         base_field = "nowe_pole"
         key = (base_nt, base_field)
         i = 1

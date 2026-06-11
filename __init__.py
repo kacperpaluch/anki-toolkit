@@ -5,8 +5,8 @@ Modules:
   dictionary/         — fetches pronunciation audio (MP3) and IPA from Oxford,
                         Cambridge, Diki.pl, Longman
   ai_generator/       — fills card fields using an AI provider (OpenAI / CometAPI /
-                        OpenRouter / Anthropic / Google)
-  tts/                — generates MP3 audio via Kokoro TTS (local API)
+                        OpenRouter / Anthropic / Google / Mistral / OpenCode Go)
+  tts/                — generates MP3 audio via Kokoro TTS (local) or OpenRouter
   filtered_deck/      — creates a filtered deck with custom settings
   audio_normalizer/   — normalizes audio files using ffmpeg (EBU R128)
   nbsp_remover/       — removes &nbsp; and cleans <div> tags from card fields

@@ -18,6 +18,7 @@ def load_module(name: str, relative_path: str):
 
 template_engine = load_module("template_engine", "ai_generator/template_engine.py")
 html_helpers = load_module("html_helpers", "common/html.py")
+text_helpers = load_module("text_helpers", "common/text.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
 ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 
@@ -84,6 +85,74 @@ class HtmlHelperTests(unittest.TestCase):
         )
 
 
+class TextHelperTests(unittest.TestCase):
+    def test_split_separator_regex_plain(self):
+        regex = text_helpers.split_separator_regex("<br><br>")
+        self.assertEqual(regex.split("a<br><br>b<br><br><br><br>c"), ["a", "b", "c"])
+
+    def test_split_separator_regex_tolerates_whitespace(self):
+        regex = text_helpers.split_separator_regex("<br> <br>")
+        self.assertEqual(regex.split("a<br><br>b"), ["a", "b"])
+        self.assertEqual(regex.split("a<br>  <br>b"), ["a", "b"])
+
+    def test_plural_pl(self):
+        plural = lambda n: text_helpers.plural_pl(n, "krok", "kroki", "kroków")
+        self.assertEqual(plural(1), "krok")
+        self.assertEqual(plural(3), "kroki")
+        self.assertEqual(plural(5), "kroków")
+        self.assertEqual(plural(12), "kroków")
+        self.assertEqual(plural(22), "kroki")
+
+
+class PricingMatchTests(unittest.TestCase):
+    _CATALOG = [
+        {"id": "openai/gpt-4o", "prompt_price": 2.5e-06, "completion_price": 1e-05},
+        {"id": "anthropic/claude-3.5-haiku", "prompt_price": 8e-07, "completion_price": 4e-06},
+        {"id": "google/gemini-2.0-flash-001", "prompt_price": 1e-07, "completion_price": 4e-07},
+        {"id": "x-ai/grok-3", "prompt_price": None, "completion_price": None},
+    ]
+
+    def test_exact_provider_model_match(self):
+        result = ai_stats.match_pricing(["openai/gpt-4o"], self._CATALOG)
+        self.assertEqual(result["openai/gpt-4o"], (2.5e-06, 1e-05))
+
+    def test_normalized_match_with_date_suffix(self):
+        result = ai_stats.match_pricing(
+            ["anthropic/claude-3-5-haiku-20241022"], self._CATALOG
+        )
+        self.assertEqual(result["anthropic/claude-3-5-haiku-20241022"], (8e-07, 4e-06))
+
+    def test_prefix_match_for_versioned_ids(self):
+        result = ai_stats.match_pricing(["google/gemini-2.0-flash"], self._CATALOG)
+        self.assertEqual(result["google/gemini-2.0-flash"], (1e-07, 4e-07))
+
+    def test_openrouter_key_uses_full_id(self):
+        result = ai_stats.match_pricing(
+            ["openrouter/anthropic/claude-3.5-haiku"], self._CATALOG
+        )
+        self.assertEqual(result["openrouter/anthropic/claude-3.5-haiku"], (8e-07, 4e-06))
+
+    def test_unmatched_and_priceless_models_are_absent(self):
+        result = ai_stats.match_pricing(
+            ["cometapi/grok-3", "mistral/unknown-model"], self._CATALOG
+        )
+        self.assertNotIn("mistral/unknown-model", result)
+        self.assertNotIn("cometapi/grok-3", result)  # catalog entry has no prices
+
+    def test_tts_model_matches_per_char_price(self):
+        tts_catalog = [
+            {"id": "openai/gpt-4o-mini-tts", "prompt_price": 1.2e-05},
+        ]
+        result = ai_stats.match_pricing(
+            ["openrouter/openai/gpt-4o-mini-tts-2025-12-15", "kokoro/kokoro"],
+            tts_catalog,
+        )
+        self.assertEqual(
+            result["openrouter/openai/gpt-4o-mini-tts-2025-12-15"], (1.2e-05, 0.0)
+        )
+        self.assertNotIn("kokoro/kokoro", result)  # lokalny — brak ceny
+
+
 class NbspCleaningTests(unittest.TestCase):
     def test_skip_field_removes_div_tags(self):
         cleaned, nbsp_count, div_count, div_br_count = cleaning.clean_field(
@@ -98,6 +167,14 @@ class NbspCleaningTests(unittest.TestCase):
         )
         self.assertEqual(cleaned, "one line<br>second")
         self.assertEqual((nbsp_count, div_count, div_br_count), (1, 0, 2))
+
+    def test_nested_divs_leave_no_unbalanced_tags(self):
+        cleaned, _nbsp, _div, div_br_count = cleaning.clean_field(
+            "def", "<div>outer<div>inner</div></div>", "ang"
+        )
+        self.assertNotIn("<div", cleaned)
+        self.assertNotIn("</div>", cleaned)
+        self.assertEqual(div_br_count, 2)
 
 
 class AiStatsTests(unittest.TestCase):
@@ -123,6 +200,29 @@ class AiStatsTests(unittest.TestCase):
             data = ai_stats.get_stats()
             self.assertEqual(data["models"], {})
             self.assertEqual(data["notes_processed"], 0)
+
+    def test_record_tts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
+            ai_stats.reset_stats()
+
+            ai_stats.record_tts("kokoro", "kokoro", 120, error=False)
+            ai_stats.record_tts("kokoro", "kokoro", 80, error=True)
+            ai_stats.record_tts("openrouter", "openai/gpt-4o-mini-tts", 50, error=False)
+
+            data = ai_stats.get_stats()
+            kokoro = data["tts"]["kokoro/kokoro"]
+            self.assertEqual(kokoro["requests"], 2)
+            self.assertEqual(kokoro["errors"], 1)
+            self.assertEqual(kokoro["files"], 1)
+            self.assertEqual(kokoro["chars"], 200)
+            openrouter = data["tts"]["openrouter/openai/gpt-4o-mini-tts"]
+            self.assertEqual(openrouter["files"], 1)
+            self.assertEqual(openrouter["chars"], 50)
+
+            # zakres bez danych → pusto
+            empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
+            self.assertEqual(empty["tts"], {})
 
     def test_day_range_aggregation(self):
         with tempfile.TemporaryDirectory() as tmp:

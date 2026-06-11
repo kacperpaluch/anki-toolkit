@@ -23,9 +23,18 @@ def _fmt(value: int) -> str:
     return f"{value:,}".replace(",", " ")
 
 
+def _fmt_cost(value: float) -> str:
+    if value >= 100:
+        return f"${value:,.2f}"
+    return f"${value:.4f}"
+
+
 class StatsTab(QWidget):
     def __init__(self, cfg: dict):
         super().__init__()
+        # {stat_key: [input_usd_per_token, output_usd_per_token]} — filled by
+        # the "Pobierz ceny" button and persisted in the config.
+        self._pricing: dict = dict(cfg.get("pricing", {}).get("models", {}))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -65,34 +74,63 @@ class StatsTab(QWidget):
         self._summary.setStyleSheet("font-weight: 600;")
         layout.addWidget(self._summary)
 
-        self._table = QTableWidget(0, 6)
+        self._table = QTableWidget(0, 7)
         self._table.setHorizontalHeaderLabels(
-            ["Model", "Requesty", "Błędy", "Tokeny wej.", "Tokeny wyj.", "Pola"]
+            ["Model", "Requesty", "Błędy", "Tokeny wej.", "Tokeny wyj.", "Pola", "Koszt (szac.)"]
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col in range(1, 6):
+        for col in range(1, 7):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self._table, 1)
+
+        # -- TTS usage (audio generation) --
+        self._tts_label = QLabel("TTS — generowanie audio")
+        self._tts_label.setStyleSheet("font-weight: 600;")
+        layout.addWidget(self._tts_label)
+
+        self._tts_table = QTableWidget(0, 6)
+        self._tts_table.setHorizontalHeaderLabels(
+            ["Model", "Requesty", "Błędy", "Znaki", "Pliki", "Koszt (szac.)"]
+        )
+        self._tts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._tts_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._tts_table.verticalHeader().setVisible(False)
+        self._tts_table.setMaximumHeight(150)
+        tts_header = self._tts_table.horizontalHeader()
+        tts_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in range(1, 6):
+            tts_header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self._tts_table)
 
         btn_row = QHBoxLayout()
         refresh_btn = QPushButton("Odśwież")
         refresh_btn.clicked.connect(self._refresh)
+        self._prices_btn = QPushButton("Pobierz ceny (OpenRouter)")
+        self._prices_btn.setToolTip(
+            "Pobiera cennik modeli z OpenRouter i dopasowuje go do modeli "
+            "z Twoich statystyk. Koszt jest szacunkiem (ceny katalogowe OpenRouter)."
+        )
+        self._prices_btn.clicked.connect(self._fetch_prices)
         reset_btn = QPushButton("Resetuj statystyki")
         reset_btn.clicked.connect(self._reset)
         btn_row.addWidget(refresh_btn)
+        btn_row.addWidget(self._prices_btn)
         btn_row.addWidget(reset_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
         hint = QLabel(
             "Statystyki obejmują wywołania AI Generatora (przycisk AI, batch, workflow) "
+            "oraz generowanie audio TTS (Kokoro i OpenRouter — requesty, znaki, pliki) "
             "i są zliczane per dzień — zakres powyżej agreguje dni kalendarzowe. "
             "Tokeny pochodzą z pola usage w odpowiedziach API — niektóre modele/proxy mogą go nie zwracać "
-            "(wtedy liczone są tylko requesty). Dane są lokalne (usage_stats.json) i nie zawierają cen."
+            "(wtedy liczone są tylko requesty). Koszt to szacunek wg cennika OpenRouter "
+            "(przycisk „Pobierz ceny”; TTS rozliczane per znak); „—” = brak dopasowanej ceny, "
+            "np. lokalne Kokoro jest darmowe. Dane są lokalne (user_files/usage_stats.json)."
         )
         hint.setStyleSheet("color: gray;")
         hint.setWordWrap(True)
@@ -127,22 +165,88 @@ class StatsTab(QWidget):
             )
         models = data.get("models", {})
 
+        def _model_cost(name: str, m: dict):
+            prices = self._pricing.get(name)
+            if not prices:
+                return None
+            try:
+                in_price, out_price = float(prices[0]), float(prices[1])
+            except (TypeError, ValueError, IndexError):
+                return None
+            return (
+                m.get("input_tokens", 0) * in_price
+                + m.get("output_tokens", 0) * out_price
+            )
+
         total_req = sum(m.get("requests", 0) for m in models.values())
         total_err = sum(m.get("errors", 0) for m in models.values())
         total_in = sum(m.get("input_tokens", 0) for m in models.values())
         total_out = sum(m.get("output_tokens", 0) for m in models.values())
-        self._summary.setText(
+        costs = {name: _model_cost(name, m) for name, m in models.items()}
+        known_costs = [c for c in costs.values() if c is not None]
+        summary = (
             f"{range_label}    ·    "
             f"Zaktualizowane notatki: {_fmt(data.get('notes_processed', 0))}    ·    "
             f"Requesty: {_fmt(total_req)} (błędy: {_fmt(total_err)})    ·    "
             f"Tokeny: {_fmt(total_in)} wej. / {_fmt(total_out)} wyj."
         )
+        if known_costs:
+            suffix = "" if len(known_costs) == len(models) else " (część modeli bez ceny)"
+            summary += f"    ·    Koszt: ~{_fmt_cost(sum(known_costs))}{suffix}"
+
+        # TTS — audio generation usage
+        tts_models = data.get("tts", {})
+
+        def _tts_cost(name: str, t: dict):
+            prices = self._pricing.get(name)
+            if not prices:
+                return None
+            try:
+                per_char = float(prices[0])
+            except (TypeError, ValueError, IndexError):
+                return None
+            return t.get("chars", 0) * per_char
+
+        tts_costs = {name: _tts_cost(name, t) for name, t in tts_models.items()}
+        if tts_models:
+            tts_files = sum(t.get("files", 0) for t in tts_models.values())
+            tts_chars = sum(t.get("chars", 0) for t in tts_models.values())
+            summary += f"    ·    TTS: {_fmt(tts_files)} plików / {_fmt(tts_chars)} zn."
+            known_tts = [c for c in tts_costs.values() if c is not None]
+            if known_tts:
+                summary += f" (~{_fmt_cost(sum(known_tts))})"
+        self._summary.setText(summary)
+
+        self._tts_label.setVisible(bool(tts_models))
+        self._tts_table.setVisible(bool(tts_models))
+        tts_rows = sorted(
+            tts_models.items(), key=lambda kv: kv[1].get("requests", 0), reverse=True
+        )
+        self._tts_table.setRowCount(len(tts_rows))
+        for i, (name, t) in enumerate(tts_rows):
+            cost = tts_costs.get(name)
+            values = [
+                name,
+                t.get("requests", 0),
+                t.get("errors", 0),
+                t.get("chars", 0),
+                t.get("files", 0),
+                _fmt_cost(cost) if cost is not None else "—",
+            ]
+            for col, val in enumerate(values):
+                item = QTableWidgetItem(_fmt(val) if isinstance(val, int) else str(val))
+                if col > 0:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                self._tts_table.setItem(i, col, item)
 
         rows = sorted(
             models.items(), key=lambda kv: kv[1].get("requests", 0), reverse=True
         )
         self._table.setRowCount(len(rows))
         for i, (name, m) in enumerate(rows):
+            cost = costs.get(name)
             values = [
                 name,
                 m.get("requests", 0),
@@ -150,6 +254,7 @@ class StatsTab(QWidget):
                 m.get("input_tokens", 0),
                 m.get("output_tokens", 0),
                 m.get("fields", 0),
+                _fmt_cost(cost) if cost is not None else "—",
             ]
             for col, val in enumerate(values):
                 item = QTableWidgetItem(_fmt(val) if isinstance(val, int) else str(val))
@@ -158,6 +263,62 @@ class StatsTab(QWidget):
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
                 self._table.setItem(i, col, item)
+
+    def _fetch_prices(self) -> None:
+        """Fetch the OpenRouter price list and match it to models seen in stats."""
+        from aqt import mw
+        from aqt.utils import showWarning, tooltip
+
+        self._prices_btn.setEnabled(False)
+        self._prices_btn.setText("Pobieranie...")
+
+        def task():
+            from ..ai_generator.providers.model_discovery import fetch_openrouter_chat_models
+            from ..ai_generator import stats
+            from ..tts.api import fetch_openrouter_tts_models
+            catalog = fetch_openrouter_chat_models(force=True)
+            tts_catalog = fetch_openrouter_tts_models(force=True)
+            data = stats.get_stats()
+            stat_keys = (
+                list(data.get("models", {}).keys())
+                + list(data.get("tts", {}).keys())
+            )
+            combined = list(catalog) + list(tts_catalog)
+            return stats.match_pricing(stat_keys, combined), len(combined)
+
+        def on_done(fut):
+            try:
+                try:
+                    pricing, catalog_size = fut.result()
+                except Exception:
+                    pricing, catalog_size = {}, 0
+                self._prices_btn.setEnabled(True)
+                self._prices_btn.setText("Pobierz ceny (OpenRouter)")
+                if not catalog_size:
+                    showWarning(
+                        "Nie udało się pobrać cennika z OpenRouter.\n"
+                        "Sprawdź połączenie z internetem."
+                    )
+                    return
+                self._pricing.update({k: list(v) for k, v in pricing.items()})
+
+                # Persist immediately — prices should survive even if the
+                # dialog is later cancelled.
+                from ..common import get_full_config, save_full_config
+                cfg = get_full_config()
+                cfg.setdefault("pricing", {})["models"] = self._pricing
+                save_full_config(cfg)
+
+                self._refresh()
+                tooltip(
+                    f"Dopasowano ceny dla {len(pricing)} modeli "
+                    f"(katalog: {catalog_size}).",
+                    period=4000,
+                )
+            except RuntimeError:
+                pass  # dialog was closed while fetching
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _reset(self) -> None:
         result = QMessageBox.question(

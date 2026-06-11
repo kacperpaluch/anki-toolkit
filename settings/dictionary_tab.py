@@ -102,12 +102,21 @@ class DictionaryTab(QWidget):
         self._btn_checks: dict[str, tuple] = {}
         btn_map = {"+".join(b.get("dictionaries", [])): b for b in buttons_cfg}
 
-        for label, keys in [
+        standard = [
             ("Diki",      ["diki_uk", "diki_us"]),
             ("Oxford",    ["oxford_uk", "oxford_us"]),
             ("Cambridge", ["cambridge_uk", "cambridge_us"]),
             ("Longman",   ["longman_uk", "longman_us"]),
-        ]:
+        ]
+        standard_keys = {"+".join(keys) for _label, keys in standard}
+        # Buttons configured by hand (custom dictionary combinations) get a
+        # checkbox too, instead of being silently dropped on save.
+        for key, b in btn_map.items():
+            if key in standard_keys or not isinstance(b, dict):
+                continue
+            standard.append((b.get("label", key), list(b.get("dictionaries", []))))
+
+        for label, keys in standard:
             key = "+".join(keys)
             b = btn_map.get(key, {})
             cb = QCheckBox(f"{label}  ({', '.join(keys)})")

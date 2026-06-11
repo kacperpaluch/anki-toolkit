@@ -15,7 +15,9 @@ def get_module_config(module_key: str, defaults: dict | None = None) -> dict:
     full = get_full_config()
     cfg = full.get(module_key, {})
     if defaults:
-        return {k: cfg.get(k, v) for k, v in defaults.items()}
+        # Merge instead of filtering to defaults' keys — otherwise any key
+        # missing from the defaults dict silently disappears from the config.
+        return {**defaults, **cfg}
     return cfg
 
 

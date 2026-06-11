@@ -40,9 +40,15 @@ class AnthropicProvider(BaseProvider):
                 self.last_error = f"Anthropic: unexpected response structure: {list(res_data.keys())}"
                 self.logger.error(self.last_error)
                 return None
-            text = content[0].get("text")
+            # With extended thinking the first block is "thinking" —
+            # find the first text block instead of assuming content[0].
+            text = next(
+                (block.get("text") for block in content
+                 if isinstance(block, dict) and block.get("type") == "text"),
+                None,
+            )
             if text is None:
-                self.last_error = f"Anthropic: missing 'text' in first content block (stop_reason={res_data.get('stop_reason')})"
+                self.last_error = f"Anthropic: no text block in response (stop_reason={res_data.get('stop_reason')})"
                 self.logger.error(self.last_error)
                 return None
             return text.strip()

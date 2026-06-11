@@ -92,10 +92,20 @@ def fetch_google_models(api_key: str, force: bool = False) -> list[str]:
 _OR_CHAT_CACHE = None
 
 def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
-    """Returns [{id, name, pricing, context_length}, ...]."""
+    """Returns [{id, name, pricing, prompt_price, completion_price, context_length}, ...].
+
+    prompt_price / completion_price are raw USD-per-token floats (or None) —
+    used by the stats tab to estimate costs.
+    """
     global _OR_CHAT_CACHE
     if _OR_CHAT_CACHE is not None and not force:
         return _OR_CHAT_CACHE
+
+    def _to_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     models = []
     try:
@@ -104,19 +114,18 @@ def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
             data = json.loads(resp.read().decode("utf-8"))
         for item in data.get("data", []):
             pricing_raw = item.get("pricing", {})
-            prompt_price = pricing_raw.get("prompt", "")
-            if prompt_price:
-                try:
-                    price_per_1m = float(prompt_price) * 1_000_000
-                    pricing_display = f"${price_per_1m:.2f}/1M tok"
-                except (ValueError, TypeError):
-                    pricing_display = "?"
+            prompt_price = _to_float(pricing_raw.get("prompt"))
+            completion_price = _to_float(pricing_raw.get("completion"))
+            if prompt_price is not None:
+                pricing_display = f"${prompt_price * 1_000_000:.2f}/1M tok"
             else:
                 pricing_display = "?"
             models.append({
                 "id": item.get("id", ""),
                 "name": item.get("name", item.get("id", "")),
                 "pricing": pricing_display,
+                "prompt_price": prompt_price,
+                "completion_price": completion_price,
                 "context_length": item.get("context_length", 0),
             })
     except Exception as e:

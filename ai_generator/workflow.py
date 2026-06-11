@@ -1,12 +1,19 @@
-"""Workflow — run AI → Dictionary → TTS in sequence for one note (editor)."""
+"""Workflow — run AI → Dictionary → TTS in sequence for one note (editor).
+
+execute_step() is the shared single-step executor — also used by the
+browser batch (browser_ui). It runs on a background thread, mutates the
+note in memory and never writes to the collection; persisting is the
+caller's job (on the main thread).
+"""
 
 import logging
+from typing import Optional
 
 from aqt import mw
 from aqt.utils import tooltip
 from aqt.editor import Editor
 
-from ..common import ADDON_NAME
+from ..common import ADDON_NAME, plural_pl
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +23,36 @@ _RUNNING: set[int] = set()
 def get_workflow_config() -> dict:
     full = mw.addonManager.getConfig(ADDON_NAME) or {}
     return full.get("workflow", {})
+
+
+def execute_step(note, step: dict) -> tuple[bool, Optional[str]]:
+    """Execute a single workflow step on a note (background thread).
+
+    Returns (modified, error_message). The note is mutated in memory only.
+    """
+    module = step.get("module", "")
+    action = step.get("action", "")
+
+    if module == "ai" and action == "generate":
+        from ._generator import get_generator
+        gen = get_generator()
+        changed = gen.process_note(note)
+        return bool(changed), gen.last_error
+
+    if module == "dictionary" and action == "fetch":
+        dicts = step.get("dicts", [])
+        if not dicts:
+            return False, None
+        from ..dictionary.service import process_note_group
+        config_full = mw.addonManager.getConfig(ADDON_NAME) or {}
+        result = process_note_group(note, config_full.get("dictionary", {}), dicts)
+        return result.note_modified, None
+
+    if module == "tts" and action == "generate":
+        from ..tts.processor import process_single_note
+        return process_single_note(note)
+
+    return False, None
 
 
 def run_workflow_editor(editor: Editor):
@@ -48,6 +85,7 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
 
     All steps operate on the note captured when the workflow started, so
     switching notes in the editor mid-run cannot corrupt another note.
+    Collection writes happen on the main thread, after each step.
     """
     total = len(steps)
 
@@ -59,7 +97,11 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
                     editor.loadNote()
             except Exception:
                 pass  # editor may have been closed mid-run
-            tooltip(f"Workflow zakończony. Wykonano {total} kroków.", period=5000)
+            tooltip(
+                f"Workflow zakończony. Wykonano {total} "
+                f"{plural_pl(total, 'krok', 'kroki', 'kroków')}.",
+                period=5000,
+            )
             return
 
         step = steps[i]
@@ -68,17 +110,18 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
         logger.info(f"Workflow: krok {i + 1}/{total} ({module}/{action}), nid={note.id}")
 
         def bg_task():
-            try:
-                _execute_step(note, step)
-                return None
-            except Exception as e:
-                return str(e)
+            return execute_step(note, step)
 
         def on_done(future):
             try:
-                err = future.result()
+                modified, err = future.result()
             except Exception as e:
-                err = str(e)
+                modified, err = False, str(e)
+            if modified and note.id:
+                try:
+                    mw.col.update_note(note)
+                except Exception as e:
+                    err = err or str(e)
             if err:
                 logger.error(f"Workflow: krok {i + 1}/{total} ({module}/{action}): {err}")
                 tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
@@ -87,31 +130,3 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
         mw.taskman.run_in_background(bg_task, on_done)
 
     run_step(0)
-
-
-def _execute_step(note, step: dict):
-    """Execute a single workflow step on a note (called from bg thread, modifies note in place)."""
-    module = step.get("module", "")
-    action = step.get("action", "")
-
-    if module == "ai" and action == "generate":
-        from ._generator import get_generator
-        gen = get_generator()
-        gen.process_note(note)
-        if note.id:
-            mw.col.update_note(note)
-
-    elif module == "dictionary" and action == "fetch":
-        dicts = step.get("dicts", [])
-        if not dicts:
-            return
-        from ..dictionary.service import process_note_group
-        config_full = mw.addonManager.getConfig(ADDON_NAME) or {}
-        dict_config = config_full.get("dictionary", {})
-        result = process_note_group(note, dict_config, dicts)
-        if result.note_modified and note.id:
-            mw.col.update_note(note)
-
-    elif module == "tts" and action == "generate":
-        from ..tts.processor import process_single_note
-        process_single_note(note)

@@ -85,6 +85,7 @@
         "skip_tags": ["skip-ai"],
         "batch_limit": 3,
         "batch_sleep": 1.0,
+        "parallel_requests": 3,
         "max_retries": 3,
         "request_timeout": 30,
 

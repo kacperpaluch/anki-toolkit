@@ -9,11 +9,25 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-HISTORY_FILE = "processed_history.json"
+HISTORY_FILE = "audio_normalizer_history.json"
+_LEGACY_HISTORY = os.path.join(os.path.dirname(__file__), "processed_history.json")
 
 def get_history_path():
-    addon_dir = os.path.dirname(__file__)
-    return os.path.join(addon_dir, HISTORY_FILE)
+    # user_files/ survives addon updates — module dirs are wiped on update,
+    # and losing the history would re-normalize (re-encode) every file.
+    addon_dir = os.path.dirname(os.path.dirname(__file__))
+    return os.path.join(addon_dir, "user_files", HISTORY_FILE)
+
+def _migrate_legacy_history():
+    path = get_history_path()
+    try:
+        if os.path.exists(_LEGACY_HISTORY) and not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            os.replace(_LEGACY_HISTORY, path)
+    except OSError:
+        pass
+
+_migrate_legacy_history()
 
 def load_history():
     """Ładuje historię przetworzonych plików."""
@@ -29,6 +43,7 @@ def load_history():
 def save_history(history):
     """Zapisuje historię przetworzonych plików."""
     path = get_history_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)
 

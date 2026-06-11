@@ -65,15 +65,19 @@ anki-toolkit/
 │   ├── dictionary_service.py
 │   └── ipa_service.py
 │
+├── user_files/                      # dane użytkownika — przeżywają aktualizację wtyczki
+│   ├── usage_stats.json             # statystyki użycia AI
+│   └── audio_normalizer_history.json
+│
 ├── ai_generator/                    # Moduł 2
 │   ├── __init__.py
 │   ├── _generator.py
 │   ├── editor_ui.py
-│   ├── browser_ui.py
+│   ├── browser_ui.py                # batch AI (równoległy) + batch workflow + CollectionOp
 │   ├── field_generator.py
 │   ├── template_engine.py
-│   ├── stats.py                     # lokalne statystyki użycia (usage_stats.json)
-│   ├── workflow.py
+│   ├── stats.py                     # statystyki użycia (user_files/) + match_pricing()
+│   ├── workflow.py                  # execute_step() współdzielony przez edytor i batch
 │   └── providers/
 │       ├── __init__.py
 │       ├── base.py
@@ -91,8 +95,8 @@ anki-toolkit/
 │   ├── __init__.py
 │   ├── config.py                    # _DEFAULTS, get_tts_config(), validate_config(), get_tasks()
 │   ├── api.py                       # generate_audio(), _generate_kokoro(), _generate_openrouter(), fetch_openrouter_tts_models()
-│   ├── processor.py                 # process_task_async(), process_tasks_async(), process_single_note() — logika przetwarzania notatek
-│   └── editor_ui.py
+│   ├── processor.py                 # wspólne: build_note_work_items(), generate_for_items(), apply_results_to_note(); batch (CollectionOp) + process_single_note()
+│   └── editor_ui.py                 # przycisk edytora — używa wspólnych funkcji procesora
 │
 ├── filtered_deck/                   # Moduł 4
 │   └── __init__.py
@@ -119,9 +123,9 @@ anki-toolkit/
 | Katalog | Co robi | Punkt wejścia |
 |---|---|---|
 | `common/` | Współdzielone narzędzia: HTML cleaning, HTTP z retry, konfiguracja, widgety Qt — używane przez wszystkie moduły | importowane selektywnie |
-| `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor (async, `saveNow` przed fetchowaniem) + submenu batchowe (w tle, z paskiem postępu i anulowaniem) | `on_editor_buttons_init`, `add_to_context_menu` |
-| `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); batch w tle z grupowaniem i anulowaniem; workflow "Generuj fiszkę" (AI → Słownik → TTS); `reasoning_effort` z fallbackiem | `on_editor_buttons_init`, `add_to_context_menu` |
-| `tts/` | Generuje audio MP3 przez Kokoro lub OpenRouter TTS API; przycisk w edytorze + submenu w przeglądarce; "Uruchom wszystkie" działa jako jedna operacja z jednym paskiem postępu i podsumowaniem | `on_editor_buttons_init`, `add_to_context_menu` |
+| `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor (async, `saveNow` przed fetchowaniem) + submenu batchowe (w tle, z paskiem postępu i anulowaniem; zapis jednym `CollectionOp` = jeden krok undo) | `on_editor_buttons_init`, `add_to_context_menu` |
+| `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); batch w tle **równoległy** (`parallel_requests`, per-job `FieldGenerator`) z paczkami i anulowaniem, zapis jednym `CollectionOp`; batch workflow w przeglądarce ("Generuj fiszkę (workflow)"); workflow "Generuj fiszkę" w edytorze (AI → Słownik → TTS); `reasoning_effort` z fallbackiem | `on_editor_buttons_init`, `add_to_context_menu` |
+| `tts/` | Generuje audio MP3 przez Kokoro lub OpenRouter TTS API; przycisk w edytorze + submenu w przeglądarce; "Uruchom wszystkie" działa jako jedna operacja; Anuluj odwołuje niewystartowane żądania (`cancel_futures`); zapis batcha jednym `CollectionOp` | `on_editor_buttons_init`, `add_to_context_menu` |
 | `filtered_deck/` | Tworzy talię filtrowaną z formularzem ustawień; nazwa talii i deck docelowy konfigurowalne | `setup_menu(parent_menu)` |
 | `audio_normalizer/` | Normalizuje głośność plików audio ffmpegiem (EBU R128); po normalizacji synchronizuje zmodyfikowane pliki z Anki media DB przez `write_data()` | `setup_menu(parent_menu)` |
 | `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
@@ -199,14 +203,14 @@ settings/
 ```
 
 Zakładki (9 zakładek):
-- **Start** — dashboard gotowości: wynik pipeline'u, kafelki statusu, podgląd workflow i lista problemów z przyciskami nawigacji do zakładek
+- **Start** — dashboard pipeline'u: klikalne chipy kroków workflow (✓/⚠/○) ze strzałkami, globalny status (Gotowe / N rzeczy do zrobienia — liczony tylko z modułów faktycznie używanych), sekcja „Do zrobienia" (jedyne miejsce z problemami, przyciski Napraw), wiersz pozostałych modułów; `refresh(cfg)` odbudowuje zawartość — SettingsDialog wywołuje ją przy każdym przejściu na Start z configiem zebranym z **niezapisanego** stanu pozostałych zakładek (`_collect_config()`)
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
-- **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; dostawcy AI są rozdzieleni na karty, a limity batch/retry/request timeout są w sekcji **Zaawansowane**
+- **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; dostawcy AI są rozdzieleni na karty, a limity batch/parallel_requests/retry/request timeout są w sekcji **Zaawansowane**
 - **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (checklista), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
-- **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola), licznik zaktualizowanych notatek, przyciski Odśwież/Resetuj; dane z `ai_generator/stats.py`
+- **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola, **szacowany koszt**) + osobna tabela **TTS** (requesty, błędy, znaki, pliki, koszt per znak; `record_tts()` wołane z `tts/api.generate_audio()` dla Kokoro i OpenRouter), licznik zaktualizowanych notatek, przyciski Odśwież/Pobierz ceny (OpenRouter)/Resetuj; ceny dopasowywane przez `stats.match_pricing()` (normalizacja nazw: data-sufiks, kropki/myślniki, prefix-match; katalog chat + TTS) i zapisywane w configu pod `pricing.models`; dane z `ai_generator/stats.py`
 - **Logi** — checkbox trybu debugowania (config `debug.enabled`, działa od razu po przełączeniu), podgląd bufora logów wtyczki w pamięci (`common/debug_log.py`, ostatnie 2000 wpisów, auto-odświeżanie co 2 s), przyciski Odśwież/Kopiuj/Wyczyść; bez debugowania rejestrowane INFO+, z debugowaniem DEBUG+
 
 ### Sekcja `modules` — włączanie/wyłączanie modułów
@@ -246,13 +250,13 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `config.json` | Szablon domyślny (nie nadpisywany — patrz wyżej) |
 | `common/consts.py` | `ADDON_NAME` — wyliczane z `__name__` (nazwa folderu wtyczki), używane przez wszystkie moduły; config działa nawet gdy folder nie nazywa się `anki-toolkit` |
 | `common/html.py` | `clean_html()`, `clean_html_normalized()` — czyszczenie HTML, używane przez dictionary, ai_generator, tts |
-| `common/text.py` | `unique()`, `safe_float()`, `safe_str()`, `unique_filename()`, `normalize_float()` |
+| `common/text.py` | `unique()`, `safe_float()`, `safe_str()`, `unique_filename()`, `normalize_float()`, `split_separator_regex()` (separator splitu z tolerancją białych znaków), `plural_pl()` (polska liczba mnoga) |
 | `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
 | `common/ui.py` | Widgety Qt: `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_templates_for_field` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog` |
-| `settings/status_tab.py` | Zakładka Start — dashboard gotowości, statusy Workflow/AI/Promptów/Słownika/TTS, pipeline i problemy konfiguracyjne |
+| `settings/status_tab.py` | Zakładka Start — dashboard pipeline'u: chipy kroków workflow, globalny status, lista „Do zrobienia", wiersz modułów pomocniczych; `refresh(cfg)` przebudowuje widok |
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |
 | `settings/dictionary_tab.py` | Zakładka Słownik — `DictionaryTab` |
 | `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`, `_PROVIDER_NAMES` |
@@ -262,17 +266,17 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
 | `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
 | `settings/logs_tab.py` | Zakładka Logi — `LogsTab`, tryb debugowania + podgląd bufora logów (czyta `common/debug_log.py`) |
-| `ai_generator/stats.py` | Lokalne statystyki użycia AI — `record_request()`, `record_note()`, `get_stats(days=None, start=None, end=None)`, `reset_stats()`; liczniki per dzień kalendarzowy (agregacja zakresów, w tym własny zakres dat inclusive), zapis do `usage_stats.json` (gitignored), thread-safe (`threading.Lock`) |
+| `ai_generator/stats.py` | Lokalne statystyki użycia — `record_request()`, `record_note()`, `record_tts()` (TTS: requesty/błędy/znaki/pliki per model), `get_stats(days=None, start=None, end=None)` (zwraca też sekcję `tts`), `reset_stats()`, `match_pricing()` (dopasowanie cennika OpenRouter do kluczy statystyk); liczniki per dzień kalendarzowy, zapis do `user_files/usage_stats.json` (migracja legacy przy imporcie), thread-safe (`threading.Lock`) |
 | `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
 | `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()` |
 | `ai_generator/providers/base.py` | ABC dla nowych providerów — implementuj `call_api()` |
 | `ai_generator/providers/openai_compat.py` | Helpery dla OpenAI-compatible Chat Completions: wykrywa modele OpenAI reasoning, pomija `temperature`, parsuje `message.content` string/list, wykrywa błąd unsupported `reasoning_effort` |
 | `ai_generator/providers/opencode_go.py` | OpenCode Go — auto-detect formatu (Chat Completions vs Anthropic Messages), `User-Agent` header, reasoning jako wolny tekst |
 | `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera (w tym `fetch_opencode_go_models`) |
-| `ai_generator/field_generator.py` | Główna logika generowania — niezależna od UI; zwraca `dict[str, str]` wypełnionych pól |
+| `ai_generator/field_generator.py` | Główna logika generowania — niezależna od UI; zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła) |
 | `ai_generator/editor_ui.py` | UI edytora — główny przycisk workflow przed przyciskiem AI, async (`run_in_background` + `saveNow`), ochrona `_GENERATING` |
-| `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — sekwencyjne AI → Dict → TTS na pojedynczej notatce, guard `_RUNNING` |
-| `ai_generator/browser_ui.py` | UI przeglądarki — batch z QProgressDialog, tooltip podsumowania |
+| `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
+| `ai_generator/browser_ui.py` | UI przeglądarki — batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
 | `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING` |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
@@ -280,8 +284,8 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
 | `tts/config.py` | Konfiguracja TTS — `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` |
 | `tts/api.py` | API TTS — `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` |
-| `tts/processor.py` | Przetwarzanie notatek — `process_task_async()`, `process_tasks_async()`, `process_single_note()` (równoległe przez `ThreadPoolExecutor`, używane przez workflow), `_collect_work_items()`, `_save_batch_results()` |
-| `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`, task-indexed wyników |
+| `tts/processor.py` | Przetwarzanie notatek — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async()` (zapis jednym `CollectionOp`); `process_single_note() -> (changed, error)` — bez zapisu do kolekcji, używane przez workflow |
+| `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`; używa wspólnych funkcji procesora |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
 | `nbsp_remover/collection.py` | Masowe czyszczenie kolekcji przez `CollectionOp` + `clean_field()` |
@@ -332,7 +336,7 @@ dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_c
 ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_context_menu
     └── _generator.py           ← zarządzanie stanem generatora (config-aware cache, reset); używa common/ADDON_NAME
     └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard
-    └── browser_ui.py           ← add_to_context_menu (akcja przeglądarki + batch)
+    └── browser_ui.py           ← add_to_context_menu (batch AI równoległy + batch workflow; zapis przez CollectionOp)
     └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_float, safe_str
         └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
@@ -342,8 +346,8 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
 tts/__init__.py                 ← add_to_context_menu + exports on_editor_buttons_init
     └── config.py               (_DEFAULTS, get_tts_config, validate_config, get_tasks); używa common/config get_module_config
     └── api.py                  (generate_audio dispatcher, fetch_openrouter_tts_models); używa common/normalize_float, extract_http_error, RETRYABLE_STATUS_CODES
-    └── processor.py            (process_task_async, process_tasks_async, process_single_note, _collect_work_items, _save_batch_results); używa common/unique_filename, clean_html
-    └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config); używa common/unique_filename, clean_html, unique
+    └── processor.py            (build_note_work_items, generate_for_items, apply_results_to_note, process_task_async, process_tasks_async, process_single_note); używa common/unique_filename, clean_html, split_separator_regex
+    └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config); używa processor.build_note_work_items/generate_for_items/apply_results_to_note
 
 audio_normalizer/__init__.py
     └── gui.py                  (ProgressDialog, Worker(QThread)); używa common/ADDON_NAME
@@ -351,7 +355,7 @@ audio_normalizer/__init__.py
             └── config.py       (wartości domyślne: FFMPEG_CMD, LOUDNORM_OPTS, MAX_WORKERS)
 
 settings/__init__.py            (SettingsDialog, open_settings); używa common/ADDON_NAME, get_full_config, save_full_config
-    ├── status_tab.py           (StatusTab — dashboard gotowości + nawigacja do zakładek)
+    ├── status_tab.py           (StatusTab — dashboard pipeline'u, refresh(cfg) wołane przy przejściu na Start)
     ├── modules_tab.py          (ModulesTab)
     ├── dictionary_tab.py       (DictionaryTab); używa common/ui widgetów
     ├── ai_generator_tab.py     (AIGeneratorTab); używa common/ui widgetów, common/ADDON_NAME

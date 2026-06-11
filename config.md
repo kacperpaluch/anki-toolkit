@@ -82,6 +82,8 @@ Konfiguracja wyłącznie przez edycję `config.json`. Akcje TTS dostępne przez 
 
 **`batch_sleep`** — pauza w sekundach między grupami kart w trybie batch (zapobiega limitom API).
 
+**`parallel_requests`** — liczba notatek przetwarzanych równolegle w batchu przeglądarki. Domyślnie `3`. Wyższe wartości przyspieszają batch, ale zwiększają ryzyko limitów API (429).
+
 **`max_retries`** — liczba prób przy błędach API (429, 5xx). Domyślnie `3`. Dotyczy wszystkich providerów.
 
 **`request_timeout`** — timeout pojedynczego żądania do API AI w sekundach. Domyślnie `30`.

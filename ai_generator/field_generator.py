@@ -4,8 +4,6 @@ import logging
 from typing import Dict, Optional
 
 from anki.notes import Note
-from aqt import mw
-from aqt.utils import showWarning
 
 from ..common import clean_html_normalized, safe_float, safe_str
 
@@ -23,32 +21,43 @@ class FieldGenerator:
     Fields without "provider" are skipped.
 
     Providers are instantiated lazily and cached for the lifetime of the config.
+    Resolution failures (missing key, unknown provider) are cached too and
+    reported via last_error — no UI calls here, so batches with a broken
+    provider don't spawn one dialog per note.
     """
 
     def __init__(self, config: dict):
         self._config = config
-        self._providers: Dict[str, BaseProvider] = {}
+        self._providers: Dict[str, Optional[BaseProvider]] = {}
         self.last_error: Optional[str] = None
 
     def _resolve_provider(self, provider_name: str) -> Optional[BaseProvider]:
-        """Return a cached provider instance, creating it on first use."""
+        """Return a cached provider instance (or cached failure), creating it on first use."""
         if provider_name in self._providers:
-            return self._providers[provider_name]
+            provider = self._providers[provider_name]
+            if provider is None:
+                self.last_error = (
+                    f"Provider '{provider_name}' jest błędnie skonfigurowany "
+                    f"(szczegóły w logach)."
+                )
+            return provider
 
         providers_cfg = self._config.get("providers", {})
         provider_cfg = providers_cfg.get(provider_name)
 
         if provider_cfg is None:
-            msg = (f"Provider '{provider_name}' nie istnieje w sekcji "
-                   f"ai_generator.providers w config.json")
-            mw.taskman.run_on_main(lambda m=msg: showWarning(m))
+            self.last_error = (f"Provider '{provider_name}' nie istnieje w sekcji "
+                               f"dostawców AI — sprawdź Ustawienia → AI Generator.")
+            logger.error(self.last_error)
+            self._providers[provider_name] = None
             return None
 
         api_key = provider_cfg.get("api_key", "")
         if not api_key or api_key.startswith("YOUR_"):
-            msg = (f"Proszę podać klucz API dla providera '{provider_name}' "
-                   f"w sekcji ai_generator.providers w config.json")
-            mw.taskman.run_on_main(lambda m=msg: showWarning(m))
+            self.last_error = (f"Brak klucza API dla providera '{provider_name}' — "
+                               f"uzupełnij w Ustawienia → AI Generator → Dostawcy.")
+            logger.error(self.last_error)
+            self._providers[provider_name] = None
             return None
 
         try:
@@ -59,7 +68,9 @@ class FieldGenerator:
             self._providers[provider_name] = provider
             return provider
         except ValueError as e:
-            mw.taskman.run_on_main(lambda m=str(e): showWarning(m))
+            self.last_error = str(e)
+            logger.error(self.last_error)
+            self._providers[provider_name] = None
             return None
 
     def process_note(self, note: Note) -> dict[str, str]:

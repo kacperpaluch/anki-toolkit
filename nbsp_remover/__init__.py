@@ -1,4 +1,4 @@
-from aqt import mw
+from aqt import gui_hooks, mw
 from aqt.qt import QAction, QMessageBox
 
 from .addcards import init_addcards
@@ -20,6 +20,11 @@ def _confirm_purge():
         clean_collection()
 
 
+def _maybe_auto_clean():
+    if _get_config().get("auto_run_startup", False):
+        clean_collection()
+
+
 def setup_menu(parent_menu=None):
     menu = parent_menu or mw.form.menuTools
 
@@ -29,5 +34,10 @@ def setup_menu(parent_menu=None):
 
     init_addcards()
 
-    if _get_config().get("auto_run_startup", False):
-        clean_collection()
+    # Auto-clean must wait for the collection — at main_window_did_init the
+    # profile may not be open yet. If it already is, run directly (the hook
+    # would only fire again on a profile switch).
+    if mw.col is not None:
+        _maybe_auto_clean()
+    else:
+        gui_hooks.profile_did_open.append(_maybe_auto_clean)

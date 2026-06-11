@@ -4,7 +4,10 @@ import re
 
 NBSP = "&nbsp;"
 DIV_TAG_RE = r"</?div[^>]*>"
-DIV_WRAP_RE = r"<div[^>]*>(.*?)</div>"
+# Matches an innermost <div> block (no nested <div> inside) — applied in a
+# loop so nested divs are unwrapped inside-out instead of producing
+# unbalanced tags like a single non-greedy pass would.
+DIV_INNER_RE = re.compile(r"<div[^>]*>((?:(?!</?div\b).)*?)</div>", re.DOTALL | re.IGNORECASE)
 TRAILING_BR_RE = r"<br>\s*$"
 
 
@@ -24,9 +27,12 @@ def clean_field(name: str, value: str, skip_field: str) -> tuple[str, int, int, 
         if div_count:
             value = re.sub(DIV_TAG_RE, "", value)
     else:
-        div_br_count = len(re.findall(DIV_WRAP_RE, value, re.DOTALL))
+        while True:
+            value, replaced = DIV_INNER_RE.subn(r"\1<br>", value)
+            if not replaced:
+                break
+            div_br_count += replaced
         if div_br_count:
-            value = re.sub(DIV_WRAP_RE, r"\1<br>", value, flags=re.DOTALL)
             value = re.sub(TRAILING_BR_RE, "", value)
 
     return value, nbsp_count, div_count, div_br_count

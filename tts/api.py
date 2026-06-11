@@ -15,8 +15,31 @@ logger = logging.getLogger(__name__)
 def generate_audio(text: str, config: dict, voice: str) -> bytes:
     provider = config.get("tts_provider", "kokoro")
     if provider == "openrouter":
-        return _generate_openrouter(text, config, voice)
-    return _generate_kokoro(text, config, voice)
+        model = config.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")
+        generate = _generate_openrouter
+    else:
+        model = config.get("model", "kokoro")
+        generate = _generate_kokoro
+    try:
+        data = generate(text, config, voice)
+    except Exception:
+        _record_tts_stats(provider, model, len(text), error=True)
+        raise
+    _record_tts_stats(provider, model, len(text), error=False)
+    return data
+
+
+def _record_tts_stats(provider: str, model: str, chars: int, error: bool) -> None:
+    """Best-effort usage counting — must never break audio generation.
+
+    Counts the final outcome of one generate_audio() call (retries inside
+    the provider functions are not counted separately).
+    """
+    try:
+        from ..ai_generator.stats import record_tts
+        record_tts(provider, model, chars, error)
+    except Exception:
+        logger.debug("TTS stats: pominięto zapis statystyk", exc_info=True)
 
 
 def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
@@ -146,10 +169,11 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
     for item in data.get("data", []):
         pricing_raw = item.get("pricing", {})
         price_str = pricing_raw.get("prompt") or pricing_raw.get("input") or ""
+        prompt_price = None
         if price_str:
             try:
-                price_per_1k = float(price_str) * 1000
-                pricing_display = f"${price_per_1k:.3f}/1k zn"
+                prompt_price = float(price_str)  # USD per character
+                pricing_display = f"${prompt_price * 1000:.3f}/1k zn"
             except (ValueError, TypeError):
                 pricing_display = "?"
         else:
@@ -159,6 +183,7 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
             "name": item.get("name", item.get("id", "")),
             "voices": item.get("supported_voices", []),
             "pricing": pricing_display,
+            "prompt_price": prompt_price,
         })
     models.sort(key=lambda m: m["name"].lower())
     _OR_MODELS_CACHE = models

@@ -1,12 +1,52 @@
+"""Browser batch actions — AI field generation and full workflow for selected notes."""
+
+import concurrent.futures
+import logging
+import threading
 import time
 
 from aqt import mw
+from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ._generator import get_generator, get_config
+from ._generator import get_config
+from .field_generator import FieldGenerator
 
+logger = logging.getLogger(__name__)
+
+
+def _make_progress(browser: Browser, label: str, total: int, title: str):
+    progress = QProgressDialog(label, "Anuluj", 0, total, browser)
+    progress.setWindowTitle(title)
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setAutoClose(False)
+    progress.setAutoReset(False)
+    progress.setValue(0)
+
+    cancel_flag = {"cancelled": False}
+    progress.canceled.connect(lambda: cancel_flag.update(cancelled=True))
+    return progress, cancel_flag
+
+
+def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
+    """Persist modified notes as one undoable operation, then show the summary."""
+    if not changed_notes:
+        tooltip(summary, period=8000)
+        return
+    CollectionOp(
+        parent=browser,
+        op=lambda col: col.update_notes(changed_notes),
+    ).success(
+        lambda _changes: tooltip(summary, period=8000)
+    ).run_in_background()
+
+
+# ---------------------------------------------------------------------------
+# AI fields batch (parallel)
+# ---------------------------------------------------------------------------
 
 def _on_generate_browser(browser: Browser):
     config = get_config()
@@ -17,52 +57,59 @@ def _on_generate_browser(browser: Browser):
 
     batch_limit: int = max(1, config.get("batch_limit", 3))
     sleep_time: float = config.get("batch_sleep", 1.0)
-    gen = get_generator()
+    parallel: int = max(1, int(config.get("parallel_requests", 3)))
 
-    mw.checkpoint("AI Generate")
+    progress, cancel_flag = _make_progress(
+        browser, "Generowanie przez AI...", len(nids), "AI Generator"
+    )
 
-    progress = QProgressDialog("Generowanie przez AI...", "Anuluj", 0, len(nids), browser)
-    progress.setWindowTitle("AI Generator")
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.setAutoClose(False)
-    progress.setAutoReset(False)
-    progress.setValue(0)
+    state = {"done": 0, "changed": 0, "failures": 0, "last_error": None}
+    changed_notes: list = []
+    lock = threading.Lock()
 
-    cancel_flag = {"cancelled": False}
+    def process_one(nid):
+        # Each call gets its own FieldGenerator — provider instances keep
+        # per-request state (last_error, last_usage), so sharing one across
+        # worker threads would cross-attribute errors and token usage.
+        gen = FieldGenerator(config)
+        try:
+            note = mw.col.get_note(nid)
+            changed = gen.process_note(note)
+        except Exception as e:
+            with lock:
+                state["failures"] += 1
+                state["last_error"] = str(e)
+                state["done"] += 1
+                done = state["done"]
+            _report_progress(done)
+            return
+        with lock:
+            if changed:
+                changed_notes.append(note)
+                state["changed"] += 1
+            elif gen.last_error:
+                state["failures"] += 1
+                state["last_error"] = gen.last_error
+            state["done"] += 1
+            done = state["done"]
+        _report_progress(done)
 
-    def _set_cancelled():
-        cancel_flag["cancelled"] = True
-
-    progress.canceled.connect(_set_cancelled)
-
-    count = 0
-    failures = 0
-    last_error = None
-    cancelled = False
+    def _report_progress(done: int):
+        def _update(d=done):
+            progress.setLabelText(f"Przetwarzanie {d}/{len(nids)}...")
+            progress.setValue(d)
+        mw.taskman.run_on_main(_update)
 
     def task():
-        nonlocal count, failures, last_error, cancelled
-        for i, nid in enumerate(nids):
-            if cancel_flag["cancelled"]:
-                cancelled = True
-                break
-
-            if i > 0 and i % batch_limit == 0 and sleep_time > 0:
-                time.sleep(sleep_time)
-
-            def _update(i=i):
-                progress.setLabelText(f"Przetwarzanie {i + 1}/{len(nids)}...")
-                progress.setValue(i + 1)
-            mw.taskman.run_on_main(_update)
-
-            note = mw.col.get_note(nid)
-            if gen.process_note(note):  # dict — truthy when non-empty
-                mw.col.update_note(note)
-                count += 1
-            elif gen.last_error:
-                failures += 1
-                last_error = gen.last_error
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
+            for start in range(0, len(nids), batch_limit):
+                if cancel_flag["cancelled"]:
+                    break
+                if start > 0 and sleep_time > 0:
+                    time.sleep(sleep_time)
+                chunk = nids[start:start + batch_limit]
+                futures = [pool.submit(process_one, nid) for nid in chunk]
+                concurrent.futures.wait(futures)
 
     def on_done(fut):
         progress.close()
@@ -71,20 +118,106 @@ def _on_generate_browser(browser: Browser):
         except Exception as e:
             tooltip(f"Błąd podczas generowania: {e}", period=5000)
             return
-        mw.reset()
-        parts = [f"Zaktualizowano: {count}"]
-        if failures:
-            parts.append(f"błędy: {failures}")
-        if cancelled:
+        parts = [f"Zaktualizowano: {state['changed']}"]
+        if state["failures"]:
+            parts.append(f"błędy: {state['failures']}")
+        if cancel_flag["cancelled"]:
             parts.append("przerwano")
-        if last_error:
-            parts.append(last_error)
-        tooltip(" · ".join(parts), period=8000 if last_error else 4000)
+        if state["last_error"]:
+            parts.append(state["last_error"])
+        _save_changed_notes(browser, changed_notes, " · ".join(parts))
+
+    mw.taskman.run_in_background(task, on_done)
+
+
+# ---------------------------------------------------------------------------
+# Workflow batch — AI → Dictionary → TTS for each selected note
+# ---------------------------------------------------------------------------
+
+def _on_workflow_browser(browser: Browser):
+    from .workflow import get_workflow_config, execute_step
+
+    wf = get_workflow_config()
+    steps = [s for s in wf.get("steps", []) if isinstance(s, dict)]
+    if not steps:
+        tooltip("Brak skonfigurowanego workflow. Sprawdź ustawienia.")
+        return
+
+    nids = browser.selected_notes()
+    if not nids:
+        tooltip("Nie zaznaczono żadnych notatek.")
+        return
+
+    label = wf.get("editor_label", "Generuj fiszkę")
+    progress, cancel_flag = _make_progress(
+        browser, f"{label}...", len(nids), "Workflow"
+    )
+
+    state = {"errors": 0, "last_error": None}
+    changed_notes: list = []
+
+    def task():
+        for i, nid in enumerate(nids):
+            if cancel_flag["cancelled"]:
+                break
+
+            def _update(i=i):
+                progress.setLabelText(f"{label}: notatka {i + 1}/{len(nids)}...")
+                progress.setValue(i + 1)
+            mw.taskman.run_on_main(_update)
+
+            try:
+                note = mw.col.get_note(nid)
+            except Exception as e:
+                state["errors"] += 1
+                state["last_error"] = str(e)
+                continue
+
+            note_modified = False
+            for step in steps:
+                if cancel_flag["cancelled"]:
+                    break
+                try:
+                    modified, err = execute_step(note, step)
+                except Exception as e:
+                    modified, err = False, str(e)
+                note_modified = note_modified or modified
+                if err:
+                    state["errors"] += 1
+                    state["last_error"] = err
+                    logger.error(f"Workflow batch (nid={nid}): {err}")
+            if note_modified:
+                changed_notes.append(note)
+
+    def on_done(fut):
+        progress.close()
+        try:
+            fut.result()
+        except Exception as e:
+            tooltip(f"Błąd workflow: {e}", period=5000)
+            return
+        parts = [f"Zaktualizowano: {len(changed_notes)}"]
+        if state["errors"]:
+            parts.append(f"błędy: {state['errors']}")
+        if cancel_flag["cancelled"]:
+            parts.append("przerwano")
+        if state["last_error"]:
+            parts.append(state["last_error"])
+        _save_changed_notes(browser, changed_notes, " · ".join(parts))
 
     mw.taskman.run_in_background(task, on_done)
 
 
 def add_to_context_menu(browser: Browser, menu):
+    from .workflow import get_workflow_config
+
+    wf = get_workflow_config()
+    if wf.get("enabled", True) and wf.get("steps"):
+        label = wf.get("editor_label", "Generuj fiszkę")
+        wf_action = QAction(f"{label} (workflow)", browser)
+        qconnect(wf_action.triggered, lambda: _on_workflow_browser(browser))
+        menu.addAction(wf_action)
+
     action = QAction("Generuj pola", browser)
     qconnect(action.triggered, lambda: _on_generate_browser(browser))
     menu.addAction(action)
