@@ -1,14 +1,12 @@
 """Settings dialog for Anki Toolkit — unified configuration UI."""
 
 from aqt import mw
-from aqt.qt import (
-    QDialog, QTabWidget, QVBoxLayout, QLabel,
-    QDialogButtonBox, Qt,
-)
+from aqt.qt import QDialog, QTabWidget, QVBoxLayout, QDialogButtonBox
 from aqt.utils import tooltip
 from aqt.utils import showWarning
 
 from ..common import ADDON_NAME, get_full_config, save_full_config, set_debug
+from ..common.ui import hint_label
 
 from .status_tab import StatusTab
 from .modules_tab import ModulesTab
@@ -66,12 +64,12 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(self._tabs)
 
-        info = QLabel(
-            "Uwaga: config.json w folderze wtyczki to szablon domyślny — nie jest nadpisywany. "
-            "Zmiany są zapisywane w profilu Anki i widoczne po ponownym otwarciu tego dialogu."
+        info = hint_label("ⓘ Gdzie są zapisywane ustawienia?", small=True)
+        info.setToolTip(
+            "config.json w folderze wtyczki to szablon domyślny — nie jest nadpisywany.\n"
+            "Zmiany są zapisywane w profilu Anki (meta.json) i widoczne po ponownym\n"
+            "otwarciu tego dialogu."
         )
-        info.setStyleSheet("color: gray; font-size: 11px;")
-        info.setWordWrap(True)
         layout.addWidget(info)
 
         buttons = QDialogButtonBox(

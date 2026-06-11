@@ -17,6 +17,7 @@ def load_module(name: str, relative_path: str):
 
 
 template_engine = load_module("template_engine", "ai_generator/template_engine.py")
+prompt_templates = load_module("prompt_templates", "settings/prompt_templates.py")
 html_helpers = load_module("html_helpers", "common/html.py")
 text_helpers = load_module("text_helpers", "common/text.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
@@ -264,6 +265,48 @@ class AiStatsTests(unittest.TestCase):
             # zakres poza danymi → pusto
             empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
             self.assertEqual(empty["models"], {})
+
+
+class PromptTemplatesTests(unittest.TestCase):
+    def _mapping_for(self, template):
+        mapping = {key: f"pole_{key}" for key, _label, _hints in template["params"]}
+        cond = template.get("conditional")
+        if cond:
+            mapping[cond["param"][0]] = "pole_" + cond["param"][0]
+        return mapping
+
+    def test_all_templates_build_valid_prompts(self):
+        for template in prompt_templates.TEMPLATES:
+            for use_cond in (False, True):
+                mapping = self._mapping_for(template)
+                prompt = prompt_templates.build_prompt(template, mapping, use_cond)
+                self.assertNotIn("«", prompt, f"leftover placeholder in {template['id']}")
+                self.assertEqual(
+                    template_engine.template_structure_problems(prompt), [],
+                    f"invalid block structure in {template['id']} (cond={use_cond})",
+                )
+
+    def test_conditional_template_renders_both_branches(self):
+        examples = next(t for t in prompt_templates.TEMPLATES if t["id"] == "examples")
+        mapping = {"word": "ang", "translation": "pol", "definition": "def"}
+        prompt = prompt_templates.build_prompt(examples, mapping, use_conditional=True)
+
+        with_def = template_engine.render_template(
+            prompt, {"ang": "book", "pol": "rezerwować", "def": "to arrange"}
+        )
+        self.assertIn("DEF: to arrange", with_def)
+
+        without_def = template_engine.render_template(
+            prompt, {"ang": "book", "pol": "rezerwować", "def": ""}
+        )
+        self.assertNotIn("DEF:", without_def)
+        self.assertIn("book", without_def)
+
+    def test_guess_field(self):
+        fields = ["Ang", "pol", "Definicja", "IPA"]
+        self.assertEqual(prompt_templates.guess_field(["ang"], fields), "Ang")
+        self.assertEqual(prompt_templates.guess_field(["def", "definicja"], fields), "Definicja")
+        self.assertEqual(prompt_templates.guess_field(["brak"], fields), "")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ from aqt.qt import (
     QMessageBox, QDateEdit, QDate, Qt,
 )
 
+from ..common.ui import hint_label
+
 _CUSTOM = "custom"
 
 # (etykieta, liczba dni; None = całość, _CUSTOM = własny zakres dat)
@@ -127,7 +129,7 @@ class StatsTab(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        hint = QLabel(
+        layout.addWidget(hint_label(
             "Statystyki obejmują wywołania AI Generatora (przycisk AI, batch, workflow) "
             "oraz generowanie audio TTS (Kokoro i OpenRouter — requesty, znaki, pliki) "
             "i są zliczane per dzień — zakres powyżej agreguje dni kalendarzowe. "
@@ -135,10 +137,7 @@ class StatsTab(QWidget):
             "(wtedy liczone są tylko requesty). Koszt to szacunek wg cennika OpenRouter "
             "(przycisk „Pobierz ceny”; TTS rozliczane per znak); „—” = brak dopasowanej ceny, "
             "np. lokalne Kokoro jest darmowe. Dane są lokalne (user_files/usage_stats.json)."
-        )
-        hint.setStyleSheet("color: gray;")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        ))
 
         self._refresh()
 

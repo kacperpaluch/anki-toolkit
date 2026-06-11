@@ -6,6 +6,7 @@ from aqt.qt import (
 )
 
 from ..common import set_debug, get_log_lines, get_log_seq, clear_log
+from ..common.ui import hint_label
 
 
 class LogsTab(QWidget):
@@ -24,14 +25,12 @@ class LogsTab(QWidget):
         self._debug_cb.toggled.connect(set_debug)
         layout.addWidget(self._debug_cb)
 
-        hint = QLabel(
+        layout.addWidget(hint_label(
             "Logi modułów wtyczki (TTS, AI Generator, słownik...). Bufor trzymany w pamięci "
             "(ostatnie 2000 wpisów), czyszczony przy restarcie Anki. Bez trybu debugowania "
-            "rejestrowane są INFO/WARNING/ERROR. Widok odświeża się automatycznie co 2 s."
-        )
-        hint.setStyleSheet("color: gray; font-size: 11px;")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+            "rejestrowane są INFO/WARNING/ERROR. Widok odświeża się automatycznie co 2 s.",
+            small=True,
+        ))
 
         self._view = QPlainTextEdit()
         self._view.setReadOnly(True)

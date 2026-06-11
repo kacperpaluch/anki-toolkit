@@ -18,7 +18,7 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_templates_for_field
+│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
 │
 ├── user_files/                      # dane użytkownika (statystyki, historia) — przeżywają aktualizację wtyczki
 │
@@ -28,7 +28,9 @@ anki-toolkit/
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
-│   ├── prompts_tab.py               # Zakładka: Prompty
+│   ├── prompts_tab.py               # Zakładka: Prompty (edytor + podgląd + kolorowanie składni)
+│   ├── prompt_wizard.py             # Dialog „Nowe zadanie AI” (opcjonalny szablon startowy)
+│   ├── prompt_templates.py          # Startowe szablony promptów
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
@@ -119,7 +121,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **Start** | Dashboard pipeline'u: klikalne kroki workflow (✓/⚠/○) ze strzałkami, jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
-| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; w Zaawansowanych m.in. liczba równoległych żądań batcha |
+| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów, zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
@@ -235,7 +237,14 @@ Konfiguracja w **Ustawienia → AI Generator**:
 - `{{nazwa_pola}}` — wstawia wartość pola karty (oczyszczoną z HTML)
 - `{% if pole %} ... {% else %} ... {% endif %}` — warunek
 
-Edytor promptów podpowiada typ notatki i pole docelowe (comboboxy z danymi z kolekcji), ma przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet `{% if pole %}…{% else %}…{% endif %}`; zaznaczony tekst zostaje owinięty warunkiem) oraz walidację na żywo ostrzegającą o nieznanych polach w prompcie i błędach struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony).
+Edytor promptów (zakładka **Prompty**):
+
+- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca i opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
+- **Podgląd na przykładowej notatce** — przycisk **Podgląd…** otwiera okno, które renderuje finalny prompt na wybranej notatce z kolekcji (pola podstawione, HTML oczyszczony) i pokazuje, która gałąź każdego `{% if %}` zostanie użyta.
+- **Kolorowanie składni** — `{{pola}}` i bloki `{% if %}` są wyróżnione kolorem; pola nieistniejące w typie notatki dostają czerwone faliste podkreślenie.
+- Przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet warunku; zaznaczony tekst trafia do gałęzi „if").
+- Walidacja na żywo: nieznane pola, błędy struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony) oraz użycie pola generowanego przez późniejsze zadanie.
+- **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność, a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
 
 Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 
@@ -243,9 +252,8 @@ Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejn
 
 1. Utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider`
 2. Zaimplementuj `call_api(self, prompt) -> Optional[str]`
-3. Zarejestruj w `ai_generator/providers/__init__.py` w słowniku `PROVIDERS`
-4. Dodaj nazwę do listy `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
-5. Dodaj sekcję `providers.moj_provider` w `config.json`
+3. Zarejestruj w `ai_generator/providers/__init__.py` w słownikach `PROVIDERS` i `PROVIDER_LABELS` (UI ustawień buduje listy dostawców z tego rejestru)
+4. Dodaj sekcję `providers.moj_provider` w `config.json`
 
 #### OpenCode Go — szczegóły
 

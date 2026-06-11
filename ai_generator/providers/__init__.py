@@ -17,6 +17,17 @@ PROVIDERS = {
     "opencode_go": OpenCodeGoProvider,
 }
 
+# Display names for the UI — keys stay as config identifiers.
+PROVIDER_LABELS = {
+    "openai": "OpenAI",
+    "cometapi": "CometAPI",
+    "openrouter": "OpenRouter",
+    "anthropic": "Anthropic",
+    "google": "Google Gemini",
+    "mistral": "Mistral",
+    "opencode_go": "OpenCode Go",
+}
+
 
 def get_provider(provider_name: str, provider_cfg: dict,
                  max_retries: int = 3, timeout: int = 30) -> BaseProvider:

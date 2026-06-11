@@ -8,7 +8,7 @@ from aqt.qt import (
 )
 from aqt.utils import showWarning
 
-from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable
+from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable, hint_label
 
 _PROVIDERS = {"kokoro": "Kokoro (lokalny Docker)", "openrouter": "OpenRouter (API)"}
 
@@ -112,6 +112,12 @@ class TTSTab(QWidget):
         self._model = _expanding_line_edit(t.get("model", "kokoro"))
         kf.addRow("URL API:", self._api_url)
         kf.addRow("Model:", self._model)
+        kf.addRow(hint_label(
+            "Przykładowe głosy Kokoro:\n"
+            "  EN (F): af_bella, af_heart, af_nova, af_sky, af_sarah\n"
+            "  EN (M): am_adam, am_echo, am_michael, bm_lewis, bm_george\n"
+            "Pełna lista głosów w tts/README.md"
+        ))
         self._stack.addWidget(kokoro_page)
 
         # Page 1: OpenRouter
@@ -154,11 +160,9 @@ class TTSTab(QWidget):
         mh.addWidget(self._or_fetch_btn)
         orf.addRow("Model:", model_row)
 
-        self._or_voice_hint = QLabel(
+        self._or_voice_hint = hint_label(
             'Kliknij "Pobierz" aby załadować listę modeli i głosów.'
         )
-        self._or_voice_hint.setWordWrap(True)
-        self._or_voice_hint.setStyleSheet("color: gray;")
         orf.addRow(self._or_voice_hint)
 
         sel_row = QWidget()
@@ -184,19 +188,25 @@ class TTSTab(QWidget):
         orl.addStretch()
         self._stack.addWidget(or_page)
 
-        layout.addWidget(self._stack)
+        provider_group = QGroupBox("Ustawienia dostawcy")
+        pg_layout = QVBoxLayout(provider_group)
+        pg_layout.addWidget(self._stack)
+        layout.addWidget(provider_group)
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._on_provider_changed()
 
-        # -- Shared voices field --
+        # -- Shared voices field (hidden for OpenRouter once the checklist
+        #    has entries — then the checklist is the editor) --
         voices_form = QFormLayout()
         voices_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._voices = _expanding_line_edit(
             ", ".join(t.get("voices", ["af_bella"]))
         )
         self._voices.textChanged.connect(self._on_voices_text_changed)
-        voices_form.addRow("Głosy (oddzielone przecinkiem):", self._voices)
+        self._voices_label = QLabel("Głosy (oddzielone przecinkiem):")
+        voices_form.addRow(self._voices_label, self._voices)
         layout.addLayout(voices_form)
+        self._update_voices_row_visibility()
 
         # -- Speed --
         speed_form = QFormLayout()
@@ -239,14 +249,11 @@ class TTSTab(QWidget):
         bh.addStretch()
         tasks_layout.addWidget(btn_row)
 
-        tasks_hint = QLabel(
+        tasks_layout.addWidget(hint_label(
             "Zadania definiują pozycje w menu TTS. Każde zadanie ma etykietę,"
             " pole źródłowe, docelowe i tryb (single/split).\n"
             "Menu jest budowane dynamicznie — możesz dodawać własne zadania."
-        )
-        tasks_hint.setStyleSheet("color: gray;")
-        tasks_hint.setWordWrap(True)
-        tasks_layout.addWidget(tasks_hint)
+        ))
 
         layout.addWidget(tasks_group)
 
@@ -259,16 +266,6 @@ class TTSTab(QWidget):
             ]
         self._refresh_task_list()
 
-        layout.addSpacing(8)
-
-        kokoro_hint = QLabel(
-            "Przykładowe głosy Kokoro:\n"
-            "  EN (F): af_bella, af_heart, af_nova, af_sky, af_sarah\n"
-            "  EN (M): am_adam, am_echo, am_michael, bm_lewis, bm_george\n"
-            "Pełna lista głosów w tts/README.md"
-        )
-        kokoro_hint.setStyleSheet("color: gray;")
-        layout.addWidget(kokoro_hint)
         layout.addSpacing(8)
 
         perf_group = QGroupBox("Wydajność i sieć")
@@ -307,6 +304,19 @@ class TTSTab(QWidget):
             self._stack.setCurrentIndex(1)
         else:
             self._stack.setCurrentIndex(0)
+        # Called once during __init__ before the voices row exists.
+        if hasattr(self, "_voices_label"):
+            self._update_voices_row_visibility()
+
+    def _update_voices_row_visibility(self):
+        """Text field is the editor for Kokoro / manual OpenRouter models;
+        once the OpenRouter checklist has voices, the checklist takes over."""
+        manual = (
+            self._provider.currentData() != "openrouter"
+            or self._or_voice_list.count() == 0
+        )
+        self._voices_label.setVisible(manual)
+        self._voices.setVisible(manual)
 
     def _on_use_ai_key_toggled(self):
         use_shared = self._or_use_ai_key.isChecked()
@@ -424,6 +434,7 @@ class TTSTab(QWidget):
 
         self._or_voice_list.blockSignals(False)
         self._on_voice_checklist_changed(None)
+        self._update_voices_row_visibility()
 
     def _on_voice_checklist_changed(self, _item):
         checked = []

@@ -18,7 +18,7 @@ from aqt.qt import (
 )
 
 from ..common import plural_pl
-from ..common.ui import _scrollable
+from ..common.ui import _scrollable, palette as _palette
 
 
 def _has_real_key(value: str) -> bool:
@@ -42,39 +42,6 @@ _UTILITY_MODULES = (
     ("nbsp_remover", "Czyszczenie HTML", "Narzędzia"),
     ("filtered_deck", "Talia filtrowana", "Narzędzia"),
 )
-
-
-def _palette() -> dict:
-    """Theme-aware colors — hardcoded light values are unreadable in night mode."""
-    try:
-        from aqt.theme import theme_manager
-        night = theme_manager.night_mode
-    except Exception:
-        night = False
-
-    if night:
-        return {
-            "ok_bg": "#1e3327", "ok_fg": "#7fce9e",
-            "warn_bg": "#3d3320", "warn_fg": "#e3b35c",
-            "off_bg": "#2b2e33", "off_fg": "#9aa3ad",
-            "frame_bg": "#2c2f33", "border": "#44484d",
-            "muted": "#9aa3ad",
-            "accent": "#7fb3e3",
-            "card_bg": "#25282c", "detail": "#b6bec7",
-            "issue_bg": "#3a3322", "issue_border": "#5c5230", "issue_fg": "#e0c98a",
-            "ready_fg": "#7fce9e",
-        }
-    return {
-        "ok_bg": "#eaf5ee", "ok_fg": "#1f7a3f",
-        "warn_bg": "#fff4dc", "warn_fg": "#8a5a00",
-        "off_bg": "#eef0f3", "off_fg": "#5c6570",
-        "frame_bg": "#f7f8fa", "border": "#d9dde3",
-        "muted": "#5c6570",
-        "accent": "#1f4f7a",
-        "card_bg": "white", "detail": "#4f5863",
-        "issue_bg": "#fffaf0", "issue_border": "#ead8aa", "issue_fg": "#5c3d00",
-        "ready_fg": "#1f7a3f",
-    }
 
 
 def _module_enabled(cfg: dict, key: str) -> bool:

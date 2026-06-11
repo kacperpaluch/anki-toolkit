@@ -42,7 +42,7 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_templates_for_field
+│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
 │
 ├── settings/                        # dialog ustawień (wszystkie moduły, jeden UI)
 │   ├── __init__.py                  # SettingsDialog, open_settings()
@@ -50,7 +50,9 @@ anki-toolkit/
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
-│   ├── prompts_tab.py               # Zakładka: Prompty
+│   ├── prompts_tab.py               # Zakładka: Prompty (edytor + podgląd + kolorowanie składni)
+│   ├── prompt_wizard.py             # Dialog „Nowe zadanie AI” (opcjonalny szablon startowy)
+│   ├── prompt_templates.py          # Startowe szablony promptów (czysta logika, testowalna)
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
@@ -193,8 +195,10 @@ settings/
 ├── status_tab.py            # StatusTab — dashboard gotowości, pipeline, lista problemów
 ├── modules_tab.py           # ModulesTab
 ├── dictionary_tab.py        # DictionaryTab
-├── ai_generator_tab.py      # AIGeneratorTab + _PROVIDER_NAMES + model discovery + embedded PromptsTab
+├── ai_generator_tab.py      # AIGeneratorTab + model discovery + embedded PromptsTab; dostawcy jako lista+detal
 ├── prompts_tab.py           # PromptsTab (embedded in AI Generator tab, not standalone)
+├── prompt_wizard.py         # NewPromptDialog — dialog „Nowe zadanie AI”
+├── prompt_templates.py      # TEMPLATES + build_prompt() + guess_field() — czysta logika
 ├── tts_tab.py               # TTSTab
 ├── audio_normalizer_tab.py  # AudioNormalizerTab
 ├── narzedzia_tab.py         # NarzedziaTab
@@ -254,13 +258,15 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
-| `common/ui.py` | Widgety Qt: `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_templates_for_field` |
+| `common/ui.py` | Widgety Qt: `palette()` (kolory zależne od motywu — jedno źródło dla wszystkich zakładek), `hint_label()`, `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_sample_notes`, `get_templates_for_field` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog` |
 | `settings/status_tab.py` | Zakładka Start — dashboard pipeline'u: chipy kroków workflow, globalny status, lista „Do zrobienia", wiersz modułów pomocniczych; `refresh(cfg)` przebudowuje widok |
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |
 | `settings/dictionary_tab.py` | Zakładka Słownik — `DictionaryTab` |
-| `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`, `_PROVIDER_NAMES` |
-| `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`, `_PROVIDER_NAMES`; comboboxy typu notatki i pola docelowego z danymi z kolekcji, przyciski „Wstaw pole ▾" i „Wstaw warunek ▾" (owija zaznaczenie w `{% if %}`), walidacja na żywo: `{{pola}}` + struktura bloków `{% if %}` |
+| `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`; nazwy dostawców z rejestru `PROVIDERS`/`PROVIDER_LABELS`; dostawcy jako lista z detalem (✓/○ wg klucza API, aktualizowane na żywo) |
+| `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`; lista zadań w kolejności generowania (▲▼ + dopisek „zależy od"), comboboxy typu notatki i pola docelowego z danymi z kolekcji, przyciski „Wstaw pole ▾" i „Wstaw warunek ▾" (owija zaznaczenie w `{% if %}`), kolorowanie składni (`_TemplateHighlighter`, nieznane pola = faliste podkreślenie), walidacja na żywo: `{{pola}}` + struktura bloków `{% if %}` + użycie targetu późniejszego zadania, przycisk „Podgląd…" otwiera `PromptPreviewDialog` — render promptu na przykładowej notatce (`render_template` + rozstrzygnięcie gałęzi `{% if %}`) |
+| `settings/prompt_wizard.py` | `NewPromptDialog` — jednostronicowy dialog nowego zadania: typ notatki, pole docelowe, dostawca + opcjonalny szablon startowy (domyślnie pusty); po wybraniu szablonu mapowanie pól, blok `{% if %}` z checkboxa |
+| `settings/prompt_templates.py` | `TEMPLATES` (definicja, przykłady, część mowy, IPA, pusty), `build_prompt()`, `guess_field()` — czysta logika bez Anki, testowana w `tests/` |
 | `settings/tts_tab.py` | Zakładka TTS — `TTSTab` |
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
@@ -310,7 +316,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 1. Utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider`
 2. Zaimplementuj `call_api(self, prompt: str) -> Optional[str]`
 3. Zarejestruj w `ai_generator/providers/__init__.py` w słowniku `PROVIDERS`
-4. Dodaj do listy `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
+4. Dodaj etykietę do `PROVIDER_LABELS` tamże (UI ustawień buduje listy dostawców z rejestru)
 5. Dodaj sekcję `providers.moj_provider` w `config.json`
 
 ---
@@ -324,7 +330,7 @@ common/                         ← współdzielone narzędzia (html, http, text
     ├── text.py                 ← unique / safe_float / unique_filename — używane przez tts, ai_generator
     ├── http.py                 ← RETRYABLE_STATUS_CODES, fetch_url, fetch_text, extract_http_error — używane przez providers, dictionary, tts
     ├── config.py               ← get_full_config, get_module_config — używane przez tts/config.py, nbsp_remover/utils.py
-    └── ui.py                   ← widgety Qt, _expanding_line_edit, _api_key_widget, _scrollable — używane przez settings
+    └── ui.py                   ← widgety Qt, palette, hint_label, _expanding_line_edit, _api_key_widget, _scrollable — używane przez settings
 
 dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_context_menu (używa common/ui dla widgetów, common/consts dla ADDON_NAME)
     └── service.py              ← czysta logika biznesowa (ProcessNoteResult, process_note_group); używa common/clean_html_normalized
@@ -358,8 +364,10 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
     ├── status_tab.py           (StatusTab — dashboard pipeline'u, refresh(cfg) wołane przy przejściu na Start)
     ├── modules_tab.py          (ModulesTab)
     ├── dictionary_tab.py       (DictionaryTab); używa common/ui widgetów
-    ├── ai_generator_tab.py     (AIGeneratorTab); używa common/ui widgetów, common/ADDON_NAME
-    ├── prompts_tab.py          (PromptsTab); używa common/ui widgetów + get_note_type_names, get_fields_for_note_type
+    ├── ai_generator_tab.py     (AIGeneratorTab); używa common/ui widgetów, ai_generator/providers PROVIDERS+PROVIDER_LABELS
+    ├── prompts_tab.py          (PromptsTab); używa common/ui widgetów + get_note_type_names, get_fields_for_note_type, get_sample_notes, palette; template_engine render_template/IF_PATTERN
+    ├── prompt_wizard.py        (NewPromptDialog); używa prompt_templates + common/ui
+    ├── prompt_templates.py     (TEMPLATES, build_prompt, guess_field — bez zależności od Anki)
     ├── tts_tab.py              (TTSTab); używa common/ui widgetów, tts/api fetch_openrouter_tts_models
     ├── audio_normalizer_tab.py (AudioNormalizerTab); używa common/ui widgetów
     ├── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów

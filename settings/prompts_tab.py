@@ -1,20 +1,39 @@
-"""Prompts tab — two-panel editor for note_type→field prompts."""
+"""Prompts tab — two-panel editor for note_type→field prompts.
+
+The left list follows the configuration order — that is also the generation
+order (a later prompt may use the target of an earlier task), so the ▲▼
+buttons reorder both the list and the saved config.
+"""
 
 import re
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
-    QPushButton, Qt, QComboBox, QMenu,
+    QPushButton, Qt, QComboBox, QMenu, QPlainTextEdit,
+    QSyntaxHighlighter, QTextCharFormat, QColor, QFont,
+    QDialog, QDialogButtonBox,
 )
 
-from ..common.ui import _expanding_line_edit, get_note_type_names, get_fields_for_note_type
-from ..ai_generator.template_engine import template_structure_problems
-
-_PROVIDER_NAMES = ["google", "cometapi", "openai", "openrouter", "anthropic", "mistral", "opencode_go"]
+from ..common import clean_html_normalized
+from ..common.ui import (
+    _expanding_line_edit, get_note_type_names, get_fields_for_note_type,
+    get_sample_notes, palette, hint_label,
+)
+from ..ai_generator.template_engine import (
+    template_structure_problems, render_template, IF_PATTERN,
+)
+from ..ai_generator.providers import PROVIDER_LABELS
+from .prompt_wizard import NewPromptDialog
 
 _VAR_RE = re.compile(r'{{(.*?)}}')
 _IF_RE = re.compile(r'{%\s*if\s+([^%]+)%}')
+_BLOCK_RE = re.compile(r'{%.*?%}')
+
+
+def _has_real_key(value: str) -> bool:
+    value = (value or "").strip()
+    return bool(value) and not value.startswith("YOUR_")
 
 
 def _editable_combo(items: list[str]) -> QComboBox:
@@ -25,6 +44,123 @@ def _editable_combo(items: list[str]) -> QComboBox:
     return combo
 
 
+class _TemplateHighlighter(QSyntaxHighlighter):
+    """Colors {{fields}} and {% blocks %}; unknown fields get a wavy underline."""
+
+    def __init__(self, document):
+        super().__init__(document)
+        pal = palette()
+
+        self._fmt_var = QTextCharFormat()
+        self._fmt_var.setForeground(QColor(pal["syntax_var"]))
+        self._fmt_var.setFontWeight(QFont.Weight.Bold)
+
+        self._fmt_block = QTextCharFormat()
+        self._fmt_block.setForeground(QColor(pal["syntax_block"]))
+        self._fmt_block.setFontWeight(QFont.Weight.Bold)
+
+        self._fmt_bad = QTextCharFormat()
+        self._fmt_bad.setForeground(QColor(pal["syntax_bad"]))
+        self._fmt_bad.setFontWeight(QFont.Weight.Bold)
+        self._fmt_bad.setUnderlineStyle(
+            QTextCharFormat.UnderlineStyle.WaveUnderline
+        )
+        self._fmt_bad.setUnderlineColor(QColor(pal["syntax_bad"]))
+
+        self._known: set[str] | None = None
+
+    def set_known_fields(self, known: set[str] | None) -> None:
+        # rehighlight() re-emits textChanged → only run on real changes,
+        # otherwise validate→highlight→validate would loop.
+        if known != self._known:
+            self._known = known
+            self.rehighlight()
+
+    def _is_unknown(self, name: str) -> bool:
+        return bool(self._known is not None and name and name not in self._known)
+
+    def highlightBlock(self, text: str) -> None:
+        for m in _BLOCK_RE.finditer(text):
+            fmt = self._fmt_block
+            if_match = _IF_RE.match(m.group(0))
+            if if_match and self._is_unknown(if_match.group(1).strip()):
+                fmt = self._fmt_bad
+            self.setFormat(m.start(), m.end() - m.start(), fmt)
+        for m in _VAR_RE.finditer(text):
+            name = m.group(1).strip()
+            fmt = self._fmt_bad if self._is_unknown(name) else self._fmt_var
+            self.setFormat(m.start(), m.end() - m.start(), fmt)
+
+
+class PromptPreviewDialog(QDialog):
+    """Renders the prompt on a real note from the collection — fields
+    substituted, HTML cleaned and {% if %} branches resolved."""
+
+    def __init__(self, parent, note_type: str, prompt: str):
+        super().__init__(parent)
+        self.setWindowTitle(f"Podgląd promptu — {note_type or '(brak typu notatki)'}")
+        self.resize(640, 520)
+        self._prompt = prompt
+
+        layout = QVBoxLayout(self)
+
+        note_row = QHBoxLayout()
+        note_row.addWidget(QLabel("Notatka:"))
+        self._note_combo = QComboBox()
+        self._note_combo.setSizePolicy(
+            self._note_combo.sizePolicy().horizontalPolicy().Expanding,
+            self._note_combo.sizePolicy().verticalPolicy(),
+        )
+        note_row.addWidget(self._note_combo, 1)
+        layout.addLayout(note_row)
+
+        self._conditions = hint_label("")
+        self._conditions.setVisible(False)
+        layout.addWidget(self._conditions)
+
+        self._text = QPlainTextEdit()
+        self._text.setReadOnly(True)
+        layout.addWidget(self._text, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        for nid, label in get_sample_notes(note_type, limit=20):
+            self._note_combo.addItem(label, nid)
+        self._note_combo.currentIndexChanged.connect(lambda _i: self._render())
+        self._render()
+
+    def _render(self) -> None:
+        nid = self._note_combo.currentData()
+        if nid is None:
+            self._conditions.setVisible(False)
+            self._text.setPlainText("(brak notatek tego typu w kolekcji)")
+            return
+
+        try:
+            from aqt import mw
+            note = mw.col.get_note(nid)
+            fields_map = {f: clean_html_normalized(note[f]) for f in note.keys()}
+        except Exception:
+            self._conditions.setVisible(False)
+            self._text.setPlainText("(nie udało się wczytać notatki)")
+            return
+
+        # Which {% if %} branch fires for this note — the part that makes
+        # conditionals understandable at a glance.
+        cond_lines = []
+        for m in IF_PATTERN.finditer(self._prompt):
+            field = m.group(1).strip()
+            filled = bool(fields_map.get(field, "").strip())
+            branch = "IF (pole wypełnione)" if filled else "ELSE (pole puste)"
+            cond_lines.append(f"{{% if {field} %}} → gałąź {branch}")
+        self._conditions.setText("\n".join(cond_lines))
+        self._conditions.setVisible(bool(cond_lines))
+
+        self._text.setPlainText(render_template(self._prompt, fields_map))
+
+
 class PromptsTab(QWidget):
     """Two-panel editor: list of note_type→field on left, prompt editor on right."""
 
@@ -33,7 +169,8 @@ class PromptsTab(QWidget):
         self._data: dict = {}
         self._current_key: tuple | None = None
 
-        note_types = cfg.get("ai_generator", {}).get("note_types", {})
+        ai = cfg.get("ai_generator", {})
+        note_types = ai.get("note_types", {})
         for nt_name, fields in note_types.items():
             for field_name, field_cfg in fields.items():
                 key = (nt_name, field_name)
@@ -43,6 +180,14 @@ class PromptsTab(QWidget):
                     "prompt":   field_cfg.get("prompt", ""),
                 }
 
+        # Default provider for the wizard: first one with a real API key.
+        self._default_provider = "openai"
+        for name, p in ai.get("providers", {}).items():
+            if isinstance(p, dict) and _has_real_key(p.get("api_key", "")):
+                self._default_provider = name
+                break
+
+        pal = palette()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -57,15 +202,32 @@ class PromptsTab(QWidget):
         self._list.setMinimumWidth(160)
         self._list.setMaximumWidth(240)
 
-        for nt_name, field_name in sorted(self._data.keys()):
-            item = QListWidgetItem(f"{nt_name}\n→ {field_name}")
-            item.setData(Qt.ItemDataRole.UserRole, (nt_name, field_name))
+        # Config order, not alphabetical — this is the generation order.
+        for key in self._data.keys():
+            item = QListWidgetItem(self._item_text(key, self._data[key]["prompt"]))
+            item.setData(Qt.ItemDataRole.UserRole, key)
             self._list.addItem(item)
 
         left_layout.addWidget(self._list)
 
+        order_row = QHBoxLayout()
+        self._btn_up = QPushButton("▲")
+        self._btn_up.setToolTip(
+            "Przesuń zadanie wyżej. Kolejność na liście = kolejność generowania —\n"
+            "późniejszy prompt może użyć pola wygenerowanego przez wcześniejsze zadanie."
+        )
+        self._btn_down = QPushButton("▼")
+        self._btn_down.setToolTip(self._btn_up.toolTip())
+        order_row.addWidget(self._btn_up)
+        order_row.addWidget(self._btn_down)
+        left_layout.addLayout(order_row)
+
         btn_row = QHBoxLayout()
-        self._btn_add = QPushButton("+ Dodaj")
+        self._btn_add = QPushButton("+ Dodaj…")
+        self._btn_add.setToolTip(
+            "Dodaje nowe zadanie AI — typ notatki, pole docelowe, dostawca,\n"
+            "opcjonalnie gotowy szablon startowy."
+        )
         self._btn_del = QPushButton("Usuń")
         btn_row.addWidget(self._btn_add)
         btn_row.addWidget(self._btn_del)
@@ -77,8 +239,11 @@ class PromptsTab(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(4, 8, 8, 8)
 
-        self._editor_placeholder = QLabel("Wybierz pole z listy po lewej.")
-        self._editor_placeholder.setStyleSheet("color: gray;")
+        self._editor_placeholder = QLabel(
+            "Wybierz zadanie z listy po lewej\nalbo kliknij „+ Dodaj…”,\n"
+            "żeby dodać nowe zadanie AI."
+        )
+        self._editor_placeholder.setStyleSheet(f"color: {pal['muted']};")
         self._editor_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._editor_widget = QWidget()
@@ -90,13 +255,17 @@ class PromptsTab(QWidget):
         self._note_type_names = get_note_type_names()
         self._ed_note_type = _editable_combo(self._note_type_names)
         self._ed_field = _expanding_line_edit()
+        self._ed_field.setToolTip(
+            "Identyfikator zadania w konfiguracji — zwykle taki sam jak pole docelowe."
+        )
         self._ed_target = _editable_combo([])
         self._ed_provider = QComboBox()
-        self._ed_provider.addItems(_PROVIDER_NAMES)
+        for name, label in PROVIDER_LABELS.items():
+            self._ed_provider.addItem(label, name)
         form.addRow("Typ notatki:", self._ed_note_type)
         form.addRow("Nazwa zadania:", self._ed_field)
         form.addRow("Pole docelowe:", self._ed_target)
-        form.addRow("Provider:", self._ed_provider)
+        form.addRow("Dostawca AI:", self._ed_provider)
         editor_form_layout.addLayout(form)
 
         prompt_header = QHBoxLayout()
@@ -110,16 +279,23 @@ class PromptsTab(QWidget):
             "Zaznaczony tekst zostanie owinięty warunkiem (trafi do gałęzi „if”)."
         )
         prompt_header.addWidget(self._btn_insert_cond)
+        self._btn_preview = QPushButton("Podgląd…")
+        self._btn_preview.setToolTip(
+            "Otwiera okno z finalnym promptem wyrenderowanym na wybranej\n"
+            "notatce z kolekcji — z rozstrzygniętymi warunkami {% if %}."
+        )
+        prompt_header.addWidget(self._btn_preview)
         editor_form_layout.addLayout(prompt_header)
 
         self._ed_prompt = QTextEdit()
         self._ed_prompt.setAcceptRichText(False)
         self._ed_prompt.setMinimumHeight(200)
+        self._highlighter = _TemplateHighlighter(self._ed_prompt.document())
         editor_form_layout.addWidget(self._ed_prompt)
 
         self._lbl_validation = QLabel("")
         self._lbl_validation.setWordWrap(True)
-        self._lbl_validation.setStyleSheet("color: #cc7700;")
+        self._lbl_validation.setStyleSheet(f"color: {pal['warn_fg']};")
         self._lbl_validation.setVisible(False)
         editor_form_layout.addWidget(self._lbl_validation)
 
@@ -137,11 +313,61 @@ class PromptsTab(QWidget):
         self._list.currentItemChanged.connect(self._on_item_changed)
         self._btn_add.clicked.connect(self._on_add)
         self._btn_del.clicked.connect(self._on_delete)
+        self._btn_up.clicked.connect(lambda: self._on_move(-1))
+        self._btn_down.clicked.connect(lambda: self._on_move(1))
         self._ed_note_type.currentTextChanged.connect(self._on_note_type_changed)
         self._ed_target.currentTextChanged.connect(self._validate_prompt)
         self._ed_prompt.textChanged.connect(self._validate_prompt)
         self._btn_insert_field.clicked.connect(self._on_insert_field)
         self._btn_insert_cond.clicked.connect(self._on_insert_condition)
+        self._btn_preview.clicked.connect(self._on_preview)
+
+    # ------------------------------------------------------------------
+    # List items & ordering
+    # ------------------------------------------------------------------
+
+    def _deps_for(self, key: tuple, prompt: str) -> list[str]:
+        """Targets of *other* tasks of the same note type used in this prompt."""
+        nt = key[0]
+        other_targets = {
+            entry["target"]
+            for other_key, entry in self._data.items()
+            if other_key != key and other_key[0] == nt and entry["target"]
+        }
+        used = {m.strip() for m in _VAR_RE.findall(prompt)}
+        used |= {m.strip() for m in _IF_RE.findall(prompt)}
+        return sorted(used & other_targets)
+
+    def _item_text(self, key: tuple, prompt: str) -> str:
+        text = f"{key[0]}\n→ {key[1]}"
+        deps = self._deps_for(key, prompt)
+        if deps:
+            text += f"   (zależy od: {', '.join(deps)})"
+        return text
+
+    def _on_move(self, delta: int) -> None:
+        row = self._list.currentRow()
+        new_row = row + delta
+        if row < 0 or not (0 <= new_row < self._list.count()):
+            return
+        self._save_current_to_data(self._list.currentItem())
+        self._list.blockSignals(True)
+        item = self._list.takeItem(row)
+        self._list.insertItem(new_row, item)
+        self._list.setCurrentItem(item)
+        self._list.blockSignals(False)
+        # Rebuild dict in the new list order — apply() and dependency
+        # resolution both follow this order.
+        ordered_keys = [
+            self._list.item(i).data(Qt.ItemDataRole.UserRole)
+            for i in range(self._list.count())
+        ]
+        self._data = {k: self._data[k] for k in ordered_keys}
+        self._validate_prompt()
+
+    # ------------------------------------------------------------------
+    # Editor state
+    # ------------------------------------------------------------------
 
     def _save_current_to_data(self, list_item=None) -> None:
         if self._current_key is None:
@@ -153,7 +379,7 @@ class PromptsTab(QWidget):
 
         entry = {
             "target":   self._ed_target.currentText().strip(),
-            "provider": self._ed_provider.currentText(),
+            "provider": self._ed_provider.currentData() or "openai",
             "prompt":   self._ed_prompt.toPlainText(),
         }
 
@@ -166,10 +392,12 @@ class PromptsTab(QWidget):
             }
             self._current_key = new_key
             if list_item:
-                list_item.setText(f"{new_nt}\n→ {new_field}")
+                list_item.setText(self._item_text(new_key, entry["prompt"]))
                 list_item.setData(Qt.ItemDataRole.UserRole, new_key)
         else:
             self._data[old_key] = entry
+            if list_item:
+                list_item.setText(self._item_text(old_key, entry["prompt"]))
 
     def _load_key_to_editor(self, key: tuple) -> None:
         self._current_key = key
@@ -177,12 +405,8 @@ class PromptsTab(QWidget):
         self._ed_note_type.setCurrentText(key[0])
         self._ed_field.setText(key[1])
         self._ed_target.setCurrentText(entry["target"])
-        idx = (
-            _PROVIDER_NAMES.index(entry["provider"])
-            if entry["provider"] in _PROVIDER_NAMES
-            else 0
-        )
-        self._ed_provider.setCurrentIndex(idx)
+        idx = self._ed_provider.findData(entry["provider"])
+        self._ed_provider.setCurrentIndex(idx if idx >= 0 else 0)
         self._ed_prompt.setPlainText(entry["prompt"])
         self._editor_placeholder.setVisible(False)
         self._editor_widget.setVisible(True)
@@ -210,6 +434,19 @@ class PromptsTab(QWidget):
             if key[0] == nt and entry["target"]:
                 known.add(entry["target"])
         return known
+
+    def _later_task_targets(self) -> set[str]:
+        """Targets generated by tasks *after* the current one (same note type)."""
+        nt = self._ed_note_type.currentText().strip()
+        seen_current = False
+        later: set[str] = set()
+        for key, entry in self._data.items():
+            if key == self._current_key:
+                seen_current = True
+                continue
+            if seen_current and key[0] == nt and entry["target"]:
+                later.add(entry["target"])
+        return later
 
     def _exec_field_menu(self, button: QPushButton, callback) -> None:
         names = sorted(self._known_prompt_fields())
@@ -258,6 +495,7 @@ class PromptsTab(QWidget):
 
             if nt and nt not in self._note_type_names:
                 problems.append(f"Typ notatki „{nt}” nie istnieje w kolekcji.")
+                self._highlighter.set_known_fields(None)
             else:
                 nt_fields = set(get_fields_for_note_type(nt))
                 target = self._ed_target.currentText().strip()
@@ -265,6 +503,7 @@ class PromptsTab(QWidget):
                     problems.append(f"Pole docelowe „{target}” nie istnieje w typie notatki.")
 
                 known = self._known_prompt_fields()
+                self._highlighter.set_known_fields(known)
                 used = [m.strip() for m in _VAR_RE.findall(prompt)]
                 used += [m.strip() for m in _IF_RE.findall(prompt)]
                 unknown = sorted({u for u in used if u and u not in known})
@@ -274,8 +513,40 @@ class PromptsTab(QWidget):
                         + ", ".join("{{" + u + "}}" for u in unknown)
                     )
 
+                too_late = sorted(set(used) & self._later_task_targets())
+                if too_late:
+                    problems.append(
+                        "Pole "
+                        + ", ".join(f"„{t}”" for t in too_late)
+                        + " jest generowane przez późniejsze zadanie — przesuń je "
+                        "wyżej (▲), jeśli prompt ma użyć świeżo wygenerowanej wartości."
+                    )
+        else:
+            self._highlighter.set_known_fields(None)
+
         self._lbl_validation.setText("\n".join("⚠ " + p for p in problems))
         self._lbl_validation.setVisible(bool(problems))
+
+        # keep dependency hint on the list item in sync
+        item = self._list.currentItem()
+        if item is not None and self._current_key is not None:
+            item.setText(self._item_text(self._current_key, prompt))
+
+    # ------------------------------------------------------------------
+    # Preview on a sample note
+    # ------------------------------------------------------------------
+
+    def _on_preview(self) -> None:
+        dlg = PromptPreviewDialog(
+            self,
+            note_type=self._ed_note_type.currentText().strip(),
+            prompt=self._ed_prompt.toPlainText(),
+        )
+        dlg.exec()
+
+    # ------------------------------------------------------------------
+    # List events, add/delete
+    # ------------------------------------------------------------------
 
     def _on_item_changed(self, current, previous) -> None:
         if previous is not None:
@@ -289,20 +560,30 @@ class PromptsTab(QWidget):
         self._load_key_to_editor(key)
 
     def _on_add(self) -> None:
-        # Prefer the note type already being edited, then one from the
-        # collection — instead of a hardcoded name.
-        base_nt = self._ed_note_type.currentText().strip()
-        if not base_nt:
-            base_nt = self._note_type_names[0] if self._note_type_names else "Notatka"
-        base_field = "nowe_pole"
-        key = (base_nt, base_field)
+        default_nt = self._ed_note_type.currentText().strip()
+        dlg = NewPromptDialog(
+            self,
+            note_type_names=self._note_type_names,
+            default_note_type=default_nt,
+            default_provider=self._default_provider,
+        )
+        if dlg.exec() != NewPromptDialog.DialogCode.Accepted:
+            return
+        entry = dlg.entry()
+
+        base_name = entry["task_name"] or "nowe_pole"
+        key = (entry["note_type"], base_name)
         i = 1
         while key in self._data:
-            key = (base_nt, f"{base_field}_{i}")
+            key = (entry["note_type"], f"{base_name}_{i}")
             i += 1
 
-        self._data[key] = {"target": key[1], "provider": "openai", "prompt": ""}
-        item = QListWidgetItem(f"{key[0]}\n→ {key[1]}")
+        self._data[key] = {
+            "target":   entry["target"] or key[1],
+            "provider": entry["provider"],
+            "prompt":   entry["prompt"],
+        }
+        item = QListWidgetItem(self._item_text(key, entry["prompt"]))
         item.setData(Qt.ItemDataRole.UserRole, key)
         self._list.addItem(item)
         self._list.setCurrentItem(item)

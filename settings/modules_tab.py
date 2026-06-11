@@ -1,6 +1,8 @@
 """Modules tab — enable/disable individual modules."""
 
-from aqt.qt import QWidget, QVBoxLayout, QLabel, QCheckBox, QSizePolicy
+from aqt.qt import QWidget, QVBoxLayout, QCheckBox
+
+from ..common.ui import hint_label
 
 
 class ModulesTab(QWidget):
@@ -17,12 +19,10 @@ class ModulesTab(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        note = QLabel(
+        layout.addWidget(hint_label(
             "Zaznaczone moduły są ładowane przy starcie Anki.\n"
             "Zmiana wymaga restartu Anki."
-        )
-        note.setStyleSheet("color: gray;")
-        layout.addWidget(note)
+        ))
         layout.addSpacing(8)
 
         self._checks: dict[str, QCheckBox] = {}

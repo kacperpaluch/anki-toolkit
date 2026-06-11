@@ -9,7 +9,7 @@ from aqt.qt import (
 )
 from aqt.utils import tooltip
 
-from ..common.ui import _expanding_line_edit
+from ..common.ui import _expanding_line_edit, hint_label
 
 
 class AudioNormalizerTab(QWidget):
@@ -49,13 +49,10 @@ class AudioNormalizerTab(QWidget):
         layout.addLayout(form)
         layout.addSpacing(8)
 
-        hint = QLabel(
+        layout.addWidget(hint_label(
             "Domyślne opcje loudnorm: loudnorm=I=-14:TP=-1.5:LRA=8  (standard EBU R128)\n"
             "Zmień I= (głośność docelowa LUFS), TP= (true peak dB), LRA= (rozpiętość dynamiczna LU)."
-        )
-        hint.setStyleSheet("color: gray;")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        ))
         layout.addStretch()
 
     def _test_ffmpeg(self) -> None:

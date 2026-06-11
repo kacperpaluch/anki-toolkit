@@ -6,14 +6,21 @@ from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QPushButton, QTabWidget,
     QListWidget, QListWidgetItem, QCheckBox, QDialog, QDialogButtonBox,
+    QStackedWidget, QSizePolicy,
 )
 from aqt.utils import showWarning
 
-from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable
+from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable, hint_label
+from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS
 from .prompts_tab import PromptsTab
 
-_PROVIDER_NAMES = ["google", "cometapi", "openai", "openrouter", "anthropic", "mistral", "opencode_go"]
+_PROVIDER_NAMES = list(PROVIDERS)
 _OPENAI_REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"]
+
+
+def _has_real_key(value: str) -> bool:
+    value = (value or "").strip()
+    return bool(value) and not value.startswith("YOUR_")
 
 
 class AIGeneratorTab(QWidget):
@@ -71,8 +78,17 @@ class AIGeneratorTab(QWidget):
         layout.addSpacing(8)
 
         prov_group = QGroupBox("Dostawcy AI")
-        prov_layout = QVBoxLayout(prov_group)
-        provider_tabs = QTabWidget()
+        prov_layout = QHBoxLayout(prov_group)
+        prov_layout.setSpacing(8)
+
+        # List + detail instead of a third level of tabs. ✓ marks providers
+        # with a real API key and follows edits live.
+        self._prov_list = QListWidget()
+        self._prov_list.setFixedWidth(150)
+        self._prov_list.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+        )
+        self._prov_stack = QStackedWidget()
 
         self._provider_widgets: dict[str, dict] = {}
         current_provider_tab = 0
@@ -82,7 +98,7 @@ class AIGeneratorTab(QWidget):
             prov_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             p = providers.get(name, {})
             api_key_container, api_key_field = _api_key_widget(p.get("api_key", ""))
-            if p.get("api_key", "").strip() and not p.get("api_key", "").startswith("YOUR_"):
+            if _has_real_key(p.get("api_key", "")):
                 current_provider_tab = i
 
             model_row = QWidget()
@@ -147,10 +163,19 @@ class AIGeneratorTab(QWidget):
                 prov_form.addRow("Poziom reasoning:", reasoning_line)
                 widgets["reasoning_effort"] = reasoning_line
             self._provider_widgets[name] = widgets
-            provider_tabs.addTab(page, name)
 
-        provider_tabs.setCurrentIndex(current_provider_tab)
-        prov_layout.addWidget(provider_tabs)
+            item = QListWidgetItem()
+            self._prov_list.addItem(item)
+            self._prov_stack.addWidget(page)
+            self._update_provider_item(i, name)
+            api_key_field.textChanged.connect(
+                partial(self._on_provider_key_changed, i, name)
+            )
+
+        self._prov_list.currentRowChanged.connect(self._prov_stack.setCurrentIndex)
+        self._prov_list.setCurrentRow(current_provider_tab)
+        prov_layout.addWidget(self._prov_list)
+        prov_layout.addWidget(self._prov_stack, 1)
         layout.addWidget(prov_group)
         layout.addSpacing(8)
 
@@ -189,6 +214,17 @@ class AIGeneratorTab(QWidget):
         layout.addStretch()
 
         return _scrollable(inner)
+
+    def _update_provider_item(self, row: int, name: str) -> None:
+        item = self._prov_list.item(row)
+        if item is None:
+            return
+        has_key = _has_real_key(self._provider_widgets[name]["api_key"].text())
+        icon = "✓" if has_key else "○"
+        item.setText(f"{icon} {PROVIDER_LABELS.get(name, name)}")
+
+    def _on_provider_key_changed(self, row: int, name: str, _text: str = "") -> None:
+        self._update_provider_item(row, name)
 
     # ------------------------------------------------------------------
     # Model fetching
@@ -300,13 +336,10 @@ class AIGeneratorTab(QWidget):
         bh.addStretch()
         layout.addWidget(btn_row)
 
-        hint = QLabel(
+        layout.addWidget(hint_label(
             "Workflow odpala się przyciskiem w edytorze.\n"
             "AI — generuje pola, Słownik — pobiera wymowę, TTS — generuje audio."
-        )
-        hint.setStyleSheet("color: gray;")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        ))
 
         # Load current steps
         self._wf_data = []
