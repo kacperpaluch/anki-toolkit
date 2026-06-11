@@ -32,9 +32,13 @@ def _fmt_cost(value: float) -> str:
 class StatsTab(QWidget):
     def __init__(self, cfg: dict):
         super().__init__()
-        # {stat_key: [input_usd_per_token, output_usd_per_token]} — filled by
-        # the "Pobierz ceny" button and persisted in the config.
-        self._pricing: dict = dict(cfg.get("pricing", {}).get("models", {}))
+        pricing_cfg = cfg.get("pricing", {})
+        # Matched prices: {stat_key: [input_usd_per_token, output_usd_per_token]}
+        # (for TTS: [usd_per_char, 0]). Derived from the catalog on refresh.
+        self._pricing: dict = dict(pricing_cfg.get("models", {}))
+        # Full OpenRouter price catalog {model_id: [in, out]} — persisted, so
+        # models that appear in stats later are matched without re-fetching.
+        self._catalog: dict = dict(pricing_cfg.get("catalog", {}))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -147,6 +151,19 @@ class StatsTab(QWidget):
         self._set_custom_visible(self._range.currentData() == _CUSTOM)
         self._refresh()
 
+    def _match_prices_from_catalog(self, stat_keys: list) -> None:
+        """Update self._pricing for the given keys using the stored catalog."""
+        if not self._catalog:
+            return
+        from ..ai_generator import stats
+        catalog_models = [
+            {"id": model_id, "prompt_price": prices[0], "completion_price": prices[1]}
+            for model_id, prices in self._catalog.items()
+            if isinstance(prices, (list, tuple)) and len(prices) >= 2
+        ]
+        matched = stats.match_pricing(stat_keys, catalog_models)
+        self._pricing.update({k: list(v) for k, v in matched.items()})
+
     def _refresh(self) -> None:
         from ..ai_generator import stats
 
@@ -164,6 +181,8 @@ class StatsTab(QWidget):
                 else self._range.currentText()
             )
         models = data.get("models", {})
+        tts_models = data.get("tts", {})
+        self._match_prices_from_catalog(list(models.keys()) + list(tts_models.keys()))
 
         def _model_cost(name: str, m: dict):
             prices = self._pricing.get(name)
@@ -195,8 +214,6 @@ class StatsTab(QWidget):
             summary += f"    ·    Koszt: ~{_fmt_cost(sum(known_costs))}{suffix}"
 
         # TTS — audio generation usage
-        tts_models = data.get("tts", {})
-
         def _tts_cost(name: str, t: dict):
             prices = self._pricing.get(name)
             if not prices:
@@ -274,45 +291,50 @@ class StatsTab(QWidget):
 
         def task():
             from ..ai_generator.providers.model_discovery import fetch_openrouter_chat_models
-            from ..ai_generator import stats
             from ..tts.api import fetch_openrouter_tts_models
-            catalog = fetch_openrouter_chat_models(force=True)
+            chat_catalog = fetch_openrouter_chat_models(force=True)
             tts_catalog = fetch_openrouter_tts_models(force=True)
-            data = stats.get_stats()
-            stat_keys = (
-                list(data.get("models", {}).keys())
-                + list(data.get("tts", {}).keys())
-            )
-            combined = list(catalog) + list(tts_catalog)
-            return stats.match_pricing(stat_keys, combined), len(combined)
+            catalog_map: dict = {}
+            for m in list(chat_catalog) + list(tts_catalog):
+                prompt_price = m.get("prompt_price")
+                completion_price = m.get("completion_price")
+                if prompt_price is None and completion_price is None:
+                    continue
+                model_id = m.get("id")
+                if model_id:
+                    catalog_map[model_id] = [
+                        float(prompt_price or 0.0),
+                        float(completion_price or 0.0),
+                    ]
+            return catalog_map
 
         def on_done(fut):
             try:
                 try:
-                    pricing, catalog_size = fut.result()
+                    catalog_map = fut.result()
                 except Exception:
-                    pricing, catalog_size = {}, 0
+                    catalog_map = {}
                 self._prices_btn.setEnabled(True)
                 self._prices_btn.setText("Pobierz ceny (OpenRouter)")
-                if not catalog_size:
+                if not catalog_map:
                     showWarning(
                         "Nie udało się pobrać cennika z OpenRouter.\n"
                         "Sprawdź połączenie z internetem."
                     )
                     return
-                self._pricing.update({k: list(v) for k, v in pricing.items()})
+                self._catalog = catalog_map
 
-                # Persist immediately — prices should survive even if the
-                # dialog is later cancelled.
+                # Persist immediately — the catalog should survive even if the
+                # dialog is later cancelled. Matching against stats happens on
+                # every refresh, so models that show up later get prices too.
                 from ..common import get_full_config, save_full_config
                 cfg = get_full_config()
-                cfg.setdefault("pricing", {})["models"] = self._pricing
+                cfg.setdefault("pricing", {})["catalog"] = catalog_map
                 save_full_config(cfg)
 
                 self._refresh()
                 tooltip(
-                    f"Dopasowano ceny dla {len(pricing)} modeli "
-                    f"(katalog: {catalog_size}).",
+                    f"Pobrano cennik {len(catalog_map)} modeli OpenRouter.",
                     period=4000,
                 )
             except RuntimeError:
