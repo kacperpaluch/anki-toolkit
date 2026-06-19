@@ -89,3 +89,52 @@ def extract_http_error(error: urllib.error.HTTPError) -> str:
     except Exception:
         pass
     return f"{error.code} - {msg}"
+
+
+def post_json(
+    url: str,
+    payload: bytes,
+    headers: dict,
+    *,
+    max_retries: int = 3,
+    timeout: int = 30,
+    log: Optional[logging.Logger] = None,
+) -> tuple[Optional[bytes], Optional[str]]:
+    """POST raw bytes with retry on 429/5xx and connection errors.
+
+    Returns (response_bytes, None) on success, (None, error_message) on failure.
+    HTTP error messages come from extract_http_error() (parses JSON body for
+    error.message when available); connection errors get a plain string.
+    """
+    if log is None:
+        log = logger
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, data=payload, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return response.read(), None
+        except urllib.error.HTTPError as e:
+            if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
+                delay = 2 ** (attempt + 1)
+                log.warning(
+                    f"HTTP {e.code} POST {url}, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            err = extract_http_error(e)
+            log.error(f"POST {url} failed: {err}")
+            return None, err
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt < max_retries - 1:
+                delay = 2 ** (attempt + 1)
+                log.warning(
+                    f"Connection error POST {url}: {e}, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            err = f"Connection error: {e}"
+            log.error(err)
+            return None, err
+    return None, "request failed after retries"

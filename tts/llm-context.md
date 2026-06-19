@@ -12,7 +12,7 @@ System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pol
 - `mode` — `single` (jedno audio na notatkę) lub `split` (osobne audio na segment, dzielone `split_separator`)
 - `split_separator` — string dzielący tekst (tylko tryb `split`)
 
-Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Backward compat: jeśli klucz `tasks` **nie istnieje** (lub nie jest listą), generowane są domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field`. Jawnie zapisana **pusta lista** oznacza "brak zadań" — usunięte zadania nie wracają.
+Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Backward compat: jeśli klucz `tasks` **nie istnieje** (lub nie jest listą), `get_tasks()` buduje domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field` — te pola nie są już w `_DEFAULTS` ani w UI, ale są czytane ze starych zapisanych configów; wystarczy raz zapisać ustawienia, by `tasks` stało się jedynym źródłem. Jawnie zapisana **pusta lista** oznacza "brak zadań" — usunięte zadania nie wracają.
 
 Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w głównym dialogu ustawień wtyczki (zakładka TTS) oraz w sekcji `tts` konfiguracji profilu Anki.
 
@@ -22,7 +22,7 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — używa `common.text.normalize_float()`, `common.http.extract_http_error()`; loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
+| `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`, wyjątek rzucany dopiero na poziomie `generate_audio` gdy `err` niepuste); `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
 | `processor.py` | Przetwarzanie notatek w przeglądarce: `process_task_async()`, `process_tasks_async()`, `_generate_items()`, `_collect_work_items()`, `_save_batch_results()`; `process_single_note()` (używane przez workflow) — zbiera work itemy ze wszystkich zadań i generuje równolegle przez `ThreadPoolExecutor(max_workers)`; przy błędach generowania rzuca `Exception` z podsumowaniem (workflow pokazuje ją jako tooltip kroku) |
 | `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`), task-indexed klucze wyników |
 
@@ -73,9 +73,11 @@ Przycisk edytora
 ```
 get_tasks(config)
   → jeśli config["tasks"] jest listą (także pustą) → zwróć przefiltrowaną listę
-  → else (klucz nie istnieje / zły typ): zbuduj z legacy pól:
-      ang_source_field + ang_target_field → mode=single
-      przyklad_target_field → mode=split
+  → else (klucz nie istnieje / zły typ): zbuduj z legacy pól
+       (ang_source_field + ang_target_field → mode=single,
+        przyklad_target_field → mode=split)
+       — te pola nie są w _DEFAULTS od wersji X; fallback czyta je
+         tylko ze starych zapisanych configów użytkownika
 ```
 
 ### Dispatcher providera
@@ -119,9 +121,6 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
   "voices": ["af_bella", "af_heart", "bm_lewis"],
   "speed": 0.9,
   "button_label": "TTS",
-  "ang_source_field": "ang",
-  "ang_target_field": "audio",
-  "przyklad_target_field": "przyklad",
   "max_workers": 12,
   "max_retries": 3,
   "timeout": 60
@@ -135,7 +134,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
 - `voices` — lista głosów do losowania
-- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli klucz nie istnieje → backward compat z `ang_source_field`/`ang_target_field`/`przyklad_target_field`; pusta lista = brak zadań
+- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli klucz nie istnieje → backward compat czyta legacy pola `ang_source_field`/`ang_target_field`/`przyklad_target_field` ze starego configu (pola nie są już w `_DEFAULTS` ani w UI); pusta lista = brak zadań
 - `max_workers` — liczba wątków w `ThreadPoolExecutor`
 - `max_retries` i `timeout` — retry logic w `generate_audio()` (HTTP 429/5xx; timeouty zgłaszane jako błąd)
 - Wszystkie domyślne wartości zdefiniowane w `_DEFAULTS` (config.py) i mergowane przez `get_tts_config()` używającego `get_module_config()` z `common.config`
@@ -188,9 +187,9 @@ Generowane losowo przez `unique_filename()` z `common.text`: `tts_` + 12 znaków
 
 ## Zależności
 
-- Stdlib: `urllib.request`, `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
+- Stdlib: `urllib.request` (GET w `fetch_openrouter_tts_models`), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
 - Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.media.write_data`, `mw.taskman`
-- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique), `common.html` (clean_html), `common.http` (extract_http_error, RETRYABLE_STATUS_CODES)
+- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_kokoro`/`_generate_openrouter`)
 - Kokoro: wymaga lokalnego serwera Kokoro TTS (Docker)
 - OpenRouter: tylko klucz API, żadnych lokalnych zależności
 - Brak pip packages

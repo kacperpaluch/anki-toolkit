@@ -2,9 +2,6 @@
 
 import json
 import logging
-import time
-import urllib.error
-import urllib.request
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -14,7 +11,7 @@ from .openai_compat import (
     extract_message_content,
     is_reasoning_effort_unsupported_error,
 )
-from ...common.http import RETRYABLE_STATUS_CODES
+from ...common.http import post_json
 
 
 class BaseProvider(ABC):
@@ -51,23 +48,31 @@ class BaseProvider(ABC):
         except Exception:
             self.last_usage = (0, 0)
 
-    def _request_with_reasoning_fallback(
-        self, req: urllib.request.Request, data: dict, headers: dict, url: str
+    def _post(self, url: str, data: dict, headers: dict) -> Optional[bytes]:
+        """POST data dict as JSON with retry. Sets self.last_error on failure."""
+        raw, err = post_json(
+            url,
+            json.dumps(data).encode("utf-8"),
+            headers,
+            max_retries=self.max_retries,
+            timeout=self.timeout,
+            log=self.logger,
+        )
+        self.last_error = err
+        return raw
+
+    def _post_with_reasoning_fallback(
+        self, url: str, data: dict, headers: dict
     ) -> Optional[bytes]:
-        """Run request; if it fails because reasoning_effort is unsupported, retry without it."""
-        raw = self._request_with_retry(req)
+        """POST data; if reasoning_effort is unsupported, retry without it."""
+        raw = self._post(url, data, headers)
         if raw is None and "reasoning_effort" in data and self.last_error:
             if is_reasoning_effort_unsupported_error(self.last_error):
                 self.logger.warning(
                     f"Model '{self.model}' nie obsługuje reasoning_effort — ponawiam bez tego parametru."
                 )
                 del data["reasoning_effort"]
-                fallback_req = urllib.request.Request(
-                    url,
-                    data=json.dumps(data).encode("utf-8"),
-                    headers=headers,
-                )
-                raw = self._request_with_retry(fallback_req)
+                raw = self._post(url, data, headers)
         return raw
 
     def _parse_chat_completion(self, raw: bytes, label: str) -> Optional[str]:
@@ -139,47 +144,6 @@ class BaseProvider(ABC):
         """Send prompt to the API and return the response text, or None on error."""
         ...
 
-    def _request_with_retry(self, req: urllib.request.Request) -> Optional[bytes]:
-        """Execute an HTTP request with exponential backoff on transient errors."""
-        self.last_error = None
-        self.logger.debug(f"{self.model}: wysyłam żądanie (timeout={self.timeout}s)")
-        for attempt in range(self.max_retries):
-            try:
-                t0 = time.time()
-                with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                    raw = response.read()
-                self.logger.debug(
-                    f"{self.model}: odpowiedź {len(raw)} B w {time.time() - t0:.1f}s"
-                )
-                return raw
-            except urllib.error.HTTPError as e:
-                if e.code in RETRYABLE_STATUS_CODES and attempt < self.max_retries - 1:
-                    delay = 2 ** (attempt + 1)
-                    self.logger.warning(f"HTTP {e.code}, retrying in {delay}s (attempt {attempt + 1}/{self.max_retries})")
-                    time.sleep(delay)
-                    continue
-                details = e.read().decode("utf-8", errors="replace").strip()
-                if len(details) > 600:
-                    details = details[:600] + "..."
-                self.last_error = f"HTTP {e.code}: {e.reason}"
-                if details:
-                    self.last_error = f"{self.last_error} — {details}"
-                self.logger.error(self.last_error)
-                return None
-            except (urllib.error.URLError, TimeoutError) as e:
-                if attempt < self.max_retries - 1:
-                    delay = 2 ** (attempt + 1)
-                    self.logger.warning(
-                        f"Connection error: {e}, retrying in {delay}s "
-                        f"(attempt {attempt + 1}/{self.max_retries})"
-                    )
-                    time.sleep(delay)
-                    continue
-                self.last_error = f"Connection error: {e}"
-                self.logger.error(self.last_error)
-                return None
-        return None
-
 
 class OpenAICompatProvider(BaseProvider):
     """Bearer-auth chat-completions provider. Subclasses set API_URL and LABEL."""
@@ -203,12 +167,7 @@ class OpenAICompatProvider(BaseProvider):
         if self.SUPPORTS_REASONING_EFFORT:
             add_reasoning_effort_if_supported(data, self.model, self.reasoning_effort)
         try:
-            req = urllib.request.Request(
-                self.API_URL,
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers,
-            )
-            raw = self._request_with_reasoning_fallback(req, data, headers, self.API_URL)
+            raw = self._post_with_reasoning_fallback(self.API_URL, data, headers)
             if raw is None:
                 return None
             return self._parse_chat_completion(raw, self.LABEL)

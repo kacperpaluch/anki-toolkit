@@ -223,8 +223,9 @@ from typing import Optional
 
 class MojProvider(BaseProvider):
     def call_api(self, prompt: str) -> Optional[str]:
-        req = ...  # zbuduj urllib.request.Request
-        raw = self._request_with_retry(req)  # automatyczny retry dla 429/5xx
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
+        data = {"model": self.model, "messages": [{"role": "user", "content": prompt}]}
+        raw = self._post(url, data, headers)  # POST z retry dla 429/5xx
         if raw is None:
             return None
         # gotowe parsery z bazy: _parse_chat_completion() (format OpenAI)
@@ -247,4 +248,4 @@ class MojProvider(BaseProvider):
 
 4. Dodaj nazwę do list `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
 
-`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._request_with_reasoning_fallback()` zamiast `_request_with_retry()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning.
+`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).

@@ -218,13 +218,6 @@ class TTSTab(QWidget):
         speed_form.addRow("Szybkość (speed):", self._speed)
         layout.addLayout(speed_form)
 
-        # -- Legacy fields (hidden, kept for backward compat) --
-        self._ang_source = _expanding_line_edit(t.get("ang_source_field", "ang"))
-        self._ang_target = _expanding_line_edit(t.get("ang_target_field", "audio"))
-        self._przyklad_target = _expanding_line_edit(
-            t.get("przyklad_target_field", "przyklad")
-        )
-
         # -- Tasks --
         tasks_group = QGroupBox("Zadania TTS")
         tasks_layout = QVBoxLayout(tasks_group)
@@ -545,9 +538,6 @@ class TTSTab(QWidget):
             t["openrouter_model"] = self._or_model.currentText().split("  (")[0].strip()
         t["voices"] = [v.strip() for v in self._voices.text().split(",") if v.strip()]
         t["speed"] = round(self._speed.value(), 2)
-        t["ang_source_field"] = self._ang_source.text().strip()
-        t["ang_target_field"] = self._ang_target.text().strip()
-        t["przyklad_target_field"] = self._przyklad_target.text().strip()
         t["tasks"] = self._tasks_data
         t["max_workers"] = self._tts_max_workers.value()
         t["max_retries"] = self._tts_max_retries.value()

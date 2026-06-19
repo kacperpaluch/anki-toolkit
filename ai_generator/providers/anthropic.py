@@ -1,7 +1,5 @@
 """Anthropic API provider (Messages API)."""
 
-import json
-import urllib.request
 from typing import Optional
 
 from .base import BaseProvider
@@ -25,12 +23,7 @@ class AnthropicProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
         }
         try:
-            req = urllib.request.Request(
-                API_URL,
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers,
-            )
-            raw = self._request_with_retry(req)
+            raw = self._post(API_URL, data, headers)
             if raw is None:
                 return None
             return self._parse_messages(raw, "Anthropic")

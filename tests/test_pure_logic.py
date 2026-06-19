@@ -22,6 +22,7 @@ html_helpers = load_module("html_helpers", "common/html.py")
 text_helpers = load_module("text_helpers", "common/text.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
 ai_stats = load_module("ai_stats", "ai_generator/stats.py")
+http_helpers = load_module("http_helpers", "common/http.py")
 
 
 class TemplateEngineTests(unittest.TestCase):
@@ -84,6 +85,23 @@ class HtmlHelperTests(unittest.TestCase):
             html_helpers.clean_html_normalized("<div>look&nbsp;forward</div>  to"),
             "look forward to",
         )
+
+
+class HttpHelperTests(unittest.TestCase):
+    def test_post_json_returns_error_on_connection_failure(self):
+        # Port 1 is privileged — nothing listens there, so we get a
+        # deterministic connection refused without mocking. With max_retries=1
+        # the loop runs once and returns (None, err) instead of raising.
+        raw, err = http_helpers.post_json(
+            "http://127.0.0.1:1/nope",
+            b"{}",
+            {"Content-Type": "application/json"},
+            max_retries=1,
+            timeout=1,
+        )
+        self.assertIsNone(raw)
+        self.assertIsNotNone(err)
+        self.assertIn("Connection error", err)
 
 
 class TextHelperTests(unittest.TestCase):

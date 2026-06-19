@@ -40,7 +40,7 @@ anki-toolkit/
 │   ├── consts.py                    # ADDON_NAME (wyliczane z __name__ — nazwa folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
 │   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
-│   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
+│   ├── http.py                      # fetch_url(), fetch_text(), post_json() (POST z retry), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
 │
@@ -251,7 +251,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/consts.py` | `ADDON_NAME` — wyliczane z `__name__` (nazwa folderu wtyczki), używane przez wszystkie moduły; config działa nawet gdy folder nie nazywa się `anki-toolkit` |
 | `common/html.py` | `clean_html()`, `clean_html_normalized()` — czyszczenie HTML, używane przez dictionary, ai_generator, tts |
 | `common/text.py` | `unique()`, `safe_str()`, `unique_filename()`, `normalize_float()`, `split_separator_regex()` (separator splitu z tolerancją białych znaków), `plural_pl()` (polska liczba mnoga) |
-| `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
+| `common/http.py` | `fetch_url()` / `fetch_text()` (GET z retry), `post_json()` (POST bytes z retry na 429/5xx; zwraca `(bytes\|None, err\|None)` — używane przez providerów AI i TTS), `extract_http_error()` (parsuje JSON body HTTPError), `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
 | `common/ui.py` | Widgety Qt: `palette()` (kolory zależne od motywu — jedno źródło dla wszystkich zakładek), `hint_label()`, `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_sample_notes`, `get_templates_for_field` |
@@ -323,7 +323,7 @@ common/                         ← współdzielone narzędzia (html, http, text
     ├── consts.py               ← ADDON_NAME — używane przez WSZYSTKIE moduły
     ├── html.py                 ← clean_html / clean_html_normalized — używane przez dictionary, ai_generator, tts
     ├── text.py                 ← unique / safe_str / unique_filename / normalize_float — używane przez tts, ai_generator
-    ├── http.py                 ← RETRYABLE_STATUS_CODES, fetch_url, fetch_text, extract_http_error — używane przez providers, dictionary, tts
+    ├── http.py                 ← RETRYABLE_STATUS_CODES, fetch_url, fetch_text, post_json (POST z retry), extract_http_error — używane przez providers, dictionary, tts
     ├── config.py               ← get_full_config, get_module_config — używane przez tts/config.py, nbsp_remover/utils.py
     └── ui.py                   ← widgety Qt, palette, hint_label, _expanding_line_edit, _api_key_widget, _scrollable — używane przez settings
 
@@ -341,12 +341,12 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
     └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_str
         └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
-        └── providers/          (BaseProvider/OpenAICompatProvider + 7 implementacji + model_discovery); używa common/http RETRYABLE_STATUS_CODES
+        └── providers/          (BaseProvider/OpenAICompatProvider + 7 implementacji + model_discovery); używa common/http.post_json (retry w jednym miejscu)
     └── workflow.py             (AI → Dict → TTS sekwencyjnie, _RUNNING guard); używa common/ADDON_NAME
 
 tts/__init__.py                 ← add_to_context_menu + exports on_editor_buttons_init
     └── config.py               (_DEFAULTS, get_tts_config, validate_config, get_tasks); używa common/config get_module_config
-    └── api.py                  (generate_audio dispatcher, fetch_openrouter_tts_models); używa common/normalize_float, extract_http_error, RETRYABLE_STATUS_CODES
+    └── api.py                  (generate_audio dispatcher, fetch_openrouter_tts_models); używa common/http.post_json, common/normalize_float; urllib.request tylko do GET w fetch_openrouter_tts_models
     └── processor.py            (build_note_work_items, generate_for_items, apply_results_to_note, process_task_async, process_tasks_async, process_single_note); używa common/unique_filename, clean_html, split_separator_regex
     └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config); używa processor.build_note_work_items/generate_for_items/apply_results_to_note
 

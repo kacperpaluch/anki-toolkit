@@ -55,9 +55,6 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
     "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
     "voices": ["af_bella", "af_heart", "bm_lewis"],
     "speed": 0.9,
-    "ang_source_field": "ang",
-    "ang_target_field": "audio",
-    "przyklad_target_field": "przyklad",
     "max_workers": 12,
     "max_retries": 3,
     "timeout": 60,
@@ -79,10 +76,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
 | `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania. Dla OpenRouter: po wybraniu modelu i kliknięciu **Pobierz**, lista głosów wypełnia się automatycznie |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
-| `ang_source_field` | `ang` | Pole źródłowe dla słowa |
-| `ang_target_field` | `audio` | Pole docelowe dla audio słowa |
-| `przyklad_target_field` | `przyklad` | Pole z przykładami (legacy, tylko gdy klucz `tasks` nie istnieje) |
-| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań (usunięte zadania nie wracają). Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach |
+| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań (usunięte zadania nie wracają). Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach. Backward compat: jeśli klucz `tasks` w ogóle nie istnieje w zapisanym configu, generowane są domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field` (te pola nie są już w domyślnym configu ani w UI — wystarczy raz zapisać ustawienia) |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
 | `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
 | `timeout` | `60` | Timeout pojedynczego żądania TTS w sekundach |

@@ -16,7 +16,7 @@ anki-toolkit/
 │   ├── consts.py                    # ADDON_NAME (wyliczane z nazwy folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
 │   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
-│   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
+│   ├── http.py                      # fetch_url(), fetch_text(), post_json() (retry dla POST), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
 │
@@ -286,7 +286,7 @@ Konfiguracja w **Ustawienia → TTS**:
 
 Dla OpenRouter: po kliknięciu **Pobierz** wtyczka pobiera listę dostępnych modeli TTS z OpenRouter (wraz z cenami w `$/1k zn`). Po wybraniu modelu pojawia się lista głosów z checkboxami — zaznacz które chcesz używać.
 
-**Zadania TTS**: zamiast sztywnych pól `ang`/`przyklad`, moduł używa konfigurowalnej listy zadań. Każde zadanie definiuje etykietę menu, pola źródłowe/docelowe oraz tryb (`single` — jedno audio, `split` — dzielone separatorem). Menu TTS jest budowane dynamicznie. Opcja **Uruchom wszystkie** wykonuje zadania jako jedną operację z jednym paskiem postępu i jednym podsumowaniem. Backward compat: stare pola `ang_source_field`/`przyklad_target_field` nadal działają gdy `tasks` jest puste.
+**Zadania TTS**: zamiast sztywnych pól `ang`/`przyklad`, moduł używa konfigurowalnej listy zadań. Każde zadanie definiuje etykietę menu, pola źródłowe/docelowe oraz tryb (`single` — jedno audio, `split` — dzielone separatorem). Menu TTS jest budowane dynamicznie. Opcja **Uruchom wszystkie** wykonuje zadania jako jedną operację z jednym paskiem postępu i jednym podsumowaniem. Backward compat: stare pola `ang_source_field`/`przyklad_target_field` są czytane z zapisanego configu tylko gdy klucz `tasks` w ogóle nie istnieje — wystarczy raz zapisać ustawienia, by `tasks` stało się jedynym źródłem.
 
 Batch zapisuje zmiany jako **jedną operację z undo**. Przycisk **Anuluj** faktycznie przerywa kolejkę — żądania, które jeszcze nie wystartowały, są odwoływane (już wygenerowane audio zostaje zapisane).
 

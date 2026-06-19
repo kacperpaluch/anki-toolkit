@@ -1,8 +1,6 @@
 """Google Gemini API provider (generateContent)."""
 
 import json
-import urllib.request
-import urllib.parse
 from typing import Optional
 
 from .base import BaseProvider
@@ -24,12 +22,7 @@ class GoogleProvider(BaseProvider):
             "x-goog-api-key": self.api_key,
         }
         try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers,
-            )
-            raw = self._request_with_retry(req)
+            raw = self._post(url, data, headers)
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))

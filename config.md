@@ -60,11 +60,7 @@ Konfiguracja wyłącznie przez edycję `config.json`. Akcje TTS dostępne przez 
 
 **`speed`** — tempo mowy (0.1–3.0, domyślnie 0.9).
 
-**`ang_source_field`** — nazwa pola z angielskim słowem (domyślnie `"ang"`).
-
-**`ang_target_field`** — pole docelowe dla audio słowa (domyślnie `"audio"`).
-
-**`przyklad_target_field`** — pole z przykładami (segmenty rozdzielone `<br><br>`). Każde zdanie dostaje osobny plik audio wstawiany bezpośrednio za tekstem.
+**`ang_source_field`** / **`ang_target_field`** / **`przyklad_target_field`** — *legacy.* Czytane z zapisanego configu **tylko** gdy klucz `tasks` w ogóle nie istnieje — służą do zbudowania domyślnej listy zadań dla starych instalacji. Nie są już w domyślnym configu (`_DEFAULTS`) ani w UI; nowe instalacje używają wyłącznie listy `tasks`. Wystarczy raz zapisać ustawienia w UI, by `tasks` stało się jedynym źródłem.
 
 **`max_workers`** — liczba równoległych wątków generowania audio. Domyślnie `12`. Zmniejsz przy problemach z wydajnością lub przy słabszym serwerze Kokoro.
 

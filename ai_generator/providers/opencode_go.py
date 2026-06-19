@@ -5,8 +5,6 @@ MiniMax and Qwen3.x models use the Anthropic Messages format.
 Auth is always Bearer token regardless of endpoint.
 """
 
-import json
-import urllib.request
 from typing import Optional
 
 from .base import BaseProvider
@@ -52,12 +50,7 @@ class OpenCodeGoProvider(BaseProvider):
         if self.reasoning_effort:
             data["reasoning_effort"] = self.reasoning_effort
         try:
-            req = urllib.request.Request(
-                CHAT_URL,
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers,
-            )
-            raw = self._request_with_reasoning_fallback(req, data, headers, CHAT_URL)
+            raw = self._post_with_reasoning_fallback(CHAT_URL, data, headers)
             if raw is None:
                 return None
             return self._parse_chat_completion(raw, "OpenCode Go")
@@ -78,12 +71,7 @@ class OpenCodeGoProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
         }
         try:
-            req = urllib.request.Request(
-                MESSAGES_URL,
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers,
-            )
-            raw = self._request_with_retry(req)
+            raw = self._post(MESSAGES_URL, data, headers)
             if raw is None:
                 return None
             return self._parse_messages(raw, "OpenCode Go messages")
