@@ -15,7 +15,7 @@ anki-toolkit/
 │   ├── __init__.py
 │   ├── consts.py                    # ADDON_NAME (wyliczane z nazwy folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
-│   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
+│   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
@@ -55,17 +55,13 @@ anki-toolkit/
 │   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty) + dopasowanie cen
 │   ├── workflow.py                  # workflow "Generuj fiszkę" (AI → Dict → TTS), execute_step()
 │   └── providers/
-│       ├── __init__.py              # rejestr dostawców + fabryka get_provider()
-│       ├── base.py                  # BaseProvider (ABC)
+│       ├── __init__.py              # rejestr dostawców + fabryka get_provider() + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral)
+│       ├── base.py                  # BaseProvider (ABC) + OpenAICompatProvider + wspólne parsery odpowiedzi
 │       ├── openai_compat.py         # helpery OpenAI-compatible
-│       ├── openai.py
-│       ├── cometapi.py
-│       ├── openrouter.py
-│       ├── anthropic.py
-│       ├── google.py
-│       ├── mistral.py
-│       ├── opencode_go.py
-│       └── model_discovery.py
+│       ├── anthropic.py             # Anthropic Messages API
+│       ├── google.py                # Google Gemini generateContent
+│       ├── opencode_go.py           # OpenCode Go (Chat Completions / Anthropic Messages)
+│       └── model_discovery.py       # pobieranie listy modeli z API dostawców
 │
 ├── tts/                             # Moduł 3: generowanie audio przez Kokoro TTS lub OpenRouter
 │   ├── __init__.py                  # submenu TTS w menu kontekstowym przeglądarki + przycisk edytora
@@ -250,10 +246,9 @@ Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejn
 
 #### Dodanie nowego dostawcy AI
 
-1. Utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider`
-2. Zaimplementuj `call_api(self, prompt) -> Optional[str]`
-3. Zarejestruj w `ai_generator/providers/__init__.py` w słownikach `PROVIDERS` i `PROVIDER_LABELS` (UI ustawień buduje listy dostawców z tego rejestru)
-4. Dodaj sekcję `providers.moj_provider` w `config.json`
+1. Jeśli API jest zgodne z OpenAI Chat Completions — dodaj cienką klasę dziedziczącą po `OpenAICompatProvider` w `ai_generator/providers/__init__.py` (wystarczy `API_URL` i `LABEL`). W przeciwnym razie utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider` i zaimplementuj `call_api(self, prompt) -> Optional[str]` (możesz użyć gotowych `_parse_chat_completion()` / `_parse_messages()` z bazy)
+2. Zarejestruj klasę w `ai_generator/providers/__init__.py` w słownikach `PROVIDERS` i `PROVIDER_LABELS` (UI ustawień buduje listy dostawców z tego rejestru)
+3. Dodaj sekcję `providers.moj_provider` w `config.json`
 
 #### OpenCode Go — szczegóły
 

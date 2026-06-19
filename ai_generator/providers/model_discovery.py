@@ -9,41 +9,50 @@ logger = logging.getLogger(__name__)
 _CACHE = {}
 
 
+def _fetch_simple(cache_key, url, headers, keep, fallbacks, force):
+    """Fetch model ids from a `{"data": [{"id": ...}]}` endpoint.
+
+    `keep(id)` decides which ids survive; `fallbacks` is used when the request
+    fails or returns nothing. Results are sorted and cached under `cache_key`.
+    """
+    if cache_key in _CACHE and not force:
+        return _CACHE[cache_key]
+    models = []
+    try:
+        req = urllib.request.Request(url, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        models = [
+            mid for item in data.get("data", [])
+            if (mid := item.get("id", "")) and keep(mid)
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to fetch models from {url}: {e}")
+    if not models:
+        models = list(fallbacks)
+    models.sort()
+    _CACHE[cache_key] = models
+    return models
+
+
 # ---------------------------------------------------------------------------
 # OpenAI
 # ---------------------------------------------------------------------------
 
+_OPENAI_SKIP = ("whisper", "tts", "dall-e", "embedding",
+                "moderation", "davinci", "babbage", "curie", "ada")
+
+
 def fetch_openai_models(api_key: str, force: bool = False) -> list[str]:
-    cache_key = ("openai", api_key[:8])
-    if cache_key in _CACHE and not force:
-        return _CACHE[cache_key]
-
-    models = []
-    try:
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for item in data.get("data", []):
-            mid = item.get("id", "")
-            # Skip non-chat models
-            if any(skip in mid for skip in [
-                "whisper", "tts", "dall-e", "embedding",
-                "moderation", "davinci", "babbage", "curie", "ada",
-            ]):
-                continue
-            if mid.startswith(("gpt-", "o1", "o3", "o4", "ft:")):
-                models.append(mid)
-    except Exception as e:
-        logger.warning(f"Failed to fetch OpenAI models: {e}")
-
-    if not models:
-        models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini", "o3-mini"]
-    models.sort()
-    _CACHE[cache_key] = models
-    return models
+    return _fetch_simple(
+        ("openai", api_key[:8]),
+        "https://api.openai.com/v1/models",
+        {"Authorization": f"Bearer {api_key}"},
+        lambda m: not any(s in m for s in _OPENAI_SKIP)
+        and m.startswith(("gpt-", "o1", "o3", "o4", "ft:")),
+        ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini", "o3-mini"],
+        force,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,30 +150,14 @@ def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def fetch_mistral_models(api_key: str, force: bool = False) -> list[str]:
-    cache_key = ("mistral", api_key[:8])
-    if cache_key in _CACHE and not force:
-        return _CACHE[cache_key]
-
-    models = []
-    try:
-        req = urllib.request.Request(
-            "https://api.mistral.ai/v1/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for item in data.get("data", []):
-            mid = item.get("id", "")
-            if mid.startswith("mistral"):
-                models.append(mid)
-    except Exception as e:
-        logger.warning(f"Failed to fetch Mistral models: {e}")
-
-    if not models:
-        models = ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"]
-    models.sort()
-    _CACHE[cache_key] = models
-    return models
+    return _fetch_simple(
+        ("mistral", api_key[:8]),
+        "https://api.mistral.ai/v1/models",
+        {"Authorization": f"Bearer {api_key}"},
+        lambda m: m.startswith("mistral"),
+        ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+        force,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,66 +165,33 @@ def fetch_mistral_models(api_key: str, force: bool = False) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def fetch_anthropic_models(api_key: str, force: bool = False) -> list[str]:
-    cache_key = ("anthropic", api_key[:8])
-    if cache_key in _CACHE and not force:
-        return _CACHE[cache_key]
-
-    models = []
-    try:
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/models",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for item in data.get("data", []):
-            mid = item.get("id", "")
-            if mid:
-                models.append(mid)
-    except Exception as e:
-        logger.warning(f"Failed to fetch Anthropic models: {e}")
-
-    if not models:
-        models = [
+    return _fetch_simple(
+        ("anthropic", api_key[:8]),
+        "https://api.anthropic.com/v1/models",
+        {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+        lambda m: True,
+        [
             "claude-sonnet-4-20250514",
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",
             "claude-3-opus-20240229",
             "claude-3-haiku-20240307",
-        ]
-    models.sort()
-    _CACHE[cache_key] = models
-    return models
+        ],
+        force,
+    )
 
 
 # ---------------------------------------------------------------------------
 # CometAPI — public, no API key needed
 # ---------------------------------------------------------------------------
 
-_COMETAPI_CACHE = None
-
 def fetch_cometapi_models(force: bool = False) -> list[str]:
-    global _COMETAPI_CACHE
-    if _COMETAPI_CACHE is not None and not force:
-        return _COMETAPI_CACHE
-
-    models = []
-    try:
-        req = urllib.request.Request("https://api.cometapi.com/api/models")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for item in data.get("data", []):
-            mid = item.get("id", "")
-            if mid:
-                models.append(mid)
-    except Exception as e:
-        logger.warning(f"Failed to fetch CometAPI models: {e}")
-
-    if not models:
-        models = [
+    return _fetch_simple(
+        ("cometapi",),
+        "https://api.cometapi.com/api/models",
+        None,
+        lambda m: True,
+        [
             "grok-4-1-fast-non-reasoning",
             "grok-4-1-fast-reasoning",
             "grok-3-fast-non-reasoning",
@@ -241,10 +201,9 @@ def fetch_cometapi_models(force: bool = False) -> list[str]:
             "gpt-4o-mini",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
-        ]
-    models.sort()
-    _COMETAPI_CACHE = models
-    return models
+        ],
+        force,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -252,30 +211,15 @@ def fetch_cometapi_models(force: bool = False) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def fetch_opencode_go_models(api_key: str, force: bool = False) -> list[str]:
-    cache_key = ("opencode_go", api_key[:8])
-    if cache_key in _CACHE and not force:
-        return _CACHE[cache_key]
-
-    models = []
-    try:
-        req = urllib.request.Request(
-            "https://opencode.ai/zen/go/v1/models",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "User-Agent": "Mozilla/5.0 (compatible; anki-toolkit/1.0)",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for item in data.get("data", []):
-            mid = item.get("id", "")
-            if mid:
-                models.append(mid)
-    except Exception as e:
-        logger.warning(f"Failed to fetch OpenCode Go models: {e}")
-
-    if not models:
-        models = [
+    return _fetch_simple(
+        ("opencode_go", api_key[:8]),
+        "https://opencode.ai/zen/go/v1/models",
+        {
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "Mozilla/5.0 (compatible; anki-toolkit/1.0)",
+        },
+        lambda m: True,
+        [
             "deepseek-v4-flash",
             "deepseek-v4-pro",
             "glm-5",
@@ -288,10 +232,9 @@ def fetch_opencode_go_models(api_key: str, force: bool = False) -> list[str]:
             "minimax-m2.7",
             "qwen3.5-plus",
             "qwen3.6-plus",
-        ]
-    models.sort()
-    _CACHE[cache_key] = models
-    return models
+        ],
+        force,
+    )
 
 
 # ---------------------------------------------------------------------------

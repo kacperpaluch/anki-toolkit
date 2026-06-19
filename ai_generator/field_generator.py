@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 from anki.notes import Note
 
-from ..common import clean_html_normalized, safe_float, safe_str
+from ..common import clean_html_normalized, safe_str
 
 from . import stats
 from .template_engine import render_template

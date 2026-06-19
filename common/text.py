@@ -5,22 +5,7 @@ from typing import Optional
 
 
 def unique(values: list) -> list:
-    seen = set()
-    result = []
-    for v in values or []:
-        s = str(v).strip()
-        if s and s not in seen:
-            seen.add(s)
-            result.append(s)
-    return result
-
-
-def safe_float(value, default: float, min_val: float = 0.0, max_val: float = 100.0) -> float:
-    try:
-        v = float(value)
-        return max(min_val, min(max_val, v))
-    except (TypeError, ValueError):
-        return default
+    return list(dict.fromkeys(s for v in values or [] if (s := str(v).strip())))
 
 
 def safe_str(value, default: str = "") -> str:

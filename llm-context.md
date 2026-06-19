@@ -39,7 +39,7 @@ anki-toolkit/
 │   ├── __init__.py                  # re-eksport wszystkich symboli
 │   ├── consts.py                    # ADDON_NAME (wyliczane z __name__ — nazwa folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
-│   ├── text.py                      # unique(), safe_float(), safe_str(), unique_filename(), normalize_float()
+│   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
 │   ├── http.py                      # fetch_url(), fetch_text(), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
@@ -81,15 +81,11 @@ anki-toolkit/
 │   ├── stats.py                     # statystyki użycia (user_files/) + match_pricing()
 │   ├── workflow.py                  # execute_step() współdzielony przez edytor i batch
 │   └── providers/
-│       ├── __init__.py
-│       ├── base.py
+│       ├── __init__.py              # rejestr + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral)
+│       ├── base.py                  # BaseProvider + OpenAICompatProvider + _parse_chat_completion/_parse_messages
 │       ├── openai_compat.py
-│       ├── openai.py
-│       ├── cometapi.py
-│       ├── openrouter.py
-│       ├── anthropic.py
-│       ├── google.py
-│       ├── mistral.py
+│       ├── anthropic.py             # Anthropic Messages API
+│       ├── google.py                # Google Gemini generateContent
 │       ├── opencode_go.py           # OpenCode Go (Chat Completions + Anthropic Messages, auto-detect)
 │       └── model_discovery.py
 │
@@ -254,7 +250,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `config.json` | Szablon domyślny (nie nadpisywany — patrz wyżej) |
 | `common/consts.py` | `ADDON_NAME` — wyliczane z `__name__` (nazwa folderu wtyczki), używane przez wszystkie moduły; config działa nawet gdy folder nie nazywa się `anki-toolkit` |
 | `common/html.py` | `clean_html()`, `clean_html_normalized()` — czyszczenie HTML, używane przez dictionary, ai_generator, tts |
-| `common/text.py` | `unique()`, `safe_float()`, `safe_str()`, `unique_filename()`, `normalize_float()`, `split_separator_regex()` (separator splitu z tolerancją białych znaków), `plural_pl()` (polska liczba mnoga) |
+| `common/text.py` | `unique()`, `safe_str()`, `unique_filename()`, `normalize_float()`, `split_separator_regex()` (separator splitu z tolerancją białych znaków), `plural_pl()` (polska liczba mnoga) |
 | `common/http.py` | `fetch_url()`, `fetch_text()`, `extract_http_error()`, `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
@@ -274,11 +270,11 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/logs_tab.py` | Zakładka Logi — `LogsTab`, tryb debugowania + podgląd bufora logów (czyta `common/debug_log.py`) |
 | `ai_generator/stats.py` | Lokalne statystyki użycia — `record_request()`, `record_note()`, `record_tts()` (TTS: requesty/błędy/znaki/pliki per model), `get_stats(days=None, start=None, end=None)` (zwraca też sekcję `tts`), `reset_stats()`, `match_pricing()` (dopasowanie cennika OpenRouter do kluczy statystyk); liczniki per dzień kalendarzowy, zapis do `user_files/usage_stats.json` (migracja legacy przy imporcie), thread-safe (`threading.Lock`) |
 | `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
-| `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()` |
-| `ai_generator/providers/base.py` | ABC dla nowych providerów — implementuj `call_api()` |
+| `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()`; 4 klasy zgodne z OpenAI (`OpenAIProvider`/`OpenRouterProvider`/`CometAPIProvider`/`MistralProvider`) jako cienkie podklasy `OpenAICompatProvider` |
+| `ai_generator/providers/base.py` | `BaseProvider` (ABC — implementuj `call_api()`) + wspólne parsery `_parse_chat_completion()`/`_parse_messages()`; `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
 | `ai_generator/providers/openai_compat.py` | Helpery dla OpenAI-compatible Chat Completions: wykrywa modele OpenAI reasoning, pomija `temperature`, parsuje `message.content` string/list, wykrywa błąd unsupported `reasoning_effort` |
 | `ai_generator/providers/opencode_go.py` | OpenCode Go — auto-detect formatu (Chat Completions vs Anthropic Messages), `User-Agent` header, reasoning jako wolny tekst |
-| `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera (w tym `fetch_opencode_go_models`) |
+| `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera; bliźniacze endpointy przez wspólny `_fetch_simple()`, dispatcher `fetch_models()` |
 | `ai_generator/field_generator.py` | Główna logika generowania — niezależna od UI; zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła) |
 | `ai_generator/editor_ui.py` | UI edytora — główny przycisk workflow przed przyciskiem AI, async (`run_in_background` + `saveNow`), ochrona `_GENERATING` |
 | `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
@@ -313,11 +309,10 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 
 ## Jak dodać nowego providera AI
 
-1. Utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider`
-2. Zaimplementuj `call_api(self, prompt: str) -> Optional[str]`
-3. Zarejestruj w `ai_generator/providers/__init__.py` w słowniku `PROVIDERS`
-4. Dodaj etykietę do `PROVIDER_LABELS` tamże (UI ustawień buduje listy dostawców z rejestru)
-5. Dodaj sekcję `providers.moj_provider` w `config.json`
+1. API zgodne z OpenAI Chat Completions: dodaj cienką podklasę `OpenAICompatProvider` w `ai_generator/providers/__init__.py` (ustaw `API_URL`, `LABEL`, opcjonalnie `SUPPORTS_REASONING_EFFORT`). Inny format: utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider` i zaimplementuj `call_api()` (możesz użyć `_parse_chat_completion()` / `_parse_messages()` z bazy)
+2. Zarejestruj klasę w `ai_generator/providers/__init__.py` w słowniku `PROVIDERS`
+3. Dodaj etykietę do `PROVIDER_LABELS` tamże (UI ustawień buduje listy dostawców z rejestru)
+4. Dodaj sekcję `providers.moj_provider` w `config.json`
 
 ---
 
@@ -327,7 +322,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 common/                         ← współdzielone narzędzia (html, http, text, config, ui)
     ├── consts.py               ← ADDON_NAME — używane przez WSZYSTKIE moduły
     ├── html.py                 ← clean_html / clean_html_normalized — używane przez dictionary, ai_generator, tts
-    ├── text.py                 ← unique / safe_float / unique_filename — używane przez tts, ai_generator
+    ├── text.py                 ← unique / safe_str / unique_filename / normalize_float — używane przez tts, ai_generator
     ├── http.py                 ← RETRYABLE_STATUS_CODES, fetch_url, fetch_text, extract_http_error — używane przez providers, dictionary, tts
     ├── config.py               ← get_full_config, get_module_config — używane przez tts/config.py, nbsp_remover/utils.py
     └── ui.py                   ← widgety Qt, palette, hint_label, _expanding_line_edit, _api_key_widget, _scrollable — używane przez settings
@@ -343,10 +338,10 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
     └── _generator.py           ← zarządzanie stanem generatora (config-aware cache, reset); używa common/ADDON_NAME
     └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard
     └── browser_ui.py           ← add_to_context_menu (batch AI równoległy + batch workflow; zapis przez CollectionOp)
-    └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_float, safe_str
+    └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_str
         └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
-        └── providers/          (BaseProvider + 7 implementacji + model_discovery); używa common/http RETRYABLE_STATUS_CODES
+        └── providers/          (BaseProvider/OpenAICompatProvider + 7 implementacji + model_discovery); używa common/http RETRYABLE_STATUS_CODES
     └── workflow.py             (AI → Dict → TTS sekwencyjnie, _RUNNING guard); używa common/ADDON_NAME
 
 tts/__init__.py                 ← add_to_context_menu + exports on_editor_buttons_init

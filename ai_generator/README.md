@@ -207,29 +207,32 @@ Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 36
 
 ## Dodanie nowego dostawcy
 
-1. Utwórz `providers/moj_provider.py`:
+**Wariant A — API zgodne z OpenAI Chat Completions** (najczęstszy). Wystarczy cienka klasa w `providers/__init__.py`:
+```python
+class MojProvider(OpenAICompatProvider):
+    API_URL = "https://api.example.com/v1/chat/completions"
+    LABEL = "Moj Provider"
+    # SUPPORTS_REASONING_EFFORT = False  # jeśli API odrzuca reasoning_effort
+```
+`OpenAICompatProvider` (z `base.py`) dostarcza gotowe `call_api()`: auth Bearer, `temperature`/`reasoning_effort` wg modelu, retry z fallbackiem i rozbiór przez `_parse_chat_completion()`.
+
+**Wariant B — inny format API.** Utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider` i zaimplementuj `call_api()`:
 ```python
 from .base import BaseProvider
 from typing import Optional
-import json
 
 class MojProvider(BaseProvider):
     def call_api(self, prompt: str) -> Optional[str]:
-        req = self._build_request(prompt)
+        req = ...  # zbuduj urllib.request.Request
         raw = self._request_with_retry(req)  # automatyczny retry dla 429/5xx
         if raw is None:
             return None
-        res_data = json.loads(raw.decode("utf-8"))
-        # Waliduj strukturę odpowiedzi przed dostępem
-        # ...
-        return wynik
+        # gotowe parsery z bazy: _parse_chat_completion() (format OpenAI)
+        # lub _parse_messages() (format Anthropic); albo własny rozbiór
+        return self._parse_messages(raw, "Moj Provider")
 ```
 
-2. Zarejestruj w `providers/__init__.py`:
-```python
-from .moj_provider import MojProvider
-PROVIDERS = { ..., "moj_provider": MojProvider }
-```
+2. Zarejestruj klasę w słownikach `PROVIDERS` (i `PROVIDER_LABELS`) w `providers/__init__.py`.
 
 3. Dodaj w `config.json`:
 ```json

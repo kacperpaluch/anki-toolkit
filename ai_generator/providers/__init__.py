@@ -1,11 +1,31 @@
-from .base import BaseProvider
-from .openai import OpenAIProvider
-from .cometapi import CometAPIProvider
-from .openrouter import OpenRouterProvider
+from .base import BaseProvider, OpenAICompatProvider
 from .anthropic import AnthropicProvider
 from .google import GoogleProvider
-from .mistral import MistralProvider
 from .opencode_go import OpenCodeGoProvider
+
+
+# The Bearer-auth chat-completions providers differ only in endpoint, label
+# and (for Mistral) reasoning_effort support — declared inline rather than in
+# four near-identical files.
+class OpenAIProvider(OpenAICompatProvider):
+    API_URL = "https://api.openai.com/v1/chat/completions"
+    LABEL = "OpenAI"
+
+
+class OpenRouterProvider(OpenAICompatProvider):
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    LABEL = "OpenRouter"
+
+
+class CometAPIProvider(OpenAICompatProvider):
+    API_URL = "https://api.cometapi.com/v1/chat/completions"
+    LABEL = "CometAPI"
+
+
+class MistralProvider(OpenAICompatProvider):
+    API_URL = "https://api.mistral.ai/v1/chat/completions"
+    LABEL = "Mistral"
+    SUPPORTS_REASONING_EFFORT = False
 
 PROVIDERS = {
     "openai": OpenAIProvider,

@@ -1,7 +1,7 @@
 from .consts import ADDON_NAME
 from .html import clean_html, clean_html_normalized
 from .text import (
-    unique, safe_float, safe_str, unique_filename, normalize_float,
+    unique, safe_str, unique_filename, normalize_float,
     split_separator_regex, plural_pl,
 )
 from .http import fetch_url, fetch_text, extract_http_error, RETRYABLE_STATUS_CODES

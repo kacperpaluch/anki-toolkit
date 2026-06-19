@@ -12,20 +12,16 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI; `_GENERATING` guard zapobiega podwójnemu kliknięciu AI; `saveNow(start)` zapewnia świeży stan note przed zadaniem |
 | `browser_ui.py` | UI przeglądarki — batch z QProgressDialog, cancel_flag |
-| `field_generator.py` | Logika generowania — niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_float()`, `common.safe_str()` |
+| `field_generator.py` | Logika generowania — niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `usage_stats.json`; `get_stats(days=None)` agreguje zakres; thread-safe |
-| `providers/__init__.py` | Rejestr providerów + fabryka `get_provider()` |
-| `providers/base.py` | ABC `BaseProvider` — interfejs + `_request_with_retry()` + `_request_with_reasoning_fallback()`; używa `common.http.RETRYABLE_STATUS_CODES` |
+| `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 4 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL` i (Mistral) `SUPPORTS_REASONING_EFFORT = False` |
+| `providers/base.py` | ABC `BaseProvider` — interfejs + `_request_with_retry()` + `_request_with_reasoning_fallback()` + wspólne parsery odpowiedzi `_parse_chat_completion()` (format OpenAI choices→message→content) i `_parse_messages()` (format Anthropic, pierwszy blok `type=="text"`); klasa `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions; używa `common.http.RETRYABLE_STATUS_CODES` |
 | `providers/openai_compat.py` | Helpery dla providerów zgodnych z Chat Completions: wykrywanie modeli OpenAI reasoning, pomijanie `temperature`, parsowanie `message.content` string/list, `is_reasoning_effort_unsupported_error()` |
-| `providers/openai.py` | OpenAI (i kompatybilne API) |
-| `providers/cometapi.py` | CometAPI |
-| `providers/openrouter.py` | OpenRouter |
-| `providers/anthropic.py` | Anthropic (Messages API, inny format niż OpenAI) |
-| `providers/google.py` | Google Gemini (generateContent API) |
-| `providers/mistral.py` | Mistral AI (OpenAI-compatible format) |
-| `providers/opencode_go.py` | OpenCode Go — Chat Completions dla większości modeli, Anthropic Messages dla MiniMax/Qwen3.x; auto-detect na podstawie nazwy modelu; reasoning jako wolny string; `User-Agent` header (Cloudflare) |
-| `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; w tym `fetch_opencode_go_models()` |
+| `providers/anthropic.py` | Anthropic (Messages API, inny format niż OpenAI); `call_api()` deleguje rozbiór do `BaseProvider._parse_messages()` |
+| `providers/google.py` | Google Gemini (generateContent API — własny rozbiór `candidates[0].content.parts`) |
+| `providers/opencode_go.py` | OpenCode Go — Chat Completions dla większości modeli (`_parse_chat_completion`), Anthropic Messages dla MiniMax/Qwen3.x (`_parse_messages`); auto-detect na podstawie nazwy modelu; reasoning jako wolny string; `User-Agent` header (Cloudflare) |
+| `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; bliźniacze endpointy `{"data":[{"id":...}]}` (openai/mistral/anthropic/cometapi/opencode_go) idą przez wspólny `_fetch_simple()` z predykatem `keep`; Google i OpenRouter mają własne fetchery |
 | `workflow.py` | Workflow "Generuj fiszkę" — sekwencyjne uruchamianie AI → Dict → TTS na pojedynczej notatce w edytorze; guard `_RUNNING` blokuje podwójne odpalenie; używa `common.ADDON_NAME` |
 
 ## Przepływ danych
@@ -140,11 +136,10 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 
 ## Dodanie nowego dostawcy AI
 
-1. Utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider`
-2. Zaimplementuj `call_api(self, prompt: str) -> Optional[str]`
-3. Dodaj do `PROVIDERS` w `providers/__init__.py`
-4. Dodaj sekcję w `config.json` → `ai_generator.providers.moj_provider`
-5. Dodaj nazwę do listy `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
+1. Provider zgodny z OpenAI Chat Completions: dziedzicz po `OpenAICompatProvider` w `providers/__init__.py`, ustaw tylko `API_URL` i `LABEL` (opcjonalnie `SUPPORTS_REASONING_EFFORT`). Provider o innym formacie: utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider` i zaimplementuj `call_api()` (możesz wykorzystać `_parse_chat_completion()` / `_parse_messages()` z bazy)
+2. Dodaj klasę do `PROVIDERS` w `providers/__init__.py`
+3. Dodaj sekcję w `config.json` → `ai_generator.providers.moj_provider`
+4. Dodaj nazwę do listy `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
 
 ### Format odpowiedzi API
 
@@ -159,15 +154,15 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 
 `max_tokens` dla Anthropic i OpenCode Go Messages (wymagany przez API) pochodzi z `provider_cfg.get("max_tokens")` → `BaseProvider.max_tokens`. Domyślnie `2048`. Konfigurowalny per-provider w `config.json`.
 
-Providery zgodne z OpenAI Chat Completions używają `providers/openai_compat.py`. Jeśli nazwa modelu wygląda jak OpenAI reasoning, `temperature` nie jest wysyłane. `reasoning_effort` jest wysyłane przez `openai`, `cometapi` i `openrouter` (tylko dla rozpoznanych modeli reasoning); `mistral` go nie wysyła; `opencode_go` wysyła `reasoning_effort` bezpośrednio jako wolny string jeśli ustawiony (bez sprawdzania nazwy modelu). Jeśli model nie obsługuje `reasoning_effort` (HTTP 400 wspominający ten parametr), `_request_with_reasoning_fallback()` automatycznie ponawia żądanie bez niego.
+Providery zgodne z OpenAI Chat Completions współdzielą `OpenAICompatProvider.call_api()` (w `base.py`) i helpery z `providers/openai_compat.py`. Jeśli nazwa modelu wygląda jak OpenAI reasoning, `temperature` nie jest wysyłane. `reasoning_effort` jest wysyłane przez `openai`, `cometapi` i `openrouter` (tylko dla rozpoznanych modeli reasoning); `mistral` go nie wysyła (`SUPPORTS_REASONING_EFFORT = False`); `opencode_go` wysyła `reasoning_effort` bezpośrednio jako wolny string jeśli ustawiony (bez sprawdzania nazwy modelu). Jeśli model nie obsługuje `reasoning_effort` (HTTP 400 wspominający ten parametr), `_request_with_reasoning_fallback()` automatycznie ponawia żądanie bez niego.
 
-Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdzają niepustość tablic i istnienie kluczy. Błędy parsowania są logowane przez `self.logger` i zapisywane do `self.last_error`. `BaseProvider._request_with_retry()` implementuje retry (3 próby, exponential backoff) dla HTTP 429/5xx oraz błędów połączenia/timeoutów. Klucz API Google jest wysyłany w nagłówku `x-goog-api-key` (nie w URL-u — URL-e trafiają do logów).
+Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla formatu OpenAI (`choices[0].message.content`, z `extract_message_content` dla string/list) i `_parse_messages()` dla formatu Anthropic (pierwszy blok `type=="text"`); Google ma własny rozbiór `candidates`. Wszystkie walidują strukturę odpowiedzi przed dostępem — sprawdzają niepustość tablic i istnienie kluczy. Błędy parsowania są logowane przez `self.logger` i zapisywane do `self.last_error`. `BaseProvider._request_with_retry()` implementuje retry (3 próby, exponential backoff) dla HTTP 429/5xx oraz błędów połączenia/timeoutów. Klucz API Google jest wysyłany w nagłówku `x-goog-api-key` (nie w URL-u — URL-e trafiają do logów).
 
 ## Zależności
 
 - Stdlib: `urllib.request`, `json`, `re`, `time`, `logging`
 - Anki API: `mw.addonManager.getConfig`, `mw.col.get_note`, `mw.col.update_note`, `mw.taskman.run_in_background`, `mw.taskman.run_on_main`
-- Własne: `common.ADDON_NAME`, `common.clean_html_normalized`, `common.safe_float`, `common.safe_str`, `common.http.RETRYABLE_STATUS_CODES`
+- Własne: `common.ADDON_NAME`, `common.clean_html_normalized`, `common.safe_str`, `common.http.RETRYABLE_STATUS_CODES`
 - Qt: `QProgressDialog` (pasek postępu z przyciskiem Anuluj w trybie batch)
 - Brak pip packages
 
@@ -188,6 +183,6 @@ Wszystkie providery walidują strukturę odpowiedzi przed dostępem — sprawdza
 - `FieldGenerator.last_error` przechowuje ostatni błąd providera/API; editor_ui pokazuje go zamiast mylącego "Brak pól do wygenerowania.", a browser_ui dolicza błędy w podsumowaniu batcha
 - `editor.saveNow(apply)` w `on_done` synchronizuje stan webview → `editor.note` przed aplikowaniem wyników AI; zachowuje edycje pól których AI nie dotknęło. `apply()` pisze do notatki złapanej na starcie i sprawdza tożsamość (`editor.note is note`) — jeśli użytkownik przełączył kartę w trakcie generowania, wynik jest zapisywany do kolekcji przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
-- Config values (`batch_sleep`, `temperature`, itp.) są walidowane przez `safe_float()` i `safe_str()` z `common.text` przed użyciem
+- Pola konfiguracyjne note-type (`target`, `provider`, `prompt`) są normalizowane przez `safe_str()` z `common.text` przed użyciem; wartości liczbowe (`batch_sleep`, `temperature`) pochodzą z widgetów Qt (zakresy wymuszone w UI) lub z `.get()` z wartością domyślną
 - Throttling jest wyłącznie na poziomie przeglądarki (sleep co `batch_limit` notatek) — `field_generator` nie ma własnych sleep'ów między polami
 - **Statystyki użycia**: każdy `call_api()` wywołuje `self._capture_usage(res_data)` (BaseProvider) — wyciąga tokeny z `usage.prompt/completion_tokens` (OpenAI-compat), `usage.input/output_tokens` (Anthropic) lub `usageMetadata` (Gemini) do `provider.last_usage`; `field_generator.process_note()` rejestruje przez `stats.record_request()` (per provider/model) i `stats.record_note()`; dashboard w **Ustawienia → Statystyki** z wyborem zakresu (dziś/7/30/365 dni/wszystko/własny zakres dat od–do — `get_stats(start=..., end=...)`, granice inclusive)

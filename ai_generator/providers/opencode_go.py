@@ -10,7 +10,6 @@ import urllib.request
 from typing import Optional
 
 from .base import BaseProvider
-from .openai_compat import extract_message_content
 
 CHAT_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 MESSAGES_URL = "https://opencode.ai/zen/go/v1/messages"
@@ -61,36 +60,7 @@ class OpenCodeGoProvider(BaseProvider):
             raw = self._request_with_reasoning_fallback(req, data, headers, CHAT_URL)
             if raw is None:
                 return None
-            res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
-            choices = res_data.get("choices")
-            if not choices or not isinstance(choices, list):
-                self.last_error = f"OpenCode Go: unexpected response: {list(res_data.keys())}"
-                self.logger.error(self.last_error)
-                return None
-            message = choices[0].get("message")
-            if not message:
-                self.last_error = "OpenCode Go: missing 'message' in first choice"
-                self.logger.error(self.last_error)
-                return None
-            content = message.get("content")
-            if content is None:
-                self.last_error = (
-                    "OpenCode Go: missing 'content' in message "
-                    f"(finish_reason={choices[0].get('finish_reason')})"
-                )
-                self.logger.error(self.last_error)
-                return None
-            text = extract_message_content(content)
-            if text is None:
-                self.last_error = f"OpenCode Go: unsupported content type: {type(content).__name__}"
-                self.logger.error(self.last_error)
-                return None
-            return text
-        except (KeyError, IndexError, TypeError) as e:
-            self.last_error = f"OpenCode Go parse error: {e}"
-            self.logger.error(self.last_error)
-            return None
+            return self._parse_chat_completion(raw, "OpenCode Go")
         except Exception as e:
             self.last_error = f"OpenCode Go error: {e}"
             self.logger.error(self.last_error)
@@ -116,30 +86,7 @@ class OpenCodeGoProvider(BaseProvider):
             raw = self._request_with_retry(req)
             if raw is None:
                 return None
-            res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
-            content = res_data.get("content")
-            if not content or not isinstance(content, list):
-                self.last_error = f"OpenCode Go messages: unexpected response: {list(res_data.keys())}"
-                self.logger.error(self.last_error)
-                return None
-            # Reasoning models may put a "thinking" block first — take the
-            # first block of type "text" (fall back to any block with text).
-            text = next(
-                (block.get("text") for block in content
-                 if isinstance(block, dict) and block.get("type") == "text"
-                 and block.get("text")),
-                "",
-            ).strip()
-            if not text:
-                self.last_error = "OpenCode Go messages: empty text in response"
-                self.logger.error(self.last_error)
-                return None
-            return text
-        except (KeyError, IndexError, TypeError) as e:
-            self.last_error = f"OpenCode Go messages parse error: {e}"
-            self.logger.error(self.last_error)
-            return None
+            return self._parse_messages(raw, "OpenCode Go messages")
         except Exception as e:
             self.last_error = f"OpenCode Go messages error: {e}"
             self.logger.error(self.last_error)

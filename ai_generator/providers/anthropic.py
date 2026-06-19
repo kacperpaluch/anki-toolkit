@@ -33,29 +33,7 @@ class AnthropicProvider(BaseProvider):
             raw = self._request_with_retry(req)
             if raw is None:
                 return None
-            res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
-            content = res_data.get("content")
-            if not content or not isinstance(content, list):
-                self.last_error = f"Anthropic: unexpected response structure: {list(res_data.keys())}"
-                self.logger.error(self.last_error)
-                return None
-            # With extended thinking the first block is "thinking" —
-            # find the first text block instead of assuming content[0].
-            text = next(
-                (block.get("text") for block in content
-                 if isinstance(block, dict) and block.get("type") == "text"),
-                None,
-            )
-            if text is None:
-                self.last_error = f"Anthropic: no text block in response (stop_reason={res_data.get('stop_reason')})"
-                self.logger.error(self.last_error)
-                return None
-            return text.strip()
-        except (KeyError, IndexError, TypeError) as e:
-            self.last_error = f"Anthropic response parse error: {e}"
-            self.logger.error(self.last_error)
-            return None
+            return self._parse_messages(raw, "Anthropic")
         except Exception as e:
             self.last_error = f"Anthropic Error: {e}"
             self.logger.error(self.last_error)
