@@ -118,9 +118,9 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
 def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
     """Add 'Pobierz wymowę: <słownik>' to the editor's right-click menu.
 
-    Only shown when the focused field is the configured source_field for the
-    dictionary module (e.g. 'ang') — so the option never appears on unrelated
-    fields. Shows one entry per enabled dictionary button.
+    Only shown when the focused field is the configured source_field OR
+    target_field for the dictionary module — so the option never appears on
+    unrelated fields. Shows one entry per enabled dictionary button.
     """
     editor = getattr(editor_webview, "editor", None)
     if editor is None:
@@ -139,11 +139,12 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
 
     config = _get_config()
     source_field = config.get("source_field", "")
-    if not source_field or field_name != source_field:
+    target_field = config.get("target_field", "")
+    if not source_field or field_name not in (source_field, target_field):
         return
 
     # Need text in the source field to fetch pronunciation for
-    if not note[field_name].strip():
+    if source_field not in note or not note[source_field].strip():
         return
 
     enabled = [
