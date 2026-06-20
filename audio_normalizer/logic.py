@@ -128,6 +128,13 @@ def process_collection(progress_callback=None, max_workers=None, ffmpeg_cmd=None
     all_files = os.listdir(media_dir)
     audio_files = [f for f in all_files if f.lower().endswith(config.AUDIO_EXTENSIONS)]
 
+    # ponytail: prune stale entries — files deleted from media dir stay in
+    # history forever without this. Re-downloads are already caught by mtime
+    # mismatch, but stale entries bloat the file. Upgrade: content hash if
+    # mtime collisions ever become a real problem.
+    existing = set(audio_files)
+    history = {k: v for k, v in history.items() if k in existing}
+
     files_to_process = []
     for f in audio_files:
         full_path = os.path.join(media_dir, f)
