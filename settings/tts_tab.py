@@ -562,9 +562,23 @@ class TTSTab(QWidget):
         return config
 
     def _on_preview_voice(self):
-        voices = self._current_voices()
+        # Prefer all voices from the fetched OpenRouter model (so the user
+        # can audition before checking any), fall back to the text field.
+        voices: list[str] = []
+        if self._provider.currentData() == "openrouter":
+            model_id = self._or_model.currentData() or self._or_model.currentText()
+            for m in self._or_models:
+                if m["id"] == model_id and m.get("voices"):
+                    voices = list(m["voices"])
+                    break
         if not voices:
-            showWarning("Brak głosów do podglądu. Wpisz lub zaznacz głosy powyżej.")
+            voices = self._current_voices()
+        if not voices:
+            showWarning(
+                'Brak głosów do podglądu.\n'
+                'Kliknij „Pobierz” aby załadować listę głosów modelu,\n'
+                'lub wpisz głosy ręcznie w polu powyżej.'
+            )
             return
 
         menu = QMenu(self)
