@@ -188,7 +188,6 @@ class TTSTab(QWidget):
         self._or_voice_list.setMaximumHeight(200)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._or_voice_list.setItemChanged  # unused; _on_voice_checklist_changed below
         orf.addRow(self._or_voice_list)
 
         orl.addLayout(orf)
