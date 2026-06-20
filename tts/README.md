@@ -103,6 +103,7 @@ W ustawieniach TTS, po wybraniu OpenRouter:
 4. Pod spodem pojawi się lista głosów z checkboxami — zaznacz które chcesz używać
 5. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
 6. Pole "Głosy" poniżej aktualizuje się automatycznie
+7. **Podgląd głosu ▾** — kliknij, wybierz głos z menu, wtyczka wygeneruje krótki sample i go odtworzy (koszt jednego krótkiego żądania TTS; dla Kokoro darmowe)
 
 Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova`, `echo`; Voxtral używa `en_paul_happy` itd.)
 

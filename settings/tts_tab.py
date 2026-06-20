@@ -4,9 +4,11 @@ from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QStackedWidget, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QDialog, QDialogButtonBox,
-    Qt, QLineEdit, QCheckBox,
+    Qt, QLineEdit, QCheckBox, QMenu,
 )
-from aqt.utils import showWarning
+from aqt.utils import showWarning, tooltip
+from aqt import mw
+from aqt.sound import av_player
 
 from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable, hint_label
 
@@ -207,6 +209,18 @@ class TTSTab(QWidget):
         voices_form.addRow(self._voices_label, self._voices)
         layout.addLayout(voices_form)
         self._update_voices_row_visibility()
+
+        # -- Voice preview --
+        preview_row = QHBoxLayout()
+        self._preview_btn = QPushButton("Podgląd głosu ▾")
+        self._preview_btn.setToolTip(
+            "Wygeneruj i odtwórz krótki sample z wybranego głosu.\n"
+            "Dla OpenRouter: koszt jednego krótkiego żądania TTS."
+        )
+        self._preview_btn.clicked.connect(self._on_preview_voice)
+        preview_row.addWidget(self._preview_btn)
+        preview_row.addStretch()
+        layout.addLayout(preview_row)
 
         # -- Speed --
         speed_form = QFormLayout()
@@ -511,6 +525,81 @@ class TTSTab(QWidget):
             return
         del self._tasks_data[idx]
         self._refresh_task_list()
+
+    # ------------------------------------------------------------------
+    # Voice preview
+    # ------------------------------------------------------------------
+
+    _PREVIEW_TEXT = "Hello, this is a voice sample for text-to-speech preview."
+
+    def _current_voices(self) -> list[str]:
+        text = self._voices.text().strip()
+        if not text:
+            return []
+        return [v.strip() for v in text.split(",") if v.strip()]
+
+    def _build_preview_config(self) -> dict:
+        """Build a TTS config dict from current (unsaved) UI state."""
+        config = {
+            "tts_provider": self._provider.currentData(),
+            "api_url": self._api_url.text().strip(),
+            "model": self._model.text().strip(),
+            "openrouter_api_key": self._or_key.text().strip(),
+            "use_ai_openrouter_key": self._or_use_ai_key.isChecked(),
+            "speed": self._speed.value(),
+            "max_retries": 2,
+            "timeout": 30,
+        }
+        idx = self._or_model.currentIndex()
+        if (
+            idx >= 0
+            and self._or_model.itemData(idx)
+            and self._or_model.itemText(idx) == self._or_model.currentText()
+        ):
+            config["openrouter_model"] = self._or_model.itemData(idx)
+        else:
+            config["openrouter_model"] = self._or_model.currentText().split("  (")[0].strip()
+        return config
+
+    def _on_preview_voice(self):
+        voices = self._current_voices()
+        if not voices:
+            showWarning("Brak głosów do podglądu. Wpisz lub zaznacz głosy powyżej.")
+            return
+
+        menu = QMenu(self)
+        for voice in voices:
+            action = menu.addAction(f"▶ {voice}")
+            action.triggered.connect(
+                lambda _checked=False, v=voice: self._play_voice_sample(v)
+            )
+        menu.exec(self._preview_btn.mapToGlobal(self._preview_btn.rect().bottomLeft()))
+
+    def _play_voice_sample(self, voice: str):
+        from ..tts.api import generate_audio
+
+        config = self._build_preview_config()
+        self._preview_btn.setEnabled(False)
+        self._preview_btn.setText("Generowanie...")
+
+        def task():
+            return generate_audio(self._PREVIEW_TEXT, config, voice)
+
+        def on_done(fut):
+            self._preview_btn.setEnabled(True)
+            self._preview_btn.setText("Podgląd głosu ▾")
+            try:
+                audio_bytes = fut.result()
+            except Exception as e:
+                tooltip(f"Podgląd głosu ({voice}): błąd — {e}", period=8000)
+                return
+
+            # ponytail: one reusable media file, overwritten each preview
+            fname = mw.col.media.write_data("_tts_preview.mp3", audio_bytes)
+            av_player.play_file(fname)
+            tooltip(f"Odtwarzanie: {voice}", period=3000)
+
+        mw.taskman.run_in_background(task, on_done)
 
     # ------------------------------------------------------------------
     # Save
