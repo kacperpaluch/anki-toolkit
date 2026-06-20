@@ -55,12 +55,34 @@ def _on_generate_browser(browser: Browser):
         tooltip("Nie zaznaczono żadnych notatek.")
         return
 
+    _run_batch(browser, nids, config, only_fields=None, label="Generowanie przez AI")
+
+
+def _on_generate_field_browser(browser: Browser, field_name: str):
+    config = get_config()
+    nids = browser.selected_notes()
+    if not nids:
+        tooltip("Nie zaznaczono żadnych notatek.")
+        return
+
+    _run_batch(
+        browser, nids, config,
+        only_fields={field_name},
+        label=f"AI: {field_name}",
+    )
+
+
+def _run_batch(browser: Browser, nids, config: dict,
+               only_fields, label: str):
+    """Run a parallel AI batch. only_fields=None = all configured empty fields;
+    only_fields={name} = only that target field, still skipping filled ones.
+    """
     batch_limit: int = max(1, config.get("batch_limit", 3))
     sleep_time: float = config.get("batch_sleep", 1.0)
     parallel: int = max(1, int(config.get("parallel_requests", 3)))
 
     progress, cancel_flag = _make_progress(
-        browser, "Generowanie przez AI...", len(nids), "AI Generator"
+        browser, f"{label}...", len(nids), "AI Generator"
     )
 
     state = {"done": 0, "changed": 0, "failures": 0, "last_error": None}
@@ -74,7 +96,7 @@ def _on_generate_browser(browser: Browser):
         gen = FieldGenerator(config)
         try:
             note = mw.col.get_note(nid)
-            changed = gen.process_note(note)
+            changed = gen.process_note(note, only_fields=only_fields)
         except Exception as e:
             with lock:
                 state["failures"] += 1
@@ -208,6 +230,26 @@ def _on_workflow_browser(browser: Browser):
     mw.taskman.run_in_background(task, on_done)
 
 
+def _all_configured_target_fields(config: dict) -> list[str]:
+    """Flattened list of distinct target field names across all note types.
+
+    Order follows first appearance (stable across menu builds). Used to build
+    the per-field submenu — process_note() dispatches per note type internally,
+    so 'AI: def' will use the right prompt for each note's type.
+    """
+    seen: dict[str, None] = {}  # py3.7+ dict preserves insertion order
+    for nt_name, nt_cfg in config.get("note_types", {}).items():
+        if not isinstance(nt_cfg, dict):
+            continue
+        for entry in nt_cfg.values():
+            if not isinstance(entry, dict):
+                continue
+            target = (entry.get("target") or "").strip()
+            if target:
+                seen.setdefault(target, None)
+    return list(seen.keys())
+
+
 def add_to_context_menu(browser: Browser, menu):
     from .workflow import get_workflow_config
 
@@ -218,6 +260,21 @@ def add_to_context_menu(browser: Browser, menu):
         qconnect(wf_action.triggered, lambda: _on_workflow_browser(browser))
         menu.addAction(wf_action)
 
-    action = QAction("Generuj pola", browser)
-    qconnect(action.triggered, lambda: _on_generate_browser(browser))
-    menu.addAction(action)
+    config = get_config()
+    target_fields = _all_configured_target_fields(config)
+
+    gen_menu = menu.addMenu("Generuj pola")
+    all_action = QAction("Wszystkie puste", browser)
+    qconnect(all_action.triggered, lambda: _on_generate_browser(browser))
+    gen_menu.addAction(all_action)
+
+    if target_fields:
+        gen_menu.addSeparator()
+        for field_name in target_fields:
+            action = QAction(f"AI: {field_name}", browser)
+            qconnect(
+                action.triggered,
+                lambda _checked=False, fn=field_name:
+                    _on_generate_field_browser(browser, fn),
+            )
+            gen_menu.addAction(action)

@@ -73,11 +73,18 @@ class FieldGenerator:
             self._providers[provider_name] = None
             return None
 
-    def process_note(self, note: Note) -> dict[str, str]:
+    def process_note(self, note: Note,
+                     only_fields: Optional[set] = None,
+                     overwrite: bool = False) -> dict[str, str]:
         """Fill empty fields in note according to config.
 
         Returns a dict of {field_name: generated_value} for each field that was filled.
         Also writes results directly to note so dependent fields can reference them via templates.
+
+        only_fields: if set, only consider those target field names (others are
+        skipped entirely). None = all configured target fields.
+        overwrite: if True, generate even when the field is already filled
+        (overwrites). False = skip filled fields (today's behavior).
         """
         self.last_error = None
         skip_tags_cfg = self._config.get("skip_tags", self._config.get("skip_tag", []))
@@ -102,7 +109,10 @@ class FieldGenerator:
             if not target_field or target_field not in note:
                 continue
 
-            if note[target_field].strip():
+            if only_fields is not None and target_field not in only_fields:
+                continue
+
+            if not overwrite and note[target_field].strip():
                 continue
 
             provider_name = safe_str(field_cfg.get("provider"))

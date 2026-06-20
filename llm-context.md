@@ -275,10 +275,10 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/providers/openai_compat.py` | Helpery dla OpenAI-compatible Chat Completions: wykrywa modele OpenAI reasoning, pomija `temperature`, parsuje `message.content` string/list, wykrywa błąd unsupported `reasoning_effort` |
 | `ai_generator/providers/opencode_go.py` | OpenCode Go — auto-detect formatu (Chat Completions vs Anthropic Messages), `User-Agent` header, reasoning jako wolny tekst |
 | `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera; bliźniacze endpointy przez wspólny `_fetch_simple()`, dispatcher `fetch_models()` |
-| `ai_generator/field_generator.py` | Główna logika generowania — niezależna od UI; zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła) |
-| `ai_generator/editor_ui.py` | UI edytora — główny przycisk workflow przed przyciskiem AI, async (`run_in_background` + `saveNow`), ochrona `_GENERATING` |
+| `ai_generator/field_generator.py` | Główna logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope pól, `overwrite=True` nadpisuje pełne; zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła) |
+| `ai_generator/editor_ui.py` | UI edytora — główny przycisk workflow przed przyciskiem AI (wszystkie puste), async (`run_in_background` + `saveNow`), ochrona `_GENERATING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu: „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola z promptem, `overwrite=True`) |
 | `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
-| `ai_generator/browser_ui.py` | UI przeglądarki — batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
+| `ai_generator/browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
 | `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING` |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
@@ -336,9 +336,9 @@ dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_c
 
 ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_context_menu
     └── _generator.py           ← zarządzanie stanem generatora (config-aware cache, reset); używa common/ADDON_NAME
-    └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard
-    └── browser_ui.py           ← add_to_context_menu (batch AI równoległy + batch workflow; zapis przez CollectionOp)
-    └── field_generator.py      (FieldGenerator — logika bez UI); używa common/clean_html_normalized, safe_str
+    └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard; PPM na polu → _on_generate_field_editor (only_fields, overwrite=True)
+    └── browser_ui.py           ← add_to_context_menu (submenu "Generuj pola ▸" — wszystkie puste + per-pole; batch AI równoległy + batch workflow; zapis przez CollectionOp)
+    └── field_generator.py      (FieldGenerator — logika bez UI); process_note(note, only_fields=None, overwrite=False); używa common/clean_html_normalized, safe_str
         └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
         └── providers/          (BaseProvider/OpenAICompatProvider + 7 implementacji + model_discovery); używa common/http.post_json (retry w jednym miejscu)

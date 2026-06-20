@@ -5,7 +5,9 @@ Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje 
 ## Jak używać
 
 ### Edytor kart
-Główna akcja w toolbarze to zwykle **Generuj fiszkę** z workflow AI → Słownik → TTS. Przycisk **AI** zostaje jako akcja pomocnicza: generuje tylko pola AI dla aktualnie otwartej karty.
+Główna akcja w toolbarze to zwykle **Generuj fiszkę** z workflow AI → Słownik → TTS. Przycisk **AI** zostaje jako akcja pomocnicza: generuje wszystkie skonfigurowane puste pola AI dla aktualnie otwartej karty.
+
+Dodatkowo: **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
 
 Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
 - Edytor odświeża się automatycznie po zakończeniu generowania
@@ -26,9 +28,15 @@ Przycisk w toolbarze edytora (pokazuje się gdy workflow ma skonfigurowane kroki
 Kroki wykonują się sekwencyjnie w tle. Każdy krok czeka na poprzedni. Notatka jest łapana raz na starcie workflow — przełączenie karty w edytorze w trakcie nie miesza danych między notatkami.
 
 ### Przeglądarka (batch)
-Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola**.
+Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
 
-- Pola które już mają treść są **zawsze pomijane** — generator uzupełnia tylko puste pola.
+Submenu zawiera:
+- **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (obecne zachowanie)
+- **AI: `def`**, **AI: `cz_mowy`** itd. — generuje tylko wybrane pole docelowe, pomija wypełnione
+
+Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
+
+- Pola które już mają treść są **zawsze pomijane** w batchu — generator uzupełnia tylko puste pola.
 - Jeśli nie zaznaczysz żadnych notatek, pojawi się krótki tooltip z informacją.
 - Anki **nie zamraża się** podczas przetwarzania — batch działa w tle.
 - Widoczny pasek postępu z licznikiem i przycisk **Anuluj**.
