@@ -65,6 +65,7 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 | `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji); `[]` wyłącza funkcję |
 | `batch_limit` | Liczba kart w jednej grupie — po każdej grupie następuje przerwa `batch_sleep` |
 | `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
+| `parallel_requests` | Liczba równoległych żądań API w batchu (1–16, domyślnie `3`) — `ThreadPoolExecutor` w `browser_ui._run_batch` |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
 
@@ -209,8 +210,8 @@ Każde wywołanie AI jest zliczane lokalnie (per dzień, per `provider/model`): 
 
 Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / **własny zakres dat** od–do z kalendarzykiem), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
 
-- Dane są zapisywane w `ai_generator/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer
-- Ceny nie są liczone — każdy model ma inny cennik; tokeny i liczba requestów są obiektywną miarą
+- Dane są zapisywane w `user_files/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer; stara ścieżka `ai_generator/usage_stats.json` jest migrowana automatycznie przy pierwszym uruchomieniu
+- Szacowany koszt USD per model — przycisk **Pobierz ceny** pobiera cennik z katalogu OpenRouter (jeśli model jest tam dostępny) i przelicza tokeny × cena/1k
 - Niektóre modele/proxy nie zwracają pola `usage` — wtedy zliczane są tylko requesty (tokeny = 0)
 
 ## Dodanie nowego dostawcy
@@ -241,7 +242,7 @@ class MojProvider(BaseProvider):
         return self._parse_messages(raw, "Moj Provider")
 ```
 
-2. Zarejestruj klasę w słownikach `PROVIDERS` (i `PROVIDER_LABELS`) w `providers/__init__.py`.
+2. Zarejestruj klasę w słownikach `PROVIDERS` (i `PROVIDER_LABELS`) w `providers/__init__.py` — `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` jest auto-derivowane z `PROVIDERS`, a `settings/prompts_tab.py` iteruje po `PROVIDER_LABELS` (żadnej manualnej listy do aktualizacji).
 
 3. Dodaj w `config.json`:
 ```json
@@ -253,7 +254,5 @@ class MojProvider(BaseProvider):
     }
 }
 ```
-
-4. Dodaj nazwę do list `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
 
 `BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).

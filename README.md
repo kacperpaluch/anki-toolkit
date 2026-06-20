@@ -18,7 +18,8 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
 │   ├── http.py                      # fetch_url(), fetch_text(), post_json() (retry dla POST), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
+│   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
+│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_note_type_names, get_fields_for_note_type, get_sample_notes
 │
 ├── user_files/                      # dane użytkownika (statystyki, historia) — przeżywają aktualizację wtyczki
 │
@@ -138,7 +139,7 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "ai_generator":      true,
     "tts":               false,
     "filtered_deck":     true,
-    "audio_normalizer":  false,
+    "audio_normalizer":  true,
     "nbsp_remover":      true
 }
 ```

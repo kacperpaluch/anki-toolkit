@@ -27,9 +27,13 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
 
 **`wiktionary_ipa_fallback`** — `true` (domyślnie) = gdy Oxford/Cambridge nie znajdzie IPA dla słowa, automatycznie odpyta Wiktionary API. `false` = wyłącza fallback, pole IPA zostaje puste gdy primary source nie zwróci wyników. Wiktionary dostarcza tylko IPA — nie ma audio.
 
+**`diki_ipa_fallback`** — `true` = przy pobieraniu audio z Diki (które nie ma natywnego IPA), moduł pobiera IPA z osobnego źródła określonego przez `diki_ipa_fallback_source`. Domyślnie `false`.
+
+**`diki_ipa_fallback_source`** — źródło IPA dla Diki: `"wiktionary"` (domyślnie), `"oxford"` albo `"cambridge"`. Jeśli wybrane źródło inne niż Wiktionary zwróci `None`, może zadziałać dalszy fallback przez `wiktionary_ipa_fallback`.
+
 **`ipa_format`** — format zapisu IPA:
 - `"compact"` — `/θɔːt/` (jeśli UK=US) lub `UK: /θɔːt/ • US: /θɑːt/`
-- `"both"` — zawsze `UK: /.../ • US: /.../`
+- `"both"` — `UK: /.../ • US: /.../` gdy różne; `/{phon}/` gdy UK==US
 - `"uk_only"` — tylko wymowa brytyjska
 - `"us_only"` — tylko wymowa amerykańska
 
@@ -52,19 +56,38 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka TTS** lub edycję `config.json`. Akcje TTS dostępne przez **prawy klik w przeglądarce → Anki Toolkit → TTS** oraz **PPM na polu docelowym w edytorze**.
 
-**`api_url`** — adres lokalnego serwera Kokoro (domyślnie `http://localhost:8880/v1/audio/speech`).
+**`tts_provider`** — `"kokoro"` (domyślnie) lub `"openrouter"`. Wybiera silnik TTS.
 
-**`model`** — nazwa modelu Kokoro (domyślnie `"kokoro"`).
+**`button_label`** — etykieta przycisku TTS w toolbarze edytora (domyślnie `"TTS"`).
+
+**`api_url`** — adres lokalnego serwera Kokoro (domyślnie `http://localhost:8880/v1/audio/speech`). Tylko dla `tts_provider: "kokoro"`.
+
+**`model`** — nazwa modelu Kokoro (domyślnie `"kokoro"`). Tylko dla `tts_provider: "kokoro"`.
+
+**`openrouter_api_key`** — klucz API z https://openrouter.ai/keys. Tylko dla `tts_provider: "openrouter"`.
+
+**`use_ai_openrouter_key`** — `true` = użyj klucza OpenRouter z `ai_generator.providers.openrouter.api_key` (jeden klucz dla AI i TTS). Domyślnie `false`.
+
+**`openrouter_model`** — ID modelu TTS z OpenRouter (domyślnie `"openai/gpt-4o-mini-tts-2025-12-15"`).
 
 **`voices`** — lista głosów biorących udział w losowaniu. Każda notatka/zdanie dostaje losowo wybrany głos z tej listy.
 
-**`speed`** — tempo mowy (0.1–3.0, domyślnie 0.9).
+**`speed`** — tempo mowy (0.1–3.0, domyślnie 0.9). Walidowane w UI; backend nie wymusza zakresu.
 
-**`ang_source_field`** / **`ang_target_field`** / **`przyklad_target_field`** — *legacy.* Czytane z zapisanego configu **tylko** gdy klucz `tasks` w ogóle nie istnieje — służą do zbudowania domyślnej listy zadań dla starych instalacji. Nie są już w domyślnym configu (`_DEFAULTS`) ani w UI; nowe instalacje używają wyłącznie listy `tasks`. Wystarczy raz zapisać ustawienia w UI, by `tasks` stało się jedynym źródłem.
+**`tasks`** — lista zadań TTS. Każde zadanie to obiekt:
+- `"label"` — etykieta w menu i na tooltipie
+- `"source_field"` — pole czytane (tekst do syntezy)
+- `"target_field"` — pole zapisywane (`[sound:...mp3]`)
+- `"mode"` — `"single"` (jedno audio na notatkę) lub `"split"` (osobne audio na segment)
+- `"split_separator"` — separator trybu split (domyślnie `"<br><br>"`; tylko dla `mode: "split"`)
+
+Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (legacy pola poniżej).
+
+**`ang_source_field`** / **`ang_target_field`** / **`przyklad_target_field`** — *legacy.* Czytane z zapisanego configu **tylko** gdy klucz `tasks` w ogóle nie istnieje — służą do zbudowania domyślnej listy zadań dla starych instalacji. Nie są już w `_DEFAULTS` ani w UI; nowe instalacje używają wyłącznie listy `tasks`. Wystarczy raz zapisać ustawienia w UI, by `tasks` stało się jedynym źródłem.
 
 **`max_workers`** — liczba równoległych wątków generowania audio. Domyślnie `12`. Zmniejsz przy problemach z wydajnością lub przy słabszym serwerze Kokoro.
 
-**`max_retries`** — liczba prób przy błędach API (429, 5xx). Domyślnie `3`.
+**`max_retries`** — liczba prób przy błędach API (429, 5xx). Domyślnie `3`. Retry w `common.http.post_json()`.
 
 **`timeout`** — timeout pojedynczego żądania TTS w sekundach. Domyślnie `60`.
 
@@ -154,3 +177,91 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
     "max_workers": 4
 }
 ```
+
+---
+
+## Sekcja `filtered_deck` — talia filtrowana
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia**.
+
+**`deck_name`** — nazwa talii filtrowanej do utworzenia/odświeżenia. Domyślnie `"Angielski - Powtórka z wyprzedzeniem"`.
+
+**`search_deck`** — nazwa talii źródłowej, z której pobierane są karty. Domyślnie `"angielski"`.
+
+Akcja: **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {search_deck}...** — otwiera dialog z opcjami (dni do przodu, limit kart, kolejność) i tworzy/rebuduje istniejącą talię filtrowaną (`col.sched.rebuild_filtered_deck`).
+
+```json
+"filtered_deck": {
+    "deck_name": "Angielski - Powtórka z wyprzedzeniem",
+    "search_deck": "angielski"
+}
+```
+
+---
+
+## Sekcja `nbsp_remover` — czyszczenie HTML w kolekcji
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja NBSP Remover).
+
+**`show_tooltip`** — `true` (domyślnie) = pokazuje tooltip z licznikiem oczyszczonych pól przy automatycznym czyszczeniu.
+
+**`auto_run_startup`** — `true` = automatyczne czyszczenie kolekcji przy otwarciu profilu (`gui_hooks.profile_did_open`). Domyślnie `false` (manualne uruchomienie przez menu).
+
+**`skip_field`** — nazwa pola, w którym tagi `<div>` są usuwane całkowicie zamiast zamieniane na `<br>`. Domyślnie `"ang"` (pole angielskiego słowa — bez złamań wiersza).
+
+```json
+"nbsp_remover": {
+    "show_tooltip": true,
+    "auto_run_startup": false,
+    "skip_field": "ang"
+}
+```
+
+Akcje:
+- **Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...** — batchowe czyszczenie wszystkich notatek (jeden krok undo przez `CollectionOp`)
+- Automatyczne oczyszczanie każdej nowo dodanej notatki (`add_cards_did_add_note` hook) — `clean_field()` dzieli `<div>` na `<br>`, usuwa `&nbsp;`
+
+---
+
+## Sekcja `workflow` — workflow "Generuj fiszkę"
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka AI Generator → Workflow**.
+
+**`enabled`** — `true` (domyślnie) = przycisk workflow w toolbarze edytora + pozycja w menu kontekstowym przeglądarki.
+
+**`editor_label`** — etykieta przycisku w edytorze. Domyślnie `"Generuj fiszkę"`.
+
+**`steps`** — lista kroków wykonywanych sekwencyjnie na pojedynczej notatce. Każdy krok:
+- `"module"` — `"ai"`, `"dictionary"` albo `"tts"`
+- `"action"` — `"generate"` (dla AI/TTS) albo `"fetch"` (dla dictionary)
+- `"dicts"` — opcjonalnie, lista słowników dla kroku dictionary (np. `["oxford_uk", "oxford_us"]`)
+
+```json
+"workflow": {
+    "enabled": true,
+    "editor_label": "Generuj fiszkę",
+    "steps": [
+        {"module": "ai",         "action": "generate"},
+        {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
+        {"module": "tts",        "action": "generate"}
+    ]
+}
+```
+
+Kroki wykonują się w tle; notatka jest łapana raz na starcie (przełączenie karty w edytorze w trakcie nie miesza danych). W kroku TTS pliki audio są generowane równolegle przez `ThreadPoolExecutor`.
+
+---
+
+## Sekcja `debug` — logowanie wtyczki
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Logi**.
+
+**`enabled`** — `true` = włącza logowanie na poziomie DEBUG (szczegółowe logi HTTP, parsery, statystyki); `false` (domyślnie) = tylko WARNING i wyżej. Może być przełączane live w UI bez restartu Anki (`common.debug_log.set_debug()`).
+
+```json
+"debug": {
+    "enabled": false
+}
+```
+
+Logi są buforowane w pamięci (deque 2000 wpisów) — dostępne w zakładce Logi z przyciskami Odśwież i Wyczyść.

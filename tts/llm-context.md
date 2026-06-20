@@ -22,47 +22,56 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`, wyjątek rzucany dopiero na poziomie `generate_audio` gdy `err` niepuste); `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
-| `processor.py` | Przetwarzanie notatek w przeglądarce: `process_task_async()`, `process_tasks_async()`, `_generate_items()`, `_collect_work_items()`, `_save_batch_results()`; `process_single_note(note, config=None, tasks=None, overwrite=False)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; przy błędach generowania rzuca `Exception` z podsumowaniem (workflow pokazuje ją jako tooltip kroku) |
-| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`), task-indexed klucze wyników; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
+| `api.py` | API TTS: `generate_audio()` (dispatcher + statystyki), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); **wyjątek `raise Exception(...)` rzucany wewnątrz `_generate_*`** gdy `err` niepuste (`api.py:64,106`), a nie na poziomie `generate_audio()` (ten jedynie łapie i re-raise dla statystyk). `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
+| `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async()` (batch z `QProgressDialog` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
+| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
 
 ## Przepływ danych
 
 ```
 Menu `TTS` → zadanie z listy
   → _make_runner(browser, task) → browser.selected_notes()
-  → process_task_async(browser, nids, task)
-      → config = get_tts_config()
-      → validate_config(config)
-      → _collect_work_items(nids, task, voices)
-      → QProgressDialog + run_in_background
-      → _generate_items(items, config, label, cancel_flag, progress, state)
+  → process_task_async(browser, nids, task)  →  _process_batch_async(browser, nids, [task], label)
+Menu → "Uruchom wszystkie"
+  → _make_run_all(browser, tasks) → process_tasks_async(browser, nids, tasks)  →  _process_batch_async(browser, nids, tasks, label)
+
+_process_batch_async(browser, nids, tasks, label):
+  → config = get_tts_config(); validate_config(config)
+  → voices = unique(config.get("voices", []))
+  → precollect (główny wątek): dla każdego nid:
+      note = mw.col.get_note(nid)
+      build_note_work_items(note, tasks, voices)  →  (work_items, split_contexts)
+      all_items.extend(items)   # wszystkie zadania razem, jeden pool na notatkę
+  → QProgressDialog(maximum = len(all_items))
+  → run_in_background(bg_task)
+      → generate_for_items(all_items, config,
+            key_fn=lambda item: (item["nid"], item["task_i"], item["seg_i"]),
+            cancel_flag, on_progress)
           → ThreadPoolExecutor(max_workers=config.get("max_workers", 12))
               → generate_audio(text, config, voice)  # dispatcher → Kokoro / OpenRouter
-      → _save_batch_results(items, results, task)
-      → zapis [sound:fname.mp3] do target_field
-      → mw.col.update_note(note)
+          → mw.col.media.write_data(unique_filename(), bytes)
+          → results[(nid, task_i, seg_i)] = filename
+  → on_done (główny wątek):
+      → progress.close()
+      → grouped per nid → fresh note = mw.col.get_note(nid)
+      → apply_results_to_note(note, items, split_contexts, per_note)
+      → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
+            .success(tooltip z podsumowaniem).run_in_background()
+      → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
-Menu → "Uruchom wszystkie"
-  → _make_run_all(browser, tasks) → process_tasks_async(browser, nids, tasks)
-      → config = get_tts_config(); validate_config(config)
-      → precollect jobs: dla każdego taska zbierz _collect_work_items(...)
-      → jeden QProgressDialog z maksimum = suma work items
-      → dla każdego joba sekwencyjnie: _generate_items(...)
-      → po zakończeniu: _save_batch_results(...) dla każdego taska
-      → jeden browser.mw.reset() i jeden tooltip z podsumowaniem
-
-Przycisk edytora
+Przycisk edytora (toolbar)
   → _on_tts_editor(editor)
       → jeśli editor_id w _GENERATING: tooltip i return
       → editor.saveNow(start) synchronizuje webview → note przed odczytem pól
       → _start_tts_editor(editor, editor_id)
           → validate_config(config), get_tasks(config), unique(voices)
-          → zbuduj work_items ze wszystkich zadań TTS
-          → run_in_background(bg_task)
-              → ThreadPoolExecutor → generate_audio(...) → mw.col.media.write_data(...)
-              → results[(task_i, target_field, seg_i)] = filename
+          → build_note_work_items(note, tasks, voices)
+          → run_in_background(bg_task):
+              → generate_for_items(work_items, config)   # default key = (task_i, seg_i)
+              → mw.col.media.write_data(unique_filename(), bytes)
+              → results[(task_i, seg_i)] = filename
           → on_done: editor.saveNow(apply), zastosuj wyniki do notatki złapanej na starcie
+              → apply_results_to_note(note, work_items, split_contexts, results)
               → jeśli editor.note is note: editor.loadNote()
               → w przeciwnym razie (użytkownik przełączył kartę): mw.col.update_note(note)
           → jeden tooltip z podsumowaniem
@@ -76,21 +85,24 @@ get_tasks(config)
   → else (klucz nie istnieje / zły typ): zbuduj z legacy pól
        (ang_source_field + ang_target_field → mode=single,
         przyklad_target_field → mode=split)
-       — te pola nie są w _DEFAULTS od wersji X; fallback czyta je
+       — te pola nie są w _DEFAULTS; fallback czyta je
          tylko ze starych zapisanych configów użytkownika
 ```
 
 ### Dispatcher providera
 
-`generate_audio()` sprawdza `config["tts_provider"]`:
+`generate_audio()` (`api.py:14`) sprawdza `config["tts_provider"]`:
 - `"kokoro"` (domyślnie) → `_generate_kokoro()` — POST do `config["api_url"]`
 - `"openrouter"` → `_generate_openrouter()` — POST do `https://openrouter.ai/api/v1/audio/speech` z `Authorization: Bearer`
 
-### Proces przykładów (process_przyklad)
+Retry (HTTP 429/5xx, timeouty) dzieje się w `common.http.post_json()` — `_generate_*` tylko interpretują wynik `(bytes|None, err|None)` i rzucają `Exception` gdy `err` niepuste.
+
+### Proces przykładów (tryb split)
 
 ```
 Pole: "He ran fast.<br><br>She walked slowly.<br><br>They jumped high."
-  → split po /<br\s*\/?>\s*){2,}/
+  → split_separator_regex("<br><br>")  (common/text.py:38)
+      → kompiluje (?:<br><br>){1,}  (\s* między tokenami, dowolna ilość whitespace)
   → ["He ran fast.", "She walked slowly.", "They jumped high."]
   → każde zdanie → osobny plik audio
   → po złożeniu: "He ran fast.[sound:tts_abc.mp3]<br><br>She walked...[sound:tts_def.mp3]..."
@@ -136,7 +148,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `voices` — lista głosów do losowania
 - `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli klucz nie istnieje → backward compat czyta legacy pola `ang_source_field`/`ang_target_field`/`przyklad_target_field` ze starego configu (pola nie są już w `_DEFAULTS` ani w UI); pusta lista = brak zadań
 - `max_workers` — liczba wątków w `ThreadPoolExecutor`
-- `max_retries` i `timeout` — retry logic w `generate_audio()` (HTTP 429/5xx; timeouty zgłaszane jako błąd)
+- `max_retries` i `timeout` — retry logic w `common.http.post_json()` (HTTP 429/5xx; timeouty zgłaszane jako błąd); przekazywane przez `_generate_*` do `post_json()`
 - Wszystkie domyślne wartości zdefiniowane w `_DEFAULTS` (config.py) i mergowane przez `get_tts_config()` używającego `get_module_config()` z `common.config`
 
 ### Walidacja konfiguracji
@@ -188,8 +200,8 @@ Generowane losowo przez `unique_filename()` z `common.text`: `tts_` + 12 znaków
 ## Zależności
 
 - Stdlib: `urllib.request` (GET w `fetch_openrouter_tts_models`), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
-- Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.media.write_data`, `mw.taskman`
-- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_kokoro`/`_generate_openrouter`)
+- Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.update_notes` (przez `CollectionOp`), `mw.col.media.write_data`, `mw.taskman`, `CollectionOp`
+- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_kokoro`/`_generate_openrouter`)
 - Kokoro: wymaga lokalnego serwera Kokoro TTS (Docker)
 - OpenRouter: tylko klucz API, żadnych lokalnych zależności
 - Brak pip packages

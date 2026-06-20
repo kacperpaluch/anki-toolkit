@@ -49,7 +49,7 @@ W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `An
 - `Wszystkie włączone słowniki` — batch po wszystkich aktywnych pozycjach z `buttons`
 - `Pobierz z {label}` — batch tylko dla jednej skonfigurowanej grupy słowników
 
-Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się. `QProgressDialog` z przyciskiem Anuluj; anulowanie sprawdzane między notatkami przez flagę `cancel_requested`. Po zakończeniu wyświetlany jest jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
+Batch działa w tle (`mw.taskman.run_in_background`) — Anki nie zamraża się. `QProgressDialog` z przyciskiem Anuluj; anulowanie sprawdzane między notatkami przez flagę `cancel_flag["cancelled"]` (dict). Po zakończeniu wyświetlany jest jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
 
 Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw zapisuje bieżące pola (świeżo wpisane słowo jest widoczne), potem fetch w `run_in_background`. Guard `_FETCHING` blokuje podwójne kliknięcie. Po zakończeniu wynik trafia do notatki złapanej na starcie — jeśli użytkownik przełączył kartę w trakcie, zmiany są zapisywane przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki.
 
@@ -120,9 +120,9 @@ Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLPa
 
 ## Zależności
 
-- Stdlib tylko: `urllib.parse`, `html.parser`, `re`, `json`, `logging`
-- Anki API: `mw.col.media.write_data`, `aqt.sound.av_player`
-- Własne: `common.html` (clean_html_normalized), `common.http` (fetch_url, fetch_text)
+- Stdlib tylko: `urllib.parse`, `html.parser`, `re`, `json`, `logging`, `dataclasses`, `typing`
+- Anki API: `mw.col.media.write_data`, `mw.col.update_note`, `mw.col.get_note`, `mw.taskman`, `aqt.sound.av_player`, `CollectionOp` (batch), `editor.addButton`/`saveNow`/`loadNote`, `gui_hooks.editor_will_show_context_menu`, `QProgressDialog`
+- Własne: `common` (`clean_html_normalized` re-eksportowany z pakietu), `common.http` (`fetch_url`, `fetch_text`)
 - Brak pip packages
 
 ## Uwagi implementacyjne

@@ -99,7 +99,7 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | Wartość | Przykład |
 |---|---|
 | `"compact"` | `/θɔːt/` gdy UK=US, lub `UK: /θɔːt/ • US: /θɑːt/` gdy różne |
-| `"both"` | `UK: /θɔːt/ • US: /θɑːt/` zawsze |
+| `"both"` | `UK: /θɔːt/ • US: /θɑːt/` gdy różne; `/{phon}/` gdy UK==US |
 | `"uk_only"` | `/θɔːt/` |
 | `"us_only"` | `/θɑːt/` |
 

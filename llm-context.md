@@ -42,7 +42,8 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
 │   ├── http.py                      # fetch_url(), fetch_text(), post_json() (POST z retry), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_field_names, get_note_type_names, get_fields_for_note_type, get_sample_notes, get_templates_for_field
+│   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
+│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_note_type_names, get_fields_for_note_type, get_sample_notes
 │
 ├── settings/                        # dialog ustawień (wszystkie moduły, jeden UI)
 │   ├── __init__.py                  # SettingsDialog, open_settings()
@@ -254,7 +255,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/http.py` | `fetch_url()` / `fetch_text()` (GET z retry), `post_json()` (POST bytes z retry na 429/5xx; zwraca `(bytes\|None, err\|None)` — używane przez providerów AI i TTS), `extract_http_error()` (parsuje JSON body HTTPError), `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
-| `common/ui.py` | Widgety Qt: `palette()` (kolory zależne od motywu — jedno źródło dla wszystkich zakładek), `hint_label()`, `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_field_names`, `get_sample_notes`, `get_templates_for_field` |
+| `common/ui.py` | Widgety Qt: `palette()` (kolory zależne od motywu — jedno źródło dla wszystkich zakładek), `hint_label()`, `_expanding_line_edit`, `_api_key_widget`, `_scrollable`, `get_note_type_names`, `get_fields_for_note_type`, `get_sample_notes` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog` |
 | `settings/status_tab.py` | Zakładka Start — dashboard pipeline'u: chipy kroków workflow, globalny status, lista „Do zrobienia", wiersz modułów pomocniczych; `refresh(cfg)` przebudowuje widok |
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |

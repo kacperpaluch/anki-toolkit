@@ -14,7 +14,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — batch zawsze `overwrite=False` (pomija wypełnione) |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
-| `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `usage_stats.json`; `get_stats(days=None)` agreguje zakres; thread-safe |
+| `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
 | `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 4 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL` i (Mistral) `SUPPORTS_REASONING_EFFORT = False` |
 | `providers/base.py` | ABC `BaseProvider` — interfejs + `_post(url, data, headers)` (POST z retry, deleguje do `common.http.post_json`) + `_post_with_reasoning_fallback()` (ponowna próba bez `reasoning_effort` gdy API zwróci błąd wspominający ten parametr) + wspólne parsery odpowiedzi `_parse_chat_completion()` (format OpenAI choices→message→content) i `_parse_messages()` (format Anthropic, pierwszy blok `type=="text"`); klasa `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
 | `providers/openai_compat.py` | Helpery dla providerów zgodnych z Chat Completions: wykrywanie modeli OpenAI reasoning, pomijanie `temperature`, parsowanie `message.content` string/list, `is_reasoning_effort_unsupported_error()` |
@@ -66,11 +66,20 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
   → "AI: def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
   → QProgressDialog z przyciskiem Anuluj
   → mw.taskman.run_in_background(task)         # nie blokuje UI
-      → dla każdej notatki:
-          → jeśli i % batch_limit == 0: sleep(batch_sleep)  # pauza między grupami
-          → FieldGenerator(note, only_fields=..., overwrite=False)   # batch zawsze pomija wypełnione
-          → mw.col.update_note(note)
-  → on_done (główny wątek): progress.close(), mw.reset(), tooltip z podsumowaniem i ostatnim błędem API jeśli wystąpił
+      → ThreadPoolExecutor(max_workers=parallel_requests)
+      → chunk po batch_limit notatek (sleep batch_sleep między chunkami)
+      → dla każdej notatki w chunku (równolegle w puli):
+          → gen = FieldGenerator(config)                # NOWA instancja per notatka — provider trzyma last_error/last_usage
+          → note = mw.col.get_note(nid)
+          → gen.process_note(note, only_fields=..., overwrite=False)   # batch zawsze pomija wypełnione
+          → changed_notes.append(note) jeśli gen zmienił pola
+      → zbiera changed_notes w liście (pod lockiem)
+  → on_done (główny wątek):
+      → progress.close()
+      → _save_changed_notes(browser, changed_notes, summary)
+          → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
+              .success(tooltip z podsumowaniem).run_in_background()
+      → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
 Przycisk workflow w edytorze:
   → editor_ui.on_editor_buttons_init() dodaje go przed przyciskiem AI, jeśli `workflow.enabled=true` i `workflow.steps` nie jest puste
@@ -146,9 +155,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 ## Dodanie nowego dostawcy AI
 
 1. Provider zgodny z OpenAI Chat Completions: dziedzicz po `OpenAICompatProvider` w `providers/__init__.py`, ustaw tylko `API_URL` i `LABEL` (opcjonalnie `SUPPORTS_REASONING_EFFORT`). Provider o innym formacie: utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider` i zaimplementuj `call_api()` (możesz wykorzystać `_parse_chat_completion()` / `_parse_messages()` z bazy)
-2. Dodaj klasę do `PROVIDERS` w `providers/__init__.py`
-3. Dodaj sekcję w `config.json` → `ai_generator.providers.moj_provider`
-4. Dodaj nazwę do listy `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` i `settings/prompts_tab.py`
+2. Dodaj klasę do `PROVIDERS` w `providers/__init__.py` — `PROVIDER_LABELS` i `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` są auto-derivowane z `PROVIDERS`; `settings/prompts_tab.py` iteruje po `PROVIDER_LABELS` bez manualnej listy
 
 ### Format odpowiedzi API
 
@@ -182,13 +189,13 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - `openai_compat.add_reasoning_effort_if_supported()` jest używany przez `openai`, `cometapi`, `openrouter`; `mistral` go nie używa; `opencode_go` nie używa — wysyła `reasoning_effort` bezpośrednio jako wolny string
 - `BaseProvider._post(url, data, headers)` serializuje `data` do JSON i deleguje do `common.http.post_json()` z `self.max_retries` i `self.timeout`; ustawia `self.last_error` z zwróconego stringa błędu (lub `None` przy sukcesie)
 - `BaseProvider._post_with_reasoning_fallback()` opakowuje `_post()`: jeśli żądanie zwróci błąd zawierający `"reasoning_effort"`, usuwa ten parametr z body i ponawia; używany też przez `opencode_go`
-- Wszystkie `showWarning` w `field_generator.py` są wywoływane przez `mw.taskman.run_on_main` — bezpieczne wywołanie Qt z wątku w tle
+- `field_generator.py` nie zawiera żadnych wywołań `showWarning` ani Qt UI — błędy są logowane przez `logger` i ustawiane w `self.last_error`; ewentualne ostrzeżenia Qt są wywoływane przez `editor_ui`/`browser_ui` w głównym wątku
 - Przycisk AI w edytorze działa asynchronicznie (`run_in_background`) — UI nie zamarza podczas wywołania API; sekwencja: `saveNow(start)` → `start()` czyta `editor.note` → `run_in_background(task)` → `on_done` → `saveNow(apply)` → `loadNote()`
 - `_GENERATING: set[int]` w `editor_ui` — zbiór ID aktywnych edytorów dla przycisku AI; zapobiega wyścigowi podwójnego kliknięcia (drugie kliknięcie podczas trwającego generowania pokazuje tooltip i jest ignorowane); ID jest usuwany w `on_done` niezależnie od wyniku
 - `_RUNNING: set[int]` w `workflow.py` — analogiczna ochrona dla przycisku workflow
 - `editor.saveNow(start)` na początku `_on_generate_editor` — synchronizuje webview → `editor.note` PRZED startem zadania tła; `note = editor.note` jest czytany wewnątrz callbacku `start()`, dzięki czemu sprawdzenie pustości pól widzi rzeczywisty stan widoczny użytkownikowi
 - `fields_map` budowany przez `common.clean_html_normalized()` — pola notatki ze znacznikami HTML (`<div>`, `<br>`, `&nbsp;`) są oczyszczane przed wstawieniem do promptu; wyniki AI trafiają do karty surowo (bez strippowania HTML — AI powinno zwracać czysty tekst)
-- `process_note` zwraca `dict[str, str]` (nie `bool`) — editor_ui używa tego dict do bezwarunkowego nadpisania pól AI po `saveNow`; browser_ui używa go jako truthy check przed `mw.col.update_note`
+- `process_note` zwraca `dict[str, str]` (nie `bool`) — editor_ui używa tego dict do bezwarunkowego nadpisania pól AI po `saveNow`; browser_ui używa go jako truthy check, a notatki zmienione w batchu są zapisywane atomowo przez `CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))` (jeden krok undo), a nie per-note `mw.col.update_note`
 - `FieldGenerator.last_error` przechowuje ostatni błąd providera/API; editor_ui pokazuje go zamiast mylącego "Brak pól do wygenerowania.", a browser_ui dolicza błędy w podsumowaniu batcha
 - `editor.saveNow(apply)` w `on_done` synchronizuje stan webview → `editor.note` przed aplikowaniem wyników AI; zachowuje edycje pól których AI nie dotknęło. `apply()` pisze do notatki złapanej na starcie i sprawdza tożsamość (`editor.note is note`) — jeśli użytkownik przełączył kartę w trakcie generowania, wynik jest zapisywany do kolekcji przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
