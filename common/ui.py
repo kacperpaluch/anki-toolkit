@@ -25,7 +25,6 @@ def palette() -> dict:
             "off_bg": "#2b2e33", "off_fg": "#9aa3ad",
             "frame_bg": "#2c2f33", "border": "#44484d",
             "muted": "#9aa3ad",
-            "accent": "#7fb3e3",
             "card_bg": "#25282c", "detail": "#b6bec7",
             "issue_bg": "#3a3322", "issue_border": "#5c5230", "issue_fg": "#e0c98a",
             "ready_fg": "#7fce9e",
@@ -37,7 +36,6 @@ def palette() -> dict:
         "off_bg": "#eef0f3", "off_fg": "#5c6570",
         "frame_bg": "#f7f8fa", "border": "#d9dde3",
         "muted": "#5c6570",
-        "accent": "#1f4f7a",
         "card_bg": "white", "detail": "#4f5863",
         "issue_bg": "#fffaf0", "issue_border": "#ead8aa", "issue_fg": "#5c3d00",
         "ready_fg": "#1f7a3f",
@@ -97,15 +95,6 @@ def _scrollable(inner: QWidget) -> QScrollArea:
     return scroll
 
 
-def get_field_names() -> list[str]:
-    """Return sorted list of all field names in the collection."""
-    field_names = set()
-    for model in mw.col.models.all():
-        for fld in model["flds"]:
-            field_names.add(fld["name"])
-    return sorted(field_names)
-
-
 def get_note_type_names() -> list[str]:
     """Return sorted list of note type names, or [] if collection unavailable."""
     try:
@@ -152,18 +141,5 @@ def get_sample_notes(note_type_name: str, limit: int = 20) -> list[tuple[int, st
                 break
         if len(label) > 60:
             label = label[:57] + "…"
-        out.append((nid, label or f"(notatka {nid})"))
+            out.append((nid, label or f"(notatka {nid})"))
     return out
-
-
-def get_templates_for_field(field_name: str) -> list[tuple[int, str]]:
-    """Return list of (ord, template_name) for note types containing field_name."""
-    seen: dict[int, str] = {}
-    for model in mw.col.models.all():
-        if not any(fld["name"] == field_name for fld in model["flds"]):
-            continue
-        for tmpl in model["tmpls"]:
-            ord_val = tmpl["ord"]
-            if ord_val not in seen:
-                seen[ord_val] = tmpl["name"]
-    return sorted(seen.items())
