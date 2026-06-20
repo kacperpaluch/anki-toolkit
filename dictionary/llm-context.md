@@ -114,9 +114,9 @@ Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLPa
 - `OxfordAudioExtractor` — szuka `<div class="sound audio_play_button pron-uk icon-audio" data-src-mp3="...">`, bierze **pierwszy znaleziony URL** dla danego wariantu (bez walidacji słowa w URL — strona Oxford jest dedykowana jednemu hasłu)
 - `CambridgeAudioExtractor` — szuka `<source type="audio/mpeg" src="...uk_pron...">`, ma dwustopniową logikę: `audio_url` (z walidacją `word_normalized` w URL) + `fallback_url` (pierwszy pasujący URL bez walidacji). Zwraca `audio_url or fallback_url`. Cambridge ma wiele wpisów na stronie, stąd walidacja ma tu sens jako preferencja.
 - `LongmanAudioExtractor` — szuka `<span class="brefile" data-src-mp3="...">` (UK) lub `<span class="amefile" ...>` (US), bierze **pierwszy znaleziony URL** bez walidacji słowa
-- Diki nie wymaga parsowania — URL jest deterministyczny: `diki.pl/images-common/en/mp3/{word}.mp3`
+- Diki nie wymaga parsowania — URL jest deterministyczny: `diki.pl/images-common/en/mp3/{word}.mp3` (US: `en-ame/mp3/`). `_fetch_diki_audio` próbuje dwa warianty nazwy pliku: najpierw `_`-sanitizowany (zastępuje `-` → `_`, dla 99% haseł), a w razie 404 retry z zachowanym `-` (np. `sun-bleached.mp3`)
 
-`_normalize_word(word)` → `word.lower().replace(' ', '_').replace('-', '_').replace("'", "")` używane przez: `CambridgeAudioExtractor` (walidacja URL), `_fetch_diki_audio` (budowanie URL).
+`_normalize_word(word)` → `word.lower().replace(' ', '_').replace('-', '_').replace("'", "")` używane przez `CambridgeAudioExtractor` (walidacja URL). `_fetch_diki_audio` używa własnej, lżejszej normalizacji (bez zamiany `-`) z dwuetapowym fallbackiem `_` → `-`.
 
 ## Zależności
 

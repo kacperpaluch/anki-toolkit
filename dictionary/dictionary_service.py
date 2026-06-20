@@ -195,14 +195,16 @@ class DictionaryService:
         return result_tuple
 
     def _fetch_diki_audio(self, word: str, source: str, max_retries: int = 3, timeout: int = 10) -> Optional[bytes]:
-        sanitized = _normalize_word(word)
+        base = word.lower().replace(' ', '_').replace("'", "")
         variant = "uk" if source == "diki_uk" else "us"
-        if variant == "uk":
-            audio_url = f"{self.DIKI_BASE_URL}en/mp3/{sanitized}.mp3"
-        else:
-            audio_url = f"{self.DIKI_BASE_URL}en-ame/mp3/{sanitized}.mp3"
-        logger.info(f"Fetching Diki.pl audio from: {audio_url}")
-        return fetch_url(audio_url, max_retries=max_retries, timeout=timeout)
+        sub = "en/mp3" if variant == "uk" else "en-ame/mp3"
+        for candidate in (base.replace('-', '_'), base):
+            audio_url = f"{self.DIKI_BASE_URL}{sub}/{candidate}.mp3"
+            logger.info(f"Fetching Diki.pl audio from: {audio_url}")
+            data = fetch_url(audio_url, max_retries=max_retries, timeout=timeout)
+            if data:
+                return data
+        return None
 
 
 # Singleton instance
