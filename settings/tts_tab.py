@@ -4,7 +4,8 @@ from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QStackedWidget, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QDialog, QDialogButtonBox,
-    Qt, QLineEdit, QCheckBox, QMenu,
+    Qt, QLineEdit, QCheckBox, QTableWidget, QTableWidgetItem,
+    QHeaderView, QToolButton,
 )
 from aqt.utils import showWarning, tooltip
 from aqt import mw
@@ -180,10 +181,14 @@ class TTSTab(QWidget):
         sh.addStretch()
         orf.addRow(sel_row)
 
-        self._or_voice_list = QListWidget()
+        self._or_voice_list = QTableWidget(0, 2)
         self._or_voice_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._or_voice_list.setMaximumHeight(130)
-        self._or_voice_list.itemChanged.connect(self._on_voice_checklist_changed)
+        self._or_voice_list.verticalHeader().setVisible(False)
+        self._or_voice_list.horizontalHeader().setVisible(False)
+        self._or_voice_list.setMaximumHeight(200)
+        self._or_voice_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._or_voice_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._or_voice_list.setItemChanged  # unused; _on_voice_checklist_changed below
         orf.addRow(self._or_voice_list)
 
         orl.addLayout(orf)
@@ -209,18 +214,6 @@ class TTSTab(QWidget):
         voices_form.addRow(self._voices_label, self._voices)
         layout.addLayout(voices_form)
         self._update_voices_row_visibility()
-
-        # -- Voice preview --
-        preview_row = QHBoxLayout()
-        self._preview_btn = QPushButton("Podgląd głosu ▾")
-        self._preview_btn.setToolTip(
-            "Wygeneruj i odtwórz krótki sample z wybranego głosu.\n"
-            "Dla OpenRouter: koszt jednego krótkiego żądania TTS."
-        )
-        self._preview_btn.clicked.connect(self._on_preview_voice)
-        preview_row.addWidget(self._preview_btn)
-        preview_row.addStretch()
-        layout.addLayout(preview_row)
 
         # -- Speed --
         speed_form = QFormLayout()
@@ -320,7 +313,7 @@ class TTSTab(QWidget):
         once the OpenRouter checklist has voices, the checklist takes over."""
         manual = (
             self._provider.currentData() != "openrouter"
-            or self._or_voice_list.count() == 0
+            or self._or_voice_list.rowCount() == 0
         )
         self._voices_label.setVisible(manual)
         self._voices.setVisible(manual)
@@ -408,7 +401,7 @@ class TTSTab(QWidget):
                 break
 
         self._or_voice_list.blockSignals(True)
-        self._or_voice_list.clear()
+        self._or_voice_list.setRowCount(0)
 
         if model_info and model_info.get("voices"):
             voices = model_info["voices"]
@@ -420,7 +413,10 @@ class TTSTab(QWidget):
             )
             has_any_match = any(v in selected for v in voices)
             for voice in voices:
-                item = QListWidgetItem(voice)
+                row = self._or_voice_list.rowCount()
+                self._or_voice_list.insertRow(row)
+
+                item = QTableWidgetItem(voice)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 check = Qt.CheckState.Unchecked
                 if has_any_match:
@@ -432,22 +428,32 @@ class TTSTab(QWidget):
                 else:
                     check = Qt.CheckState.Checked
                 item.setCheckState(check)
-                self._or_voice_list.addItem(item)
+                self._or_voice_list.setItem(row, 0, item)
+
+                play_btn = QToolButton()
+                play_btn.setText("▶")
+                play_btn.setFixedWidth(30)
+                play_btn.setToolTip(f'Podgląd głosu: {voice}')
+                play_btn.clicked.connect(
+                    lambda _checked=False, v=voice: self._play_voice_sample(v)
+                )
+                self._or_voice_list.setCellWidget(row, 1, play_btn)
         else:
             self._or_voice_hint.setText(
-                'Kliknij "Pobierz" aby załadować listę modeli i głosów.\n'
+                'Kliknij "Pobierz" aby załadować listę modelów i głosów.\n'
                 'Możesz też wpisać model ręcznie i podać głosy poniżej.'
             )
 
         self._or_voice_list.blockSignals(False)
+        self._or_voice_list.itemChanged.connect(self._on_voice_checklist_changed)
         self._on_voice_checklist_changed(None)
         self._update_voices_row_visibility()
 
     def _on_voice_checklist_changed(self, _item):
         checked = []
-        for i in range(self._or_voice_list.count()):
-            item = self._or_voice_list.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
+        for row in range(self._or_voice_list.rowCount()):
+            item = self._or_voice_list.item(row, 0)
+            if item and item.checkState() == Qt.CheckState.Checked:
                 checked.append(item.text())
         self._voices.blockSignals(True)
         self._voices.setText(", ".join(checked))
@@ -460,26 +466,31 @@ class TTSTab(QWidget):
             v.strip() for v in self._voices.text().split(",") if v.strip()
         )
         self._or_voice_list.blockSignals(True)
-        for i in range(self._or_voice_list.count()):
-            item = self._or_voice_list.item(i)
-            item.setCheckState(
-                Qt.CheckState.Checked
-                if item.text() in selected
-                else Qt.CheckState.Unchecked
-            )
+        for row in range(self._or_voice_list.rowCount()):
+            item = self._or_voice_list.item(row, 0)
+            if item:
+                item.setCheckState(
+                    Qt.CheckState.Checked
+                    if item.text() in selected
+                    else Qt.CheckState.Unchecked
+                )
         self._or_voice_list.blockSignals(False)
 
     def _select_all(self):
         self._or_voice_list.blockSignals(True)
-        for i in range(self._or_voice_list.count()):
-            self._or_voice_list.item(i).setCheckState(Qt.CheckState.Checked)
+        for row in range(self._or_voice_list.rowCount()):
+            item = self._or_voice_list.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked)
         self._or_voice_list.blockSignals(False)
         self._on_voice_checklist_changed(None)
 
     def _deselect_all(self):
         self._or_voice_list.blockSignals(True)
-        for i in range(self._or_voice_list.count()):
-            self._or_voice_list.item(i).setCheckState(Qt.CheckState.Unchecked)
+        for row in range(self._or_voice_list.rowCount()):
+            item = self._or_voice_list.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Unchecked)
         self._or_voice_list.blockSignals(False)
         self._on_voice_checklist_changed(None)
 
@@ -561,47 +572,30 @@ class TTSTab(QWidget):
             config["openrouter_model"] = self._or_model.currentText().split("  (")[0].strip()
         return config
 
-    def _on_preview_voice(self):
-        # Prefer all voices from the fetched OpenRouter model (so the user
-        # can audition before checking any), fall back to the text field.
-        voices: list[str] = []
-        if self._provider.currentData() == "openrouter":
-            model_id = self._or_model.currentData() or self._or_model.currentText()
-            for m in self._or_models:
-                if m["id"] == model_id and m.get("voices"):
-                    voices = list(m["voices"])
-                    break
-        if not voices:
-            voices = self._current_voices()
-        if not voices:
-            showWarning(
-                'Brak głosów do podglądu.\n'
-                'Kliknij „Pobierz” aby załadować listę głosów modelu,\n'
-                'lub wpisz głosy ręcznie w polu powyżej.'
-            )
-            return
-
-        menu = QMenu(self)
-        for voice in voices:
-            action = menu.addAction(f"▶ {voice}")
-            action.triggered.connect(
-                lambda _checked=False, v=voice: self._play_voice_sample(v)
-            )
-        menu.exec(self._preview_btn.mapToGlobal(self._preview_btn.rect().bottomLeft()))
-
     def _play_voice_sample(self, voice: str):
         from ..tts.api import generate_audio
 
         config = self._build_preview_config()
-        self._preview_btn.setEnabled(False)
-        self._preview_btn.setText("Generowanie...")
+
+        # Find the ▶ button for this voice to show in-progress state
+        btn = None
+        for row in range(self._or_voice_list.rowCount()):
+            item = self._or_voice_list.item(row, 0)
+            if item and item.text() == voice:
+                btn = self._or_voice_list.cellWidget(row, 1)
+                break
+
+        if btn:
+            btn.setEnabled(False)
+            btn.setText("…")
 
         def task():
             return generate_audio(self._PREVIEW_TEXT, config, voice)
 
         def on_done(fut):
-            self._preview_btn.setEnabled(True)
-            self._preview_btn.setText("Podgląd głosu ▾")
+            if btn:
+                btn.setEnabled(True)
+                btn.setText("▶")
             try:
                 audio_bytes = fut.result()
             except Exception as e:
