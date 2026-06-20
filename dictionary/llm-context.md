@@ -10,7 +10,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `service.py` | Czysta logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); używa `clean_html_normalized()` z `common` |
-| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + guard `_FETCHING`; używa `ADDON_NAME` z `common` |
+| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + guard `_FETCHING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` (np. `ang`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w polu); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch, QProgressDialog; używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
 | `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |

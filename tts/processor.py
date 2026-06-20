@@ -312,24 +312,48 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 # Single-note processing (used by the workflow and the editor button)
 # ---------------------------------------------------------------------------
 
-def process_single_note(note, config: dict = None) -> tuple[bool, Optional[str]]:
-    """Generate audio for all configured tasks of one note (parallel).
+import re
+
+_SOUND_TAG_RE = re.compile(r"\[sound:[^\]]*\]")
+
+
+def _strip_sound_tags(text: str) -> str:
+    """Remove [sound:...] tags so TTS regeneration can replace existing audio."""
+    return _SOUND_TAG_RE.sub("", text).strip()
+
+
+def process_single_note(note, config: dict = None,
+                        tasks: list = None,
+                        overwrite: bool = False) -> tuple[bool, Optional[str]]:
+    """Generate audio for one note (parallel).
 
     Returns (changed, error_message). Mutates the note in memory only —
     the caller decides how to persist (editor save vs. update_note).
+
+    tasks: subset of configured TTS tasks to run (default: all). Each entry
+    must be a task dict with at least source_field, target_field, mode.
+    overwrite: if True, strip [sound:...] from target fields before
+    generating so existing audio is replaced. False = skip filled (today).
     """
     if config is None:
         config = get_tts_config()
     if not validate_config(config):
         return False, None
 
-    tasks = get_tasks(config)
+    if tasks is None:
+        tasks = get_tasks(config)
     if not tasks:
         return False, None
 
     voices = unique(config.get("voices", []))
     if not voices:
         return False, None
+
+    if overwrite:
+        for task in tasks:
+            target = task.get("target_field", "")
+            if target and target in note:
+                note[target] = _strip_sound_tags(note[target])
 
     work_items, split_contexts = build_note_work_items(note, tasks, voices)
     if not work_items:

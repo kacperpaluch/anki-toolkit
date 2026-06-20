@@ -153,6 +153,8 @@ Zmiana wymaga restartu Anki. Brakujący klucz jest traktowany jako `true`.
 
 Przyciski pojawiają się w toolbarze edytora kart — kliknięcie najpierw zapisuje bieżące pola, a pobieranie działa w tle (Anki nie zamarza). W przeglądarce dostępne jest też submenu **Pobierz wymowę** pod prawym przyciskiem myszy w sekcji **Anki Toolkit**, które pozwala uruchomić batch dla wszystkich włączonych słowników albo tylko dla wybranego, np. Diki lub Oxford. Moduł pobiera audio i IPA z wybranych słowników. Batch działa w tle — Anki nie zamraża się, widoczny pasek postępu z przyciskiem Anuluj.
 
+**PPM na polu źródłowym w edytorze** (np. `ang`) — gdy pole ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty.
+
 Konfiguracja w **Ustawienia → Słownik**:
 
 | Pole | Opis |
@@ -265,7 +267,9 @@ Pole `reasoning_effort` to wolny tekst (nie dropdown jak przy OpenAI) — warto�
 
 ### TTS
 
-Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z QProgressDialog i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
+Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z QProgressDialog i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta, wszystkie zadania). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
+
+**PPM na polu docelowym w edytorze** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — strip `[sound:...]` i generuj nowe). Działa też w oknie dodawania nowej karty.
 - **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
 - **OpenRouter** — API TTS przez chmurę (płatne per znak, nie wymaga lokalnego serwera)
 

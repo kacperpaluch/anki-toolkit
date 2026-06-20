@@ -280,14 +280,14 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
 | `ai_generator/browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
-| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING` |
+| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING`; odtwarza audio po pobraniu; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` (np. `ang`): „Pobierz wymowę: [słownik]" per włączony przycisk |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
 | `dictionary/dictionary_service.py` | Scrapery HTML dla 4 słowników; używa `fetch_url`, `fetch_text` z common |
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
 | `tts/config.py` | Konfiguracja TTS — `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` |
 | `tts/api.py` | API TTS — `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` |
-| `tts/processor.py` | Przetwarzanie notatek — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async()` (zapis jednym `CollectionOp`); `process_single_note() -> (changed, error)` — bez zapisu do kolekcji, używane przez workflow |
-| `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`; używa wspólnych funkcji procesora |
+| `tts/processor.py` | Przetwarzanie notatek — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async()` (zapis jednym `CollectionOp`); `process_single_note(note, config, tasks=None, overwrite=False) -> (changed, error)` — `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; bez zapisu do kolekcji, używane przez workflow i PPM w edytorze |
+| `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`; używa wspólnych funkcji procesora; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`, strip sound tags) |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
 | `nbsp_remover/collection.py` | Masowe czyszczenie kolekcji przez `CollectionOp` + `clean_field()` |
@@ -329,7 +329,7 @@ common/                         ← współdzielone narzędzia (html, http, text
 
 dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_context_menu (używa common/ui dla widgetów, common/consts dla ADDON_NAME)
     └── service.py              ← czysta logika biznesowa (ProcessNoteResult, process_note_group); używa common/clean_html_normalized
-    └── editor_ui.py            ← przyciski edytora (saveNow + run_in_background + _FETCHING); używa common/ADDON_NAME
+    └── editor_ui.py            ← przyciski edytora (saveNow + run_in_background + _FETCHING); PPM na source_field → _on_fetch_audio_editor; używa common/ADDON_NAME
     └── browser_ui.py           ← add_to_context_menu (submenu przeglądarki + batch); używa common/ADDON_NAME
     └── dictionary_service.py   (DictionaryService singleton); używa common/http fetch_url, fetch_text
     └── ipa_service.py          (IPAService singleton); używa common/http fetch_text
@@ -347,8 +347,8 @@ ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_c
 tts/__init__.py                 ← add_to_context_menu + exports on_editor_buttons_init
     └── config.py               (_DEFAULTS, get_tts_config, validate_config, get_tasks); używa common/config get_module_config
     └── api.py                  (generate_audio dispatcher, fetch_openrouter_tts_models); używa common/http.post_json, common/normalize_float; urllib.request tylko do GET w fetch_openrouter_tts_models
-    └── processor.py            (build_note_work_items, generate_for_items, apply_results_to_note, process_task_async, process_tasks_async, process_single_note); używa common/unique_filename, clean_html, split_separator_regex
-    └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config); używa processor.build_note_work_items/generate_for_items/apply_results_to_note
+    └── processor.py            (build_note_work_items, generate_for_items, apply_results_to_note, process_task_async, process_tasks_async, process_single_note(note, config, tasks=None, overwrite=False); używa common/unique_filename, clean_html, split_separator_regex
+    └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config; PPM na target_field → _on_tts_field_editor (overwrite=True dla Regeneruj)); używa processor.process_single_note
 
 audio_normalizer/__init__.py
     └── gui.py                  (ProgressDialog, Worker(QThread)); używa common/ADDON_NAME

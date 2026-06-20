@@ -1,8 +1,9 @@
 from aqt import mw
 from aqt.utils import tooltip
-from aqt.qt import QTimer
+from aqt.qt import QTimer, QAction, QMenu
 from aqt.editor import Editor
 from aqt.sound import av_player
+from aqt import gui_hooks
 
 from ..common import ADDON_NAME
 
@@ -108,3 +109,60 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
                 label=label,
             )
             buttons.append(btn)
+
+
+# ---------------------------------------------------------------------------
+# Per-field dictionary fetch via editor context menu (PPM on source field)
+# ---------------------------------------------------------------------------
+
+def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
+    """Add 'Pobierz wymowę: <słownik>' to the editor's right-click menu.
+
+    Only shown when the focused field is the configured source_field for the
+    dictionary module (e.g. 'ang') — so the option never appears on unrelated
+    fields. Shows one entry per enabled dictionary button.
+    """
+    editor = getattr(editor_webview, "editor", None)
+    if editor is None:
+        return
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+    current_idx = getattr(editor, "currentField", None)
+    if current_idx is None:
+        return
+
+    try:
+        field_name = note.keys()[current_idx]
+    except (IndexError, TypeError):
+        return
+
+    config = _get_config()
+    source_field = config.get("source_field", "")
+    if not source_field or field_name != source_field:
+        return
+
+    # Need text in the source field to fetch pronunciation for
+    if not note[field_name].strip():
+        return
+
+    enabled = [
+        (b.get("label", "Audio"), b.get("dictionaries", []))
+        for b in config.get("buttons", [])
+        if b.get("enabled") and b.get("dictionaries")
+    ]
+    if not enabled:
+        return
+
+    menu.addSeparator()
+    for label, dicts in enabled:
+        action = QAction(f'Pobierz wymowę: {label}', menu)
+        action.triggered.connect(
+            lambda _checked=False, ed=editor, d=dicts:
+                _on_fetch_audio_editor(ed, d)
+        )
+        menu.addAction(action)
+
+
+# Register the editor context-menu hook once on import.
+gui_hooks.editor_will_show_context_menu.append(_on_editor_context_menu)
