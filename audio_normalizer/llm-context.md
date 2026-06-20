@@ -2,16 +2,17 @@
 
 ## Co robi
 
-Normalizuje głośność wszystkich plików audio w katalogu media Anki do standardu EBU R128 przez ffmpeg. Dostępne przez **Narzędzia → Anki Toolkit → Normalizuj Audio (ffmpeg)**. Pamięta przetworzone pliki — ponowne uruchomienie pomija już znormalizowane.
+Normalizuje głośność wszystkich plików audio w katalogu media Anki do standardu EBU R128 przez ffmpeg. Dostępne przez **Narzędzia → Anki Toolkit → Normalizuj Audio (ffmpeg)**. Pamięta przetworzone pliki — ponowne uruchomienie pomija już znormalizowane. Opcjonalna **auto-normalizacja** (`auto_normalize: true`) obserwuje katalog mediów i normalizuje nowe pliki w tle.
 
 ## Pliki
 
 | Plik | Rola |
 |---|---|
-| `__init__.py` | Entry point — `setup_menu(parent_menu=None)` rejestruje akcję w menu Anki Toolkit |
+| `__init__.py` | Entry point — `setup_menu(parent_menu=None)` rejestruje akcję w menu Anki Toolkit + `watcher.init_auto_normalize()` |
 | `gui.py` | `ProgressDialog` (Qt) + `Worker(QThread)` — czyta konfigurację przez `addonManager` (używa `common.ADDON_NAME`), przekazuje parametry do `logic.process_collection`; po zakończeniu wywołuje `_sync_media_files()` → `mw.col.media.write_data()` dla każdego zmodyfikowanego pliku |
 | `logic.py` | Skanowanie media, historia, wywołania ffmpeg, równoległość; `process_collection` zwraca `(count, errors, modified_files)`; `normalize_file` zwraca `(success, new_mtime)` |
-| `config.py` | Wartości domyślne: `FFMPEG_CMD` (auto-detect), `LOUDNORM_OPTS`, `AUDIO_EXTENSIONS`, `MAX_WORKERS` — używane jako fallback |
+| `config.py` | Wartości domyślne: `FFMPEG_CMD` (auto-detect), `LOUDNORM_OPTS`, `AUDIO_EXTENSIONS`, `MAX_WORKERS`, `AUTO_NORMALIZE` — używane jako fallback |
+| `watcher.py` | Auto-normalizacja — `QFileSystemWatcher` na `mw.col.media.dir()` + `QTimer` debounce 3s + flaga `_normalizing` (ochrona przed feedback loop: ffmpeg temp+rename i `media.write_data` sync nie re-triggerują). Po normalizacji tooltip w prawym dolnym rogu ("Znormalizowano N plik(ów) audio.") jeśli `show_tooltip=true`. `init_auto_normalize()` rejestruje `gui_hooks.profile_did_open` (startuje watcher gdy `auto_normalize=true`) — wzorzec jak `nbsp_remover` (start natychmiast jeśli `mw.col` już otwarte) |
 
 ## Przepływ danych
 
@@ -51,13 +52,15 @@ Narzędzia → Anki Toolkit → Normalizuj Audio
 {
     "ffmpeg_path": "",
     "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
-    "max_workers": 4
+    "max_workers": 4,
+    "auto_normalize": false
 }
 ```
 
 - `ffmpeg_path` — puste `""` = auto-detect przez `config.find_ffmpeg()` (PATH → /opt/homebrew → /usr/local → /usr)
 - `loudnorm_opts` — pełny string opcji ffmpeg filtra loudnorm
 - `max_workers` — liczba równoległych procesów ffmpeg
+- `auto_normalize` — `true` = włącza watcher na katalogu mediów (nowe/zmienione pliki normalizowane automatycznie ~3s po dodaniu; debounce zbiera serie zapisów); domyślnie `false`; wymaga restartu Anki po zmianie
 
 Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Normalizacja**. Zakładka zawiera przycisk **"Sprawdź"** przy polu ścieżki ffmpeg — testuje dostępność i wyświetla wersję przez `tooltip()`.
 
@@ -103,8 +106,8 @@ def start_normalization(self, max_workers, ffmpeg_cmd, loudnorm_opts):
 ## Zależności
 
 - Stdlib: `os`, `json`, `subprocess`, `concurrent.futures`, `shutil`, `time`
-- Anki API: `mw.col.media.dir()`, `mw.addonManager.getConfig()`
+- Anki API: `mw.col.media.dir()`, `mw.col.media.write_data()`, `mw.addonManager.getConfig()`, `gui_hooks.profile_did_open`
 - Własne: `common.ADDON_NAME`
-- PyQt6: `QThread`, `pyqtSignal`, `QDialog`, `QProgressBar`
+- PyQt6: `QThread`, `pyqtSignal`, `QDialog`, `QProgressBar`, `QFileSystemWatcher`, `QTimer`
 - Wymaga zainstalowanego **ffmpeg** w systemie
 - Brak pip packages

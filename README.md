@@ -335,6 +335,8 @@ Błędy są logowane przez standardowy logger Pythona i są widoczne w konsoli/d
 
 **Synchronizacja z Anki Media DB:** Po normalizacji wtyczka automatycznie re-readuje zmodyfikowane pliki przez `mw.col.media.write_data()`, co aktualizuje hashe w bazie mediów Anki.
 
+**Auto-normalizacja:** Włącz **Auto-normalizuj nowe pliki audio** w ustawieniach, aby watcher obserwował katalog mediów i automatycznie normalizował nowe pliki ~3s po dodaniu (debounce zbiera serie zapisów). Obejmuje wszystkie źródła: TTS, słownik, AI workflow, ręczne dodanie, AnkiWeb sync. Po normalizacji pojawia się krótki tooltip w prawym dolnym rogu. Wymaga restartu Anki po zmianie ustawienia.
+
 Konfiguracja w **Ustawienia → Normalizacja**:
 
 | Pole | Opis |
@@ -342,6 +344,7 @@ Konfiguracja w **Ustawienia → Normalizacja**:
 | `ffmpeg_path` | Ścieżka do ffmpeg — puste = wykryj automatycznie; przycisk **Sprawdź** testuje ścieżkę i pokazuje wersję |
 | `loudnorm_opts` | Parametry filtra loudnorm (standard EBU R128) |
 | `max_workers` | Liczba równoległych wątków ffmpeg (domyślnie 4) |
+| `auto_normalize` | Włącz auto-normalizację nowych plików (watcher na katalogu mediów; domyślnie `false`; wymaga restartu) |
 
 ---
 

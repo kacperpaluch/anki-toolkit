@@ -37,3 +37,6 @@ AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".ogg", ".flac")
 
 # Liczba wątków (None = automatycznie)
 MAX_WORKERS = 4
+
+# Auto-normalizacja (watcher na katalogu mediów)
+AUTO_NORMALIZE = False

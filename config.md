@@ -170,11 +170,14 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 
 **`max_workers`** — liczba równoległych procesów ffmpeg. Domyślnie `4`. Zmniejsz przy problemach z wydajnością.
 
+**`auto_normalize`** — `true` = włącza watcher na katalogu mediów Anki; nowe/zmienione pliki audio są automatycznie normalizowane ~3s po dodaniu (debounce). Obejmuje wszystkie źródła: TTS, słownik, AI workflow, ręczne dodanie, AnkiWeb sync. Pomija pliki już przetworzone (historia `mtime`). Domyślnie `false` (opt-in). **Wymaga restartu Anki po zmianie.**
+
 ```json
 "audio_normalizer": {
     "ffmpeg_path": "",
     "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
-    "max_workers": 4
+    "max_workers": 4,
+    "auto_normalize": false
 }
 ```
 

@@ -5,7 +5,7 @@ import subprocess
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QSpinBox, QPushButton,
+    QSpinBox, QPushButton, QCheckBox,
 )
 from aqt.utils import tooltip
 
@@ -43,15 +43,29 @@ class AudioNormalizerTab(QWidget):
         self._max_workers.setValue(a.get("max_workers", 4))
         self._max_workers.setToolTip("Liczba równoległych wątków ffmpeg")
 
+        self._auto_normalize = QCheckBox(
+            "Auto-normalizuj nowe pliki audio (TTS, słownik, AI, ręczne dodanie)"
+        )
+        self._auto_normalize.setChecked(a.get("auto_normalize", False))
+        self._auto_normalize.setToolTip(
+            "Włącza watcher na katalogu mediów Anki. Nowe/zmienione pliki\n"
+            "audio są normalizowane automatycznie ~3s po dodaniu.\n"
+            "Wymaga restartu Anki po zmianie."
+        )
+
         form.addRow("Ścieżka do ffmpeg:", ffmpeg_row)
         form.addRow("Opcje loudnorm:", self._loudnorm_opts)
         form.addRow("Maks. wątków:", self._max_workers)
         layout.addLayout(form)
         layout.addSpacing(8)
+        layout.addWidget(self._auto_normalize)
+        layout.addSpacing(8)
 
         layout.addWidget(hint_label(
             "Domyślne opcje loudnorm: loudnorm=I=-14:TP=-1.5:LRA=8  (standard EBU R128)\n"
-            "Zmień I= (głośność docelowa LUFS), TP= (true peak dB), LRA= (rozpiętość dynamiczna LU)."
+            "Zmień I= (głośność docelowa LUFS), TP= (true peak dB), LRA= (rozpiętość dynamiczna LU).\n\n"
+            "Auto-normalizacja: włącza obserwator katalogu mediów — nowe pliki są\n"
+            "normalizowane w tle po kilku sekundach, z pominięciem już przetworzonych."
         ))
         layout.addStretch()
 
@@ -79,3 +93,4 @@ class AudioNormalizerTab(QWidget):
         a["ffmpeg_path"] = self._ffmpeg_path.text().strip()
         a["loudnorm_opts"] = self._loudnorm_opts.text().strip()
         a["max_workers"] = self._max_workers.value()
+        a["auto_normalize"] = self._auto_normalize.isChecked()

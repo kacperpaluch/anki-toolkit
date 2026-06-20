@@ -17,6 +17,19 @@ Wtyczka automatycznie wykrywa ścieżkę do `ffmpeg` (PATH, `/opt/homebrew/bin`,
 
 Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje pozostałe. Postęp widoczny jest w oknie dialogowym. Po zakończeniu wyświetlane jest podsumowanie z liczbą przetworzonych plików i ewentualnych błędów.
 
+### Auto-normalizacja
+
+W **Ustawienia → Normalizacja** zaznacz **Auto-normalizuj nowe pliki audio**. Watcher obserwuje katalog mediów Anki i automatycznie normalizuje nowe/zmienione pliki ~3s po dodaniu (debounce zbiera serie zapisów — np. TTS generujący 20 plików w kilku sekundach traktowany jest jako jeden batch).
+
+Obejmuje **wszystkie źródła**:
+- TTS (Kokoro/OpenRouter) — batch i edytor
+- Pobieranie audio ze słowników (Oxford/Cambridge/Diki/Longman)
+- Workflow AI → Dict → TTS
+- Ręczne dodanie pliku do karty
+- AnkiWeb sync pobierający nowe media
+
+Po normalizacji pojawia się krótki tooltip w prawym dolnym rogu ("Znormalizowano N plik(ów) audio.") — wyłącz `show_tooltip`, jeśli ma być ciche. Pomija pliki już przetworzone (historia `mtime` w `audio_normalizer_history.json`). Wymaga restartu Anki po zmianie ustawienia.
+
 ## Co się dzieje z plikami
 
 1. Wtyczka tworzy plik tymczasowy z zachowaniem oryginalnego rozszerzenia (np. `plik.mp3.temp.mp3`, `plik.wav.temp.wav`) — dzięki temu ffmpeg zachowuje format pliku i nie re-enkoduje `.wav`/`.ogg`/`.flac` do MP3
@@ -52,12 +65,14 @@ Standard używany przez nadawców radiowych i serwisy streamingowe.
 | `ffmpeg_path` | `""` (auto-detect) | Pełna ścieżka do ffmpeg — puste = wykryj automatycznie |
 | `loudnorm_opts` | `loudnorm=I=-14:TP=-1.5:LRA=8` | Parametry filtra loudnorm |
 | `max_workers` | `4` | Liczba równoległych wątków ffmpeg |
+| `auto_normalize` | `false` | Włącz watcher na katalogu mediów — auto-normalizacja nowych plików |
 
 ```json
 "audio_normalizer": {
     "ffmpeg_path": "",
     "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
-    "max_workers": 4
+    "max_workers": 4,
+    "auto_normalize": false
 }
 ```
 
