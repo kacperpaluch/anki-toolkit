@@ -12,7 +12,7 @@ Usuwa `&nbsp;` i czyści tagi `<div>` z pól kart. Działa na dwa sposoby:
 |---|---|
 | `__init__.py` | `setup_menu(parent_menu=None)` — dodaje jedną akcję do menu Anki Toolkit, inicjuje hook dodawania kart, obsługuje auto-run przy starcie; używa `_get_config()` z utils |
 | `addcards.py` | Hook na dodawanie kart — czyści pola w locie przy każdym `Add` przez `clean_field()`, wywołuje `mw.col.update_note(note)` |
-| `cleaning.py` | Czysta logika czyszczenia: `clean_field()` oraz regexy `NBSP`, `DIV_TAG_RE`, `DIV_WRAP_RE`, `TRAILING_BR_RE`; testowalne bez Anki |
+| `cleaning.py` | Czysta logika czyszczenia: `clean_field()` oraz regexy `NBSP`, `DIV_TAG_RE`, `DIV_INNER_RE`, `TRAILING_BR_RE`; testowalne bez Anki |
 | `collection.py` | Masowe czyszczenie kolekcji przez `CollectionOp` — iteruje po wszystkich notatkach i stosuje tę samą funkcję `clean_field()` co hook dodawania kart; jeden krok undo |
 | `utils.py` | `_get_config()`, `_get_skip_field()`, `_show_tooltip()`, `purge_tooltip`, `editing_tooltip` |
 
@@ -94,7 +94,7 @@ Powód: pole `ang` zawiera pojedyncze słowo/wyrażenie — `<div>` psuje wyglą
 Regexy zdefiniowane w `cleaning.py` (używane przez `clean_field()`, współdzieloną przez `addcards.py` i `collection.py`):
 - `NBSP` = `"&nbsp;"` (literal)
 - `DIV_TAG_RE` = `r"</?div[^>]*>"` — łapie `<div>`, `<div class="...">`, `</div>`
-- `DIV_WRAP_RE` = `r"<div[^>]*>(.*?)</div>"` — łapie div z zawartością
+- `DIV_INNER_RE` = `r"<div[^>]*>((?:(?!</?div\b).)*?)</div>"` — łapie innermost div (bez zagnieżdżeń), pętla rozwija od środka
 - `TRAILING_BR_RE` = `r"<br>\s*$"` — trailing `<br>` z opcjonalnymi spacjami
 
 ## Zależności

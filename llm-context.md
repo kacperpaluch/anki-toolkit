@@ -94,7 +94,7 @@ anki-toolkit/
 │   ├── config.py                    # _DEFAULTS, get_tts_config(), validate_config(), get_tasks()
 │   ├── api.py                       # generate_audio(), _generate_kokoro(), _generate_openrouter(), fetch_openrouter_tts_models()
 │   ├── processor.py                 # wspólne: build_note_work_items(), generate_for_items(), apply_results_to_note(); batch (CollectionOp) + process_single_note()
-│   └── editor_ui.py                 # przycisk edytora — używa wspólnych funkcji procesora
+│   └── editor_ui.py                 # przycisk TTS w toolbarze edytora (async) + PPM na target_field → generuj/regeneruj TTS
 │
 ├── filtered_deck/                   # Moduł 4
 │   └── __init__.py
@@ -207,7 +207,7 @@ Zakładki (9 zakładek):
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
 - **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; dostawcy AI są rozdzieleni na karty, a limity batch/parallel_requests/retry/request timeout są w sekcji **Zaawansowane**
-- **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (checklista), **Podgląd głosu** (przycisk → menu głosów → `generate_audio` z krótkim sample → `av_player.play_file`), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
+- **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (QTableWidget z checkboxami + przyciskami ▶ podglądu per głos — `generate_audio` z krótkim sample → `av_player.play_file`), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
 - **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola, **szacowany koszt**) + osobna tabela **TTS** (requesty, błędy, znaki, pliki, koszt per znak; `record_tts()` wołane z `tts/api.generate_audio()` dla Kokoro i OpenRouter), licznik zaktualizowanych notatek, przyciski Odśwież/Pobierz ceny (OpenRouter)/Resetuj; przycisk „Pobierz ceny" zapisuje pełny katalog cen (chat + TTS) w configu pod `pricing.catalog`, a dopasowanie przez `stats.match_pricing()` (normalizacja nazw: data-sufiks, kropki/myślniki, prefix-match) odbywa się przy każdym odświeżeniu — modele pojawiające się w statystykach później też dostają ceny; dane z `ai_generator/stats.py`
@@ -263,7 +263,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`; lista zadań w kolejności generowania (▲▼ + dopisek „zależy od"), comboboxy typu notatki i pola docelowego z danymi z kolekcji, przyciski „Wstaw pole ▾" i „Wstaw warunek ▾" (owija zaznaczenie w `{% if %}`), kolorowanie składni (`_TemplateHighlighter`, nieznane pola = faliste podkreślenie), walidacja na żywo: `{{pola}}` + struktura bloków `{% if %}` + użycie targetu późniejszego zadania, przycisk „Podgląd…" otwiera `PromptPreviewDialog` — render promptu na przykładowej notatce (`render_template` + rozstrzygnięcie gałęzi `{% if %}`) |
 | `settings/prompt_wizard.py` | `NewPromptDialog` — jednostronicowy dialog nowego zadania: typ notatki, pole docelowe, dostawca + opcjonalny szablon startowy (domyślnie pusty); po wybraniu szablonu mapowanie pól, blok `{% if %}` z checkboxa |
 | `settings/prompt_templates.py` | `TEMPLATES` (definicja, przykłady, część mowy, IPA, pusty), `build_prompt()`, `guess_field()` — czysta logika bez Anki, testowana w `tests/` |
-| `settings/tts_tab.py` | Zakładka TTS — `TTSTab`; **Podgląd głosu** — `_on_preview_voice()` → menu głosów z `_current_voices()` → `_play_voice_sample(voice)` → `generate_audio` w tle → `av_player.play_file("_tts_preview.mp3")` |
+| `settings/tts_tab.py` | Zakładka TTS — `TTSTab`; głosy OpenRouter w `QTableWidget` z checkboxami + przyciskami ▶ — `_play_voice_sample(voice)` → `generate_audio` w tle → `av_player.play_file("_tts_preview.mp3")` |
 | `settings/audio_normalizer_tab.py` | Zakładka Normalizacja — `AudioNormalizerTab` |
 | `settings/narzedzia_tab.py` | Zakładka Narzędzia — `NarzedziaTab` |
 | `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
@@ -280,7 +280,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
 | `ai_generator/browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
-| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING`; odtwarza audio po pobraniu; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` (np. `ang`): „Pobierz wymowę: [słownik]" per włączony przycisk |
+| `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING`; odtwarza audio po pobraniu; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
 | `dictionary/dictionary_service.py` | Scrapery HTML dla 4 słowników; używa `fetch_url`, `fetch_text` z common |
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
@@ -329,7 +329,7 @@ common/                         ← współdzielone narzędzia (html, http, text
 
 dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_context_menu (używa common/ui dla widgetów, common/consts dla ADDON_NAME)
     └── service.py              ← czysta logika biznesowa (ProcessNoteResult, process_note_group); używa common/clean_html_normalized
-    └── editor_ui.py            ← przyciski edytora (saveNow + run_in_background + _FETCHING); PPM na source_field → _on_fetch_audio_editor; używa common/ADDON_NAME
+    └── editor_ui.py            ← przyciski edytora (saveNow + run_in_background + _FETCHING); PPM na source_field lub target_field → _on_fetch_audio_editor; używa common/ADDON_NAME
     └── browser_ui.py           ← add_to_context_menu (submenu przeglądarki + batch); używa common/ADDON_NAME
     └── dictionary_service.py   (DictionaryService singleton); używa common/http fetch_url, fetch_text
     └── ipa_service.py          (IPAService singleton); używa common/http fetch_text

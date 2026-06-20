@@ -7,7 +7,7 @@ Pobiera pliki audio MP3 z wymową oraz transkrypcje IPA z czterech słowników o
 ### Edytor kart
 Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku (np. **Diki**) najpierw zapisuje bieżące pola (świeżo wpisane słowo jest od razu widoczne), pobiera audio w tle — Anki nie zamarza — i automatycznie je odtwarza.
 
-**PPM na polu źródłowym** (np. `ang`) — gdy pole ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty (AddCards).
+**PPM na polu źródłowym lub docelowym** (np. `ang`, `audio`) — gdy pole źródłowe ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty (AddCards).
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Pobierz wymowę**.

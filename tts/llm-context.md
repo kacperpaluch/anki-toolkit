@@ -106,7 +106,7 @@ Głosy dla segmentów w jednej notatce są przetasowane losowo (`random.shuffle`
 - `pricing` jest parsowane z `pricing.prompt` (dolary/znak), przeliczane i formatowane jako `$X.XXX/1k zn`
 - `voices` to `supported_voices` z API — pełna lista głosów dla danego modelu
 
-W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu, QListWidget z checkboxami pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
+W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu, QTableWidget z checkboxami i przyciskami ▶ podglądu pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
 
 ## Konfiguracja (sekcja `tts` w config.json)
 

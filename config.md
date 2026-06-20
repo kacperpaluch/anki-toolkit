@@ -48,9 +48,9 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
 
 ---
 
-## Sekcja `tts` — generowanie audio przez Kokoro TTS
+## Sekcja `tts` — generowanie audio przez TTS
 
-Konfiguracja wyłącznie przez edycję `config.json`. Akcje TTS dostępne przez **prawy klik w przeglądarce → TTS: ...**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka TTS** lub edycję `config.json`. Akcje TTS dostępne przez **prawy klik w przeglądarce → Anki Toolkit → TTS** oraz **PPM na polu docelowym w edytorze**.
 
 **`api_url`** — adres lokalnego serwera Kokoro (domyślnie `http://localhost:8880/v1/audio/speech`).
 
@@ -94,7 +94,7 @@ Każdy provider wymaga:
 - `"temperature"` — losowość odpowiedzi (0.0–1.0, zalecane 0.2)
 
 OpenAI obsługuje dodatkowe pole:
-- `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.
+- `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.
 
 Providerzy zgodni z OpenAI Chat Completions (`cometapi`, `openrouter`, `mistral`) również pomijają `"temperature"`, jeśli nazwa modelu wskazuje na OpenAI reasoning (`gpt-5...`, `o3...`, także z prefiksem typu `openai/gpt-5.4`). Dla natywnych modeli, np. `mistral-small-latest`, temperatura nadal jest wysyłana.
 
@@ -111,6 +111,7 @@ Dostępni providerzy i przykładowe modele:
 | `anthropic` | `claude-3-5-haiku-20241022`, `claude-3-5-sonnet-20241022` |
 | `google` | `gemini-2.0-flash`, `gemini-1.5-pro` |
 | `mistral` | `mistral-small-latest`, `mistral-medium-latest` |
+| `opencode_go` | `deepseek-v4-pro`, `deepseek-v4-flash`, `kimi-k2.6`, `glm-5.1` |
 
 Klucz API dla `google` uzyskasz na [Google AI Studio](https://aistudio.google.com/apikey).
 

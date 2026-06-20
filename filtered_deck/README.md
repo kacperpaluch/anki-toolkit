@@ -46,6 +46,7 @@ Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i auto
 
 ## Zachowanie
 
-- Jeśli talia o tej nazwie już istnieje, tworzona jest z numerem: `Angielski - Powtórka z wyprzedzeniem (1)`, `(2)` itd.
+- Jeśli talia filtrowana o tej nazwie już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kopii z sufiksem
+- Jeśli nazwa jest zajęta przez zwykłą (nie-filtrowaną) talię, tworzona jest z numerem: `(1)`, `(2)` itd.
 - `reschedule = false` — oceny w talii filtrowanej nie zmieniają planowania FSRS/SM-2
 - Po stworzeniu talia jest automatycznie otwierana

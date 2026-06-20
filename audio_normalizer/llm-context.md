@@ -67,9 +67,9 @@ Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka N
 
 | Plik | Zawartość |
 |---|---|
-| `processed_history.json` | `{"filename.mp3": mtime_float, ...}` |
+| `user_files/audio_normalizer_history.json` | `{"filename.mp3": mtime_float, ...}` |
 
-Ścieżka wyznaczana przez `os.path.dirname(__file__)` — zawsze względem katalogu modułu. Błędy ffmpeg trafiają do standardowego loggera Python (`logging.getLogger(__name__)`).
+Ścieżka wyznaczana przez `os.path.join(addon_dir, "user_files", HISTORY_FILE)` — katalog `user_files/` przeżywa aktualizacje wtyczki (katalogi modułów są nadpisywane). Legacy `processed_history.json` w katalogu modułu jest automatycznie migrowane. Błędy ffmpeg trafiają do standardowego loggera Python (`logging.getLogger(__name__)`).
 
 ## Logika skip (needs_processing)
 

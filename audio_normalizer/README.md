@@ -27,7 +27,7 @@ Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje
 
 ## Historia przetworzonych plików
 
-Plik `processed_history.json` w katalogu modułu przechowuje `mtime` każdego przetworzonego pliku. Przy kolejnym uruchomieniu:
+Plik `audio_normalizer_history.json` w katalogu `user_files/` (przeżywa aktualizacje wtyczki) przechowuje `mtime` każdego przetworzonego pliku. Przy kolejnym uruchomieniu:
 - Plik jest w historii **i** `mtime` się zgadza → **pomiń**
 - Plik jest nowy lub zmieniony → **przetwórz**
 
