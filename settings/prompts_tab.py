@@ -12,7 +12,7 @@ from aqt.qt import (
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
     QPushButton, Qt, QComboBox, QMenu, QPlainTextEdit,
     QSyntaxHighlighter, QTextCharFormat, QColor, QFont,
-    QDialog, QDialogButtonBox,
+    QDialog, QDialogButtonBox, QCheckBox,
 )
 
 from ..common import clean_html_normalized
@@ -175,9 +175,10 @@ class PromptsTab(QWidget):
             for field_name, field_cfg in fields.items():
                 key = (nt_name, field_name)
                 self._data[key] = {
-                    "target":   field_cfg.get("target", field_name),
-                    "provider": field_cfg.get("provider", "openai"),
-                    "prompt":   field_cfg.get("prompt", ""),
+                    "target":      field_cfg.get("target", field_name),
+                    "provider":    field_cfg.get("provider", "openai"),
+                    "prompt":      field_cfg.get("prompt", ""),
+                    "manual_only": bool(field_cfg.get("manual_only", False)),
                 }
 
         # Default provider for the wizard: first one with a real API key.
@@ -262,10 +263,18 @@ class PromptsTab(QWidget):
         self._ed_provider = QComboBox()
         for name, label in PROVIDER_LABELS.items():
             self._ed_provider.addItem(label, name)
+        self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
+        self._ed_manual_only.setToolTip(
+            "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
+            "wskazanie: PPM na polu w edytorze albo submenu „Generuj zablokowane”\n"
+            "w przeglądarce. Pominięte przy „Wszystkie puste”, workflow\n"
+            "oraz głównym przycisku AI w edytorze."
+        )
         form.addRow("Typ notatki:", self._ed_note_type)
         form.addRow("Nazwa zadania:", self._ed_field)
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
+        form.addRow(self._ed_manual_only)
         editor_form_layout.addLayout(form)
 
         prompt_header = QHBoxLayout()
@@ -378,9 +387,10 @@ class PromptsTab(QWidget):
         new_key = (new_nt, new_field)
 
         entry = {
-            "target":   self._ed_target.currentText().strip(),
-            "provider": self._ed_provider.currentData() or "openai",
-            "prompt":   self._ed_prompt.toPlainText(),
+            "target":      self._ed_target.currentText().strip(),
+            "provider":    self._ed_provider.currentData() or "openai",
+            "prompt":      self._ed_prompt.toPlainText(),
+            "manual_only": self._ed_manual_only.isChecked(),
         }
 
         if new_key != old_key:
@@ -407,6 +417,7 @@ class PromptsTab(QWidget):
         self._ed_target.setCurrentText(entry["target"])
         idx = self._ed_provider.findData(entry["provider"])
         self._ed_provider.setCurrentIndex(idx if idx >= 0 else 0)
+        self._ed_manual_only.setChecked(entry.get("manual_only", False))
         self._ed_prompt.setPlainText(entry["prompt"])
         self._editor_placeholder.setVisible(False)
         self._editor_widget.setVisible(True)
@@ -579,9 +590,10 @@ class PromptsTab(QWidget):
             i += 1
 
         self._data[key] = {
-            "target":   entry["target"] or key[1],
-            "provider": entry["provider"],
-            "prompt":   entry["prompt"],
+            "target":      entry["target"] or key[1],
+            "provider":    entry["provider"],
+            "prompt":      entry["prompt"],
+            "manual_only": bool(entry.get("manual_only", False)),
         }
         item = QListWidgetItem(self._item_text(key, entry["prompt"]))
         item.setData(Qt.ItemDataRole.UserRole, key)
@@ -608,9 +620,12 @@ class PromptsTab(QWidget):
         note_types: dict = {}
         for (nt_name, field_name), entry in self._data.items():
             note_types.setdefault(nt_name, {})
-            note_types[nt_name][field_name] = {
+            field_cfg: dict = {
                 "target":   entry["target"],
                 "provider": entry["provider"],
                 "prompt":   entry["prompt"],
             }
+            if entry.get("manual_only"):
+                field_cfg["manual_only"] = True
+            note_types[nt_name][field_name] = field_cfg
         cfg["ai_generator"]["note_types"] = note_types

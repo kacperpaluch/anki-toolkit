@@ -112,6 +112,12 @@ class FieldGenerator:
             if only_fields is not None and target_field not in only_fields:
                 continue
 
+            # ponytail: manual_only wyklucza pole z batcha/workflow/generowania
+            # "wszystkie puste"; pomijane tylko gdy only_fields=None (tryb auto).
+            # Jawne tylko_fields (PPM, submenu per-pole) omija ten warunek.
+            if only_fields is None and field_cfg.get("manual_only"):
+                continue
+
             if not overwrite and note[target_field].strip():
                 continue
 

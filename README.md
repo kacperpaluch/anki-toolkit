@@ -200,10 +200,11 @@ Pomocniczy przycisk **AI** w toolbarze edytora generuje wszystkie skonfigurowane
 
 - **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
 - **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj pola ▸** — submenu: „Wszystkie puste" (obecne zachowanie) oraz osobne pozycje per pole docelowe (np. „AI: def", „AI: cz_mowy"). Pozycje per pole pomijają wypełnione — bezpieczne na wielu notatkach różnych typów (każdy typ dostaje swój prompt).
+- **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj zablokowane ▸** — submenu pojawia się tylko gdy istnieją pola oflagowane „Tylko na żądanie" w ustawieniach promptów. Zawiera „Wszystkie zablokowane" (generuje wszystkie pola zablokowane dla zaznaczonych notatek) oraz osobne pozycje per pole.
 
 - **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji. Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do właściwej notatki (zapis do kolekcji), nie do aktualnie wyświetlanej.
 - **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj; notatki są przetwarzane **równolegle** (liczba wątków: `parallel_requests`, domyślnie 3) w paczkach po `batch_limit` z przerwą `batch_sleep`. Zmiany zapisywane są jedną operacją z undo. Po zakończeniu jeden tooltip z podsumowaniem.
-- Główny przycisk **AI** i batch „Wszystkie puste" pomijają pola z treścią — generator uzupełnia tylko puste pola. PPM w edytorze może nadpisać pojedyncze pole („Regeneruj").
+- Główny przycisk **AI** i batch „Wszystkie puste" pomijają pola z treścią — generator uzupełnia tylko puste pola. PPM w edytorze może nadpisać pojedyncze pole („Regeneruj"). Pola oflagowane „Tylko na żądanie" są pomijane w batchu, workflow i głównym przycisku AI — dostępne tylko przez jawne wskazanie (PPM, submenu „Generuj zablokowane").
 - Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
 - **Statystyki użycia** (requesty, tokeny, pola per model, szacowany koszt) są zliczane lokalnie (`user_files/usage_stats.json`) i widoczne w **Ustawienia → Statystyki**.
 
@@ -241,7 +242,7 @@ Konfiguracja w **Ustawienia → AI Generator**:
 
 Edytor promptów (zakładka **Prompty**):
 
-- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca i opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
+- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca, opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA) oraz checkbox „Tylko na żądanie" (pomija pole w batchu/workflow, dostępne tylko przez jawne wskazanie). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
 - **Podgląd na przykładowej notatce** — przycisk **Podgląd…** otwiera okno, które renderuje finalny prompt na wybranej notatce z kolekcji (pola podstawione, HTML oczyszczony) i pokazuje, która gałąź każdego `{% if %}` zostanie użyta.
 - **Kolorowanie składni** — `{{pola}}` i bloki `{% if %}` są wyróżnione kolorem; pola nieistniejące w typie notatki dostają czerwone faliste podkreślenie.
 - Przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet warunku; zaznaczony tekst trafia do gałęzi „if").

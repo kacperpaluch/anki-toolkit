@@ -146,6 +146,7 @@ Klucz to nazwa typu notatki (dokładnie jak w Anki). Każde pole to obiekt z:
 - `"target"` — nazwa pola karty do wypełnienia
 - `"provider"` — provider AI dla tego pola (wymagany)
 - `"prompt"` — treść prompta
+- `"manual_only"` (opcjonalne, `true`/`false`, domyślnie `false`) — pole wykluczone z batcha "Wszystkie puste", workflow oraz głównego przycisku AI w edytorze. Dostępne tylko przez jawne wskazanie: submenu "Generuj zablokowane ▸" w przeglądarce lub PPM na polu w edytorze.
 
 W promptach dostępne są:
 - `{{nazwa_pola}}` — wstawi wartość pola karty

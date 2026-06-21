@@ -230,12 +230,15 @@ def _on_workflow_browser(browser: Browser):
     mw.taskman.run_in_background(task, on_done)
 
 
-def _all_configured_target_fields(config: dict) -> list[str]:
+def _all_configured_target_fields(config: dict, manual_only: bool = False) -> list[str]:
     """Flattened list of distinct target field names across all note types.
 
     Order follows first appearance (stable across menu builds). Used to build
     the per-field submenu — process_note() dispatches per note type internally,
     so 'AI: def' will use the right prompt for each note's type.
+
+    manual_only=False (default) → only fields WITHOUT manual_only flag (auto-eligible).
+    manual_only=True → only fields WITH manual_only=True (blocked from auto/batch).
     """
     seen: dict[str, None] = {}  # py3.7+ dict preserves insertion order
     for nt_name, nt_cfg in config.get("note_types", {}).items():
@@ -245,8 +248,12 @@ def _all_configured_target_fields(config: dict) -> list[str]:
             if not isinstance(entry, dict):
                 continue
             target = (entry.get("target") or "").strip()
-            if target:
-                seen.setdefault(target, None)
+            if not target:
+                continue
+            is_manual = bool(entry.get("manual_only"))
+            if is_manual != manual_only:
+                continue
+            seen.setdefault(target, None)
     return list(seen.keys())
 
 
@@ -262,6 +269,7 @@ def add_to_context_menu(browser: Browser, menu):
 
     config = get_config()
     target_fields = _all_configured_target_fields(config)
+    manual_fields = _all_configured_target_fields(config, manual_only=True)
 
     gen_menu = menu.addMenu("Generuj pola")
     all_action = QAction("Wszystkie puste", browser)
@@ -278,3 +286,25 @@ def add_to_context_menu(browser: Browser, menu):
                     _on_generate_field_browser(browser, fn),
             )
             gen_menu.addAction(action)
+
+    if manual_fields:
+        blocked_menu = menu.addMenu("Generuj zablokowane")
+        all_blocked = QAction("Wszystkie zablokowane", browser)
+        qconnect(
+            all_blocked.triggered,
+            lambda: _run_batch(
+                browser, browser.selected_notes(), config,
+                only_fields=set(manual_fields),
+                label="AI: zablokowane",
+            ),
+        )
+        blocked_menu.addAction(all_blocked)
+        blocked_menu.addSeparator()
+        for field_name in manual_fields:
+            action = QAction(f"AI: {field_name}", browser)
+            qconnect(
+                action.triggered,
+                lambda _checked=False, fn=field_name:
+                    _on_generate_field_browser(browser, fn),
+            )
+            blocked_menu.addAction(action)

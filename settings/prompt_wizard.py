@@ -72,6 +72,15 @@ class NewPromptDialog(QDialog):
                 self._template.addItem(f"Szablon: {tpl['name']}", tpl["id"])
         form.addRow("Szablon startowy:", self._template)
 
+        self._manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
+        self._manual_only.setToolTip(
+            "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
+            "wskazanie: PPM na polu w edytorze albo submenu „Generuj zablokowane”\n"
+            "w przeglądarce. Pominięte przy „Wszystkie puste”, workflow\n"
+            "oraz głównym przycisku AI w edytorze."
+        )
+        form.addRow(self._manual_only)
+
         layout.addLayout(form)
 
         self._tpl_desc = hint_label("")
@@ -219,4 +228,5 @@ class NewPromptDialog(QDialog):
             "target": target,
             "provider": self._provider.currentData() or "openai",
             "prompt": build_prompt(tpl, mapping, use_cond),
+            "manual_only": self._manual_only.isChecked(),
         }
