@@ -118,7 +118,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **Start** | Dashboard pipeline'u: klikalne kroki workflow (✓/⚠/○) ze strzałkami, jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
-| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
+| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
@@ -219,7 +219,7 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | `parallel_requests` | Liczba notatek przetwarzanych równolegle w batchu (domyślnie 3) |
 | `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
 | `request_timeout` | Timeout żądania do API w sekundach (domyślnie 30) |
-| Dostawcy | Klucz API, model (przycisk **Pobierz** pobiera listę dostępnych modeli z API), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
+| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
 
 `reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
 
@@ -242,14 +242,15 @@ Konfiguracja w **Ustawienia → AI Generator**:
 
 Edytor promptów (zakładka **Prompty**):
 
-- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca, opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA) oraz checkbox „Tylko na żądanie" (pomija pole w batchu/workflow, dostępne tylko przez jawne wskazanie). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
+- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca, model, opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA) oraz checkbox „Tylko na żądanie" (pomija pole w batchu/workflow, dostępne tylko przez jawne wskazanie). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
+- **Model per prompt** — edytowalna lista z przyciskiem **Pobierz**; wpisanie np. `5.5` pokazuje tylko modele zawierające `5.5`. Starsze prompty bez pola `model` używają modelu domyślnego dostawcy.
 - **Podgląd na przykładowej notatce** — przycisk **Podgląd…** otwiera okno, które renderuje finalny prompt na wybranej notatce z kolekcji (pola podstawione, HTML oczyszczony) i pokazuje, która gałąź każdego `{% if %}` zostanie użyta.
 - **Kolorowanie składni** — `{{pola}}` i bloki `{% if %}` są wyróżnione kolorem; pola nieistniejące w typie notatki dostają czerwone faliste podkreślenie.
 - Przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet warunku; zaznaczony tekst trafia do gałęzi „if").
 - Walidacja na żywo: nieznane pola, błędy struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony) oraz użycie pola generowanego przez późniejsze zadanie.
 - **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność, a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
 
-Każde pole notatki może używać innego dostawcy. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
+Każde pole notatki może używać innego dostawcy i modelu. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 
 #### Dodanie nowego dostawcy AI
 

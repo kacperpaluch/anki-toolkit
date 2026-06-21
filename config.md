@@ -145,6 +145,7 @@ Klucz API dla `google` uzyskasz na [Google AI Studio](https://aistudio.google.co
 Klucz to nazwa typu notatki (dokładnie jak w Anki). Każde pole to obiekt z:
 - `"target"` — nazwa pola karty do wypełnienia
 - `"provider"` — provider AI dla tego pola (wymagany)
+- `"model"` — model AI dla tego pola; brak wartości używa modelu domyślnego providera
 - `"prompt"` — treść prompta
 - `"manual_only"` (opcjonalne, `true`/`false`, domyślnie `false`) — pole wykluczone z batcha "Wszystkie puste", workflow oraz głównego przycisku AI w edytorze. Dostępne tylko przez jawne wskazanie: submenu "Generuj zablokowane ▸" w przeglądarce lub PPM na polu w edytorze.
 

@@ -7,6 +7,8 @@ buttons reorder both the list and the saved config.
 
 import re
 
+from aqt import mw
+from aqt.utils import showWarning
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
@@ -17,8 +19,8 @@ from aqt.qt import (
 
 from ..common import clean_html_normalized
 from ..common.ui import (
-    _expanding_line_edit, get_note_type_names, get_fields_for_note_type,
-    get_sample_notes, palette, hint_label,
+    _expanding_line_edit, _filterable_combo, get_note_type_names,
+    get_fields_for_note_type, get_sample_notes, palette, hint_label,
 )
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
@@ -164,19 +166,26 @@ class PromptPreviewDialog(QDialog):
 class PromptsTab(QWidget):
     """Two-panel editor: list of note_type→field on left, prompt editor on right."""
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, provider_settings=None):
         super().__init__()
         self._data: dict = {}
         self._current_key: tuple | None = None
 
         ai = cfg.get("ai_generator", {})
+        self._providers_cfg = ai.get("providers", {})
+        self._provider_settings = provider_settings or (
+            lambda name: self._providers_cfg.get(name, {})
+        )
+        self._model_options: dict[str, list[str]] = {}
         note_types = ai.get("note_types", {})
         for nt_name, fields in note_types.items():
             for field_name, field_cfg in fields.items():
                 key = (nt_name, field_name)
+                provider = field_cfg.get("provider", "openai")
                 self._data[key] = {
                     "target":      field_cfg.get("target", field_name),
-                    "provider":    field_cfg.get("provider", "openai"),
+                    "provider":    provider,
+                    "model":       field_cfg.get("model", ""),
                     "prompt":      field_cfg.get("prompt", ""),
                     "manual_only": bool(field_cfg.get("manual_only", False)),
                 }
@@ -263,6 +272,20 @@ class PromptsTab(QWidget):
         self._ed_provider = QComboBox()
         for name, label in PROVIDER_LABELS.items():
             self._ed_provider.addItem(label, name)
+        model_row = QWidget()
+        model_layout = QHBoxLayout(model_row)
+        model_layout.setContentsMargins(0, 0, 0, 0)
+        model_layout.setSpacing(4)
+        self._ed_model = _filterable_combo()
+        self._ed_model.setMinimumWidth(200)
+        self._ed_model.setToolTip(
+            "Model używany tylko przez ten prompt. Wpisywanie filtruje listę "
+            "po dowolnym fragmencie, np. 5.5."
+        )
+        self._btn_fetch_models = QPushButton("Pobierz")
+        self._btn_fetch_models.setFixedWidth(70)
+        model_layout.addWidget(self._ed_model)
+        model_layout.addWidget(self._btn_fetch_models)
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
@@ -274,6 +297,7 @@ class PromptsTab(QWidget):
         form.addRow("Nazwa zadania:", self._ed_field)
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
+        form.addRow("Model AI:", model_row)
         form.addRow(self._ed_manual_only)
         editor_form_layout.addLayout(form)
 
@@ -325,8 +349,11 @@ class PromptsTab(QWidget):
         self._btn_up.clicked.connect(lambda: self._on_move(-1))
         self._btn_down.clicked.connect(lambda: self._on_move(1))
         self._ed_note_type.currentTextChanged.connect(self._on_note_type_changed)
+        self._ed_provider.currentIndexChanged.connect(self._on_provider_changed)
+        self._ed_model.currentTextChanged.connect(self._validate_prompt)
         self._ed_target.currentTextChanged.connect(self._validate_prompt)
         self._ed_prompt.textChanged.connect(self._validate_prompt)
+        self._btn_fetch_models.clicked.connect(self._fetch_models)
         self._btn_insert_field.clicked.connect(self._on_insert_field)
         self._btn_insert_cond.clicked.connect(self._on_insert_condition)
         self._btn_preview.clicked.connect(self._on_preview)
@@ -389,6 +416,7 @@ class PromptsTab(QWidget):
         entry = {
             "target":      self._ed_target.currentText().strip(),
             "provider":    self._ed_provider.currentData() or "openai",
+            "model":       self._ed_model.currentText().strip(),
             "prompt":      self._ed_prompt.toPlainText(),
             "manual_only": self._ed_manual_only.isChecked(),
         }
@@ -415,8 +443,11 @@ class PromptsTab(QWidget):
         self._ed_note_type.setCurrentText(key[0])
         self._ed_field.setText(key[1])
         self._ed_target.setCurrentText(entry["target"])
+        self._ed_provider.blockSignals(True)
         idx = self._ed_provider.findData(entry["provider"])
         self._ed_provider.setCurrentIndex(idx if idx >= 0 else 0)
+        self._ed_provider.blockSignals(False)
+        self._set_model_choices(entry["provider"], entry.get("model", ""))
         self._ed_manual_only.setChecked(entry.get("manual_only", False))
         self._ed_prompt.setPlainText(entry["prompt"])
         self._editor_placeholder.setVisible(False)
@@ -434,6 +465,63 @@ class PromptsTab(QWidget):
         self._ed_target.setCurrentText(current_target)
         self._ed_target.blockSignals(False)
         self._validate_prompt()
+
+    def _provider_values(self, provider: str) -> dict:
+        values = self._provider_settings(provider)
+        return values if isinstance(values, dict) else {}
+
+    def _set_model_choices(self, provider: str, current: str = "") -> None:
+        provider_values = self._provider_values(provider)
+        default = str(provider_values.get("model") or "").strip()
+        selected = str(current or "").strip() or default
+        choices = list(
+            self._model_options.get(provider) or provider_values.get("models") or []
+        )
+        for model in (default, selected):
+            if model and model not in choices:
+                choices.insert(0, model)
+        self._ed_model.blockSignals(True)
+        self._ed_model.clear()
+        self._ed_model.addItems(choices)
+        self._ed_model.setCurrentText(selected)
+        self._ed_model.blockSignals(False)
+        self._validate_prompt()
+
+    def _on_provider_changed(self, _index: int = -1) -> None:
+        self._set_model_choices(self._ed_provider.currentData() or "openai")
+
+    def _fetch_models(self) -> None:
+        provider = self._ed_provider.currentData() or "openai"
+        api_key = str(self._provider_values(provider).get("api_key", "")).strip()
+        current = self._ed_model.currentText()
+        self._btn_fetch_models.setEnabled(False)
+        self._btn_fetch_models.setText("...")
+
+        def task():
+            from ..ai_generator.providers.model_discovery import fetch_models
+            return fetch_models(provider, api_key, force=True)
+
+        def on_done(fut):
+            try:
+                models = fut.result()
+            except Exception:
+                models = []
+            try:
+                self._btn_fetch_models.setEnabled(True)
+                self._btn_fetch_models.setText("Pobierz")
+                if not models:
+                    showWarning(
+                        f"Nie udało się pobrać modeli dla {provider}.\n"
+                        "Sprawdź klucz API i połączenie z internetem."
+                    )
+                    return
+                self._model_options[provider] = models
+                if (self._ed_provider.currentData() or "openai") == provider:
+                    self._set_model_choices(provider, current)
+            except RuntimeError:
+                pass  # dialog was closed while fetching
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _known_prompt_fields(self) -> set[str]:
         """Fields usable in the prompt: note type fields + targets of earlier tasks."""
@@ -499,6 +587,8 @@ class PromptsTab(QWidget):
     def _validate_prompt(self, *_args) -> None:
         prompt = self._ed_prompt.toPlainText()
         problems: list[str] = template_structure_problems(prompt)
+        if not self._ed_model.currentText().strip():
+            problems.append("Wybierz model AI dla tego promptu.")
 
         # sprawdzanie istnienia pól wymaga dostępu do kolekcji
         if self._note_type_names:
@@ -577,6 +667,7 @@ class PromptsTab(QWidget):
             note_type_names=self._note_type_names,
             default_note_type=default_nt,
             default_provider=self._default_provider,
+            provider_settings=self._provider_settings,
         )
         if dlg.exec() != NewPromptDialog.DialogCode.Accepted:
             return
@@ -592,6 +683,7 @@ class PromptsTab(QWidget):
         self._data[key] = {
             "target":      entry["target"] or key[1],
             "provider":    entry["provider"],
+            "model":       entry["model"],
             "prompt":      entry["prompt"],
             "manual_only": bool(entry.get("manual_only", False)),
         }
@@ -623,6 +715,7 @@ class PromptsTab(QWidget):
             field_cfg: dict = {
                 "target":   entry["target"],
                 "provider": entry["provider"],
+                "model":    entry["model"],
                 "prompt":   entry["prompt"],
             }
             if entry.get("manual_only"):

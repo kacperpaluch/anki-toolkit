@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę i prompt. Działa w edytorze (główny przycisk workflow + pomocniczy przycisk AI) i przeglądarce (batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
+Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (główny przycisk workflow + pomocniczy przycisk AI) i przeglądarce (batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
 
 ## Pliki
 
@@ -12,7 +12,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
 | `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — batch zawsze `overwrite=False` (pomija wypełnione) |
-| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, cache providerów; używa `common.clean_html_normalized()`, `common.safe_str()` |
+| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
 | `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 4 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL` i (Mistral) `SUPPORTS_REASONING_EFFORT = False` |
@@ -39,7 +39,7 @@ Kliknięcie przycisku (edytor)
               → FieldGenerator.process_note(note) → dict[str, str]   # only_fields=None, overwrite=False
                   → dla każdego pola w config note_types:
                       → pomiń jeśli pole niepuste (overwrite=False)
-                      → _resolve_provider(provider_name)   # cache, tworzy raz; wczytuje max_retries i request_timeout z config
+                      → _resolve_provider(provider_name, model)   # cache per (provider, model); brak modelu używa domyślnego dostawcy
                       → render_template(prompt, fields_map) # podstawia {{pola}}, max depth=50; pola są oczyszczone z HTML przez common.clean_html_normalized
                       → provider.call_api(prompt)           # HTTP do API, timeout=self.timeout, retry self.max_retries z backoff
                       → note[field] = wynik; changed[field] = wynik
@@ -96,7 +96,7 @@ Przycisk workflow w edytorze:
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
 - Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
-- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, prompt) po prawej; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
+- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, prompt) po prawej; model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
 - Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele, temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.
@@ -125,6 +125,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
       "klucz": {
         "target": "nazwa_pola_w_karcie",
         "provider": "openai",
+        "model": "gpt-4o-mini",
         "prompt": "Prompt z {{ang}} i {{pol}}"
       }
     }
@@ -140,6 +141,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 - `providers.openai.reasoning_effort` / `providers.cometapi.reasoning_effort` / `providers.openrouter.reasoning_effort` — dropdown z wartościami `none/minimal/low/medium/high/xhigh`; wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`); dla tych modeli nie wysyłane `temperature`; fallback automatyczny przy HTTP 400
 - `providers.opencode_go.reasoning_effort` — wolny tekst (QLineEdit w UI); wartości per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują; puste = nie wysyłane; fallback automatyczny przy HTTP 400; `opencode_go` wymaga `User-Agent` header (Cloudflare blokuje brak UA); auto-detect formatu API: Chat Completions dla GLM/Kimi/DeepSeek/MiMo, Anthropic Messages dla MiniMax M2.5/M2.7/Qwen3.5/3.6 Plus
 - Generator jest config-aware: porównuje bieżący config z `_cached_config` — jeśli config się zmienił, tworzy nowy generator z nowymi providerami; reset też wywoływany jawnie przez `settings/_reload_module_configs()` po zapisaniu ustawień
+- Każdy prompt zapisuje `provider` i `model`; starsze wpisy bez `model` używają `providers.<provider>.model`. Instancje providerów są cache'owane per `(provider, model)`.
 - Pola generowane są w kolejności kluczy w `note_types`; pole może referencjonować wynik poprzedniego pola przez `{{nazwa}}` w prompcie
 
 ## Silnik szablonów

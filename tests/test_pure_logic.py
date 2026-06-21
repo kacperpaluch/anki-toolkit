@@ -1,8 +1,11 @@
 import importlib.util
 import os
 import pathlib
+import sys
 import tempfile
+import types
 import unittest
+from unittest.mock import patch
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -25,6 +28,54 @@ ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 http_helpers = load_module("http_helpers", "common/http.py")
 
 
+def load_field_generator_with_stubs():
+    """Load FieldGenerator without Anki so provider/model caching is testable."""
+    root_pkg = types.ModuleType("_test_addon")
+    root_pkg.__path__ = []
+    ai_pkg = types.ModuleType("_test_addon.ai_generator")
+    ai_pkg.__path__ = []
+    anki_pkg = types.ModuleType("anki")
+    anki_pkg.__path__ = []
+    notes_mod = types.ModuleType("anki.notes")
+    notes_mod.Note = object
+    common_mod = types.ModuleType("_test_addon.common")
+    common_mod.clean_html_normalized = lambda value: value
+    common_mod.safe_str = lambda value: str(value or "").strip()
+    stats_mod = types.ModuleType("_test_addon.ai_generator.stats")
+    template_mod = types.ModuleType("_test_addon.ai_generator.template_engine")
+    template_mod.render_template = lambda template, _fields: template
+    providers_mod = types.ModuleType("_test_addon.ai_generator.providers")
+    providers_mod.BaseProvider = object
+    calls = []
+
+    class FakeProvider:
+        def __init__(self, model):
+            self.model = model
+
+    def fake_get_provider(name, cfg, **_kwargs):
+        calls.append((name, cfg["model"]))
+        return FakeProvider(cfg["model"])
+
+    providers_mod.get_provider = fake_get_provider
+    modules = {
+        "_test_addon": root_pkg,
+        "_test_addon.ai_generator": ai_pkg,
+        "_test_addon.ai_generator.stats": stats_mod,
+        "_test_addon.ai_generator.template_engine": template_mod,
+        "_test_addon.ai_generator.providers": providers_mod,
+        "_test_addon.common": common_mod,
+        "anki": anki_pkg,
+        "anki.notes": notes_mod,
+    }
+    name = "_test_addon.ai_generator.field_generator"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "ai_generator/field_generator.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    with patch.dict(sys.modules, modules):
+        spec.loader.exec_module(module)
+    return module, calls
+
+
 class TemplateEngineTests(unittest.TestCase):
     def test_replaces_variables_and_conditionals(self):
         rendered = template_engine.render_template(
@@ -39,6 +90,34 @@ class TemplateEngineTests(unittest.TestCase):
             {"ang": "book", "def": ""},
         )
         self.assertEqual(rendered, "book")
+
+
+class AiProviderModelResolutionTests(unittest.TestCase):
+    def test_cache_is_per_model_and_old_config_uses_provider_default(self):
+        module, calls = load_field_generator_with_stubs()
+        generator = module.FieldGenerator({
+            "providers": {
+                "openai": {
+                    "api_key": "sk-test",
+                    "model": "gpt-default",
+                    "temperature": 0.2,
+                }
+            }
+        })
+
+        first = generator._resolve_provider("openai", "gpt-5.5")
+        second = generator._resolve_provider("openai", "gpt-5.6")
+        same_first = generator._resolve_provider("openai", "gpt-5.5")
+        fallback = generator._resolve_provider("openai")
+
+        self.assertIs(first, same_first)
+        self.assertIsNot(first, second)
+        self.assertEqual(fallback.model, "gpt-default")
+        self.assertEqual(calls, [
+            ("openai", "gpt-5.5"),
+            ("openai", "gpt-5.6"),
+            ("openai", "gpt-default"),
+        ])
 
 
 class TemplateStructureProblemsTests(unittest.TestCase):

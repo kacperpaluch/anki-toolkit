@@ -71,7 +71,7 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 
 ### Konfiguracja dostawców
 
-W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma własną podzakładkę, żeby nie pokazywać wszystkich kluczy i modeli naraz. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
+W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma własną podzakładkę z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
 
 ```json
 "providers": {
@@ -136,7 +136,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `mistral` | `GET /v1/models` | tak |
 | `opencode_go` | `GET /zen/go/v1/models` | tak |
 
-Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie jeśli wolisz. Lista jest cachowana — ponowne kliknięcie używa cache; zmiana klucza API powoduje ponowne pobranie.
+Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy są cachowane wewnętrznie, ale przycisk **Pobierz** zawsze wymusza ich odświeżenie.
 
 ### Przykładowe modele
 
@@ -165,11 +165,13 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
         "cz_mowy": {
             "target": "cz_mowy",
             "provider": "cometapi",
+            "model": "grok-4-1-fast-non-reasoning",
             "prompt": "Classify: EN: {{ang}} PL: {{pol}}"
         },
         "def": {
             "target": "def",
             "provider": "openai",
+            "model": "gpt-4o-mini",
             "prompt": "Write a definition for: {{ang}}"
         }
     }
@@ -180,6 +182,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - Klucz wewnętrzny (`"cz_mowy"`) — **nazwa zadania**: dowolny identyfikator, decyduje o kolejności generowania
 - `target` — nazwa pola karty do wypełnienia
 - `provider` — którego dostawcy użyć dla tego pola
+- `model` — model używany przez ten prompt; brak wartości używa modelu domyślnego dostawcy
 - `prompt` — treść prompta z opcjonalnymi szablonami
 
 ## Szablony promptów
@@ -194,6 +197,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
 Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć literówek:
+- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API, wpisać ręcznie i filtrować po fragmencie nazwy
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
 - Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
 - Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")

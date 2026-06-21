@@ -1,7 +1,7 @@
 """Single-page "Nowe zadanie AI" dialog for the Prompts tab.
 
 Collects the mechanical part of a new prompt entry — note type, target
-field, provider — in one compact form. Starter templates are optional:
+field, provider and model — in one compact form. Starter templates are optional:
 the "Szablon startowy" combo defaults to an empty prompt; picking a
 template reveals field-mapping rows (and the {% if %} checkbox for the
 examples template), so template syntax is never written by hand.
@@ -12,7 +12,9 @@ from aqt.qt import (
     QDialogButtonBox, QCheckBox, QWidget,
 )
 
-from ..common.ui import hint_label, palette, get_fields_for_note_type
+from ..common.ui import (
+    _filterable_combo, hint_label, palette, get_fields_for_note_type,
+)
 from ..ai_generator.providers import PROVIDER_LABELS
 from .prompt_templates import TEMPLATES, guess_field, build_prompt
 
@@ -26,10 +28,11 @@ def _editable_combo(items: list[str], current: str = "") -> QComboBox:
 
 
 class NewPromptDialog(QDialog):
-    """Collects (note_type, task_name, target, provider, prompt) in one form."""
+    """Collects note type, target, provider, model and prompt in one form."""
 
     def __init__(self, parent, note_type_names: list[str],
-                 default_note_type: str = "", default_provider: str = "openai"):
+                 default_note_type: str = "", default_provider: str = "openai",
+                 provider_settings=None):
         super().__init__(parent)
         self.setWindowTitle("Nowe zadanie AI")
         self.setMinimumWidth(460)
@@ -37,6 +40,7 @@ class NewPromptDialog(QDialog):
         self._param_combos: dict[str, QComboBox] = {}
         self._cond_check: QCheckBox | None = None
         self._cond_combo: QComboBox | None = None
+        self._provider_settings = provider_settings or (lambda _name: {})
 
         layout = QVBoxLayout(self)
 
@@ -61,6 +65,13 @@ class NewPromptDialog(QDialog):
         if idx >= 0:
             self._provider.setCurrentIndex(idx)
         form.addRow("Dostawca AI:", self._provider)
+
+        self._model = _filterable_combo()
+        self._model.setToolTip(
+            "Model dla tego promptu. Pełną listę możesz pobrać po dodaniu "
+            "zadania w edytorze promptów."
+        )
+        form.addRow("Model AI:", self._model)
 
         # "Pusty prompt" first — the default path adds a clean entry and the
         # actual prompt is written in the editor. Templates are an offer for
@@ -112,9 +123,11 @@ class NewPromptDialog(QDialog):
         layout.addWidget(buttons)
 
         self._note_type.currentTextChanged.connect(self._on_note_type_changed)
+        self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._template.currentIndexChanged.connect(
             lambda _i: self._rebuild_mapping()
         )
+        self._on_provider_changed()
         self._rebuild_mapping()
 
     # ------------------------------------------------------------------
@@ -137,6 +150,17 @@ class NewPromptDialog(QDialog):
         self._target.setCurrentText(current_target)
         self._target.blockSignals(False)
         self._rebuild_mapping()
+
+    def _on_provider_changed(self, _index: int = -1) -> None:
+        provider = self._provider.currentData() or "openai"
+        values = self._provider_settings(provider)
+        default = str(values.get("model") or "").strip() if isinstance(values, dict) else ""
+        self._model.clear()
+        models = values.get("models", []) if isinstance(values, dict) else []
+        self._model.addItems(models)
+        if default and self._model.findText(default) < 0:
+            self._model.addItem(default)
+        self._model.setCurrentText(default)
 
     def _rebuild_mapping(self) -> None:
         while self._mapping_form.rowCount():
@@ -199,6 +223,9 @@ class NewPromptDialog(QDialog):
         if not self._target.currentText().strip():
             self._show_error("Wybierz pole docelowe.")
             return
+        if not self._model.currentText().strip():
+            self._show_error("Wybierz model AI.")
+            return
         for key, label, _hints in tpl["params"]:
             if not self._param_combos[key].currentText().strip():
                 self._show_error(f"Wskaż pole dla „{label}”.")
@@ -227,6 +254,7 @@ class NewPromptDialog(QDialog):
             "task_name": target,
             "target": target,
             "provider": self._provider.currentData() or "openai",
+            "model": self._model.currentText().strip(),
             "prompt": build_prompt(tpl, mapping, use_cond),
             "manual_only": self._manual_only.isChecked(),
         }

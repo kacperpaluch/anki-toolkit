@@ -10,7 +10,10 @@ from aqt.qt import (
 )
 from aqt.utils import showWarning
 
-from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable, hint_label
+from ..common.ui import (
+    _expanding_line_edit, _filterable_combo, _api_key_widget, _scrollable,
+    hint_label,
+)
 from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS
 from .prompts_tab import PromptsTab
 
@@ -33,16 +36,18 @@ class AIGeneratorTab(QWidget):
 
         tabs = QTabWidget()
 
+        # Build provider widgets first so the prompts tab can read unsaved keys/defaults.
+        providers_page = self._build_providers_page(ai)
+
         # -- Sub-tab: Workflow --
         wf_page = self._build_workflow_page(cfg.get("workflow", {}))
         tabs.addTab(wf_page, "Workflow")
 
         # -- Sub-tab: Prompts --
-        self._prompts = PromptsTab(cfg)
+        self._prompts = PromptsTab(cfg, self._current_provider_settings)
         tabs.addTab(self._prompts, "Prompty")
 
         # -- Sub-tab: Providers + General --
-        providers_page = self._build_providers_page(ai)
         tabs.addTab(providers_page, "Dostawcy")
 
         layout.addWidget(tabs)
@@ -105,17 +110,15 @@ class AIGeneratorTab(QWidget):
             mh = QHBoxLayout(model_row)
             mh.setContentsMargins(0, 0, 0, 0)
             mh.setSpacing(4)
-            model_combo = QComboBox()
-            model_combo.setEditable(True)
+            saved_model = p.get("model", "")
+            model_combo = _filterable_combo(
+                [saved_model] if saved_model else [], saved_model
+            )
             model_combo.setMinimumWidth(200)
             model_combo.setSizePolicy(
                 model_combo.sizePolicy().horizontalPolicy().Expanding,
                 model_combo.sizePolicy().verticalPolicy(),
             )
-            saved_model = p.get("model", "")
-            if saved_model:
-                model_combo.addItem(saved_model)
-                model_combo.setCurrentText(saved_model)
             fetch_btn = QPushButton("Pobierz")
             fetch_btn.setFixedWidth(70)
             fetch_btn.clicked.connect(partial(self._fetch_models_for, name))
@@ -128,7 +131,11 @@ class AIGeneratorTab(QWidget):
             temp.setValue(p.get("temperature", 0.2))
 
             prov_form.addRow("Klucz API:", api_key_container)
-            prov_form.addRow("Model:", model_row)
+            model_combo.setToolTip(
+                "Model domyślny dla nowych i starszych promptów. Każdy prompt "
+                "może wybrać własny model. Wpisywanie filtruje listę po fragmencie."
+            )
+            prov_form.addRow("Model domyślny:", model_row)
             prov_form.addRow("Temperatura:", temp)
             widgets = {
                 "api_key": api_key_field,
@@ -225,6 +232,20 @@ class AIGeneratorTab(QWidget):
 
     def _on_provider_key_changed(self, row: int, name: str, _text: str = "") -> None:
         self._update_provider_item(row, name)
+
+    def _current_provider_settings(self, name: str) -> dict:
+        """Return live provider values, including unsaved edits in this dialog."""
+        widgets = self._provider_widgets.get(name)
+        if not widgets:
+            return {}
+        return {
+            "api_key": widgets["api_key"].text().strip(),
+            "model": widgets["model"].currentText().strip(),
+            "models": [
+                widgets["model"].itemText(i)
+                for i in range(widgets["model"].count())
+            ],
+        }
 
     # ------------------------------------------------------------------
     # Model fetching

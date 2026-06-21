@@ -4,7 +4,7 @@ from aqt import mw
 from aqt.qt import (
     QWidget, QHBoxLayout, QSizePolicy, QLineEdit,
     QPushButton, QScrollArea, QFrame, Qt,
-    QListWidget, QListWidgetItem, QFormLayout, QLabel,
+    QListWidget, QListWidgetItem, QFormLayout, QLabel, QComboBox, QCompleter,
 )
 
 from .html import clean_html_normalized
@@ -56,6 +56,20 @@ def _expanding_line_edit(text: str = "") -> QLineEdit:
     w = QLineEdit(text)
     w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     return w
+
+
+def _filterable_combo(items: list[str] | None = None, current: str = "") -> QComboBox:
+    """Editable combo whose popup completion matches any text fragment."""
+    combo = QComboBox()
+    combo.setEditable(True)
+    combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    combo.addItems(items or [])
+    combo.setCurrentText(current)
+    completer = combo.completer()
+    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+    completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+    return combo
 
 
 def _api_key_widget(text: str = "") -> tuple:
