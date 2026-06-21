@@ -105,7 +105,7 @@ class StatsTab(QWidget):
         self._tts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._tts_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._tts_table.verticalHeader().setVisible(False)
-        self._tts_table.setMaximumHeight(150)
+        self._tts_table.setMaximumHeight(100)
         tts_header = self._tts_table.horizontalHeader()
         tts_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, 6):
