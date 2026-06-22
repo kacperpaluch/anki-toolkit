@@ -11,7 +11,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `_generator` |
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione) |
+| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — batch zawsze `overwrite=False` (pomija wypełnione) |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
@@ -64,14 +64,14 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
   → submenu zbudowane z _all_configured_target_fields(config) — spłaszczone po nazwie pola docelowego (wszystkie typy notatek)
   → "Wszystkie puste" → _on_generate_browser() → _run_batch(only_fields=None)
   → "AI: def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
-  → notatki wczytywane z mw.col.get_note(nid) NA GŁÓWNYM WĄTKU (kolekcja Anki jest jednowątkowa); note.note_type() rozgrzewa cache modeli — workery robią na nim już tylko odczyt z pamięci
   → QProgressDialog z przyciskiem Anuluj
   → mw.taskman.run_in_background(task)         # nie blokuje UI
       → ThreadPoolExecutor(max_workers=parallel_requests)
       → chunk po batch_limit notatek (sleep batch_sleep między chunkami)
-      → dla każdej (wczytanej wcześniej) notatki w chunku (równolegle w puli):
+      → dla każdej notatki w chunku (równolegle w puli):
           → gen = FieldGenerator(config)                # NOWA instancja per notatka — provider trzyma last_error/last_usage
-          → gen.process_note(note, only_fields=..., overwrite=False)   # mutuje notatkę tylko w pamięci, BEZ dostępu do mw.col; batch zawsze pomija wypełnione
+          → note = mw.col.get_note(nid)
+          → gen.process_note(note, only_fields=..., overwrite=False)   # batch zawsze pomija wypełnione
           → changed_notes.append(note) jeśli gen zmienił pola
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):

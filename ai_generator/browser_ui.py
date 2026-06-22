@@ -81,36 +81,21 @@ def _run_batch(browser: Browser, nids, config: dict,
     sleep_time: float = config.get("batch_sleep", 1.0)
     parallel: int = max(1, int(config.get("parallel_requests", 3)))
 
-    # Load notes on the main thread — the Anki collection is single-threaded,
-    # so workers must never touch mw.col. Each note is read once here and only
-    # mutated in memory by process_note(); collection writes happen on the main
-    # thread in _save_changed_notes(). note_type() is called to warm the models
-    # cache here too, so worker threads only do in-memory dict reads on it.
-    nids = list(nids)
-    try:
-        notes = []
-        for nid in nids:
-            note = mw.col.get_note(nid)
-            note.note_type()
-            notes.append(note)
-    except Exception as e:
-        tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
-        return
-
     progress, cancel_flag = _make_progress(
-        browser, f"{label}...", len(notes), "AI Generator"
+        browser, f"{label}...", len(nids), "AI Generator"
     )
 
     state = {"done": 0, "changed": 0, "failures": 0, "last_error": None}
     changed_notes: list = []
     lock = threading.Lock()
 
-    def process_one(note):
+    def process_one(nid):
         # Each call gets its own FieldGenerator — provider instances keep
         # per-request state (last_error, last_usage), so sharing one across
         # worker threads would cross-attribute errors and token usage.
         gen = FieldGenerator(config)
         try:
+            note = mw.col.get_note(nid)
             changed = gen.process_note(note, only_fields=only_fields)
         except Exception as e:
             with lock:
@@ -133,19 +118,19 @@ def _run_batch(browser: Browser, nids, config: dict,
 
     def _report_progress(done: int):
         def _update(d=done):
-            progress.setLabelText(f"Przetwarzanie {d}/{len(notes)}...")
+            progress.setLabelText(f"Przetwarzanie {d}/{len(nids)}...")
             progress.setValue(d)
         mw.taskman.run_on_main(_update)
 
     def task():
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
-            for start in range(0, len(notes), batch_limit):
+            for start in range(0, len(nids), batch_limit):
                 if cancel_flag["cancelled"]:
                     break
                 if start > 0 and sleep_time > 0:
                     time.sleep(sleep_time)
-                chunk = notes[start:start + batch_limit]
-                futures = [pool.submit(process_one, n) for n in chunk]
+                chunk = nids[start:start + batch_limit]
+                futures = [pool.submit(process_one, nid) for nid in chunk]
                 concurrent.futures.wait(futures)
 
     def on_done(fut):
