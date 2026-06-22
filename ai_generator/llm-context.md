@@ -12,7 +12,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
 | `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — batch zawsze `overwrite=False` (pomija wypełnione) |
-| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; używa `common.clean_html_normalized()`, `common.safe_str()` |
+| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
 | `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 4 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL` i (Mistral) `SUPPORTS_REASONING_EFFORT = False` |
@@ -97,7 +97,7 @@ Przycisk workflow w edytorze:
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
 - Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
 - Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, prompt) po prawej; model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
-- Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele, temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
+- Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele (combo z cache `cached_models` zapisywanym w configu — przeżywa restart), model zapasowy (fallback_model), temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags/free_model_rate_limit
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.
 
@@ -112,13 +112,13 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
   "max_retries": 3,
   "request_timeout": 30,
   "providers": {
-    "openai":     {"api_key": "...", "model": "gpt-4o", "temperature": 0.2, "reasoning_effort": "medium"},
-    "google":     {"api_key": "...", "model": "gemini-2.0-flash", "temperature": 0.2},
-    "anthropic":  {"api_key": "...", "model": "claude-3-5-haiku-20241022", "temperature": 0.2, "max_tokens": 2048},
-    "openrouter": {"api_key": "...", "model": "anthropic/claude-3.5-haiku", "temperature": 0.2, "reasoning_effort": "medium"},
-    "cometapi":   {"api_key": "...", "model": "grok-4-1-fast-non-reasoning", "temperature": 0.2, "reasoning_effort": "medium"},
-    "mistral":    {"api_key": "...", "model": "mistral-small-latest", "temperature": 0.2},
-    "opencode_go": {"api_key": "...", "model": "deepseek-v4-pro", "temperature": 0.6, "reasoning_effort": "max"}
+    "openai":     {"api_key": "...", "model": "gpt-4o", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
+    "google":     {"api_key": "...", "model": "gemini-2.0-flash", "temperature": 0.2, "fallback_model": "", "cached_models": []},
+    "anthropic":  {"api_key": "...", "model": "claude-3-5-haiku-20241022", "temperature": 0.2, "max_tokens": 2048, "fallback_model": "", "cached_models": []},
+    "openrouter": {"api_key": "...", "model": "anthropic/claude-3.5-haiku", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
+    "cometapi":   {"api_key": "...", "model": "grok-4-1-fast-non-reasoning", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
+    "mistral":    {"api_key": "...", "model": "mistral-small-latest", "temperature": 0.2, "fallback_model": "", "cached_models": []},
+    "opencode_go": {"api_key": "...", "model": "deepseek-v4-pro", "temperature": 0.6, "reasoning_effort": "max", "fallback_model": "", "cached_models": []}
   },
   "note_types": {
     "NazwaTypuNotatki": {
@@ -126,6 +126,8 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
         "target": "nazwa_pola_w_karcie",
         "provider": "openai",
         "model": "gpt-4o-mini",
+        "fallback_provider": "openrouter",
+        "fallback_model": "anthropic/claude-3.5-haiku",
         "prompt": "Prompt z {{ang}} i {{pol}}"
       }
     }
@@ -153,6 +155,55 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 ```
 
 **Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane — regex dopasowuje pierwszy napotkany `{% endif %}`. Rekurencja z limitem `MAX_DEPTH = 50` dotyczy tylko renderowania zawartości bloków.
+
+## Fallback modeli
+
+Gdy `provider.call_api(prompt)` zwróci `None` (błąd API, rate limit, brak środków, brak treści), `field_generator.process_note()` sprawdza fallback w dwóch poziomach priorytetu:
+
+1. **Per-prompt** (wyższy): `field_cfg.get("fallback_provider")` + `field_cfg.get("fallback_model")`. Jeśli `fallback_provider` jest pusty, używa tego samego dostawcy co model główny. Jeśli `fallback_model` jest pusty, przejdź do poziomu 2.
+2. **Per-dostawca** (niższy): `providers.<provider>.get("fallback_model")`. Używa tego samego dostawcy i klucza API.
+
+Logika w `process_note()`:
+```python
+result = provider.call_api(prompt)
+if result:
+    # sukces — zapisz pole
+else:
+    # sprawdź per-prompt fallback
+    fallback_provider_name = field_cfg.get("fallback_provider", "")
+    fallback_model = field_cfg.get("fallback_model", "")
+    if not fallback_model:
+        # brak per-prompt — sprawdź per-dostawca
+        p_cfg = config["providers"].get(provider_name, {})
+        fallback_model = p_cfg.get("fallback_model", "")
+        fallback_provider_name = ""  # ten sam dostawca
+    if not fallback_model:
+        # brak fallbacku — zaloguj błąd
+        continue
+    # uruchom fallback
+    fb_provider = self._resolve_provider(fb_name, fallback_model)
+    result = fb_provider.call_api(prompt)
+    # statystyki fallbacku zliczane osobno per (fb_name, fb_model)
+```
+
+Fallback używa tego samego promptu (już wyrenderowanego), ale nowa instancja providera z innym modelem/kluczem. `stats.record_request()` jest wołane osobno dla głównego i fallbackowego wywołania.
+
+## Rate limiter dla modeli `:free` (OpenRouter)
+
+OpenRouter nakłada limit 20 RPM na modele z sufiksem `:free`. Klasa `FreeModelRateLimiter` w `field_generator.py` implementuje sliding-window rate limiter (deque timestampów + `threading.Lock`):
+
+- **Singleton** — jeden instancja per proces; limit jest per API key, nie per `FieldGenerator`
+- Sprawdza czy `model.lower()` zawiera `:free` — jeśli nie, natychmiast wraca (brak narzutu)
+- Jeśli tak: usuwa timestampy starsze niż 60s z deque, jeśli `len >= limit` → czeka do najstarszego timestampa + 60s
+- Konfigurowalny przez `config["free_model_rate_limit"]` (domyślnie 15), ustawiany w `FieldGenerator.__init__` przez `FreeModelRateLimiter().configure(limit)`
+- Wywoływany przed każdym `provider.call_api()` w `process_note()` — zarówno dla modelu głównego jak i fallbackowego
+- Wątkowo-bezpieczny: lock zwalniany podczas sleep (inne wątki mogą wejść do `acquire()` i zakolejkować się); po obudzeniu wątek **re-sprawdza** limit w pętli `while True` — inny wątek mógł zająć slot jako pierwszy
+
+```python
+# ponytail: release lock during sleep so other threads can queue.
+# After waking, re-check the limit in the while loop — another thread
+# may have taken the slot we were waiting for.
+```
 
 ## Dodanie nowego dostawcy AI
 

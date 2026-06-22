@@ -29,8 +29,13 @@ http_helpers = load_module("http_helpers", "common/http.py")
 field_splitter = load_module("field_splitter_logic", "field_splitter/splitting.py")
 
 
-def load_field_generator_with_stubs():
-    """Load FieldGenerator without Anki so provider/model caching is testable."""
+def load_field_generator_with_stubs(provider_responses=None):
+    """Load FieldGenerator without Anki so provider/model caching is testable.
+
+    provider_responses: optional ``{(provider_name, model): [responses]}`` —
+    each call_api() pops one response from the list. Lets tests simulate
+    "primary fails, fallback succeeds".
+    """
     root_pkg = types.ModuleType("_test_addon")
     root_pkg.__path__ = []
     ai_pkg = types.ModuleType("_test_addon.ai_generator")
@@ -43,6 +48,8 @@ def load_field_generator_with_stubs():
     common_mod.clean_html_normalized = lambda value: value
     common_mod.safe_str = lambda value: str(value or "").strip()
     stats_mod = types.ModuleType("_test_addon.ai_generator.stats")
+    stats_mod.record_request = lambda *a, **k: None
+    stats_mod.record_note = lambda *a, **k: None
     template_mod = types.ModuleType("_test_addon.ai_generator.template_engine")
     template_mod.render_template = lambda template, _fields: template
     providers_mod = types.ModuleType("_test_addon.ai_generator.providers")
@@ -50,12 +57,26 @@ def load_field_generator_with_stubs():
     calls = []
 
     class FakeProvider:
-        def __init__(self, model):
+        # ponytail: responses is a list consumed per call_api() — first call
+        # pops index 0. If empty, returns None. Lets tests simulate "primary
+        # fails, fallback succeeds" with a single config.
+        def __init__(self, model, responses=None):
             self.model = model
+            self.last_usage = (0, 0)
+            self.last_error = None
+            self._responses = list(responses) if responses else []
+            self.calls = 0
+
+        def call_api(self, prompt):
+            self.calls += 1
+            if self._responses:
+                return self._responses.pop(0)
+            return None
 
     def fake_get_provider(name, cfg, **_kwargs):
         calls.append((name, cfg["model"]))
-        return FakeProvider(cfg["model"])
+        responses = (provider_responses or {}).get((name, cfg["model"]))
+        return FakeProvider(cfg["model"], responses)
 
     providers_mod.get_provider = fake_get_provider
     modules = {
@@ -119,6 +140,242 @@ class AiProviderModelResolutionTests(unittest.TestCase):
             ("openai", "gpt-5.6"),
             ("openai", "gpt-default"),
         ])
+
+
+class FallbackTests(unittest.TestCase):
+    """Tests for provider-level and per-prompt fallback_model.
+
+    Uses load_field_generator_with_stubs(provider_responses=...) to simulate
+    "primary fails, fallback succeeds" without real API calls.
+    """
+
+    _NT_CONFIG = {
+        "providers": {
+            "openai": {
+                "api_key": "sk-test",
+                "model": "gpt-4o",
+                "temperature": 0.2,
+                "fallback_model": "gpt-4o-mini",
+            },
+            "openrouter": {
+                "api_key": "sk-or",
+                "model": "anthropic/claude-3.5-haiku",
+                "temperature": 0.2,
+            },
+        },
+        "note_types": {
+            "angielski": {
+                "def": {
+                    "target": "def",
+                    "provider": "openai",
+                    "model": "gpt-4o",
+                    "prompt": "Define {{ang}}",
+                },
+            },
+        },
+    }
+
+    def _process_note(self, module, note_type="angielski", responses=None,
+                      field_overrides=None):
+        import copy
+        nt_cfg = copy.deepcopy(self._NT_CONFIG)
+        if field_overrides:
+            nt_cfg["note_types"]["angielski"]["def"].update(field_overrides)
+        generator = module.FieldGenerator(nt_cfg)
+        note = _FakeNote(note_type, fields={"ang": "look", "def": ""})
+        if responses:
+            for (pname, model), resp in responses.items():
+                # patch the cached provider's responses
+                pass
+        # Resolve providers with responses set
+        for (pname, model), resp in (responses or {}).items():
+            provider = generator._resolve_provider(pname, model)
+            if provider is not None:
+                provider._responses = list(resp)
+        changed = generator.process_note(note)
+        return note, changed, generator
+
+    def test_primary_succeeds_no_fallback(self):
+        module, _calls = load_field_generator_with_stubs()
+        note, changed, gen = self._process_note(
+            module, responses={("openai", "gpt-4o"): ["primary ok"]}
+        )
+        self.assertTrue(changed)
+        self.assertEqual(note["def"], "primary ok")
+        self.assertIsNone(gen.last_error)
+
+    def test_provider_fallback_when_primary_fails(self):
+        module, _calls = load_field_generator_with_stubs()
+        note, changed, gen = self._process_note(
+            module, responses={
+                ("openai", "gpt-4o"): [None],  # primary fails
+                ("openai", "gpt-4o-mini"): ["fallback ok"],  # fallback succeeds
+            }
+        )
+        self.assertTrue(changed)
+        self.assertEqual(note["def"], "fallback ok")
+
+    def test_per_prompt_fallback_overrides_provider_fallback(self):
+        module, _calls = load_field_generator_with_stubs()
+        note, changed, gen = self._process_note(
+            module,
+            responses={
+                ("openai", "gpt-4o"): [None],  # primary fails
+                ("openrouter", "anthropic/claude-3.5-haiku"): ["cross-provider ok"],
+            },
+            field_overrides={
+                "fallback_provider": "openrouter",
+                "fallback_model": "anthropic/claude-3.5-haiku",
+            },
+        )
+        self.assertTrue(changed)
+        self.assertEqual(note["def"], "cross-provider ok")
+
+    def test_no_fallback_when_not_configured(self):
+        module, _calls = load_field_generator_with_stubs()
+        # Remove fallback_model from provider config
+        nt_cfg = {
+            "providers": {
+                "openai": {
+                    "api_key": "sk-test",
+                    "model": "gpt-4o",
+                    "temperature": 0.2,
+                    # no fallback_model
+                },
+            },
+            "note_types": {
+                "angielski": {
+                    "def": {
+                        "target": "def",
+                        "provider": "openai",
+                        "model": "gpt-4o",
+                        "prompt": "Define {{ang}}",
+                    },
+                },
+            },
+        }
+        generator = module.FieldGenerator(nt_cfg)
+        note = _FakeNote("angielski", fields={"ang": "look", "def": ""})
+        provider = generator._resolve_provider("openai", "gpt-4o")
+        provider._responses = [None]  # primary fails
+        changed = generator.process_note(note)
+        self.assertFalse(changed)
+        self.assertIsNotNone(gen.last_error if (gen := generator) else None)
+
+    def test_both_primary_and_fallback_fail(self):
+        module, _calls = load_field_generator_with_stubs()
+        note, changed, gen = self._process_note(
+            module, responses={
+                ("openai", "gpt-4o"): [None],
+                ("openai", "gpt-4o-mini"): [None],
+            }
+        )
+        self.assertFalse(changed)
+        self.assertIsNotNone(gen.last_error)
+        self.assertIn("Fallback", gen.last_error)
+
+
+class _FakeNote:
+    """Minimal note stub for process_note tests — dict-like field access."""
+
+    def __init__(self, note_type_name, fields, tags=None):
+        self._fields = fields
+        self.tags = tags or []
+        self._nt_name = note_type_name
+
+    def keys(self):
+        return self._fields.keys()
+
+    def __getitem__(self, key):
+        return self._fields.get(key, "")
+
+    def __setitem__(self, key, value):
+        self._fields[key] = value
+
+    def __contains__(self, key):
+        return key in self._fields
+
+    def __iter__(self):
+        return iter(self._fields)
+
+    def note_type(self):
+        return {"name": self._nt_name}
+
+    @property
+    def id(self):
+        return 1
+
+
+class FreeModelRateLimiterTests(unittest.TestCase):
+    """Tests for the :free model rate limiter (sliding window)."""
+
+    def setUp(self):
+        import importlib
+        # Re-load field_generator to get a fresh singleton
+        self._fg_module, _ = load_field_generator_with_stubs()
+        # Reset singleton by clearing the class attribute
+        self._fg_module.FreeModelRateLimiter._instance = None
+
+    def test_non_free_models_skip_limiter(self):
+        limiter = self._fg_module.FreeModelRateLimiter()
+        limiter.configure(limit=2)
+        # Should return instantly — no blocking
+        import time
+        start = time.monotonic()
+        limiter.acquire("gpt-4o")
+        limiter.acquire("claude-3.5-haiku")
+        elapsed = time.monotonic() - start
+        self.assertLess(elapsed, 0.1)
+
+    def test_free_model_blocks_on_limit(self):
+        limiter = self._fg_module.FreeModelRateLimiter()
+        limiter.configure(limit=2, window=1.0)  # 1s window for fast test
+        import time
+        limiter.acquire("meta-llama/llama-3.2-3b:free")
+        limiter.acquire("meta-llama/llama-3.2-3b:free")
+        # Third call should block until the window slides
+        start = time.monotonic()
+        limiter.acquire("meta-llama/llama-3.2-3b:free")
+        elapsed = time.monotonic() - start
+        self.assertGreater(elapsed, 0.8)  # ~1s wait
+
+    def test_is_singleton(self):
+        a = self._fg_module.FreeModelRateLimiter()
+        b = self._fg_module.FreeModelRateLimiter()
+        self.assertIs(a, b)
+
+    def test_concurrent_threads_respect_global_limit(self):
+        """N threads must not exceed the limit in any 60s window."""
+        import threading
+        import time as _time
+        limiter = self._fg_module.FreeModelRateLimiter()
+        limiter.configure(limit=5, window=1.0)  # 5 RPM in 1s window for fast test
+        results: list = []
+        results_lock = threading.Lock()
+
+        def worker():
+            limiter.acquire("meta-llama/llama-3.2-3b:free")
+            with results_lock:
+                results.append(_time.monotonic())
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        # All 10 should complete (some after waiting), and at no point
+        # should more than `limit` requests be in the window.
+        self.assertEqual(len(results), 10)
+        # Check: in any 1s window, no more than 5 requests
+        results.sort()
+        for i, ts in enumerate(results):
+            window_start = ts - 1.0
+            count_in_window = sum(1 for r in results if r >= window_start and r <= ts)
+            self.assertLessEqual(
+                count_in_window, 5,
+                f"Exceeded limit: {count_in_window} requests in 1s window at index {i}"
+            )
 
 
 class TemplateStructureProblemsTests(unittest.TestCase):

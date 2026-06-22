@@ -108,6 +108,8 @@ Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (le
 
 **`request_timeout`** — timeout pojedynczego żądania do API AI w sekundach. Domyślnie `30`.
 
+**`free_model_rate_limit`** — limit żądań na minutę (RPM) dla modeli darmowych OpenRouter (model ID z sufiksem `:free`, np. `meta-llama/llama-3.2-3b:free`). Domyślnie `15`. OpenRouter zezwala na maks. 20 RPM dla modeli `:free` — 15 zostawia margines bezpieczeństwa. Gdy limit jest osiągnięty, wtyczka czeka do zwolnienia miejsca w oknie 60-sekundowym. Dotyczy tylko modeli z `:free` w nazwie; płatne modele nie są ograniczane. Limit jest globalny (per proces), współdzielony między wątkami batcha.
+
 ---
 
 ### Providerzy (`providers`)
@@ -116,6 +118,8 @@ Każdy provider wymaga:
 - `"api_key"` — klucz API
 - `"model"` — nazwa modelu
 - `"temperature"` — losowość odpowiedzi (0.0–1.0, zalecane 0.2)
+- `"fallback_model"` — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste `""` = brak fallbacku na poziomie providera; używa tego samego providera i klucza API; prompt może nadpisać własnym `fallback_provider` + `fallback_model`
+- `"cached_models"` — lista modeli pobranych przez przycisk **Pobierz**; zapisywana automatycznie przy OK w ustawieniach; przeżywa restart Anki — nie trzeba ponownie pobierać listy po restarcie; odświeżenie przyciskiem **Pobierz** nadpisuje tę listę
 
 OpenAI obsługuje dodatkowe pole:
 - `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.
@@ -148,6 +152,8 @@ Klucz to nazwa typu notatki (dokładnie jak w Anki). Każde pole to obiekt z:
 - `"provider"` — provider AI dla tego pola (wymagany)
 - `"model"` — model AI dla tego pola; brak wartości używa modelu domyślnego providera
 - `"prompt"` — treść prompta
+- `"fallback_provider"` (opcjonalne) — dostawca zapasowy uruchamiany gdy główny model zawiedzie; puste/brak = użyj tego samego dostawcy co główny model
+- `"fallback_model"` (opcjonalne) — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste/brak = brak fallbacku per-prompt (wtedy używany jest `fallback_model` z konfiguracji dostawcy, jeśli ustawiony)
 - `"manual_only"` (opcjonalne, `true`/`false`, domyślnie `false`) — pole wykluczone z batcha "Wszystkie puste", workflow oraz głównego przycisku AI w edytorze. Dostępne tylko przez jawne wskazanie: submenu "Generuj zablokowane ▸" w przeglądarce lub PPM na polu w edytorze.
 
 W promptach dostępne są:

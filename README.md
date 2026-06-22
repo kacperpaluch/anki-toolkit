@@ -224,7 +224,9 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | `parallel_requests` | Liczba notatek przetwarzanych równolegle w batchu (domyślnie 3) |
 | `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
 | `request_timeout` | Timeout żądania do API w sekundach (domyślnie 30) |
-| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
+| `free_model_rate_limit` | Limit RPM dla modeli `:free` OpenRouter (domyślnie 15; max 20 wg OpenRouter) |
+| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
+| Prompty | Dostawca, model, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; nadpisuje fallback z poziomu dostawcy |
 
 `reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
 
@@ -270,6 +272,34 @@ Dostawca `opencode_go` obsługuje niskokosztową subskrypcję [OpenCode Go](http
 - **Anthropic Messages** — MiniMax M2.5/M2.7, Qwen3.5/3.6 Plus
 
 Pole `reasoning_effort` to wolny tekst (nie dropdown jak przy OpenAI) — wartości różnią się per model, np. `max` dla DeepSeek V4 Pro. Puste = nie wysyłane. Klucz API uzyskasz na [opencode.ai/auth](https://opencode.ai/auth).
+
+#### Fallback modeli
+
+Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, brak treści w odpowiedzi), wtyczka automatycznie uruchamia model zapasowy z tym samym promptem. Fallback jest konfigurowalny na dwóch poziomach:
+
+| Poziom | Pole | Priorytet |
+|---|---|---|
+| **Per prompt** | `fallback_provider` + `fallback_model` | Wyższy — jeśli ustawiony, nadpisuje fallback dostawcy |
+| **Per dostawca** | `fallback_model` w sekcji providera | Niższy — używany gdy prompt nie ma własnego fallbacku |
+
+- Per-prompt `fallback_provider` pusty = użyj tego samego dostawcy co główny model
+- Per-prompt `fallback_model` pusty = brak fallbacku per-prompt → sprawdź `fallback_model` dostawcy
+- Obie puste = brak fallbacku (zachowanie jak wcześniej — błąd jest logowany)
+- Fallback używa tego samego promptu, temperature, reasoning_effort i klucza API co model główny (jeśli ten sam dostawca) lub klucza API dostawcy zapasowego (jeśli inny dostawca)
+- Statystyki użycia zliczają fallback osobno (per `provider/model`)
+- Log zawiera ostrzeżenie z info który model → który fallback został użyty
+
+Konfiguracja w **Ustawienia → AI Generator**:
+- **Dostawcy** — pole „Model zapasowy" przy każdym dostawcy
+- **Prompty** — pola „Dostawca zapasowy" i „Model zapasowy" przy każdym prompcie
+
+#### Modele `:free` (OpenRouter) — rate limiter
+
+OpenRouter oferuje darmowe warianty modeli z sufiksem `:free` (np. `meta-llama/llama-3.2-3b:free`). Mają one limit **20 żądań na minutę** (RPM) narzucony przez OpenRouter.
+
+Wtyczka automatycznie ogranicza żądania do modeli `:free` do **15 RPM** (konfigurowalne w Ustawienia → AI Generator → Zaawansowane → „Limit RPM dla :free"). Gdy limit jest osiągnięty, wtyczka czeka do zwolnienia miejsca w oknie 60-sekundowym — nie odrzuca żądań, tylko pauzuje. Dotyczy to zarówno modelu głównego jak i fallbackowego, jeśli oba są `:free`.
+
+Płatne modele (bez `:free` w nazwie) nie są ograniczane przez tę wartość.
 
 ---
 

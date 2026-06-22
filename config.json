@@ -97,47 +97,62 @@
         "parallel_requests": 3,
         "max_retries": 3,
         "request_timeout": 30,
+        "free_model_rate_limit": 15,
 
         "providers": {
             "google": {
                 "api_key": "YOUR_GOOGLE_API_KEY",
                 "model": "gemini-2.0-flash",
-                "temperature": 0.2
+                "temperature": 0.2,
+                "fallback_model": "",
+                "cached_models": []
             },
             "cometapi": {
                 "api_key": "YOUR_COMETAPI_KEY",
                 "model": "grok-4-1-fast-non-reasoning",
                 "temperature": 0.2,
-                "reasoning_effort": "medium"
+                "reasoning_effort": "medium",
+                "fallback_model": "",
+                "cached_models": []
             },
             "openai": {
                 "api_key": "YOUR_OPENAI_KEY",
                 "model": "gpt-4o",
                 "temperature": 0.2,
-                "reasoning_effort": "medium"
+                "reasoning_effort": "medium",
+                "fallback_model": "",
+                "cached_models": []
             },
             "openrouter": {
                 "api_key": "YOUR_OPENROUTER_KEY",
                 "model": "anthropic/claude-3.5-haiku",
                 "temperature": 0.2,
-                "reasoning_effort": "medium"
+                "reasoning_effort": "medium",
+                "fallback_model": "",
+                "cached_models": []
             },
             "anthropic": {
                 "api_key": "YOUR_ANTHROPIC_KEY",
                 "model": "claude-3-5-haiku-20241022",
                 "temperature": 0.2,
-                "max_tokens": 2048
+                "max_tokens": 2048,
+                "fallback_model": "",
+                "cached_models": []
             },
             "mistral": {
                 "api_key": "YOUR_MISTRAL_KEY",
                 "model": "mistral-small-latest",
-                "temperature": 0.2
+                "temperature": 0.2,
+                "fallback_model": "",
+                "cached_models": []
             },
             "opencode_go": {
                 "api_key": "YOUR_OPENCODE_GO_KEY",
                 "model": "deepseek-v4-pro",
                 "temperature": 0.6,
-                "reasoning_effort": "max"
+                "reasoning_effort": "max",
+                "fallback_model": "",
+                "cached_models": []
             }
         },
 

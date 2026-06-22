@@ -1,6 +1,9 @@
 """Core field generation logic — provider-agnostic."""
 
 import logging
+import threading
+import time
+from collections import deque
 from typing import Dict, Optional
 
 from anki.notes import Note
@@ -12,6 +15,70 @@ from .template_engine import render_template
 from .providers import get_provider, BaseProvider
 
 logger = logging.getLogger(__name__)
+
+
+class FreeModelRateLimiter:
+    """Sliding-window rate limiter for OpenRouter :free models.
+
+    OpenRouter allows 20 RPM for free model variants (model ID ending with
+    ':free'). We default to 15 RPM for safety margin. Thread-safe — batch
+    uses ThreadPoolExecutor, so multiple threads may hit this concurrently.
+
+    ponytail: global singleton, per-process. Limit is per API key, not per
+    instance. deque+lock is simpler than a token bucket and precise enough
+    for 60s windows.
+    """
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if not hasattr(self, "_initialized"):
+            self._timestamps: deque = deque()
+            self._mtx = threading.Lock()
+            self._limit = 15
+            self._window = 60.0  # seconds
+            self._initialized = True
+
+    def configure(self, limit: int, window: float = 60.0) -> None:
+        with self._mtx:
+            self._limit = max(1, limit)
+            self._window = max(1.0, window)
+
+    def acquire(self, model: str) -> None:
+        """Block until a slot is available if *model* is a :free variant."""
+        if ":free" not in model.lower():
+            return
+        with self._mtx:
+            while True:
+                now = time.monotonic()
+                cutoff = now - self._window
+                while self._timestamps and self._timestamps[0] < cutoff:
+                    self._timestamps.popleft()
+                if len(self._timestamps) < self._limit:
+                    break
+                # Slot full — wait until the oldest timestamp exits the window.
+                wait = self._timestamps[0] + self._window - now
+                if wait <= 0:
+                    continue  # timestamp already expired, retry immediately
+                logger.info(
+                    f"Rate limit :free ({self._limit} RPM) — czekam {wait:.1f}s"
+                )
+                # ponytail: release lock during sleep so other threads can
+                # enter acquire() and also queue up. After waking, re-check
+                # the limit in the while loop — another thread may have taken
+                # the slot we were waiting for.
+                self._mtx.release()
+                time.sleep(wait)
+                self._mtx.acquire()
+            self._timestamps.append(time.monotonic())
 
 
 class FieldGenerator:
@@ -30,6 +97,9 @@ class FieldGenerator:
         self._config = config
         self._providers: Dict[tuple[str, str], Optional[BaseProvider]] = {}
         self.last_error: Optional[str] = None
+        FreeModelRateLimiter().configure(
+            int(config.get("free_model_rate_limit", 15))
+        )
 
     def _resolve_provider(self, provider_name: str,
                           requested_model: str = "") -> Optional[BaseProvider]:
@@ -151,6 +221,8 @@ class FieldGenerator:
             prompt_template = safe_str(field_cfg.get("prompt", ""))
             prompt = render_template(prompt_template, fields_map)
 
+            _rate_limiter = FreeModelRateLimiter()
+            _rate_limiter.acquire(provider.model)
             provider.last_usage = (0, 0)
             result = provider.call_api(prompt)
             in_tokens, out_tokens = provider.last_usage
@@ -167,18 +239,68 @@ class FieldGenerator:
                     f"({provider_name}/{provider.model}, tokeny {in_tokens}→{out_tokens})"
                 )
             else:
-                provider_error = getattr(provider, "last_error", None)
-                if provider_error:
-                    self.last_error = (
-                        f"Provider '{provider_name}', model '{provider.model}', "
-                        f"pole '{target_field}': {provider_error}"
+                # Fallback: per-prompt (fallback_provider + fallback_model) overrides
+                # per-provider (fallback_model in provider config).
+                fallback_provider_name = safe_str(field_cfg.get("fallback_provider"))
+                fallback_model = safe_str(field_cfg.get("fallback_model"))
+                if not fallback_model:
+                    # No per-prompt fallback — check provider-level fallback_model.
+                    p_cfg = self._config.get("providers", {}).get(provider_name, {})
+                    if isinstance(p_cfg, dict):
+                        fallback_model = safe_str(p_cfg.get("fallback_model"))
+                    # Per-provider fallback uses the same provider.
+                    fallback_provider_name = ""
+                if not fallback_model:
+                    provider_error = getattr(provider, "last_error", None)
+                    if provider_error:
+                        self.last_error = (
+                            f"Provider '{provider_name}', model '{provider.model}', "
+                            f"pole '{target_field}': {provider_error}"
+                        )
+                    else:
+                        self.last_error = (
+                            f"Provider '{provider_name}', model '{provider.model}', "
+                            f"pole '{target_field}' nie zwrócił treści."
+                        )
+                    logger.error(f"AI: {self.last_error}")
+                    continue
+                fb_name = fallback_provider_name.strip() or provider_name
+                fb_provider = self._resolve_provider(fb_name, fallback_model)
+                if fb_provider is None:
+                    continue
+                logger.warning(
+                    f"AI: fallback dla pola '{target_field}': "
+                    f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
+                )
+                _rate_limiter.acquire(fb_provider.model)
+                fb_provider.last_usage = (0, 0)
+                result = fb_provider.call_api(prompt)
+                fb_in, fb_out = fb_provider.last_usage
+                stats.record_request(
+                    fb_name, fb_provider.model, fb_in, fb_out,
+                    error=result is None, field_generated=bool(result),
+                )
+                if result:
+                    note[target_field] = result
+                    fields_map[target_field] = clean_html_normalized(result)
+                    changed[target_field] = result
+                    logger.info(
+                        f"AI: pole '{target_field}' wygenerowane przez fallback "
+                        f"({fb_name}/{fb_provider.model}, tokeny {fb_in}→{fb_out})"
                     )
                 else:
-                    self.last_error = (
-                        f"Provider '{provider_name}', model '{provider.model}', "
-                        f"pole '{target_field}' nie zwrócił treści."
-                    )
-                logger.error(f"AI: {self.last_error}")
+                    provider_error = getattr(fb_provider, "last_error", None)
+                    if provider_error:
+                        self.last_error = (
+                            f"Fallback {fb_name}/{fb_provider.model}, "
+                            f"pole '{target_field}': {provider_error}"
+                        )
+                    else:
+                        self.last_error = (
+                            f"Fallback {fb_name}/{fb_provider.model}, "
+                            f"pole '{target_field}' nie zwrócił treści."
+                        )
+                    logger.error(f"AI: {self.last_error}")
 
         if changed:
             stats.record_note()

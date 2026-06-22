@@ -68,6 +68,7 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 | `parallel_requests` | Liczba równoległych żądań API w batchu (1–16, domyślnie `3`) — `ThreadPoolExecutor` w `browser_ui._run_batch` |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
+| `free_model_rate_limit` | Limit RPM dla modeli `:free` OpenRouter (domyślnie `15`; OpenRouter max 20); blokuje wątek gdy limit osiągnięty, sliding-window 60s |
 
 ### Konfiguracja dostawców
 
@@ -79,27 +80,33 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
         "api_key": "sk-...",
         "model": "gpt-4o",
         "temperature": 0.2,
-        "reasoning_effort": "medium"
+        "reasoning_effort": "medium",
+        "fallback_model": "gpt-4o-mini"
     },
     "anthropic": {
         "api_key": "sk-ant-...",
         "model": "claude-3-5-haiku-20241022",
         "temperature": 0.2,
-        "max_tokens": 2048
+        "max_tokens": 2048,
+        "fallback_model": ""
     },
     "google": {
         "api_key": "AIza...",
         "model": "gemini-2.0-flash",
-        "temperature": 0.2
+        "temperature": 0.2,
+        "fallback_model": ""
     },
     "opencode_go": {
         "api_key": "ocg-...",
         "model": "deepseek-v4-pro",
         "temperature": 0.6,
-        "reasoning_effort": "max"
+        "reasoning_effort": "max",
+        "fallback_model": "deepseek-v4-flash"
     }
 }
 ```
+
+`fallback_model` (puste `""` = brak fallbacku na poziomie providera) — model zapasowy uruchamiany gdy główny model zawiedzie. Używa tego samego providera i klucza API. Prompt może nadpisać ten fallback własnym `fallback_provider` + `fallback_model` (patrz sekcja **Fallback modeli** poniżej).
 
 `reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
@@ -136,7 +143,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `mistral` | `GET /v1/models` | tak |
 | `opencode_go` | `GET /zen/go/v1/models` | tak |
 
-Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy są cachowane wewnętrznie, ale przycisk **Pobierz** zawsze wymusza ich odświeżenie.
+Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
 
 ### Przykładowe modele
 
@@ -183,7 +190,72 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - `target` — nazwa pola karty do wypełnienia
 - `provider` — którego dostawcy użyć dla tego pola
 - `model` — model używany przez ten prompt; brak wartości używa modelu domyślnego dostawcy
+- `fallback_provider` (opcjonalne) — dostawca zapasowy; puste/brak = ten sam dostawca co główny
+- `fallback_model` (opcjonalne) — model zapasowy; puste/brak = brak fallbacku per-prompt (użyty `fallback_model` z dostawcy, jeśli ustawiony)
 - `prompt` — treść prompta z opcjonalnymi szablonami
+
+## Fallback modeli
+
+Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, brak treści w odpowiedzi), wtyczka automatycznie uruchamia model zapasowy z tym samym promptem. Fallback jest konfigurowalny na dwóch poziomach:
+
+| Poziom | Pola | Gdzie w UI |
+|---|---|---|
+| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → AI Generator → Prompty |
+| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → AI Generator → Dostawcy |
+
+Priorytetyzacja:
+1. Jeśli prompt ma `fallback_model` → użyj go (z `fallback_provider` lub tym samym dostawcą)
+2. Jeśli prompt nie ma `fallback_model` → sprawdź `fallback_model` w konfiguracji dostawcy
+3. Obie puste = brak fallbacku (błąd jest logowany, zachowanie jak wcześniej)
+
+Przykład per-prompt (cross-provider fallback):
+```json
+"def": {
+    "target": "def",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "fallback_provider": "openrouter",
+    "fallback_model": "anthropic/claude-3.5-haiku",
+    "prompt": "Write a definition for: {{ang}}"
+}
+```
+
+Przykład per-dostawca (ten sam provider, tańszy model):
+```json
+"providers": {
+    "openai": {
+        "api_key": "sk-...",
+        "model": "gpt-4o",
+        "fallback_model": "gpt-4o-mini"
+    }
+}
+```
+
+Właściwości:
+- Fallback używa tego samego promptu, temperature i reasoning_effort
+- Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
+- Statystyki użycia zliczają fallback osobno (per `provider/model`)
+- Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
+- Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"
+
+## Modele `:free` — rate limiter
+
+OpenRouter oferuje darmowe warianty modeli z sufiksem `:free` (np. `meta-llama/llama-3.2-3b:free`, `google/gemini-2.0-flash:free`). Mają one limit **20 żądań na minutę** narzucony przez OpenRouter.
+
+Wtyczka automatycznie ogranicza żądania do modeli `:free`:
+
+- Domyślny limit: **15 RPM** (z marginesem bezpieczeństwa poniżej 20)
+- Konfigurowalne w **Ustawienia → AI Generator → Zaawansowane → Limit RPM dla :free** (1–20)
+- Sliding window 60 sekund — gdy limit osiągnięty, wątek czeka do zwolnienia miejsca (nie odrzuca żądań)
+- Globalny, współdzielony między wątkami batcha (`ThreadPoolExecutor`)
+- Dotyczy zarówno modelu głównego jak i fallbackowego, jeśli oba są `:free`
+- Płatne modele (bez `:free` w nazwie) nie są ograniczane
+
+```json
+"ai_generator": {
+    "free_model_rate_limit": 15
+}
+```
 
 ## Szablony promptów
 
@@ -197,7 +269,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
 Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć literówek:
-- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API, wpisać ręcznie i filtrować po fragmencie nazwy
+- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
+- **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
 - Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
 - Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")

@@ -188,6 +188,8 @@ class PromptsTab(QWidget):
                     "model":       field_cfg.get("model", ""),
                     "prompt":      field_cfg.get("prompt", ""),
                     "manual_only": bool(field_cfg.get("manual_only", False)),
+                    "fallback_provider": field_cfg.get("fallback_provider", ""),
+                    "fallback_model":    field_cfg.get("fallback_model", ""),
                 }
 
         # Default provider for the wizard: first one with a real API key.
@@ -293,12 +295,41 @@ class PromptsTab(QWidget):
             "w przeglądarce. Pominięte przy „Wszystkie puste”, workflow\n"
             "oraz głównym przycisku AI w edytorze."
         )
+        # Fallback (per-prompt override). Empty = inherit provider-level fallback_model.
+        self._ed_fallback_provider = QComboBox()
+        self._ed_fallback_provider.addItem("— (ten sam dostawca)", "")
+        for name, label in PROVIDER_LABELS.items():
+            self._ed_fallback_provider.addItem(label, name)
+        self._ed_fallback_provider.setToolTip(
+            "Dostawca zapasowy uruchamiany gdy główny model zawiedzie.\n"
+            "„—” = użyj tego samego dostawcy co główny model."
+        )
+        fb_model_row = QWidget()
+        fb_layout = QHBoxLayout(fb_model_row)
+        fb_layout.setContentsMargins(0, 0, 0, 0)
+        fb_layout.setSpacing(4)
+        self._ed_fallback_model = _filterable_combo()
+        self._ed_fallback_model.setMinimumWidth(200)
+        self._ed_fallback_model.setToolTip(
+            "Model zapasowy uruchamiany gdy główny model zawiedzie (błąd API,\n"
+            "rate limit, brak środków, brak treści). Puste = brak fallbacku\n"
+            "per-prompt; wtedy używany jest fallback z konfiguracji dostawcy."
+        )
+        self._btn_fetch_fb_models = QPushButton("Pobierz")
+        self._btn_fetch_fb_models.setFixedWidth(70)
+        self._btn_fetch_fb_models.setToolTip(
+            "Pobiera listę modeli z API dla dostawcy zapasowego."
+        )
+        fb_layout.addWidget(self._ed_fallback_model)
+        fb_layout.addWidget(self._btn_fetch_fb_models)
         form.addRow("Typ notatki:", self._ed_note_type)
         form.addRow("Nazwa zadania:", self._ed_field)
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
         form.addRow("Model AI:", model_row)
         form.addRow(self._ed_manual_only)
+        form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
+        form.addRow("Model zapasowy:", fb_model_row)
         editor_form_layout.addLayout(form)
 
         prompt_header = QHBoxLayout()
@@ -350,10 +381,12 @@ class PromptsTab(QWidget):
         self._btn_down.clicked.connect(lambda: self._on_move(1))
         self._ed_note_type.currentTextChanged.connect(self._on_note_type_changed)
         self._ed_provider.currentIndexChanged.connect(self._on_provider_changed)
+        self._ed_fallback_provider.currentIndexChanged.connect(self._on_fallback_provider_changed)
         self._ed_model.currentTextChanged.connect(self._validate_prompt)
         self._ed_target.currentTextChanged.connect(self._validate_prompt)
         self._ed_prompt.textChanged.connect(self._validate_prompt)
         self._btn_fetch_models.clicked.connect(self._fetch_models)
+        self._btn_fetch_fb_models.clicked.connect(self._fetch_fallback_models)
         self._btn_insert_field.clicked.connect(self._on_insert_field)
         self._btn_insert_cond.clicked.connect(self._on_insert_condition)
         self._btn_preview.clicked.connect(self._on_preview)
@@ -419,6 +452,8 @@ class PromptsTab(QWidget):
             "model":       self._ed_model.currentText().strip(),
             "prompt":      self._ed_prompt.toPlainText(),
             "manual_only": self._ed_manual_only.isChecked(),
+            "fallback_provider": self._ed_fallback_provider.currentData() or "",
+            "fallback_model":    self._ed_fallback_model.currentText().strip(),
         }
 
         if new_key != old_key:
@@ -448,6 +483,14 @@ class PromptsTab(QWidget):
         self._ed_provider.setCurrentIndex(idx if idx >= 0 else 0)
         self._ed_provider.blockSignals(False)
         self._set_model_choices(entry["provider"], entry.get("model", ""))
+        self._ed_fallback_provider.blockSignals(True)
+        fb_idx = self._ed_fallback_provider.findData(entry.get("fallback_provider", ""))
+        self._ed_fallback_provider.setCurrentIndex(fb_idx if fb_idx >= 0 else 0)
+        self._ed_fallback_provider.blockSignals(False)
+        self._set_fallback_model_choices(
+            entry.get("fallback_provider", "") or entry["provider"],
+            entry.get("fallback_model", ""),
+        )
         self._ed_manual_only.setChecked(entry.get("manual_only", False))
         self._ed_prompt.setPlainText(entry["prompt"])
         self._editor_placeholder.setVisible(False)
@@ -475,7 +518,10 @@ class PromptsTab(QWidget):
         default = str(provider_values.get("model") or "").strip()
         selected = str(current or "").strip() or default
         choices = list(
-            self._model_options.get(provider) or provider_values.get("models") or []
+            self._model_options.get(provider)
+            or provider_values.get("models")
+            or provider_values.get("cached_models")
+            or []
         )
         for model in (default, selected):
             if model and model not in choices:
@@ -490,12 +536,47 @@ class PromptsTab(QWidget):
     def _on_provider_changed(self, _index: int = -1) -> None:
         self._set_model_choices(self._ed_provider.currentData() or "openai")
 
+    def _on_fallback_provider_changed(self, _index: int = -1) -> None:
+        fb_provider = self._ed_fallback_provider.currentData() or ""
+        main_provider = self._ed_provider.currentData() or "openai"
+        self._set_fallback_model_choices(fb_provider or main_provider)
+
+    def _set_fallback_model_choices(self, provider: str, current: str = "") -> None:
+        provider_values = self._provider_values(provider)
+        default = str(provider_values.get("model") or "").strip()
+        selected = str(current or "").strip() or default
+        choices = list(
+            self._model_options.get(provider)
+            or provider_values.get("models")
+            or provider_values.get("cached_models")
+            or []
+        )
+        for model in (default, selected):
+            if model and model not in choices:
+                choices.insert(0, model)
+        self._ed_fallback_model.blockSignals(True)
+        self._ed_fallback_model.clear()
+        self._ed_fallback_model.addItems(choices)
+        self._ed_fallback_model.setCurrentText(selected)
+        self._ed_fallback_model.blockSignals(False)
+
     def _fetch_models(self) -> None:
         provider = self._ed_provider.currentData() or "openai"
+        self._fetch_models_for_combo(provider, self._ed_model, self._btn_fetch_models)
+
+    def _fetch_fallback_models(self) -> None:
+        fb_provider = self._ed_fallback_provider.currentData() or ""
+        provider = fb_provider or self._ed_provider.currentData() or "openai"
+        self._fetch_models_for_combo(
+            provider, self._ed_fallback_model, self._btn_fetch_fb_models
+        )
+
+    def _fetch_models_for_combo(self, provider: str, combo: QComboBox,
+                                btn: QPushButton) -> None:
         api_key = str(self._provider_values(provider).get("api_key", "")).strip()
-        current = self._ed_model.currentText()
-        self._btn_fetch_models.setEnabled(False)
-        self._btn_fetch_models.setText("...")
+        current = combo.currentText()
+        btn.setEnabled(False)
+        btn.setText("...")
 
         def task():
             from ..ai_generator.providers.model_discovery import fetch_models
@@ -507,8 +588,8 @@ class PromptsTab(QWidget):
             except Exception:
                 models = []
             try:
-                self._btn_fetch_models.setEnabled(True)
-                self._btn_fetch_models.setText("Pobierz")
+                btn.setEnabled(True)
+                btn.setText("Pobierz")
                 if not models:
                     showWarning(
                         f"Nie udało się pobrać modeli dla {provider}.\n"
@@ -516,8 +597,15 @@ class PromptsTab(QWidget):
                     )
                     return
                 self._model_options[provider] = models
+                # Refresh whichever combo matches this provider
                 if (self._ed_provider.currentData() or "openai") == provider:
-                    self._set_model_choices(provider, current)
+                    self._set_model_choices(provider, self._ed_model.currentText())
+                fb_provider_data = self._ed_fallback_provider.currentData() or ""
+                fb_name = fb_provider_data or self._ed_provider.currentData() or "openai"
+                if fb_name == provider:
+                    self._set_fallback_model_choices(
+                        provider, self._ed_fallback_model.currentText()
+                    )
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
@@ -720,5 +808,11 @@ class PromptsTab(QWidget):
             }
             if entry.get("manual_only"):
                 field_cfg["manual_only"] = True
+            fb_provider = entry.get("fallback_provider", "")
+            fb_model = entry.get("fallback_model", "")
+            if fb_provider:
+                field_cfg["fallback_provider"] = fb_provider
+            if fb_model:
+                field_cfg["fallback_model"] = fb_model
             note_types[nt_name][field_name] = field_cfg
         cfg["ai_generator"]["note_types"] = note_types

@@ -111,9 +111,11 @@ class AIGeneratorTab(QWidget):
             mh.setContentsMargins(0, 0, 0, 0)
             mh.setSpacing(4)
             saved_model = p.get("model", "")
-            model_combo = _filterable_combo(
-                [saved_model] if saved_model else [], saved_model
+            cached_models = p.get("cached_models", [])
+            combo_items = list(cached_models) if cached_models else (
+                [saved_model] if saved_model else []
             )
+            model_combo = _filterable_combo(combo_items, saved_model)
             model_combo.setMinimumWidth(200)
             model_combo.setSizePolicy(
                 model_combo.sizePolicy().horizontalPolicy().Expanding,
@@ -130,6 +132,16 @@ class AIGeneratorTab(QWidget):
             temp.setSingleStep(0.05)
             temp.setValue(p.get("temperature", 0.2))
 
+            fallback_model = _expanding_line_edit(p.get("fallback_model", ""))
+            fallback_model.setPlaceholderText("np. gpt-4o-mini (puste = brak fallbacku)")
+            fallback_model.setToolTip(
+                "Model zapasowy uruchamiany gdy główny model zawiedzie "
+                "(błąd API, rate limit, brak środków, brak treści).\n"
+                "Używa tego samego providera i tego samego klucza API.\n"
+                "Puste pole = brak fallbacku na poziomie providera.\n"
+                "Prompt może nadpisać ten fallback własnym."
+            )
+
             prov_form.addRow("Klucz API:", api_key_container)
             model_combo.setToolTip(
                 "Model domyślny dla nowych i starszych promptów. Każdy prompt "
@@ -137,10 +149,12 @@ class AIGeneratorTab(QWidget):
             )
             prov_form.addRow("Model domyślny:", model_row)
             prov_form.addRow("Temperatura:", temp)
+            prov_form.addRow("Model zapasowy:", fallback_model)
             widgets = {
                 "api_key": api_key_field,
                 "model": model_combo,
                 "temperature": temp,
+                "fallback_model": fallback_model,
                 "fetch_btn": fetch_btn,
             }
             if name in ("openai", "cometapi", "openrouter"):
@@ -212,11 +226,21 @@ class AIGeneratorTab(QWidget):
         self._request_timeout.setSuffix(" s")
         self._request_timeout.setValue(ai.get("request_timeout", 30))
         self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
+        self._free_rate_limit = QSpinBox()
+        self._free_rate_limit.setRange(1, 20)
+        self._free_rate_limit.setValue(ai.get("free_model_rate_limit", 15))
+        self._free_rate_limit.setToolTip(
+            "Limit żądań na minutę dla modeli :free (OpenRouter).\n"
+            "OpenRouter zezwala na 20 RPM — 15 zostawia margines bezpieczeństwa.\n"
+            "Dotyczy tylko modeli z ':free' w nazwie (np. meta-llama/llama-3.2-3b:free).\n"
+            "Płatne modele nie są ograniczane przez tę wartość."
+        )
         adv_form.addRow("Limit paczki:", self._batch_limit)
         adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
         adv_form.addRow("Równoległe żądania:", self._parallel_requests)
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
         adv_form.addRow("Timeout żądania:", self._request_timeout)
+        adv_form.addRow("Limit RPM dla :free:", self._free_rate_limit)
         layout.addWidget(adv_group)
         layout.addStretch()
 
@@ -238,13 +262,15 @@ class AIGeneratorTab(QWidget):
         widgets = self._provider_widgets.get(name)
         if not widgets:
             return {}
+        combo_models = [
+            widgets["model"].itemText(i)
+            for i in range(widgets["model"].count())
+        ]
         return {
             "api_key": widgets["api_key"].text().strip(),
             "model": widgets["model"].currentText().strip(),
-            "models": [
-                widgets["model"].itemText(i)
-                for i in range(widgets["model"].count())
-            ],
+            "models": combo_models,
+            "cached_models": combo_models,
         }
 
     # ------------------------------------------------------------------
@@ -474,12 +500,17 @@ class AIGeneratorTab(QWidget):
         ai["parallel_requests"] = self._parallel_requests.value()
         ai["max_retries"] = self._ai_max_retries.value()
         ai["request_timeout"] = self._request_timeout.value()
+        ai["free_model_rate_limit"] = self._free_rate_limit.value()
         ai.setdefault("providers", {})
         for name, w in self._provider_widgets.items():
             ai["providers"].setdefault(name, {})
             ai["providers"][name]["api_key"] = w["api_key"].text().strip()
             ai["providers"][name]["model"] = w["model"].currentText().strip()
+            ai["providers"][name]["cached_models"] = [
+                w["model"].itemText(i) for i in range(w["model"].count())
+            ]
             ai["providers"][name]["temperature"] = round(w["temperature"].value(), 2)
+            ai["providers"][name]["fallback_model"] = w["fallback_model"].text().strip()
             if "reasoning_effort" in w:
                 re_widget = w["reasoning_effort"]
                 if hasattr(re_widget, "currentText"):
