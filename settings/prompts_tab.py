@@ -482,13 +482,14 @@ class PromptsTab(QWidget):
         idx = self._ed_provider.findData(entry["provider"])
         self._ed_provider.setCurrentIndex(idx if idx >= 0 else 0)
         self._ed_provider.blockSignals(False)
-        self._set_model_choices(entry["provider"], entry.get("model", ""))
+        self._set_model_choices(entry["provider"], self._ed_model, entry.get("model", ""))
         self._ed_fallback_provider.blockSignals(True)
         fb_idx = self._ed_fallback_provider.findData(entry.get("fallback_provider", ""))
         self._ed_fallback_provider.setCurrentIndex(fb_idx if fb_idx >= 0 else 0)
         self._ed_fallback_provider.blockSignals(False)
-        self._set_fallback_model_choices(
+        self._set_model_choices(
             entry.get("fallback_provider", "") or entry["provider"],
+            self._ed_fallback_model,
             entry.get("fallback_model", ""),
         )
         self._ed_manual_only.setChecked(entry.get("manual_only", False))
@@ -513,7 +514,8 @@ class PromptsTab(QWidget):
         values = self._provider_settings(provider)
         return values if isinstance(values, dict) else {}
 
-    def _set_model_choices(self, provider: str, current: str = "") -> None:
+    def _set_model_choices(self, provider: str, combo: QComboBox,
+                           current: str = "") -> None:
         provider_values = self._provider_values(provider)
         default = str(provider_values.get("model") or "").strip()
         selected = str(current or "").strip() or default
@@ -526,39 +528,25 @@ class PromptsTab(QWidget):
         for model in (default, selected):
             if model and model not in choices:
                 choices.insert(0, model)
-        self._ed_model.blockSignals(True)
-        self._ed_model.clear()
-        self._ed_model.addItems(choices)
-        self._ed_model.setCurrentText(selected)
-        self._ed_model.blockSignals(False)
-        self._validate_prompt()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(choices)
+        combo.setCurrentText(selected)
+        combo.blockSignals(False)
+        if combo is self._ed_model:
+            self._validate_prompt()
 
     def _on_provider_changed(self, _index: int = -1) -> None:
-        self._set_model_choices(self._ed_provider.currentData() or "openai")
+        self._set_model_choices(
+            self._ed_provider.currentData() or "openai", self._ed_model
+        )
 
     def _on_fallback_provider_changed(self, _index: int = -1) -> None:
         fb_provider = self._ed_fallback_provider.currentData() or ""
         main_provider = self._ed_provider.currentData() or "openai"
-        self._set_fallback_model_choices(fb_provider or main_provider)
-
-    def _set_fallback_model_choices(self, provider: str, current: str = "") -> None:
-        provider_values = self._provider_values(provider)
-        default = str(provider_values.get("model") or "").strip()
-        selected = str(current or "").strip() or default
-        choices = list(
-            self._model_options.get(provider)
-            or provider_values.get("models")
-            or provider_values.get("cached_models")
-            or []
+        self._set_model_choices(
+            fb_provider or main_provider, self._ed_fallback_model
         )
-        for model in (default, selected):
-            if model and model not in choices:
-                choices.insert(0, model)
-        self._ed_fallback_model.blockSignals(True)
-        self._ed_fallback_model.clear()
-        self._ed_fallback_model.addItems(choices)
-        self._ed_fallback_model.setCurrentText(selected)
-        self._ed_fallback_model.blockSignals(False)
 
     def _fetch_models(self) -> None:
         provider = self._ed_provider.currentData() or "openai"
@@ -599,13 +587,11 @@ class PromptsTab(QWidget):
                 self._model_options[provider] = models
                 # Refresh whichever combo matches this provider
                 if (self._ed_provider.currentData() or "openai") == provider:
-                    self._set_model_choices(provider, self._ed_model.currentText())
+                    self._set_model_choices(provider, self._ed_model, self._ed_model.currentText())
                 fb_provider_data = self._ed_fallback_provider.currentData() or ""
                 fb_name = fb_provider_data or self._ed_provider.currentData() or "openai"
                 if fb_name == provider:
-                    self._set_fallback_model_choices(
-                        provider, self._ed_fallback_model.currentText()
-                    )
+                    self._set_model_choices(provider, self._ed_fallback_model, self._ed_fallback_model.currentText())
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
