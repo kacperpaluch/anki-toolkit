@@ -10,6 +10,7 @@ from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
+from anki.collection import OpChanges
 
 from ._generator import get_config
 from .field_generator import FieldGenerator
@@ -245,6 +246,46 @@ def _on_workflow_browser(browser: Browser):
     mw.taskman.run_in_background(task, on_done)
 
 
+def _on_split_then_nauka(browser: Browser):
+    """One click: split przyklad → p1/p2/p3, then AI-generate the *-nauka fields.
+
+    # ponytail: hardcoded to the user's przyklad → p1/p2/p3 → p{1,2,3}-nauka
+    # flow. Generalise only if a second such chain appears.
+    """
+    nids = list(browser.selected_notes())
+    if not nids:
+        tooltip("Nie zaznaczono żadnych notatek.")
+        return
+
+    try:
+        from ..field_splitter import (
+            _get_config as _fs_get_config,
+            _process_note as _fs_split,
+        )
+    except Exception:
+        tooltip("Moduł „Rozdzielanie pól” jest wyłączony.", period=4000)
+        return
+
+    fs_cfg = _fs_get_config()
+    config = get_config()
+    nauka_fields = {"p1-nauka", "p2-nauka", "p3-nauka"}
+
+    def split_op(col):
+        changed = []
+        for nid in nids:
+            note = col.get_note(nid)
+            if _fs_split(note, fs_cfg):
+                changed.append(note)
+        return col.update_notes(changed) if changed else OpChanges()
+
+    def after_split(_changes):
+        # Split is saved; now generate the nauka fields (reads fresh p1/p2/p3).
+        _run_batch(browser, nids, config, only_fields=nauka_fields,
+                   label="AI: nauka (p1–p3)")
+
+    CollectionOp(parent=browser, op=split_op).success(after_split).run_in_background()
+
+
 def _all_configured_target_fields(config: dict, manual_only: bool = False) -> list[str]:
     """Flattened list of distinct target field names across all note types.
 
@@ -285,6 +326,10 @@ def add_to_context_menu(browser: Browser, menu):
     config = get_config()
     target_fields = _all_configured_target_fields(config)
     manual_fields = _all_configured_target_fields(config, manual_only=True)
+
+    nauka_action = QAction("Rozdziel + generuj naukę (p1–p3)", browser)
+    qconnect(nauka_action.triggered, lambda: _on_split_then_nauka(browser))
+    menu.addAction(nauka_action)
 
     gen_menu = menu.addMenu("Generuj pola")
     all_action = QAction("Wszystkie puste", browser)

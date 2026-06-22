@@ -34,6 +34,8 @@ Submenu zawiera:
 - **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (obecne zachowanie)
 - **AI: `def`**, **AI: `cz_mowy`** itd. — generuje tylko wybrane pole docelowe, pomija wypełnione
 
+Dodatkowo w menu **Anki Toolkit** jest akcja **Rozdziel + generuj naukę (p1–p3)** — w jednym kliknięciu rozdziela pole `przyklad` na `p1`/`p2`/`p3` (przez moduł Field Splitter), a po zapisie generuje pola `p1-nauka`/`p2-nauka`/`p3-nauka`. Wymaga włączonego modułu „Rozdzielanie pól".
+
 Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
 
 - Pola które już mają treść są **zawsze pomijane** w batchu — generator uzupełnia tylko puste pola.
