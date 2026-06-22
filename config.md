@@ -11,7 +11,8 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "tts":               true,
     "filtered_deck":     true,
     "audio_normalizer":  true,
-    "nbsp_remover":      true
+    "nbsp_remover":      true,
+    "field_splitter":    true
 }
 ```
 
@@ -225,6 +226,33 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 Akcje:
 - **Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...** — batchowe czyszczenie wszystkich notatek (jeden krok undo przez `CollectionOp`)
 - Automatyczne oczyszczanie każdej nowo dodanej notatki (`add_cards_did_add_note` hook) — `clean_field()` dzieli `<div>` na `<br>`, usuwa `&nbsp;`
+
+---
+
+## Sekcja `field_splitter` — rozdzielanie pól
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Rozdzielanie pól).
+
+**`source_field`** — nazwa pola zawierającego dane do rozdzielenia (np. `"przyklad"`). Pole to nie jest modyfikowane — operacja jest kopią, nie przeniesieniem.
+
+**`separator`** — tekst rozdzielający kolejne części w polu źródłowym (domyślnie `"<br><br>"`). Whitespace w separatorze dopasowuje dowolny ciąg whitespace w treści, więc `"<br> <br>"` i `"<br><br>"` są traktowane tak samo gdy separator zawiera spację.
+
+**`target_fields`** — lista pól docelowych oddzielona przecinkami (np. `"p1, p2, p3, p4, p5"`). Pierwsza część trafia do `p1`, druga do `p2`, itd. Pola nieistniejące w typie notatki są pomijane. Nadmiarowe części (więcej części niż pól) są pomijane.
+
+**`overwrite`** — `true` (domyślnie) = nadpisuje pole docelowe nową treścią zawsze. `false` = wypełnia tylko puste pola docelowe; pola z istniejącą treścią są pomijane (bezpieczne gdy uzupełniasz brakujące pola bez ryzyka nadpisania ręcznych poprawek).
+
+```json
+"field_splitter": {
+    "source_field": "przyklad",
+    "separator": "<br><br>",
+    "target_fields": "p1, p2, p3, p4, p5",
+    "overwrite": true
+}
+```
+
+Akcje:
+- **PPM w przeglądarce → Anki Toolkit → Rozdziel pole przyklad → p1, p2, p3...** — batch na zaznaczonych notatkach (jeden krok undo)
+- **Narzędzia → Anki Toolkit → Rozdziel pola w kolekcji...** — wszystkie notatki (z potwierdzeniem)
 
 ---
 

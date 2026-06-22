@@ -1,6 +1,6 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca sześć narzędzi do zarządzania kartami Anki.
+Scalona wtyczka łącząca siedem narzędzi do zarządzania kartami Anki.
 
 ## Struktura
 
@@ -87,6 +87,10 @@ anki-toolkit/
 │   ├── collection.py                # akcja czyszczenia HTML w całej kolekcji
 │   └── utils.py
 │
+├── field_splitter/                  # Moduł 7: rozdzielanie pola na p1, p2, p3...
+│   ├── __init__.py                  # UI (browser context menu + Tools menu) + batch
+│   └── splitting.py                 # czysta logika split + parse_target_fields
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -121,7 +125,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
-| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) |
+| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól |
 | **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 | **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
 
@@ -140,7 +144,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "tts":               false,
     "filtered_deck":     true,
     "audio_normalizer":  true,
-    "nbsp_remover":      true
+    "nbsp_remover":      true,
+    "field_splitter":    true
 }
 ```
 
@@ -371,6 +376,34 @@ Konfiguracja w **Ustawienia → Narzędzia** (sekcja Czyszczenie HTML):
 | Pokazuj tooltip | `true` | Wyświetlaj powiadomienie po wyczyszczeniu |
 | Czyść przy starcie | `false` | Automatycznie uruchamiaj czyszczenie kolekcji przy starcie Anki |
 | Pole pomijane | `"ang"` | Pole z którego tagi `<div>` są usuwane całkowicie (zamiast zamiany na `<br>`) |
+
+---
+
+### Rozdzielanie pól (`field_splitter`)
+
+Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kopiuje** części do kolejnych pól docelowych (`p1`, `p2`, `p3`…). Pole źródłowe nie jest modyfikowane.
+
+Dostępne przez:
+- **PPM w przeglądarce → Anki Toolkit → Rozdziel pole przyklad → p1, p2, p3...** — batch na zaznaczonych notatkach
+- **Narzędzia → Anki Toolkit → Rozdziel pola w kolekcji...** — wszystkie notatki (z potwierdzeniem)
+
+Konfiguracja w **Ustawienia → Narzędzia** (sekcja Rozdzielanie pól):
+
+| Pole | Opis |
+|---|---|
+| `source_field` | Pole źródłowe z danymi do rozdzielenia (domyślnie `"przyklad"`) |
+| `separator` | Separator części (domyślnie `"<br><br>"`; whitespace-tolerant) |
+| `target_fields` | Pola docelowe oddzielone przecinkami (domyślnie `"p1, p2, p3, p4, p5"`) |
+| `overwrite` | `true` (domyślnie) = nadpisuj zawsze; `false` = wypełniaj tylko puste pola docelowe |
+
+Zasady:
+- Pierwsza część → `p1`, druga → `p2`, trzecia → `p3` itd.
+- Więcej części niż pól docelowych: nadmiarowe części są pomijane
+- Mniej części niż pól docelowych: pozostałe pola nietknięte
+- Pole źródłowe zawsze zachowane (kopia, nie przeniesienie)
+- Batch zapisywany jako **jedna operacja z undo** (Ctrl+Z cofa cały batch)
+- Tylko notatki posiadające pole źródłowe są przetwarzane; pola docelowe nieistniejące w typie notatki są pomijane
+- `overwrite: false` jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpisania ręcznych poprawek
 
 ---
 

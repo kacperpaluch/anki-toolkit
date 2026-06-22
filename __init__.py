@@ -60,6 +60,9 @@ if _enabled("ai_generator"):
     _context_modules.append(ai_generator.add_to_context_menu)
 if _enabled("tts"):
     _context_modules.append(tts.add_to_context_menu)
+if _enabled("field_splitter"):
+    from . import field_splitter
+    _context_modules.append(field_splitter.add_to_context_menu)
 
 if _context_modules:
     def _on_browser_context_menu(browser, menu):
@@ -88,6 +91,10 @@ if _enabled("audio_normalizer"):
 if _enabled("nbsp_remover"):
     from . import nbsp_remover
     _menu_modules.append(nbsp_remover)
+
+if _enabled("field_splitter"):
+    from . import field_splitter
+    _menu_modules.append(field_splitter)
 
 
 def _setup_menus(*_args, **_kwargs):

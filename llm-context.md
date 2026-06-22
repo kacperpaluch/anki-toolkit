@@ -6,7 +6,7 @@ Szybkie podsumowanie projektu dla modeli AI i deweloperów.
 
 ## Czym jest ten projekt
 
-Scalona wtyczka do Anki łącząca 6 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
+Scalona wtyczka do Anki łącząca 7 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
 
 ---
 
@@ -113,6 +113,10 @@ anki-toolkit/
 │   ├── collection.py
 │   └── utils.py
 │
+├── field_splitter/                  # Moduł 7 — rozdzielanie pola na p1, p2, p3...
+│   ├── __init__.py                  # setup_menu + add_to_context_menu + batch (CollectionOp)
+│   └── splitting.py                 # czysta logika: split_field_value(), parse_target_fields()
+│
 └── tests/
     └── test_pure_logic.py           # testy czystej logiki bez uruchamiania Anki
 ```
@@ -128,6 +132,7 @@ anki-toolkit/
 | `filtered_deck/` | Tworzy talię filtrowaną z formularzem ustawień; nazwa talii i deck docelowy konfigurowalne | `setup_menu(parent_menu)` |
 | `audio_normalizer/` | Normalizuje głośność plików audio ffmpegiem (EBU R128); po normalizacji synchronizuje zmodyfikowane pliki z Anki media DB przez `write_data()` | `setup_menu(parent_menu)` |
 | `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
+| `field_splitter/` | Rozdziela pole źródłowe (np. `przyklad`) po separatorze (`<br><br>`) i **kopiuje** części do pól docelowych (`p1`, `p2`, `p3`…); source nietknięte; browser context menu (batch) + Tools menu (kolekcja); zapis jednym `CollectionOp` | `add_to_context_menu(browser, menu)` + `setup_menu(parent_menu)` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -210,7 +215,7 @@ Zakładki (9 zakładek):
 - **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; każdy prompt zapisuje dostawcę i model, listy modeli filtrują po dowolnym fragmencie nazwy; dostawcy AI są rozdzieleni na karty, a limity batch/parallel_requests/retry/request timeout są w sekcji **Zaawansowane**
 - **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (QTableWidget z checkboxami + przyciskami ▶ podglądu per głos — `generate_audio` z krótkim sample → `av_player.play_file`), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
-- **Narzędzia** — dwie sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field)
+- **Narzędzia** — trzy sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field), Rozdzielanie pól (source_field, separator, target_fields jako tekst przecinkami, overwrite checkbox)
 - **Statystyki** — dashboard użycia AI: wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do przez QDateEdit z kalendarzem), tabela per model (requesty, błędy, tokeny wej./wyj., wygenerowane pola, **szacowany koszt**) + osobna tabela **TTS** (requesty, błędy, znaki, pliki, koszt per znak; `record_tts()` wołane z `tts/api.generate_audio()` dla Kokoro i OpenRouter), licznik zaktualizowanych notatek, przyciski Odśwież/Pobierz ceny (OpenRouter)/Resetuj; przycisk „Pobierz ceny" zapisuje pełny katalog cen (chat + TTS) w configu pod `pricing.catalog`, a dopasowanie przez `stats.match_pricing()` (normalizacja nazw: data-sufiks, kropki/myślniki, prefix-match) odbywa się przy każdym odświeżeniu — modele pojawiające się w statystykach później też dostają ceny; dane z `ai_generator/stats.py`
 - **Logi** — checkbox trybu debugowania (config `debug.enabled`, działa od razu po przełączeniu), podgląd bufora logów wtyczki w pamięci (`common/debug_log.py`, ostatnie 2000 wpisów, auto-odświeżanie co 2 s), przyciski Odśwież/Kopiuj/Wyczyść; bez debugowania rejestrowane INFO+, z debugowaniem DEBUG+
 
@@ -223,7 +228,8 @@ Zakładki (9 zakładek):
     "tts":               true,
     "filtered_deck":     true,
     "audio_normalizer":  true,
-    "nbsp_remover":      true
+    "nbsp_remover":      true,
+    "field_splitter":    true
 }
 ```
 
@@ -239,6 +245,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `audio_normalizer` | `audio_normalizer/` | Zakładka Normalizacja |
 | `filtered_deck` | `filtered_deck/` | Zakładka Narzędzia (sekcja Talia filtrowana) |
 | `nbsp_remover` | `nbsp_remover/` | Zakładka Narzędzia (sekcja Czyszczenie HTML) |
+| `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
 | `workflow` | `ai_generator/` | Zakładka AI Generator → Workflow |
 
 ---
@@ -374,6 +381,10 @@ nbsp_remover/
     ├── addcards.py             (hook dodawania kart; używa clean_field)
     ├── collection.py           (masowe czyszczenie przez CollectionOp + clean_field; jeden krok undo)
     └── utils.py                (config + tooltipy)
+
+field_splitter/
+    ├── splitting.py            (split_field_value + parse_target_fields; testowalne bez Anki)
+    └── __init__.py             (add_to_context_menu + setup_menu + _run_batch CollectionOp)
 ```
 
 ---

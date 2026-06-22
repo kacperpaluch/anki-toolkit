@@ -26,6 +26,7 @@ text_helpers = load_module("text_helpers", "common/text.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
 ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 http_helpers = load_module("http_helpers", "common/http.py")
+field_splitter = load_module("field_splitter_logic", "field_splitter/splitting.py")
 
 
 def load_field_generator_with_stubs():
@@ -362,6 +363,52 @@ class AiStatsTests(unittest.TestCase):
             # zakres poza danymi → pusto
             empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
             self.assertEqual(empty["models"], {})
+
+
+class FieldSplitterTests(unittest.TestCase):
+    _SAMPLE = (
+        "Many people were murdered.[sound:tts_oe93owgdrkgo.mp3]<br><br>"
+        "The museum tells the story.[sound:tts_9gfu5ninen4f.mp3]<br><br>"
+        "Auschwitz was a death camp.[sound:tts_kwzj4ughyfk9.mp3]"
+    )
+
+    def test_split_three_examples(self):
+        result = field_splitter.split_field_value(self._SAMPLE, "<br><br>", ["p1", "p2", "p3"])
+        self.assertEqual(len(result), 3)
+        self.assertTrue(result["p1"].startswith("Many people"))
+        self.assertTrue(result["p2"].startswith("The museum"))
+        self.assertTrue(result["p3"].startswith("Auschwitz"))
+        self.assertIn("[sound:", result["p1"])
+
+    def test_more_targets_than_parts(self):
+        result = field_splitter.split_field_value("a<br><br>b", "<br><br>", ["p1", "p2", "p3"])
+        self.assertEqual(len(result), 2)
+        self.assertNotIn("p3", result)
+
+    def test_more_parts_than_targets(self):
+        result = field_splitter.split_field_value("a<br><br>b<br><br>c", "<br><br>", ["p1", "p2"])
+        self.assertEqual(len(result), 2)
+        self.assertNotIn("p3", result)
+
+    def test_empty_value(self):
+        self.assertEqual(field_splitter.split_field_value("", "<br><br>", ["p1"]), {})
+        self.assertEqual(field_splitter.split_field_value("  ", "<br><br>", ["p1"]), {})
+
+    def test_whitespace_tolerant_separator(self):
+        # Whitespace in the SEPARATOR matches any run of whitespace in content
+        result = field_splitter.split_field_value("a<br><br>b", "<br> <br>", ["p1", "p2"])
+        self.assertEqual(result["p1"], "a")
+        self.assertEqual(result["p2"], "b")
+
+    def test_no_separator_found(self):
+        result = field_splitter.split_field_value("just text", "<br><br>", ["p1", "p2"])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result["p1"], "just text")
+
+    def test_parse_target_fields(self):
+        self.assertEqual(field_splitter.parse_target_fields("p1, p2, p3"), ["p1", "p2", "p3"])
+        self.assertEqual(field_splitter.parse_target_fields(""), [])
+        self.assertEqual(field_splitter.parse_target_fields(" p1 ,, p2 "), ["p1", "p2"])
 
 
 class PromptTemplatesTests(unittest.TestCase):

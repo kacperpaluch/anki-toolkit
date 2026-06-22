@@ -5,7 +5,8 @@
         "tts":               true,
         "filtered_deck":     true,
         "audio_normalizer":  true,
-        "nbsp_remover":      true
+        "nbsp_remover":      true,
+        "field_splitter":    true
     },
 
     "dictionary": {
@@ -79,6 +80,13 @@
         "show_tooltip": true,
         "auto_run_startup": false,
         "skip_field": "ang"
+    },
+
+    "field_splitter": {
+        "source_field": "przyklad",
+        "separator": "<br><br>",
+        "target_fields": "p1, p2, p3, p4, p5",
+        "overwrite": true
     },
 
     "ai_generator": {
