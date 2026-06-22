@@ -65,46 +65,61 @@ def _run_auto_normalize() -> None:
     global _normalizing
     if _normalizing:
         return
+
+    from ..common import ADDON_NAME
+    full = mw.addonManager.getConfig(ADDON_NAME) or {}
+    cfg = full.get("audio_normalizer", {})
+    ffmpeg_path = cfg.get("ffmpeg_path", "").strip()
+    ffmpeg_cmd = ffmpeg_path if ffmpeg_path else _defaults.FFMPEG_CMD
+    loudnorm_opts = cfg.get("loudnorm_opts", _defaults.LOUDNORM_OPTS) or _defaults.LOUDNORM_OPTS
+    max_workers = int(cfg.get("max_workers", _defaults.MAX_WORKERS))
+    if which(ffmpeg_cmd) is None:
+        logger.warning(f"Auto-normalize: ffmpeg '{ffmpeg_cmd}' not found — skipping")
+        return
+
+    # process_collection() runs ffmpeg over the whole media dir — it must NOT
+    # run on the main thread or the UI freezes for the duration. Run it in the
+    # background; the media DB sync (collection access) happens in on_done on
+    # the main thread. _normalizing stays True the whole time so the ffmpeg
+    # temp-writes + sync don't re-trigger the watcher.
     _normalizing = True
-    try:
-        from ..common import ADDON_NAME
-        full = mw.addonManager.getConfig(ADDON_NAME) or {}
-        cfg = full.get("audio_normalizer", {})
-        ffmpeg_path = cfg.get("ffmpeg_path", "").strip()
-        ffmpeg_cmd = ffmpeg_path if ffmpeg_path else _defaults.FFMPEG_CMD
-        loudnorm_opts = cfg.get("loudnorm_opts", _defaults.LOUDNORM_OPTS) or _defaults.LOUDNORM_OPTS
-        max_workers = int(cfg.get("max_workers", _defaults.MAX_WORKERS))
-        if which(ffmpeg_cmd) is None:
-            logger.warning(f"Auto-normalize: ffmpeg '{ffmpeg_cmd}' not found — skipping")
-            return
-        count, errors, modified_files = logic.process_collection(
+
+    def bg_task():
+        return logic.process_collection(
             max_workers=max_workers,
             ffmpeg_cmd=ffmpeg_cmd,
             loudnorm_opts=loudnorm_opts,
         )
-        # Sync media DB (same as gui.ProgressDialog._sync_media_files) so Anki
-        # updates hashes and AnkiWeb sync doesn't overwrite with old versions.
-        if modified_files:
-            media = mw.col.media
-            media_dir = media.dir()
-            for fname in modified_files:
-                fpath = os.path.join(media_dir, fname)
-                if os.path.exists(fpath):
-                    try:
-                        with open(fpath, "rb") as f:
-                            media.write_data(fname, f.read())
-                    except Exception as e:
-                        logger.error(f"Media sync failed for '{fname}': {e}")
-        # Tooltip — gated by show_tooltip so users who find it noisy can disable.
-        if cfg.get("show_tooltip", True) and count > 0:
-            msg = f"Znormalizowano {count} plik(ów) audio."
-            if errors:
-                msg += f" Błędy: {errors} (szczegóły w logach)."
-            tooltip(msg, parent=mw, period=4000)
-    except Exception as e:
-        logger.error(f"Auto-normalize failed: {e}")
-    finally:
-        _normalizing = False
+
+    def on_done(fut):
+        global _normalizing
+        try:
+            count, errors, modified_files = fut.result()
+            # Sync media DB (same as gui.ProgressDialog._sync_media_files) so Anki
+            # updates hashes and AnkiWeb sync doesn't overwrite with old versions.
+            if modified_files:
+                media = mw.col.media
+                media_dir = media.dir()
+                for fname in modified_files:
+                    fpath = os.path.join(media_dir, fname)
+                    if os.path.exists(fpath):
+                        try:
+                            with open(fpath, "rb") as f:
+                                media.write_data(fname, f.read())
+                        except Exception as e:
+                            logger.error(f"Media sync failed for '{fname}': {e}")
+            # Tooltip — gated by show_tooltip so users who find it noisy can disable.
+            if cfg.get("show_tooltip", True) and count > 0:
+                msg = f"Znormalizowano {count} plik(ów) audio."
+                if errors:
+                    msg += f" Błędy: {errors} (szczegóły w logach)."
+                tooltip(msg, parent=mw, period=4000)
+        except Exception as e:
+            logger.error(f"Auto-normalize failed: {e}")
+        finally:
+            _normalizing = False
+
+    mw.taskman.run_in_background(bg_task, on_done)
 
 
 def init_auto_normalize() -> None:

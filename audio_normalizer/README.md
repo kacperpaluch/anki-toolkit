@@ -19,7 +19,7 @@ Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje
 
 ### Auto-normalizacja
 
-W **Ustawienia → Normalizacja** zaznacz **Auto-normalizuj nowe pliki audio**. Watcher obserwuje katalog mediów Anki i automatycznie normalizuje nowe/zmienione pliki ~3s po dodaniu (debounce zbiera serie zapisów — np. TTS generujący 20 plików w kilku sekundach traktowany jest jako jeden batch).
+W **Ustawienia → Normalizacja** zaznacz **Auto-normalizuj nowe pliki audio**. Watcher obserwuje katalog mediów Anki i automatycznie normalizuje nowe/zmienione pliki ~3s po dodaniu (debounce zbiera serie zapisów — np. TTS generujący 20 plików w kilku sekundach traktowany jest jako jeden batch). Normalizacja (ffmpeg) działa **w tle** — Anki nie zamraża się podczas przetwarzania.
 
 Obejmuje **wszystkie źródła**:
 - TTS (Kokoro/OpenRouter) — batch i edytor
