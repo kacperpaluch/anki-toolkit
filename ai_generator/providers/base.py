@@ -152,12 +152,15 @@ class OpenAICompatProvider(BaseProvider):
     LABEL: str = ""
     # Mistral rejects reasoning_effort outright — opt out per subclass.
     SUPPORTS_REASONING_EFFORT: bool = True
+    # Extra static headers (e.g. OpenRouter app attribution). Subclass overrides.
+    EXTRA_HEADERS: dict = {}
 
     def call_api(self, prompt: str) -> Optional[str]:
         self.last_error = None
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
+            **self.EXTRA_HEADERS,
         }
         data = {
             "model": self.model,

@@ -15,6 +15,11 @@ class OpenAIProvider(OpenAICompatProvider):
 class OpenRouterProvider(OpenAICompatProvider):
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
     LABEL = "OpenRouter"
+    # App attribution — shows up in OpenRouter rankings/stats.
+    EXTRA_HEADERS = {
+        "HTTP-Referer": "https://github.com/kacperpaluch/anki-toolkit",
+        "X-Title": "Anki Toolkit",
+    }
 
 
 class CometAPIProvider(OpenAICompatProvider):
