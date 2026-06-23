@@ -88,6 +88,9 @@ class NarzedziaTab(QWidget):
         sm_form.addRow("Tag zawieszonych:", self._sm_tag)
         self._sm_ignore_tag = _expanding_line_edit(sm.get("ignore_tag", "tk-sib-ignored"))
         sm_form.addRow("Tag ignorowanych:", self._sm_ignore_tag)
+        self._sm_show_tooltip = QCheckBox("Pokazuj tooltip po synchronizacji (sync catch-up)")
+        self._sm_show_tooltip.setChecked(sm.get("show_tooltip", True))
+        sm_form.addRow("", self._sm_show_tooltip)
         sm_hint = hint_label(
             "Po odpowiedzi na kartę: jeśli interval < próg → zawiesza inne NEW siblingi. "
             "Gdy karta dojrzeje (interval ≥ próg) → uwalnia wszystkie zawieszone. "
@@ -124,3 +127,4 @@ class NarzedziaTab(QWidget):
         cfg["sibling_manager"]["interval"] = self._sm_interval.value()
         cfg["sibling_manager"]["tag"] = self._sm_tag.text().strip()
         cfg["sibling_manager"]["ignore_tag"] = self._sm_ignore_tag.text().strip()
+        cfg["sibling_manager"]["show_tooltip"] = self._sm_show_tooltip.isChecked()

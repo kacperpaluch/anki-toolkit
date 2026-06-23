@@ -32,6 +32,13 @@ Po synchronizacji desktopa automatycznie uruchamia się **batch scan** (`sync_di
 
 **Ręczny catch-up:** Narzędzia → Anki Toolkit → „Przetwórz kolekcję (sync catch-up)..." — uruchamia ten sam scan ręcznie (przydatne gdy auto-scan nie zadziałał lub sync był wyłączony).
 
+## Powiadomienia i logi
+
+- **Po odpowiedzi (reviewer hook):** log z licznikami w buforze logów wtyczki (widoczny w **Ustawienia → Logi**), np. `nid=123 — zawieszono 2, odwieszono 0`. Bez tooltipa — odpowiadasz na setki kart, tooltip byłby uciążliwy.
+- **Po sync catch-up:** log z podsumowaniem + tooltip `"Sibling Manager: zawieszono X, odwieszono Y"` (gdy coś zrobiono). Tooltip można wyłączyć w konfiguracji (`show_tooltip`).
+- **Po ręcznym "Uwolnij wszystkie":** tooltip `"Sibling Manager: uwolniono wszystkie karty"`.
+- Bufor logów jest w pamięci (2000 linii) — znika po restarcie Anki. Brak trwałej historii.
+
 ## Konfiguracja
 
 W **Ustawienia → Narzędzia → Sibling Manager**:
@@ -41,6 +48,7 @@ W **Ustawienia → Narzędzia → Sibling Manager**:
 | Próg dojrzałości | `30` dni | Po ilu dniach interval karta uznana za dojrzałą → uwolnienie siblingów |
 | Tag zawieszonych | `tk-sib-suspended` | Tag dodawany do notatki gdy ma zawieszone siblingi |
 | Tag ignorowanych | `tk-sib-ignored` | Notatki z tym tagiem są pomijane przez moduł |
+| Pokazuj tooltip po sync | `tak` | Tooltip po batch scan po synchronizacji ("zawieszono X, odwieszono Y") |
 
 Albo w `config.json`:
 
@@ -48,7 +56,8 @@ Albo w `config.json`:
 "sibling_manager": {
     "interval": 30,
     "tag": "tk-sib-suspended",
-    "ignore_tag": "tk-sib-ignored"
+    "ignore_tag": "tk-sib-ignored",
+    "show_tooltip": true
 }
 ```
 

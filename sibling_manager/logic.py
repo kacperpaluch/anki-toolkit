@@ -28,19 +28,20 @@ def process_note(col, note_id, answered_card_id, threshold, tag, ignore_tag=None
     """Manage siblings of *note_id* after *answered_card_id* was answered.
 
     Reactive path — called from reviewer_did_answer_card hook on desktop.
+    Returns (suspended, unsuspended) counts.
     """
     note = col.get_note(note_id)
     if ignore_tag and note.has_tag(ignore_tag):
-        return
+        return 0, 0
 
     card_ids = col.card_ids_of_note(note_id)
     if len(card_ids) <= 1:
-        return
+        return 0, 0
 
     siblings = [col.get_card(cid) for cid in card_ids]
     answered = next((s for s in siblings if s.id == answered_card_id), None)
     if answered is None:
-        return
+        return 0, 0
 
     others = [s for s in siblings if s.id != answered_card_id]
     new_available = [s for s in others
@@ -49,6 +50,8 @@ def process_note(col, note_id, answered_card_id, threshold, tag, ignore_tag=None
                      if s.type == CARD_TYPE_NEW and s.queue == QUEUE_TYPE_SUSPENDED]
 
     changed = False
+    suspended = 0
+    unsuspended = 0
 
     if answered.ivl < threshold:
         if new_available:
@@ -56,13 +59,16 @@ def process_note(col, note_id, answered_card_id, threshold, tag, ignore_tag=None
                 note.add_tag(tag)
                 col.update_note(note)
             col.sched.suspend_cards([s.id for s in new_available])
+            suspended = len(new_available)
             changed = True
     else:
         if new_suspended:
             col.sched.unsuspend_cards([s.id for s in new_suspended])
+            unsuspended = len(new_suspended)
             changed = True
 
     _cleanup_tag(col, note, card_ids, tag, changed)
+    return suspended, unsuspended
 
 
 def process_note_sync(col, note_id, threshold, tag, ignore_tag=None):
@@ -71,14 +77,15 @@ def process_note_sync(col, note_id, threshold, tag, ignore_tag=None):
     Checks ALL non-NEW siblings: if any is immature → suspend NEW siblings.
     If all non-NEW are mature → release suspended NEW siblings.
     If all cards are NEW (no reviews yet) → do nothing.
+    Returns (suspended, unsuspended) counts.
     """
     note = col.get_note(note_id)
     if ignore_tag and note.has_tag(ignore_tag):
-        return
+        return 0, 0
 
     card_ids = col.card_ids_of_note(note_id)
     if len(card_ids) <= 1:
-        return
+        return 0, 0
 
     siblings = [col.get_card(cid) for cid in card_ids]
     new_cards = [s for s in siblings if s.type == CARD_TYPE_NEW]
@@ -91,12 +98,14 @@ def process_note_sync(col, note_id, threshold, tag, ignore_tag=None):
             if not suspended:
                 note.remove_tag(tag)
                 col.update_note(note)
-        return
+        return 0, 0
 
     new_available = [s for s in new_cards if s.queue != QUEUE_TYPE_SUSPENDED]
     new_suspended = [s for s in new_cards if s.queue == QUEUE_TYPE_SUSPENDED]
 
     changed = False
+    suspended = 0
+    unsuspended = 0
 
     if non_new:
         has_immature = any(s.ivl < threshold for s in non_new)
@@ -106,13 +115,16 @@ def process_note_sync(col, note_id, threshold, tag, ignore_tag=None):
                     note.add_tag(tag)
                     col.update_note(note)
                 col.sched.suspend_cards([s.id for s in new_available])
+                suspended = len(new_available)
                 changed = True
         else:
             if new_suspended:
                 col.sched.unsuspend_cards([s.id for s in new_suspended])
+                unsuspended = len(new_suspended)
                 changed = True
 
     _cleanup_tag(col, note, card_ids, tag, changed)
+    return suspended, unsuspended
 
 
 def _cleanup_tag(col, note, card_ids, tag, changed):

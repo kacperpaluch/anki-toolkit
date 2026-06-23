@@ -262,6 +262,33 @@ Akcje:
 
 ---
 
+## Sekcja `sibling_manager` — dynamiczne zawieszanie siblingów
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Sibling Manager).
+
+**`interval`** — próg dojrzałości w dniach (domyślnie `30`). Karta z interval poniżej progu jest uznawana za immature — jej NEW siblingi są zawieszone. Gdy interval osiągnie próg, wszystkie zawieszone siblingi są uwalniane na raz.
+
+**`tag`** — tag dodawany do notatki gdy ma zawieszone siblingi (domyślnie `"tk-sib-suspended"`). Używany do szybkiego wyszukiwania notatek z zawieszonymi siblingami i do batch scan po syncu. Tag jest usuwany gdy wszystkie siblingi zostaną uwolnione.
+
+**`ignore_tag`** — notatki z tym tagiem są pomijane przez moduł (domyślnie `"tk-sib-ignored"`). Przydatne gdy masz notatki których siblingi chcesz widzieć wszystkie naraz (np. karty z minimalnymi różnicami).
+
+**`show_tooltip`** — `true` (domyślnie) = po sync catch-up pokazuje tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono). `false` = wyłącza tooltip, ale logi z licznikami nadal trafiają do bufora (**Ustawienia → Logi**).
+
+```json
+"sibling_manager": {
+    "interval": 30,
+    "tag": "tk-sib-suspended",
+    "ignore_tag": "tk-sib-ignored",
+    "show_tooltip": true
+}
+```
+
+Akcje:
+- **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — reset wszystkich zawieszeń + usuwa tagi (jeden krok undo)
+- **Narzędzia → Anki Toolkit → Przetwórz kolekcję (sync catch-up)...** — ręczny batch scan (ten sam co auto po syncu)
+
+---
+
 ## Sekcja `workflow` — workflow "Generuj fiszkę"
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka AI Generator → Workflow**.

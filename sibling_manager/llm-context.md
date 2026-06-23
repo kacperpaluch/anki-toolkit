@@ -39,30 +39,38 @@ gui_hooks.sync_did_finish.append(on_sync_did_finish)
 ### `process_note` (reactive — reviewer hook)
 
 1. Pobierz siblingi notatki
-2. Jeśli `ignore_tag` → pomiń
+2. Jeśli `ignore_tag` → pomiń (zwróć `(0, 0)`)
 3. Jeśli liczba kart ≤ 1 → pomiń
 4. `answered.ivl < interval` → zawieś wszystkie NEW siblingi + dodaj tag
 5. `answered.ivl >= interval` → uwolnij wszystkie zawieszone NEW siblingi
 6. Cleanup tagu jeśli nie ma już zawieszonych kart
+7. Zwróć `(suspended, unsuspended)` — liczby zawieszonych/odwieszonych kart
 
 ### `process_note_sync` (batch — sync catch-up)
 
 Nie wie która karta została odpowiedziana, więc sprawdza wszystkie non-NEW karty:
 1. Pobierz siblingi notatki
-2. Jeśli `ignore_tag` → pomiń
+2. Jeśli `ignore_tag` → pomiń (zwróć `(0, 0)`)
 3. Jeśli liczba kart ≤ 1 → pomiń
-4. Jeśli brak NEW kart → cleanup tagu i return
+4. Jeśli brak NEW kart → cleanup tagu i return `(0, 0)`
 5. Jeśli jakakolwiek non-NEW karta immature (ivl < threshold) → zawieś NEW siblingi
 6. Jeśli wszystkie non-NEW karty mature → uwolnij zawieszone NEW siblingi
 7. Jeśli brak non-NEW kart (wszystkie NEW) → nic nie rób (brak recenzji)
 8. Cleanup tagu
+9. Zwróć `(suspended, unsuspended)`
 
 ### `_run_sync_scan` (batch runner)
 
 - Query: `is:new` ∪ `tag:{tag}` → notatki z NEW kartami lub z naszym tagiem
 - SQL filter: `HAVING COUNT(*) > 1` (tylko notatki z >1 kartą)
-- Każda notatka → `process_note_sync`
+- Każda notatka → `process_note_sync`, liczniki agregowane (`suspended`, `unsuspended`, `notes`)
 - Działa w tle przez `CollectionOp` (jeden krok undo)
+- Po zakończeniu: `log.info` z podsumowaniem + tooltip `"Sibling Manager: zawieszono X, odwieszono Y"` (gated przez `show_tooltip`, tylko gdy coś zrobiono)
+
+### `on_reviewer_did_answer_card` (reviewer hook)
+
+- Wywołuje `process_note`, unpackuje `(suspended, unsuspended)`
+- `log.info` z licznikami i `nid` gdy coś zrobiono (no tooltip — nie spamować przy każdej karcie)
 
 ## Konfiguracja
 
@@ -70,7 +78,8 @@ Nie wie która karta została odpowiedziana, więc sprawdza wszystkie non-NEW ka
 "sibling_manager": {
     "interval": 30,
     "tag": "tk-sib-suspended",
-    "ignore_tag": "tk-sib-ignored"
+    "ignore_tag": "tk-sib-ignored",
+    "show_tooltip": true
 }
 ```
 

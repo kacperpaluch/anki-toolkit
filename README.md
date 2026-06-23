@@ -464,6 +464,8 @@ W przeciwieństwie do [SibPush](https://github.com/DerDemystifier/SibPush_Delay-
 
 **Reset:** **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — uwalnia wszystkie zawieszone karty i usuwa tagi (jeden krok undo).
 
+**Powiadomienia i logi:** Po każdej odpowiedzi log z licznikami ("zawieszono 2, odwieszono 0") trafia do bufora logów (**Ustawienia → Logi**). Po sync catch-up dodatkowo tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono, można wyłączyć). Brak tooltipa po pojedynczej odpowiedzi — nie spamuje przy setkach kart. Bufor logów: 2000 linii w pamięci, znika po restarcie.
+
 Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
 
 | Pole | Default | Opis |
@@ -471,6 +473,7 @@ Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
 | `interval` | `30` | Po ilu dniach interval karta uznana za dojrzałą → uwolnienie siblingów |
 | `tag` | `tk-sib-suspended` | Tag dodawany do notatki gdy ma zawieszone siblingi |
 | `ignore_tag` | `tk-sib-ignored` | Notatki z tym tagiem są pomijane przez moduł |
+| `show_tooltip` | `true` | Tooltip po sync catch-up ("zawieszono X, odwieszono Y") |
 
 **Współistnienie z SibPush:** Jeśli używałeś wcześniej SibPush, **wyłącz go** przed włączeniem tego modułu — oba zarządzają zawieszaniem i mogłyby konfliktować.
 

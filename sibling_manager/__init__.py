@@ -37,6 +37,7 @@ _DEFAULTS = {
     "interval": 30,
     "tag": "tk-sib-suspended",
     "ignore_tag": "tk-sib-ignored",
+    "show_tooltip": True,
 }
 _MODULE_KEY = "sibling_manager"
 _SYNC_SCAN_DELAY_MS = 500
@@ -54,12 +55,15 @@ def on_reviewer_did_answer_card(reviewer, card, ease):
     """After answering a card on desktop, suspend/unsuspend its siblings."""
     cfg = _get_config()
     try:
-        process_note(
+        suspended, unsuspended = process_note(
             reviewer.mw.col, card.nid, card.id,
             cfg.get("interval", _DEFAULTS["interval"]),
             cfg.get("tag", _DEFAULTS["tag"]),
             cfg.get("ignore_tag", _DEFAULTS["ignore_tag"]),
         )
+        if suspended or unsuspended:
+            log.info("sibling_manager: nid=%s — zawieszono %d, odwieszono %d",
+                     card.nid, suspended, unsuspended)
     except Exception:
         log.exception("sibling_manager: error processing card")
 
@@ -80,6 +84,9 @@ def _run_sync_scan():
     threshold = cfg.get("interval", _DEFAULTS["interval"])
     tag = cfg.get("tag", _DEFAULTS["tag"])
     ignore_tag = cfg.get("ignore_tag", _DEFAULTS["ignore_tag"])
+    show_tooltip = cfg.get("show_tooltip", _DEFAULTS["show_tooltip"])
+
+    counters = {"suspended": 0, "unsuspended": 0, "notes": 0}
 
     def op(col: Collection) -> OpChanges:
         nids1 = set(col.find_notes("is:new"))
@@ -101,14 +108,29 @@ def _run_sync_scan():
 
         for nid in multi_nids:
             try:
-                process_note_sync(col, nid, threshold, tag, ignore_tag)
+                s, u = process_note_sync(col, nid, threshold, tag, ignore_tag)
+                counters["suspended"] += s
+                counters["unsuspended"] += u
+                if s or u:
+                    counters["notes"] += 1
             except Exception:
                 log.exception("sibling_manager: error in sync scan for nid=%s", nid)
 
         return OpChanges()
 
     def on_success(_changes: OpChanges) -> None:
-        log.info("sibling_manager: sync scan complete")
+        s, u = counters["suspended"], counters["unsuspended"]
+        log.info(
+            "sibling_manager: sync scan complete — zawieszono %d, odwieszono %d (notatek: %d)",
+            s, u, counters["notes"],
+        )
+        if show_tooltip and (s or u):
+            parts = []
+            if s:
+                parts.append(f"zawieszono {s}")
+            if u:
+                parts.append(f"odwieszono {u}")
+            tooltip("Sibling Manager: " + ", ".join(parts), parent=mw, period=4000)
 
     CollectionOp(parent=mw, op=op).success(on_success).run_in_background()
 
