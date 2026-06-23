@@ -51,6 +51,14 @@ if _enabled("tts"):
     gui_hooks.editor_did_init_buttons.append(tts.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
+# sibling_manager — dynamic sibling suspension (reviewer hook)
+# ---------------------------------------------------------------------------
+if _enabled("sibling_manager"):
+    from . import sibling_manager
+    gui_hooks.reviewer_did_answer_card.append(sibling_manager.on_reviewer_did_answer_card)
+    gui_hooks.sync_did_finish.append(sibling_manager.on_sync_did_finish)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 _context_modules = []
@@ -95,6 +103,10 @@ if _enabled("nbsp_remover"):
 if _enabled("field_splitter"):
     from . import field_splitter
     _menu_modules.append(field_splitter)
+
+if _enabled("sibling_manager"):
+    from . import sibling_manager
+    _menu_modules.append(sibling_manager)
 
 
 def _setup_menus(*_args, **_kwargs):

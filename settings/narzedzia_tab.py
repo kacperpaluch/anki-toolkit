@@ -1,7 +1,7 @@
-"""Narzędzia tab — filtered deck, HTML cleanup, and field splitter."""
+"""Narzędzia tab — filtered deck, HTML cleanup, field splitter, sibling manager."""
 
 from aqt.qt import (
-    QWidget, QVBoxLayout, QFormLayout, QGroupBox, QCheckBox,
+    QWidget, QVBoxLayout, QFormLayout, QGroupBox, QCheckBox, QSpinBox,
 )
 
 from ..common.ui import _expanding_line_edit, _scrollable, hint_label
@@ -73,6 +73,31 @@ class NarzedziaTab(QWidget):
         fs_form.addRow("", fs_hint)
         layout.addWidget(fs_group)
 
+        layout.addSpacing(8)
+
+        sm = cfg.get("sibling_manager", {})
+        sm_group = QGroupBox("Sibling Manager — dynamiczne zawieszanie siblingów")
+        sm_form = QFormLayout(sm_group)
+        sm_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._sm_interval = QSpinBox()
+        self._sm_interval.setRange(1, 365)
+        self._sm_interval.setSuffix(" dni")
+        self._sm_interval.setValue(sm.get("interval", 30))
+        sm_form.addRow("Próg dojrzałości (interval):", self._sm_interval)
+        self._sm_tag = _expanding_line_edit(sm.get("tag", "tk-sib-suspended"))
+        sm_form.addRow("Tag zawieszonych:", self._sm_tag)
+        self._sm_ignore_tag = _expanding_line_edit(sm.get("ignore_tag", "tk-sib-ignored"))
+        sm_form.addRow("Tag ignorowanych:", self._sm_ignore_tag)
+        sm_hint = hint_label(
+            "Po odpowiedzi na kartę: jeśli interval < próg → zawiesza inne NEW siblingi. "
+            "Gdy karta dojrzeje (interval ≥ próg) → uwalnia wszystkie zawieszone. "
+            "Karty w nauce/review nie są dotykane. "
+            "Tag ignorowanych wyłącza moduł dla danej notatki.",
+            small=True,
+        )
+        sm_form.addRow("", sm_hint)
+        layout.addWidget(sm_group)
+
         layout.addStretch()
 
         outer = QVBoxLayout(self)
@@ -94,3 +119,8 @@ class NarzedziaTab(QWidget):
         cfg["field_splitter"]["separator"] = self._fs_separator.text().strip()
         cfg["field_splitter"]["target_fields"] = self._fs_targets.text().strip()
         cfg["field_splitter"]["overwrite"] = self._fs_overwrite.isChecked()
+
+        cfg.setdefault("sibling_manager", {})
+        cfg["sibling_manager"]["interval"] = self._sm_interval.value()
+        cfg["sibling_manager"]["tag"] = self._sm_tag.text().strip()
+        cfg["sibling_manager"]["ignore_tag"] = self._sm_ignore_tag.text().strip()

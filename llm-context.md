@@ -6,7 +6,7 @@ Szybkie podsumowanie projektu dla modeli AI i deweloperów.
 
 ## Czym jest ten projekt
 
-Scalona wtyczka do Anki łącząca 7 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
+Scalona wtyczka do Anki łącząca 8 narzędzi w jeden pakiet. Instalowana jako jeden dodatek (`addons21/anki-toolkit/`). Każdy moduł można niezależnie włączyć lub wyłączyć w ustawieniach. Awaria jednego modułu nie blokuje pozostałych.
 
 ---
 
@@ -117,6 +117,12 @@ anki-toolkit/
 │   ├── __init__.py                  # setup_menu + add_to_context_menu + batch (CollectionOp)
 │   └── splitting.py                 # czysta logika: split_field_value(), parse_target_fields()
 │
+├── sibling_manager/                 # Moduł 8 — dynamiczne zawieszanie siblingów
+│   ├── __init__.py                  # hook reviewer'a + setup_menu (unsuspend all)
+│   ├── logic.py                     # process_note() — czysta logika suspend/unsuspend
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/
     └── test_pure_logic.py           # testy czystej logiki bez uruchamiania Anki
 ```
@@ -133,6 +139,7 @@ anki-toolkit/
 | `audio_normalizer/` | Normalizuje głośność plików audio ffmpegiem (EBU R128); po normalizacji synchronizuje zmodyfikowane pliki z Anki media DB przez `write_data()` | `setup_menu(parent_menu)` |
 | `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
 | `field_splitter/` | Rozdziela pole źródłowe (np. `przyklad`) po separatorze (`<br><br>`) i **kopiuje** części do pól docelowych (`p1`, `p2`, `p3`…); source nietknięte; browser context menu (batch) + Tools menu (kolekcja); zapis jednym `CollectionOp` | `add_to_context_menu(browser, menu)` + `setup_menu(parent_menu)` |
+| `sibling_manager/` | Dynamiczne zawieszanie siblingów: po odpowiedzi na kartę (hook `reviewer_did_answer_card`) zawiesza NEW siblingi dopóki aktywna karta nie dojrzeje (interval ≥ próg, default 30 dni); gdy dojrzeje uwalnia wszystkie zawieszone na raz; karty w nauce/review nie są dotykane; tag `tk-sib-suspended` na notatce; `ignore_tag` wyłącza moduł per-notatka; **sync catch-up**: hook `sync_did_finish` → batch scan wszystkich notatek z NEW siblingami (`process_note_sync` — sprawdza wszystkie non-NEW karty, nie zna konkretnej odpowiedzi); reaktywny alternatywa dla SibPush; Tools menu → unsuspend all + manual sync catch-up (`CollectionOp`) | `gui_hooks.reviewer_did_answer_card` + `gui_hooks.sync_did_finish` + `setup_menu(parent_menu)` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -229,7 +236,8 @@ Zakładki (9 zakładek):
     "filtered_deck":     true,
     "audio_normalizer":  true,
     "nbsp_remover":      true,
-    "field_splitter":    true
+    "field_splitter":    true,
+    "sibling_manager":   true
 }
 ```
 
@@ -246,6 +254,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `filtered_deck` | `filtered_deck/` | Zakładka Narzędzia (sekcja Talia filtrowana) |
 | `nbsp_remover` | `nbsp_remover/` | Zakładka Narzędzia (sekcja Czyszczenie HTML) |
 | `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
+| `sibling_manager` | `sibling_manager/` | Zakładka Narzędzia (sekcja Sibling Manager) |
 | `workflow` | `ai_generator/` | Zakładka AI Generator → Workflow |
 
 ---
@@ -385,6 +394,10 @@ nbsp_remover/
 field_splitter/
     ├── splitting.py            (split_field_value + parse_target_fields; testowalne bez Anki)
     └── __init__.py             (add_to_context_menu + setup_menu + _run_batch CollectionOp)
+
+sibling_manager/
+    ├── logic.py                (process_note — reactive, reviewer hook; process_note_sync — batch, sync catch-up; _cleanup_tag; używa anki.cards CARD_TYPE_NEW/QUEUE_TYPE_SUSPENDED)
+    └── __init__.py             (on_reviewer_did_answer_card hook + on_sync_did_finish hook + _run_sync_scan CollectionOp + setup_menu: unsuspend all + manual sync catch-up; używa common/config get_module_config)
 ```
 
 ---

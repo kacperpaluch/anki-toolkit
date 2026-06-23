@@ -13,6 +13,8 @@ class ModulesTab(QWidget):
         "filtered_deck":     "Talia filtrowana",
         "audio_normalizer":  "Normalizacja audio — wyrównywanie głośności (ffmpeg)",
         "nbsp_remover":      "Czyszczenie HTML — &nbsp; i tagi <div>",
+        "field_splitter":    "Rozdzielanie pól — kopiowanie do p1, p2, p3...",
+        "sibling_manager":   "Sibling Manager — dynamiczne zawieszanie siblingów",
     }
 
     def __init__(self, cfg: dict):

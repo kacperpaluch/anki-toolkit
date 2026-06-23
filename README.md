@@ -1,6 +1,6 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca siedem narzędzi do zarządzania kartami Anki.
+Scalona wtyczka łącząca osiem narzędzi do zarządzania kartami Anki.
 
 ## Struktura
 
@@ -91,6 +91,12 @@ anki-toolkit/
 │   ├── __init__.py                  # UI (browser context menu + Tools menu) + batch
 │   └── splitting.py                 # czysta logika split + parse_target_fields
 │
+├── sibling_manager/                 # Moduł 8: dynamiczne zawieszanie siblingów
+│   ├── __init__.py                  # hook reviewer'a + akcja menu Narzędzia
+│   ├── logic.py                     # process_note() — czysta logika suspend/unsuspend
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -125,7 +131,7 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
-| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól |
+| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
 | **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 | **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
 
@@ -145,7 +151,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "filtered_deck":     true,
     "audio_normalizer":  true,
     "nbsp_remover":      true,
-    "field_splitter":    true
+    "field_splitter":    true,
+    "sibling_manager":   true
 }
 ```
 
@@ -436,6 +443,36 @@ Zasady:
 - Batch zapisywany jako **jedna operacja z undo** (Ctrl+Z cofa cały batch)
 - Tylko notatki posiadające pole źródłowe są przetwarzane; pola docelowe nieistniejące w typie notatki są pomijane
 - `overwrite: false` jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpisania ręcznych poprawek
+
+---
+
+### Sibling Manager (`sibling_manager`)
+
+Dynamiczne zawieszanie kart-siblingów. Po odpowiedzi na kartę, moduł zawiesza pozostałe NEW siblingi dopóki aktywna karta nie dojrzeje. Gdy dojrzeje — uwalnia wszystkie zawieszone na raz, a Anki pokazuje następną (losowo).
+
+W przeciwieństwie do [SibPush](https://github.com/DerDemystifier/SibPush_Delay-New-Sibs), który pre-suspenduje z góry wg kolejności szablonów, ten moduł jest **reaktywny** — działa dopiero po odpowiedzi na kartę. Większa losowość: to Anki decyduje którą kartę pokazać, a nie z góry ustalona kolejność.
+
+**Zasada działania:**
+1. Anki pokazuje kartę → odpowiadasz → hook `reviewer_did_answer_card`
+2. Interval < próg (30 dni) → **zawiesza wszystkie inne NEW siblingi**
+3. Interval ≥ próg → **uwolnić wszystkie zawieszone siblingi** na raz
+4. Anki pokazuje kolejną → cykl się powtarza
+
+**Zapomnienie karty:** Jeśli dojrzała karta zostanie zapomniana (interval spadnie poniżej progu), przy kolejnej odpowiedzi hook znów zawiesi NEW siblingi. Karty w nauce/review (nie `CARD_TYPE_NEW`) nie są dotykane.
+
+**Uczenie na telefonie + synchronizacja:** Hook reviewer'a odpala się tylko na desktopie. Po synchronizacji z AnkiMobile/AnkiWeb automatycznie uruchamia się batch scan (hook `sync_did_finish`) — przetwarza wszystkie notatki z NEW siblingami w tle (CollectionOp, jeden krok undo). Ręczny catch-up: **Narzędzia → Anki Toolkit → Przetwórz kolekcję (sync catch-up)...**.
+
+**Reset:** **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — uwalnia wszystkie zawieszone karty i usuwa tagi (jeden krok undo).
+
+Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
+
+| Pole | Default | Opis |
+|---|---|---|
+| `interval` | `30` | Po ilu dniach interval karta uznana za dojrzałą → uwolnienie siblingów |
+| `tag` | `tk-sib-suspended` | Tag dodawany do notatki gdy ma zawieszone siblingi |
+| `ignore_tag` | `tk-sib-ignored` | Notatki z tym tagiem są pomijane przez moduł |
+
+**Współistnienie z SibPush:** Jeśli używałeś wcześniej SibPush, **wyłącz go** przed włączeniem tego modułu — oba zarządzają zawieszaniem i mogłyby konfliktować.
 
 ---
 

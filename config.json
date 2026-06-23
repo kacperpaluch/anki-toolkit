@@ -6,7 +6,8 @@
         "filtered_deck":     true,
         "audio_normalizer":  true,
         "nbsp_remover":      true,
-        "field_splitter":    true
+        "field_splitter":    true,
+        "sibling_manager":   true
     },
 
     "dictionary": {
@@ -87,6 +88,12 @@
         "separator": "<br><br>",
         "target_fields": "p1, p2, p3, p4, p5",
         "overwrite": true
+    },
+
+    "sibling_manager": {
+        "interval": 30,
+        "tag": "tk-sib-suspended",
+        "ignore_tag": "tk-sib-ignored"
     },
 
     "ai_generator": {
