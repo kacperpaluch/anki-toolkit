@@ -11,7 +11,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `_generator` |
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=...)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione). Akcja `Rozdziel + generuj naukę (p1–p3)` (`_on_split_then_nauka`) łączy dwa kroki: CollectionOp rozdziela `przyklad`→`p1/p2/p3` (reużywa `field_splitter._process_note`), a po zapisie odpala `_run_batch(only_fields={p1-nauka,p2-nauka,p3-nauka})` — pola `manual_only`, więc jawny `only_fields` je obejmuje |
+| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=..., on_complete=None)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione); `on_complete` (opcjonalny) odpala się po commicie zapisu — używane do łańcuchowania kroków. Akcja `Rozdziel + generuj naukę (p1–p3)` (`_on_split_then_nauka`) łączy dwa kroki: CollectionOp rozdziela `przyklad`→`p1/p2/p3` (reużywa `field_splitter._process_note`), a po zapisie odpala `_run_batch(only_fields={p1-nauka,p2-nauka,p3-nauka})` — pola `manual_only`, więc jawny `only_fields` je obejmuje. Akcja `Generuj wszystko: puste → TTS → rozdziel → zablokowane` (`_on_full_pipeline`) — łańcuch 4 kroków spinanych przez `on_complete`: `_run_batch(only_fields=None)` → `tts.processor.process_tasks_async` → `field_splitter._run_batch` → `_run_batch(only_fields=manual_fields)`; każdy krok startuje po commicie poprzedniego (czyta świeże pola), kroki bez konfiguracji są pomijane |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
@@ -76,10 +76,21 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):
       → progress.close()
-      → _save_changed_notes(browser, changed_notes, summary)
+      → _save_changed_notes(browser, changed_notes, summary, on_complete)
           → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
-              .success(tooltip z podsumowaniem).run_in_background()
+              .success(lambda: tooltip + on_complete()).run_in_background()
+          → on_complete (jeśli podany) odpala się PO commicie zapisu — spina łańcuch kroków
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
+
+Pełny pipeline (menu kontekstowe → Generuj wszystko: puste → TTS → rozdziel → zablokowane):
+  → _on_full_pipeline(browser) — nids złapane raz, manual_fields z _all_configured_target_fields(manual_only=True)
+  → łańcuch przez callbacki on_complete (każdy krok = osobny CollectionOp/batch, startuje po commicie poprzedniego):
+      krok 1: _run_batch(only_fields=None, on_complete=step2_tts)            # wszystkie puste
+      krok 2: process_tasks_async(browser, nids, tasks, on_complete=step3)  # TTS; brak zadań → od razu step3
+      krok 3: field_splitter._run_batch(nids, on_complete=step4_blocked)    # rozdziel przyklad
+      krok 4: _run_batch(only_fields=manual_fields, label="AI: zablokowane")# terminalny, bez on_complete
+  → kroki bez konfiguracji są pomijane (on_complete i tak odpala — łańcuch leci dalej);
+    twardy błąd TTS nie blokuje split/zablokowanych
 
 Przycisk workflow w edytorze:
   → editor_ui.on_editor_buttons_init() dodaje go przed przyciskiem AI, jeśli `workflow.enabled=true` i `workflow.steps` nie jest puste

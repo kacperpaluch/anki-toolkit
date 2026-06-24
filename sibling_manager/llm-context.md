@@ -65,7 +65,13 @@ Nie wie która karta została odpowiedziana, więc sprawdza wszystkie non-NEW ka
 - SQL filter: `HAVING COUNT(*) > 1` (tylko notatki z >1 kartą)
 - Każda notatka → `process_note_sync`, liczniki agregowane (`suspended`, `unsuspended`, `notes`)
 - Działa w tle przez `CollectionOp` (jeden krok undo)
+- Zwraca `_changes_for_ui()` (OpChanges z `card`/`note`/`study_queues = True`) gdy coś zawieszono/odwieszono, inaczej pusty `OpChanges()` — pusty obiekt po realnej mutacji zostawiał UI nieodświeżony (liczniki talii/kolejki/przeglądarka) do następnej nawigacji; undo i tak rejestrują `suspend_cards`/`update_note`, zwrócony OpChanges steruje tylko odświeżaniem UI
 - Po zakończeniu: `log.info` z podsumowaniem + tooltip `"Sibling Manager: zawieszono X, odwieszono Y"` (gated przez `show_tooltip`, tylko gdy coś zrobiono)
+
+### `_unsuspend_all` / `_changes_for_ui` (Tools menu — escape hatch)
+
+- `_unsuspend_all` odwiesza karty `tag:{tag} is:suspended` i zdejmuje tag z notatek; po mutacji zwraca `_changes_for_ui()` (nie pusty `OpChanges()`), więc UI odświeża się od razu
+- `_changes_for_ui()` — helper zwracający `OpChanges` z flagami `card`/`note`/`study_queues`; współdzielony przez `_run_sync_scan` i `_unsuspend_all`
 
 ### `on_reviewer_did_answer_card` (reviewer hook)
 

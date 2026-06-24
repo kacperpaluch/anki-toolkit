@@ -12,7 +12,7 @@ Oba tryby zapisują zmiany jednym `CollectionOp` = jeden krok undo.
 
 | Plik | Rola |
 |---|---|
-| `__init__.py` | `setup_menu(parent_menu=None)` (Tools menu) + `add_to_context_menu(browser, menu)` (browser context menu) + `_process_note()` (rdzeń) + `_run_batch()` (`CollectionOp`, batch w tle, jeden undo) |
+| `__init__.py` | `setup_menu(parent_menu=None)` (Tools menu) + `add_to_context_menu(browser, menu)` (browser context menu) + `_process_note()` (rdzeń) + `_run_batch(nids, on_complete=None)` (`CollectionOp`, batch w tle, jeden undo; `on_complete` odpala się na każdym wyjściu — po `on_success` oraz na miękkich returnach „brak notatek"/„brak pól docelowych" — żeby łańcuch zewnętrzny szedł dalej; używane przez full pipeline w `ai_generator.browser_ui`) |
 | `splitting.py` | Czysta logika: `split_field_value(value, separator, target_fields) -> dict` i `parse_target_fields(raw) -> list`; testowalne bez Anki; zawiera self-check w `__main__` |
 
 ## Przepływ danych

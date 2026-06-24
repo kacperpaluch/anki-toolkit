@@ -72,15 +72,23 @@ def _process_note(note, cfg: dict) -> bool:
 # Batch runner (one CollectionOp = one undo step)
 # ---------------------------------------------------------------------------
 
-def _run_batch(nids: list) -> None:
+def _run_batch(nids: list, on_complete=None) -> None:
+    # ponytail: on_complete fires on every exit so a chained pipeline continues
+    # even when there's nothing to split.
+    def _continue():
+        if on_complete:
+            on_complete()
+
     if not nids:
         tooltip("Nie wybrano notatek.", parent=mw, period=3000)
+        _continue()
         return
 
     cfg = _get_config()
     targets = parse_target_fields(cfg.get("target_fields", ""))
     if not targets:
         tooltip("Brak pól docelowych w konfiguracji.", parent=mw, period=4000)
+        _continue()
         return
 
     counters = {"changed": 0}
@@ -103,6 +111,7 @@ def _run_batch(nids: list) -> None:
         else:
             msg = "Nic do zrobienia — pola docelowe już zawierają właściwą treść."
         tooltip(msg, parent=mw, period=4000)
+        _continue()
 
     CollectionOp(parent=mw, op=op).success(on_success).run_in_background()
 

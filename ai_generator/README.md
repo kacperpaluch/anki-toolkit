@@ -36,6 +36,15 @@ Submenu zawiera:
 
 Dodatkowo w menu **Anki Toolkit** jest akcja **Rozdziel + generuj naukę (p1–p3)** — w jednym kliknięciu rozdziela pole `przyklad` na `p1`/`p2`/`p3` (przez moduł Field Splitter), a po zapisie generuje pola `p1-nauka`/`p2-nauka`/`p3-nauka`. Wymaga włączonego modułu „Rozdzielanie pól".
 
+Oraz akcja **Generuj wszystko: puste → TTS → rozdziel → zablokowane** — pełny łańcuch czterech kroków w jednym kliknięciu:
+
+1. **Generuj pola → wszystkie puste** (`_run_batch(only_fields=None)`)
+2. **TTS → uruchom wszystkie** zadania (`tts.processor.process_tasks_async`)
+3. **Rozdziel pole `przyklad`** → `p1`/`p2`/`p3`… (`field_splitter._run_batch`)
+4. **Generuj zablokowane → wszystkie** pola `manual_only` (`_run_batch(only_fields=manual_fields)`)
+
+Każdy krok startuje dopiero **po zapisaniu poprzedniego do kolekcji** (przez callback `on_complete`), więc krok N+1 czyta pola, które krok N właśnie zapisał. Kroki bez konfiguracji (brak zadań TTS, brak skonfigurowanych pól docelowych split, brak pól `manual_only`) są pomijane — łańcuch przechodzi do następnego. Twardy błąd TTS też nie blokuje rozdzielenia ani generowania zablokowanych. Wykorzystuje moduły TTS i Field Splitter, jeśli są włączone.
+
 Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
 
 - Pola które już mają treść są **zawsze pomijane** w batchu — generator uzupełnia tylko puste pola.

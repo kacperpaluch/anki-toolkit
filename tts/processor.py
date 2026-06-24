@@ -197,20 +197,29 @@ def process_task_async(browser, nids: list, task: dict):
     _process_batch_async(browser, nids, [task], label=task.get("label", "TTS"))
 
 
-def process_tasks_async(browser, nids: list, tasks: list[dict]):
+def process_tasks_async(browser, nids: list, tasks: list[dict], on_complete=None):
     """Run multiple TTS tasks as one browser operation with one progress dialog."""
-    _process_batch_async(browser, nids, tasks, label="TTS")
+    _process_batch_async(browser, nids, tasks, label="TTS", on_complete=on_complete)
 
 
-def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
+def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
+                         on_complete=None):
     from aqt.qt import QProgressDialog, Qt
+
+    # ponytail: on_complete fires on every exit (success, soft skip, error) so a
+    # chained pipeline keeps going — TTS failing shouldn't block later steps.
+    def _continue():
+        if on_complete:
+            on_complete()
 
     config = get_tts_config()
     if not validate_config(config):
+        _continue()
         return
 
     voices = unique(config.get("voices", []))
     if not voices:
+        _continue()
         return
 
     # Collect everything up front (main thread): one entry per note.
@@ -228,6 +237,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 
     if not all_items:
         tooltip(f"\"{label}\": brak pól wymagających generowania.")
+        _continue()
         return
 
     progress = QProgressDialog(f"{label}...", "Anuluj", 0, len(all_items), browser)
@@ -266,6 +276,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
             results, errors, first_error = fut.result()
         except Exception as e:
             tooltip(f"TTS: błąd — {e}", period=5000)
+            _continue()
             return
 
         # Group results per note and apply (main thread, fresh note objects).
@@ -296,14 +307,17 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 
         if not changed_notes:
             tooltip(summary, period=8000)
+            _continue()
             return
+
+        def _saved(_changes):
+            tooltip(summary, period=10000)
+            _continue()
 
         CollectionOp(
             parent=browser,
             op=lambda col: col.update_notes(changed_notes),
-        ).success(
-            lambda _changes: tooltip(summary, period=10000)
-        ).run_in_background()
+        ).success(_saved).run_in_background()
 
     mw.taskman.run_in_background(bg_task, on_done)
 

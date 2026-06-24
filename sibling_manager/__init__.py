@@ -47,6 +47,21 @@ def _get_config():
     return get_module_config(_MODULE_KEY, _DEFAULTS)
 
 
+def _changes_for_ui() -> OpChanges:
+    """OpChanges that tells Anki to refresh after suspend/unsuspend + tag edits.
+
+    suspend_cards/update_note already register the undo entry; the OpChanges we
+    return from the CollectionOp op only drives UI refresh (deck counts, queues,
+    browser), so flag card/note/study_queues. Returning a blank OpChanges left
+    the UI stale until the next navigation.
+    """
+    changes = OpChanges()
+    changes.card = True
+    changes.note = True
+    changes.study_queues = True
+    return changes
+
+
 # ---------------------------------------------------------------------------
 # Reviewer hook — fires after each card is answered (desktop)
 # ---------------------------------------------------------------------------
@@ -116,6 +131,8 @@ def _run_sync_scan():
             except Exception:
                 log.exception("sibling_manager: error in sync scan for nid=%s", nid)
 
+        if counters["suspended"] or counters["unsuspended"]:
+            return _changes_for_ui()
         return OpChanges()
 
     def on_success(_changes: OpChanges) -> None:
@@ -154,7 +171,7 @@ def _unsuspend_all():
             note = col.get_note(nid)
             note.remove_tag(tag)
             col.update_note(note)
-        return OpChanges()
+        return _changes_for_ui()
 
     def on_success(_changes: OpChanges) -> None:
         tooltip("Sibling Manager: uwolniono wszystkie karty", parent=mw, period=3000)

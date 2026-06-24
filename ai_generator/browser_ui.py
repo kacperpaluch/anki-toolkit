@@ -32,17 +32,27 @@ def _make_progress(browser: Browser, label: str, total: int, title: str):
     return progress, cancel_flag
 
 
-def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
-    """Persist modified notes as one undoable operation, then show the summary."""
+def _save_changed_notes(browser: Browser, changed_notes: list, summary: str,
+                        on_complete=None):
+    """Persist modified notes as one undoable operation, then show the summary.
+
+    on_complete (if given) runs after the save commits — used to chain steps.
+    """
     if not changed_notes:
         tooltip(summary, period=8000)
+        if on_complete:
+            on_complete()
         return
+
+    def _saved(_changes):
+        tooltip(summary, period=8000)
+        if on_complete:
+            on_complete()
+
     CollectionOp(
         parent=browser,
         op=lambda col: col.update_notes(changed_notes),
-    ).success(
-        lambda _changes: tooltip(summary, period=8000)
-    ).run_in_background()
+    ).success(_saved).run_in_background()
 
 
 # ---------------------------------------------------------------------------
@@ -74,9 +84,11 @@ def _on_generate_field_browser(browser: Browser, field_name: str):
 
 
 def _run_batch(browser: Browser, nids, config: dict,
-               only_fields, label: str):
+               only_fields, label: str, on_complete=None):
     """Run a parallel AI batch. only_fields=None = all configured empty fields;
     only_fields={name} = only that target field, still skipping filled ones.
+
+    on_complete (if given) runs after the save commits — used to chain steps.
     """
     batch_limit: int = max(1, config.get("batch_limit", 3))
     sleep_time: float = config.get("batch_sleep", 1.0)
@@ -163,9 +175,51 @@ def _run_batch(browser: Browser, nids, config: dict,
             parts.append("przerwano")
         if state["last_error"]:
             parts.append(state["last_error"])
-        _save_changed_notes(browser, changed_notes, " · ".join(parts))
+        _save_changed_notes(browser, changed_notes, " · ".join(parts), on_complete)
 
     mw.taskman.run_in_background(task, on_done)
+
+
+# ---------------------------------------------------------------------------
+# Full pipeline — generate empty → TTS all → split przyklad → generate blocked
+# ---------------------------------------------------------------------------
+
+def _on_full_pipeline(browser: Browser):
+    """One click: generuj puste → TTS wszystkie → rozdziel przyklad → zablokowane.
+
+    Each step runs only after the previous one has committed to the collection,
+    so every step reads the fields the previous step just wrote.
+    """
+    nids = list(browser.selected_notes())
+    if not nids:
+        tooltip("Nie zaznaczono żadnych notatek.")
+        return
+
+    config = get_config()
+    manual_fields = set(_all_configured_target_fields(config, manual_only=True))
+
+    from ..tts.processor import process_tasks_async
+    from ..tts.config import get_tts_config, get_tasks
+    from ..field_splitter import _run_batch as fs_run_batch
+
+    def step4_blocked():
+        if not manual_fields:
+            return
+        _run_batch(browser, nids, config,
+                   only_fields=manual_fields, label="AI: zablokowane")
+
+    def step3_split():
+        fs_run_batch(nids, on_complete=step4_blocked)
+
+    def step2_tts():
+        tasks = get_tasks(get_tts_config())
+        if not tasks:
+            step3_split()
+            return
+        process_tasks_async(browser, nids, tasks, on_complete=step3_split)
+
+    _run_batch(browser, nids, config, only_fields=None,
+               label="Generowanie przez AI", on_complete=step2_tts)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +384,10 @@ def add_to_context_menu(browser: Browser, menu):
     nauka_action = QAction("Rozdziel + generuj naukę (p1–p3)", browser)
     qconnect(nauka_action.triggered, lambda: _on_split_then_nauka(browser))
     menu.addAction(nauka_action)
+
+    pipeline_action = QAction("Generuj wszystko: puste → TTS → rozdziel → zablokowane", browser)
+    qconnect(pipeline_action.triggered, lambda: _on_full_pipeline(browser))
+    menu.addAction(pipeline_action)
 
     gen_menu = menu.addMenu("Generuj pola")
     all_action = QAction("Wszystkie puste", browser)
