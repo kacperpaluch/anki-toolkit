@@ -11,7 +11,10 @@ from aqt.utils import showWarning, tooltip
 from aqt import mw
 from aqt.sound import av_player
 
-from ..common.ui import _expanding_line_edit, _api_key_widget, _scrollable, hint_label
+from ..common.ui import (
+    _expanding_line_edit, _api_key_widget, _scrollable, hint_label,
+    collapsible_section,
+)
 
 _PROVIDERS = {"kokoro": "Kokoro (lokalny Docker)", "openrouter": "OpenRouter (API)"}
 
@@ -267,8 +270,8 @@ class TTSTab(QWidget):
 
         layout.addSpacing(8)
 
-        perf_group = QGroupBox("Wydajność i sieć")
-        perf_form = QFormLayout(perf_group)
+        perf_container, perf_body = collapsible_section("Wydajność i sieć (zaawansowane)")
+        perf_form = QFormLayout()
         perf_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._tts_max_workers = QSpinBox()
         self._tts_max_workers.setRange(1, 64)
@@ -286,7 +289,8 @@ class TTSTab(QWidget):
         perf_form.addRow("Maks. wątków:", self._tts_max_workers)
         perf_form.addRow("Maks. prób (retry):", self._tts_max_retries)
         perf_form.addRow("Timeout żądania:", self._tts_timeout)
-        layout.addWidget(perf_group)
+        perf_body.addLayout(perf_form)
+        layout.addWidget(perf_container)
         layout.addStretch()
 
         outer = QVBoxLayout(self)

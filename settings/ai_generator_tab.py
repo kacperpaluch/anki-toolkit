@@ -12,7 +12,7 @@ from aqt.utils import showWarning
 
 from ..common.ui import (
     _expanding_line_edit, _filterable_combo, _api_key_widget, _scrollable,
-    hint_label,
+    hint_label, collapsible_section,
 )
 from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS
 from .prompts_tab import PromptsTab
@@ -198,8 +198,8 @@ class AIGeneratorTab(QWidget):
         layout.addWidget(prov_group)
         layout.addSpacing(8)
 
-        adv_group = QGroupBox("Zaawansowane")
-        adv_form = QFormLayout(adv_group)
+        adv_container, adv_body = collapsible_section("Zaawansowane (wydajność, limity, sieć)")
+        adv_form = QFormLayout()
         adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._batch_limit = QSpinBox()
         self._batch_limit.setRange(1, 9999)
@@ -239,7 +239,8 @@ class AIGeneratorTab(QWidget):
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
         adv_form.addRow("Timeout żądania:", self._request_timeout)
         adv_form.addRow("Limit RPM dla :free:", self._free_rate_limit)
-        layout.addWidget(adv_group)
+        adv_body.addLayout(adv_form)
+        layout.addWidget(adv_container)
         layout.addStretch()
 
         return _scrollable(inner)

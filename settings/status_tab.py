@@ -14,11 +14,11 @@ from typing import Callable, Optional
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QFrame, QPushButton, QSizePolicy, Qt,
+    QFrame, QPushButton, Qt,
 )
 
 from ..common import plural_pl
-from ..common.ui import _scrollable, palette as _palette
+from ..common.ui import _scrollable, palette as _palette, FlowLayout
 
 
 def _has_real_key(value: str) -> bool:
@@ -111,9 +111,13 @@ def _clear_layout(layout) -> None:
         item = layout.takeAt(0)
         widget = item.widget()
         if widget is not None:
+            # setParent(None) removes it from view *now*; deleteLater() is async,
+            # so without this the old widgets float as ghosts over a re-render.
+            widget.setParent(None)
             widget.deleteLater()
         elif item.layout() is not None:
             _clear_layout(item.layout())
+            item.layout().deleteLater()
 
 
 class _ChipFrame(QFrame):
@@ -162,27 +166,31 @@ class StatusTab(QWidget):
         self._pal = _palette()
         _clear_layout(self._layout)
 
-        # Dashboard shows the primary workflow (first in the list, or the legacy
-        # single one). Re-shaped into the {editor_label, enabled, steps} form the
-        # rest of this tab expects.
+        # Dashboard shows one representative workflow as a module-readiness check.
+        # Prefer the one with an editor button; otherwise the first. Every
+        # workflow is always available from the browser right-click menu, so the
+        # dashboard never treats a workflow as "disabled" — editor_button is just
+        # an optional extra surface, not an on/off switch.
         workflows = cfg.get("workflows")
         if isinstance(workflows, list) and workflows:
-            primary = next((w for w in workflows if isinstance(w, dict)), {})
+            primary = next(
+                (w for w in workflows if isinstance(w, dict) and w.get("editor_button")),
+                None,
+            ) or next((w for w in workflows if isinstance(w, dict)), {})
             workflow = {
                 "editor_label": primary.get("name", "Generuj fiszkę"),
-                "enabled": primary.get("editor_button", True),
                 "steps": primary.get("steps", []),
             }
         else:
             workflow = cfg.get("workflow", {})
         steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
-        workflow_enabled = workflow.get("enabled", True)
         statuses = [self._step_status(cfg, step) for step in steps]
-        issues = self._issues(cfg, steps, statuses, workflow_enabled)
+        issues = self._issues(cfg, steps, statuses)
 
-        self._add_header(cfg, workflow, steps, issues, workflow_enabled)
-        self._add_pipeline(cfg, steps, statuses, workflow_enabled)
-        self._add_issues(cfg, issues, workflow)
+        self._add_header(cfg, workflow, steps, issues)
+        self._add_quick_actions()
+        self._add_pipeline(cfg, steps, statuses)
+        self._add_issues(cfg, issues)
         self._add_utility_row(cfg)
         self._layout.addStretch()
 
@@ -252,21 +260,28 @@ class StatusTab(QWidget):
             return {"title": "TTS", "level": "ok" if ok else "warn",
                     "lines": lines, "target": "TTS"}
 
+        if module == "field_splitter":
+            if not _module_enabled(cfg, "field_splitter"):
+                return {"title": "Rozdziel pole", "level": "off",
+                        "lines": ["moduł wyłączony"], "target": "Moduły"}
+            fs = cfg.get("field_splitter", {})
+            source = fs.get("source_field", "przyklad")
+            targets = fs.get("target_fields", "")
+            if targets:
+                return {"title": "Rozdziel pole", "level": "ok",
+                        "lines": [f"{source} → {targets}"], "target": "Narzędzia"}
+            return {"title": "Rozdziel pole", "level": "warn",
+                    "lines": ["brak pól docelowych"], "target": "Narzędzia"}
+
         return {"title": module or "Krok", "level": "warn",
                 "lines": [step.get("action", "?")], "target": "AI Generator"}
 
-    def _issues(self, cfg: dict, steps: list[dict], statuses: list[dict],
-                workflow_enabled: bool) -> list[tuple[str, str]]:
+    def _issues(self, cfg: dict, steps: list[dict], statuses: list[dict]) -> list[tuple[str, str]]:
         issues: list[tuple[str, str]] = []
 
-        if not workflow_enabled:
+        if not steps:
             issues.append((
-                "Workflow nie ma przycisku w edytorze — włącz go w zakładce Workflowy.",
-                "Workflowy",
-            ))
-        elif not steps:
-            issues.append((
-                "Workflow nie ma żadnych kroków — dodaj je w zakładce Workflowy.",
+                "Brak workflowów z krokami — dodaj workflow w zakładce Workflowy.",
                 "Workflowy",
             ))
 
@@ -301,7 +316,7 @@ class StatusTab(QWidget):
             ):
                 issues.append((
                     "Krok Słownik nie ma wybranych słowników.",
-                    "AI Generator",
+                    "Workflowy",
                 ))
 
         if _workflow_uses(steps, "tts"):
@@ -337,8 +352,30 @@ class StatusTab(QWidget):
     # Sections
     # ------------------------------------------------------------------
 
+    def _add_quick_actions(self) -> None:
+        """Row of shortcut buttons to the tabs people configure most often."""
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        label = QLabel("Szybki dostęp:")
+        label.setStyleSheet(f"color: {self._pal['muted']};")
+        row.addWidget(label)
+        for text, target in (
+            ("✨ AI Generator", "AI Generator"),
+            ("🔀 Workflowy", "Workflowy"),
+            ("🔊 TTS", "TTS"),
+            ("📖 Słownik", "Słownik"),
+        ):
+            btn = QPushButton(text)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _checked=False, t=target: self._go_to_tab(t))
+            row.addWidget(btn)
+        row.addStretch()
+        wrapper = QWidget()
+        wrapper.setLayout(row)
+        self._layout.addWidget(wrapper)
+
     def _add_header(self, cfg: dict, workflow: dict, steps: list[dict],
-                    issues: list, workflow_enabled: bool) -> None:
+                    issues: list) -> None:
         pal = self._pal
         header = QFrame()
         header.setFrameShape(QFrame.Shape.StyledPanel)
@@ -353,7 +390,8 @@ class StatusTab(QWidget):
         title = QLabel(workflow.get("editor_label", "Generuj fiszkę"))
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
         subtitle = QLabel(
-            "Pipeline przycisku w edytorze. Kliknij krok, aby przejść do jego ustawień."
+            "Przykładowy workflow — dostępny w menu PPM (prawy klik → Anki Toolkit). "
+            "Kliknij krok, aby przejść do jego ustawień."
         )
         subtitle.setStyleSheet(f"color: {pal['muted']};")
         subtitle.setWordWrap(True)
@@ -361,9 +399,7 @@ class StatusTab(QWidget):
         title_box.addWidget(subtitle)
         row.addLayout(title_box, 1)
 
-        if not workflow_enabled:
-            pill_text, bg, fg = "Workflow wyłączony", pal["off_bg"], pal["off_fg"]
-        elif issues:
+        if issues:
             n = len(issues)
             pill_text = f"{n} {plural_pl(n, 'rzecz do zrobienia', 'rzeczy do zrobienia', 'rzeczy do zrobienia')}"
             bg, fg = pal["warn_bg"], pal["warn_fg"]
@@ -378,29 +414,16 @@ class StatusTab(QWidget):
         row.addWidget(pill)
         self._layout.addWidget(header)
 
-    def _add_pipeline(self, cfg: dict, steps: list[dict], statuses: list[dict],
-                      workflow_enabled: bool) -> None:
-        pal = self._pal
-
+    def _add_pipeline(self, cfg: dict, steps: list[dict], statuses: list[dict]) -> None:
         if not steps:
             return  # the issue row already explains what to do
 
-        chips_row = QHBoxLayout()
-        chips_row.setSpacing(6)
-
-        for i, status in enumerate(statuses):
-            if i > 0:
-                arrow = QLabel("→")
-                arrow.setStyleSheet(f"color: {pal['muted']}; font-size: 16px; font-weight: 700;")
-                arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                chips_row.addWidget(arrow)
-            chips_row.addWidget(self._chip(status), 1)
-
-        chips_row.addStretch(0)
+        # FlowLayout wraps the step chips to the next row instead of overflowing
+        # horizontally — workflows can have many steps. Order conveys the arrows.
         wrapper = QWidget()
-        wrapper.setLayout(chips_row)
-        if not workflow_enabled:
-            wrapper.setEnabled(False)
+        flow = FlowLayout(wrapper, spacing=6)
+        for status in statuses:
+            flow.addWidget(self._chip(status))
         self._layout.addWidget(wrapper)
 
     def _chip(self, status: dict) -> QFrame:
@@ -421,8 +444,7 @@ class StatusTab(QWidget):
         on_click = (lambda t=target: self._go_to_tab(t)) if target else None
         frame = _ChipFrame(on_click)
         frame.setFrameShape(QFrame.Shape.StyledPanel)
-        frame.setMinimumWidth(140)
-        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        frame.setFixedWidth(200)  # fixed width so FlowLayout wraps predictably
         frame.setStyleSheet(
             f"QFrame {{ background: {pal['card_bg']}; border: 1px solid {border}; border-radius: 6px; }}"
             "QLabel { border: none; }"
@@ -453,18 +475,17 @@ class StatusTab(QWidget):
 
         return frame
 
-    def _add_issues(self, cfg: dict, issues: list, workflow: dict) -> None:
+    def _add_issues(self, cfg: dict, issues: list) -> None:
         pal = self._pal
         group = QGroupBox("Do zrobienia")
         box = QVBoxLayout(group)
         box.setSpacing(6)
 
         if not issues:
-            label = workflow.get("editor_label", "Generuj fiszkę")
             ready = QLabel(
-                f"Wszystko gotowe. Przetestuj na jednej karcie przyciskiem "
-                f"„{label}” w edytorze — albo na kilku zaznaczonych w przeglądarce "
-                f"(prawy klik → Anki Toolkit)."
+                "Wszystko gotowe. Uruchom workflow z menu PPM w przeglądarce "
+                "(prawy klik → Anki Toolkit) — albo przyciskiem w edytorze, jeśli "
+                "włączysz go w zakładce Workflowy."
             )
             ready.setWordWrap(True)
             ready.setStyleSheet(f"color: {pal['ready_fg']};")

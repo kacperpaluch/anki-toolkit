@@ -1,7 +1,10 @@
 """Settings dialog for Anki Toolkit — unified configuration UI."""
 
 from aqt import mw
-from aqt.qt import QDialog, QTabWidget, QVBoxLayout, QDialogButtonBox
+from aqt.qt import (
+    QDialog, QVBoxLayout, QHBoxLayout, QDialogButtonBox,
+    QListWidget, QListWidgetItem, QStackedWidget, QColor, Qt,
+)
 from aqt.utils import tooltip
 from aqt.utils import showWarning
 
@@ -33,8 +36,8 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent or mw)
         self.setWindowTitle("Anki Toolkit — Ustawienia")
-        self.resize(780, 580)
-        self.setMinimumSize(520, 420)
+        self.resize(960, 620)
+        self.setMinimumSize(680, 460)
 
         cfg = get_full_config()
         # LogsTab applies the debug toggle immediately — remember the saved
@@ -43,28 +46,57 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        self._tabs = QTabWidget()
-        self._tab_indices: dict[str, int] = {}
 
         self._status_tab = StatusTab(cfg, open_tab=self._open_tab)
-        self._tabs_list = [
-            ("Start",            self._status_tab),
-            ("Moduły",           ModulesTab(cfg)),
-            ("Słownik",          DictionaryTab(cfg)),
-            ("AI Generator",     AIGeneratorTab(cfg)),
-            ("Workflowy",        WorkflowsTab(cfg)),
-            ("TTS",              TTSTab(cfg)),
-            ("Normalizacja",     AudioNormalizerTab(cfg)),
-            ("Narzędzia",        NarzedziaTab(cfg)),
-            ("Statystyki",       StatsTab(cfg)),
-            ("Logi",             LogsTab(cfg)),
+
+        # (base_title, icon, widget, group) — order = by task: daily → content →
+        # system → insight. base_title is what status_tab navigates by; the icon
+        # is only for display. group=None starts a new group with no header.
+        tabs = [
+            ("Start",        "🏠", self._status_tab,        None),
+            ("AI Generator", "✨", AIGeneratorTab(cfg),     "Treść"),
+            ("Workflowy",    "🔀", WorkflowsTab(cfg),       "Treść"),
+            ("TTS",          "🔊", TTSTab(cfg),             "Treść"),
+            ("Słownik",      "📖", DictionaryTab(cfg),      "Treść"),
+            ("Moduły",       "🧩", ModulesTab(cfg),         "System"),
+            ("Narzędzia",    "🛠", NarzedziaTab(cfg),       "System"),
+            ("Normalizacja", "🎚", AudioNormalizerTab(cfg), "System"),
+            ("Statystyki",   "📊", StatsTab(cfg),           "Wgląd"),
+            ("Logi",         "📜", LogsTab(cfg),            "Wgląd"),
         ]
-        for title, widget in self._tabs_list:
-            self._tab_indices[title] = self._tabs.addTab(widget, title)
 
-        self._tabs.currentChanged.connect(self._on_tab_changed)
+        self._nav = QListWidget()
+        self._nav.setFixedWidth(190)
+        self._nav.setSpacing(2)
+        self._stack = QStackedWidget()
+        self._tabs_list: list[tuple[str, object]] = []  # (title, widget) for apply()
+        self._title_to_row: dict[str, int] = {}
+        self._row_to_page: dict[int, int] = {}
 
-        layout.addWidget(self._tabs)
+        current_group = object()  # sentinel — Start (group None) gets no header
+        for title, icon, widget, group in tabs:
+            if group is not None and group != current_group:
+                header = QListWidgetItem(group.upper())
+                header.setFlags(Qt.ItemFlag.NoItemFlags)  # non-selectable separator
+                header.setForeground(QColor("#9aa3ad"))
+                self._nav.addItem(header)
+                current_group = group
+            page = self._stack.addWidget(widget)
+            row = self._nav.count()
+            self._nav.addItem(QListWidgetItem(f"{icon}  {title}"))
+            self._row_to_page[row] = page
+            self._title_to_row[title] = row
+            self._tabs_list.append((title, widget))
+
+        self._nav.currentRowChanged.connect(self._on_nav_changed)
+
+        body = QHBoxLayout()
+        body.setSpacing(8)
+        body.addWidget(self._nav)
+        body.addWidget(self._stack, 1)
+        layout.addLayout(body)
+
+        self._nav.setCurrentRow(self._title_to_row["Start"])
 
         info = hint_label("ⓘ Gdzie są zapisywane ustawienia?", small=True)
         info.setToolTip(
@@ -82,14 +114,18 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _open_tab(self, title: str) -> None:
-        index = self._tab_indices.get(title)
-        if index is not None:
-            self._tabs.setCurrentIndex(index)
+        row = self._title_to_row.get(title)
+        if row is not None:
+            self._nav.setCurrentRow(row)
 
-    def _on_tab_changed(self, index: int) -> None:
+    def _on_nav_changed(self, row: int) -> None:
+        page = self._row_to_page.get(row)
+        if page is None:
+            return
+        self._stack.setCurrentIndex(page)
         # Returning to Start: rebuild the dashboard from the current widget
         # state of the other tabs, so it reflects unsaved changes too.
-        if index == self._tab_indices.get("Start"):
+        if self._stack.widget(page) is self._status_tab:
             self._status_tab.refresh(self._collect_config())
 
     def _collect_config(self) -> dict:

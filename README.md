@@ -124,9 +124,11 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 
 ### Zakładki
 
+Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI Generator, Workflowy, TTS, Słownik), **System** (Moduły, Narzędzia, Normalizacja), **Wgląd** (Statystyki, Logi).
+
 | Zakładka | Zawartość |
 |---|---|
-| **Start** | Dashboard pipeline'u: klikalne kroki workflow (✓/⚠/○) ze strzałkami, jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
+| **Start** | Dashboard: wiersz „Szybki dostęp" (skróty do najczęstszych zakładek), kafelki kroków reprezentatywnego workflow (✓/⚠/○, zawijane), jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
 | **AI Generator** | Prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
