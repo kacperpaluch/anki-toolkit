@@ -29,6 +29,7 @@ anki-toolkit/
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
 │   ├── ai_generator_tab.py          # Zakładka: AI Generator
+│   ├── workflows_tab.py             # Zakładka: Workflowy — lista nazwanych workflowów + widoczność sekcji PPM
 │   ├── prompts_tab.py               # Zakładka: Prompty (edytor + podgląd + kolorowanie składni)
 │   ├── prompt_wizard.py             # Dialog „Nowe zadanie AI” (opcjonalny szablon startowy)
 │   ├── prompt_templates.py          # Startowe szablony promptów
@@ -49,12 +50,12 @@ anki-toolkit/
 ├── ai_generator/                    # Moduł 2: generowanie pól przez AI + workflow
 │   ├── __init__.py                  # re-eksport hooków
 │   ├── _generator.py                # zarządzanie stanem generatora (config-aware cache)
-│   ├── editor_ui.py                 # przycisk AI + workflow button
+│   ├── editor_ui.py                 # przycisk AI + przyciski workflowów (per editor_button)
 │   ├── browser_ui.py                # menu przeglądarki + batch
 │   ├── field_generator.py           # logika generowania, niezależna od dostawcy
 │   ├── template_engine.py           # silnik szablonów {{pole}} / {% if %}
 │   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty) + dopasowanie cen
-│   ├── workflow.py                  # workflow "Generuj fiszkę" (AI → Dict → TTS), execute_step()
+│   ├── workflow.py                  # workflowy (lista nazwanych): get_workflows/migrate_workflows/execute_step (AI/Dict/TTS/Rozdziel)
 │   └── providers/
 │       ├── __init__.py              # rejestr dostawców + fabryka get_provider() + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral)
 │       ├── base.py                  # BaseProvider (ABC) + OpenAICompatProvider + wspólne parsery odpowiedzi
@@ -128,7 +129,8 @@ Wszystkie moduły można skonfigurować przez jeden centralny dialog:
 | **Start** | Dashboard pipeline'u: klikalne kroki workflow (✓/⚠/○) ze strzałkami, jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
 | **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
 | **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
-| **AI Generator** | Workflow, prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
+| **AI Generator** | Prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
+| **Workflowy** | Lista nazwanych workflowów (Dodaj/Edytuj/Usuń, kolejność ▲▼ = kolejność w menu PPM); edytor kroków (AI/Słownik/TTS/Rozdziel) z parametrami; checkbox „Pokaż jako przycisk w edytorze" per workflow; checkboxy widoczności wbudowanych sekcji PPM (Pobierz wymowę / TTS / Generuj pola / Generuj zablokowane / Rozdziel pole) |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
@@ -192,17 +194,21 @@ Wpisy `buttons` sterują jednocześnie:
 
 ---
 
-### Workflow "Generuj fiszkę"
+### Workflowy (własne, nazwane)
 
-Główna akcja w toolbarze edytora uruchamiająca AI → Słownik → TTS w jednym kliknięciu. Konfigurowalny przez UI: **Ustawienia → AI Generator → Workflow**.
+Workflow to nazwany łańcuch kroków (AI / Słownik / TTS / Rozdziel pole) uruchamiany jednym kliknięciem. **Tworzysz i nazywasz własne workflowy z poziomu interfejsu**: **Ustawienia → Workflowy**.
 
-- Dodaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**
-- Zmieniaj kolejność przyciskami ▲▼
-- Etykieta przycisku konfigurowalna (domyślnie "Generuj fiszkę")
+- **Dodaj / Edytuj / Usuń** workflow; kolejność na liście = kolejność w menu PPM (▲▼)
+- W edytorze workflow: nazwa, checkbox „Pokaż jako przycisk w edytorze" oraz kroki
+- Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**, **+ Rozdziel**; kolejność ▲▼
+- Krok **AI** ma parametr „które pola": wszystkie puste / zablokowane (`manual_only`) / konkretne pola (dwuklik edytuje); krok **Słownik** pozwala wybrać słowniki
+- Każdy workflow z zaznaczonym „Pokaż jako przycisk" dostaje własny przycisk w toolbarze edytora
 
-Domyślna konfiguracja: AI → Oxford → TTS.
+Domyślne workflowy (po migracji ze starej konfiguracji): „Generuj fiszkę" (AI → Oxford → TTS), „Generuj wszystko: puste → TTS → rozdziel → zablokowane" oraz „Rozdziel + generuj naukę (p1–p3)".
 
-**Batch w przeglądarce:** prawy klik → **Anki Toolkit → Generuj fiszkę (workflow)** uruchamia pełny pipeline dla wszystkich zaznaczonych notatek — z paskiem postępu, przyciskiem Anuluj i zapisem jako **jedna operacja z undo** (Ctrl+Z cofa cały batch).
+**Co jest widoczne w PPM:** w **Ustawienia → Workflowy** decydujesz też o widoczności wbudowanych (auto-generowanych) sekcji menu — checkboxy „Pobierz wymowę", „TTS", „Generuj pola", „Generuj zablokowane", „Rozdziel pole". Workflowy są zawsze na górze menu.
+
+**Batch w przeglądarce:** prawy klik → **Anki Toolkit → [nazwa workflow]** uruchamia łańcuch dla wszystkich zaznaczonych notatek — z paskiem postępu, przyciskiem Anuluj i zapisem jako **jedna operacja z undo** (Ctrl+Z cofa cały batch).
 
 ---
 
@@ -213,8 +219,7 @@ Pomocniczy przycisk **AI** w toolbarze edytora generuje wszystkie skonfigurowane
 - **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
 - **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj pola ▸** — submenu: „Wszystkie puste" (obecne zachowanie) oraz osobne pozycje per pole docelowe (np. „AI: def", „AI: cz_mowy"). Pozycje per pole pomijają wypełnione — bezpieczne na wielu notatkach różnych typów (każdy typ dostaje swój prompt).
 - **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj zablokowane ▸** — submenu pojawia się tylko gdy istnieją pola oflagowane „Tylko na żądanie" w ustawieniach promptów. Zawiera „Wszystkie zablokowane" (generuje wszystkie pola zablokowane dla zaznaczonych notatek) oraz osobne pozycje per pole.
-- **Przeglądarka** → **prawy klik → Anki Toolkit → Rozdziel + generuj naukę (p1–p3)** — jedno kliknięcie rozdziela pole `przyklad` na `p1`/`p2`/`p3` (przez moduł Field Splitter), a po zapisie generuje pola `p1-nauka`/`p2-nauka`/`p3-nauka`. Wymaga włączonego modułu „Rozdzielanie pól".
-- **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj wszystko: puste → TTS → rozdziel → zablokowane** — pełny łańcuch w jednym kliknięciu: (1) generuje wszystkie puste pola AI, (2) uruchamia wszystkie zadania TTS, (3) rozdziela pole `przyklad` (Field Splitter), (4) generuje pola zablokowane (`manual_only`). Każdy krok startuje dopiero po zapisaniu poprzedniego do kolekcji, więc czyta świeże pola. Kroki bez konfiguracji (brak zadań TTS, brak pól zablokowanych) są pomijane, a łańcuch leci dalej.
+- **Przeglądarka** → **prawy klik → Anki Toolkit → [workflowy]** — domyślne workflowy „Rozdziel + generuj naukę (p1–p3)" (rozdziela `przyklad` na `p1`/`p2`/`p3` i generuje `p1-nauka`/`p2-nauka`/`p3-nauka`) oraz „Generuj wszystko: puste → TTS → rozdziel → zablokowane" (4 kroki: puste pola AI → wszystkie zadania TTS → rozdziel `przyklad` → pola `manual_only`) są teraz **edytowalnymi workflowami** (Ustawienia → Workflowy). Każdy krok startuje po zapisaniu poprzedniego do kolekcji, więc czyta świeże pola; kroki bez konfiguracji są pomijane, a łańcuch leci dalej.
 
 - **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji. Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do właściwej notatki (zapis do kolekcji), nie do aktualnie wyświetlanej.
 - **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj; notatki są przetwarzane **równolegle** (liczba wątków: `parallel_requests`, domyślnie 3) w paczkach po `batch_limit` z przerwą `batch_sleep`. Zmiany zapisywane są jedną operacją z undo. Po zakończeniu jeden tooltip z podsumowaniem.
@@ -461,7 +466,7 @@ W przeciwieństwie do [SibPush](https://github.com/DerDemystifier/SibPush_Delay-
 
 **Zapomnienie karty:** Jeśli dojrzała karta zostanie zapomniana (interval spadnie poniżej progu), przy kolejnej odpowiedzi hook znów zawiesi NEW siblingi. Karty w nauce/review (nie `CARD_TYPE_NEW`) nie są dotykane.
 
-**Uczenie na telefonie + synchronizacja:** Hook reviewer'a odpala się tylko na desktopie. Po synchronizacji z AnkiMobile/AnkiWeb automatycznie uruchamia się batch scan (hook `sync_did_finish`) — przetwarza wszystkie notatki z NEW siblingami w tle (CollectionOp, jeden krok undo). Ręczny catch-up: **Narzędzia → Anki Toolkit → Przetwórz kolekcję (sync catch-up)...**.
+**Uczenie na telefonie + synchronizacja:** Hook reviewer'a odpala się tylko na desktopie. Po synchronizacji z AnkiMobile/AnkiWeb automatycznie uruchamia się batch scan (hook `sync_did_finish`) — przetwarza wszystkie notatki z NEW siblingami w tle (CollectionOp, jeden krok undo). Ręczny catch-up: **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...**.
 
 **Reset:** **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — uwalnia wszystkie zawieszone karty i usuwa tagi (jeden krok undo).
 

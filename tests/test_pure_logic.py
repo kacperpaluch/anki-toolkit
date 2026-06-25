@@ -710,5 +710,95 @@ class PromptTemplatesTests(unittest.TestCase):
         self.assertEqual(prompt_templates.guess_field(["brak"], fields), "")
 
 
+def load_workflow_module(initial_cfg: dict):
+    """Load ai_generator/workflow.py with aqt and the addon package stubbed,
+    so migration and field-resolution logic is testable without Anki."""
+    pkg = types.ModuleType("_twf")
+    pkg.__path__ = []
+    ai_pkg = types.ModuleType("_twf.ai_generator")
+    ai_pkg.__path__ = []
+    common_mod = types.ModuleType("_twf.common")
+    common_mod.ADDON_NAME = "_twf"
+    common_mod.plural_pl = lambda n, a, b, c: a
+
+    class FakeAM:
+        def __init__(self, cfg):
+            self.cfg = cfg
+        def getConfig(self, _name):
+            return self.cfg
+        def writeConfig(self, _name, cfg):
+            self.cfg = cfg
+
+    am = FakeAM(initial_cfg)
+    aqt_mod = types.ModuleType("aqt")
+    aqt_mod.mw = types.SimpleNamespace(addonManager=am)
+    aqt_utils = types.ModuleType("aqt.utils")
+    aqt_utils.tooltip = lambda *a, **k: None
+    aqt_editor = types.ModuleType("aqt.editor")
+    aqt_editor.Editor = object
+
+    # browser_ui is only touched by _resolve_ai_fields("manual")
+    browser_ui = types.ModuleType("_twf.ai_generator.browser_ui")
+    browser_ui._all_configured_target_fields = lambda cfg, manual_only=False: (
+        ["m1", "m2"] if manual_only else ["a1"]
+    )
+
+    modules = {
+        "_twf": pkg,
+        "_twf.ai_generator": ai_pkg,
+        "_twf.ai_generator.browser_ui": browser_ui,
+        "_twf.common": common_mod,
+        "aqt": aqt_mod,
+        "aqt.utils": aqt_utils,
+        "aqt.editor": aqt_editor,
+    }
+    name = "_twf.ai_generator.workflow"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "ai_generator/workflow.py")
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, modules):
+        spec.loader.exec_module(module)
+    return module, am, modules
+
+
+class WorkflowMigrationTests(unittest.TestCase):
+    def test_legacy_single_workflow_migrates_and_reseeds_pipelines(self):
+        legacy = {
+            "workflow": {
+                "enabled": True,
+                "editor_label": "Generuj fiszkę",
+                "steps": [{"module": "ai", "action": "generate"}],
+            }
+        }
+        wf, am, _mods = load_workflow_module(legacy)
+        wf.migrate_workflows()
+        out = am.cfg["workflows"]
+        # legacy first, then the two re-seeded pipelines
+        self.assertEqual(out[0]["name"], "Generuj fiszkę")
+        self.assertTrue(out[0]["editor_button"])
+        self.assertEqual(len(out), 3)
+        self.assertIn("context_menu", am.cfg)
+        self.assertTrue(am.cfg["context_menu"]["dictionary"])
+
+    def test_migration_is_idempotent(self):
+        wf, am, _mods = load_workflow_module({"workflows": [{"name": "X", "steps": [{"module": "tts", "action": "generate"}]}]})
+        wf.migrate_workflows()
+        self.assertEqual(len(am.cfg["workflows"]), 1)
+
+    def test_get_workflows_falls_back_to_legacy(self):
+        wf, _am, _mods = load_workflow_module({"workflow": {"editor_label": "L", "steps": [{"module": "ai", "action": "generate"}]}})
+        wfs = wf.get_workflows()
+        self.assertEqual(wfs[0]["name"], "L")
+
+    def test_resolve_ai_fields(self):
+        wf, _am, mods = load_workflow_module({})
+        self.assertIsNone(wf._resolve_ai_fields({}, {}))
+        self.assertIsNone(wf._resolve_ai_fields({"fields": "empty"}, {}))
+        self.assertEqual(wf._resolve_ai_fields({"fields": "p1"}, {}), {"p1"})
+        self.assertEqual(wf._resolve_ai_fields({"fields": ["a", "b"]}, {}), {"a", "b"})
+        # "manual" triggers a lazy import of browser_ui — keep the stub live.
+        with patch.dict(sys.modules, mods):
+            self.assertEqual(wf._resolve_ai_fields({"fields": "manual"}, {}), {"m1", "m2"})
+
+
 if __name__ == "__main__":
     unittest.main()

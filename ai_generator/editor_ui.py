@@ -179,17 +179,18 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
 def on_editor_buttons_init(buttons: list, editor: Editor):
     config = get_config()
 
-    # Workflow button (if enabled and configured)
-    from .workflow import get_workflow_config, run_workflow_editor
-    wf = get_workflow_config()
-    if wf.get("enabled", True) and wf.get("steps"):
-        wf_label = wf.get("editor_label", "Generuj fiszkę")
+    # One editor button per workflow flagged with editor_button.
+    from .workflow import get_workflows, run_workflow_editor
+    for i, wf in enumerate(get_workflows()):
+        if not wf.get("editor_button") or not wf.get("steps"):
+            continue
+        wf_name = wf.get("name", "Workflow")
         wf_btn = editor.addButton(
             None,
-            "wf_run",
-            lambda ed=editor: run_workflow_editor(ed),
-            tip="AI → Słownik → TTS wg skonfigurowanej kolejności",
-            label=wf_label,
+            f"wf_run_{i}",
+            lambda ed=editor, w=wf: run_workflow_editor(ed, w),
+            tip=f"Uruchom workflow: {wf_name}",
+            label=wf_name,
         )
         buttons.append(wf_btn)
 

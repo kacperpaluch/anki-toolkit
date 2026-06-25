@@ -285,36 +285,77 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 
 Akcje:
 - **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — reset wszystkich zawieszeń + usuwa tagi (jeden krok undo)
-- **Narzędzia → Anki Toolkit → Przetwórz kolekcję (sync catch-up)...** — ręczny batch scan (ten sam co auto po syncu)
+- **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...** — ręczny batch scan (ten sam co auto po syncu)
 
 ---
 
-## Sekcja `workflow` — workflow "Generuj fiszkę"
+## Sekcja `workflows` — nazwane workflowy
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka AI Generator → Workflow**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Workflowy**. Każdy workflow to jedna pozycja w menu PPM (przeglądarka) i opcjonalnie przycisk w edytorze.
 
-**`enabled`** — `true` (domyślnie) = przycisk workflow w toolbarze edytora + pozycja w menu kontekstowym przeglądarki.
+Lista nazwanych workflowów. Każdy:
 
-**`editor_label`** — etykieta przycisku w edytorze. Domyślnie `"Generuj fiszkę"`.
+**`name`** — nazwa pokazywana w menu PPM i na przycisku edytora (np. `"Generuj fiszkę"`).
+
+**`editor_button`** — `true` = workflow dostaje własny przycisk w toolbarze edytora. `false` (domyślnie dla pipeline'ów) = dostępny tylko z PPM w przeglądarce.
 
 **`steps`** — lista kroków wykonywanych sekwencyjnie na pojedynczej notatce. Każdy krok:
-- `"module"` — `"ai"`, `"dictionary"` albo `"tts"`
-- `"action"` — `"generate"` (dla AI/TTS) albo `"fetch"` (dla dictionary)
-- `"dicts"` — opcjonalnie, lista słowników dla kroku dictionary (np. `["oxford_uk", "oxford_us"]`)
+- `"module"` — `"ai"`, `"dictionary"`, `"tts"` albo `"field_splitter"`
+- `"action"` — `"generate"` (AI/TTS), `"fetch"` (dictionary) albo `"split"` (field_splitter)
+- `"dicts"` — dla kroku dictionary: lista słowników (np. `["oxford_uk", "oxford_us"]`)
+- `"fields"` — dla kroku AI: `"empty"` (domyślnie — wszystkie puste pola, pomija `manual_only`), `"manual"` (pola `manual_only`) albo lista konkretnych pól (np. `["p1-nauka", "p2-nauka"]`)
 
 ```json
-"workflow": {
-    "enabled": true,
-    "editor_label": "Generuj fiszkę",
-    "steps": [
-        {"module": "ai",         "action": "generate"},
-        {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
-        {"module": "tts",        "action": "generate"}
-    ]
-}
+"workflows": [
+    {
+        "name": "Generuj fiszkę",
+        "editor_button": true,
+        "steps": [
+            {"module": "ai",         "action": "generate", "fields": "empty"},
+            {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
+            {"module": "tts",        "action": "generate"}
+        ]
+    },
+    {
+        "name": "Generuj wszystko: puste → TTS → rozdziel → zablokowane",
+        "editor_button": false,
+        "steps": [
+            {"module": "ai",             "action": "generate", "fields": "empty"},
+            {"module": "tts",            "action": "generate"},
+            {"module": "field_splitter", "action": "split"},
+            {"module": "ai",             "action": "generate", "fields": "manual"}
+        ]
+    }
+]
 ```
 
 Kroki wykonują się w tle; notatka jest łapana raz na starcie (przełączenie karty w edytorze w trakcie nie miesza danych). W kroku TTS pliki audio są generowane równolegle przez `ThreadPoolExecutor`.
+
+**Migracja:** stara, pojedyncza sekcja `workflow` jest automatycznie konwertowana na `workflows` przy starcie (`migrate_workflows()`) — z dosadzeniem dwóch domyślnych pipeline'ów, więc menu nic nie traci.
+
+---
+
+## Sekcja `context_menu` — widoczność wbudowanych sekcji PPM
+
+Konfiguracja przez **Ustawienia → zakładka Workflowy** (checkboxy na dole). Steruje tylko auto-generowanymi sekcjami menu PPM — workflowy są zawsze widoczne. Każdy klucz `true`/`false` (domyślnie `true`):
+
+- `"dictionary"` — sekcja „Pobierz wymowę"
+- `"tts"` — sekcja „TTS"
+- `"ai_fields"` — submenu „Generuj pola"
+- `"ai_blocked"` — submenu „Generuj zablokowane"
+- `"field_splitter"` — pozycja „Rozdziel pole"
+
+```json
+"context_menu": {
+    "dictionary": true,
+    "tts": true,
+    "ai_fields": true,
+    "ai_blocked": true,
+    "field_splitter": true
+}
+```
+
+Odczytywane świeżo przy każdym kliknięciu PPM — zmiana działa bez restartu Anki.
 
 ---
 

@@ -162,7 +162,19 @@ class StatusTab(QWidget):
         self._pal = _palette()
         _clear_layout(self._layout)
 
-        workflow = cfg.get("workflow", {})
+        # Dashboard shows the primary workflow (first in the list, or the legacy
+        # single one). Re-shaped into the {editor_label, enabled, steps} form the
+        # rest of this tab expects.
+        workflows = cfg.get("workflows")
+        if isinstance(workflows, list) and workflows:
+            primary = next((w for w in workflows if isinstance(w, dict)), {})
+            workflow = {
+                "editor_label": primary.get("name", "Generuj fiszkę"),
+                "enabled": primary.get("editor_button", True),
+                "steps": primary.get("steps", []),
+            }
+        else:
+            workflow = cfg.get("workflow", {})
         steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
         workflow_enabled = workflow.get("enabled", True)
         statuses = [self._step_status(cfg, step) for step in steps]
@@ -249,13 +261,13 @@ class StatusTab(QWidget):
 
         if not workflow_enabled:
             issues.append((
-                "Workflow jest wyłączony — przycisk w edytorze się nie pojawi.",
-                "AI Generator",
+                "Workflow nie ma przycisku w edytorze — włącz go w zakładce Workflowy.",
+                "Workflowy",
             ))
         elif not steps:
             issues.append((
-                "Workflow nie ma żadnych kroków — dodaj je w AI Generator → Workflow.",
-                "AI Generator",
+                "Workflow nie ma żadnych kroków — dodaj je w zakładce Workflowy.",
+                "Workflowy",
             ))
 
         if _workflow_uses(steps, "ai"):

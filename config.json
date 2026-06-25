@@ -55,14 +55,42 @@
         "enabled": false
     },
 
-    "workflow": {
-        "enabled": true,
-        "editor_label": "Generuj fiszkę",
-        "steps": [
-            {"module": "ai",         "action": "generate"},
-            {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
-            {"module": "tts",        "action": "generate"}
-        ]
+    "workflows": [
+        {
+            "name": "Generuj fiszkę",
+            "editor_button": true,
+            "steps": [
+                {"module": "ai",         "action": "generate", "fields": "empty"},
+                {"module": "dictionary", "action": "fetch", "dicts": ["oxford_uk", "oxford_us"]},
+                {"module": "tts",        "action": "generate"}
+            ]
+        },
+        {
+            "name": "Generuj wszystko: puste → TTS → rozdziel → zablokowane",
+            "editor_button": false,
+            "steps": [
+                {"module": "ai",             "action": "generate", "fields": "empty"},
+                {"module": "tts",            "action": "generate"},
+                {"module": "field_splitter", "action": "split"},
+                {"module": "ai",             "action": "generate", "fields": "manual"}
+            ]
+        },
+        {
+            "name": "Rozdziel + generuj naukę (p1–p3)",
+            "editor_button": false,
+            "steps": [
+                {"module": "field_splitter", "action": "split"},
+                {"module": "ai",             "action": "generate", "fields": ["p1-nauka", "p2-nauka", "p3-nauka"]}
+            ]
+        }
+    ],
+
+    "context_menu": {
+        "dictionary": true,
+        "tts": true,
+        "ai_fields": true,
+        "ai_blocked": true,
+        "field_splitter": true
     },
 
     "audio_normalizer": {

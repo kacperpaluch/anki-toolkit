@@ -5,7 +5,7 @@ from functools import partial
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QPushButton, QTabWidget,
-    QListWidget, QListWidgetItem, QCheckBox, QDialog, QDialogButtonBox,
+    QListWidget, QListWidgetItem,
     QStackedWidget, QSizePolicy,
 )
 from aqt.utils import showWarning
@@ -39,9 +39,7 @@ class AIGeneratorTab(QWidget):
         # Build provider widgets first so the prompts tab can read unsaved keys/defaults.
         providers_page = self._build_providers_page(ai)
 
-        # -- Sub-tab: Workflow --
-        wf_page = self._build_workflow_page(cfg.get("workflow", {}))
-        tabs.addTab(wf_page, "Workflow")
+        # Workflows now live in their own top-level "Workflowy" tab.
 
         # -- Sub-tab: Prompts --
         self._prompts = PromptsTab(cfg, self._current_provider_settings)
@@ -331,162 +329,6 @@ class AIGeneratorTab(QWidget):
         mw.taskman.run_in_background(task, on_done)
 
     # ------------------------------------------------------------------
-    # Workflow page
-    # ------------------------------------------------------------------
-
-    def _build_workflow_page(self, wf: dict) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(12, 12, 12, 12)
-
-        # Label
-        lbl_form = QFormLayout()
-        lbl_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._wf_enabled = QCheckBox("Włącz przycisk workflow w edytorze")
-        self._wf_enabled.setChecked(wf.get("enabled", True))
-        lbl_form.addRow(self._wf_enabled)
-        self._wf_label = _expanding_line_edit(wf.get("editor_label", "Generuj fiszkę"))
-        lbl_form.addRow("Etykieta przycisku:", self._wf_label)
-        layout.addLayout(lbl_form)
-        layout.addSpacing(8)
-
-        # Steps list
-        layout.addWidget(QLabel("Kroki workflow (kolejność = kolejność wykonania):"))
-        self._wf_list = QListWidget()
-        self._wf_list.setMaximumHeight(120)
-        layout.addWidget(self._wf_list)
-
-        # Buttons
-        btn_row = QWidget()
-        bh = QHBoxLayout(btn_row)
-        bh.setContentsMargins(0, 0, 0, 0)
-        bh.setSpacing(4)
-        add_ai = QPushButton("+ AI")
-        add_ai.clicked.connect(lambda: self._wf_add("ai", "generate"))
-        add_dict = QPushButton("+ Słownik")
-        add_dict.clicked.connect(lambda: self._wf_add("dictionary", "fetch"))
-        add_tts = QPushButton("+ TTS")
-        add_tts.clicked.connect(lambda: self._wf_add("tts", "generate"))
-        up_btn = QPushButton("▲")
-        up_btn.clicked.connect(self._wf_move_up)
-        down_btn = QPushButton("▼")
-        down_btn.clicked.connect(self._wf_move_down)
-        remove_btn = QPushButton("Usuń")
-        remove_btn.clicked.connect(self._wf_remove)
-        bh.addWidget(add_ai)
-        bh.addWidget(add_dict)
-        bh.addWidget(add_tts)
-        bh.addSpacing(8)
-        bh.addWidget(up_btn)
-        bh.addWidget(down_btn)
-        bh.addWidget(remove_btn)
-        bh.addStretch()
-        layout.addWidget(btn_row)
-
-        layout.addWidget(hint_label(
-            "Workflow odpala się przyciskiem w edytorze.\n"
-            "AI — generuje pola, Słownik — pobiera wymowę, TTS — generuje audio."
-        ))
-
-        # Load current steps
-        self._wf_data = []
-        for step in wf.get("steps", []):
-            if isinstance(step, dict):
-                self._wf_data.append(dict(step))
-        self._wf_refresh()
-
-        return page
-
-    def _wf_refresh(self):
-        self._wf_list.clear()
-        for s in self._wf_data:
-            mod = s.get("module", "?")
-            act = s.get("action", "?")
-            label = f"{mod}/{act}"
-            if mod == "dictionary":
-                dicts = s.get("dicts", [])
-                extra = f" ({', '.join(dicts)})" if dicts else " (wszystkie)"
-                label = f"Słownik: pobierz wymowę{extra}"
-            elif mod == "ai":
-                label = "AI: uzupełnij pola"
-            elif mod == "tts":
-                label = "TTS: wygeneruj audio"
-            self._wf_list.addItem(QListWidgetItem(label))
-
-    def _wf_add(self, module: str, action: str):
-        step = {"module": module, "action": action}
-        if module == "dictionary":
-            step["dicts"] = self._wf_pick_dicts()
-            if not step["dicts"]:
-                return  # user cancelled
-        self._wf_data.append(step)
-        self._wf_refresh()
-
-    def _wf_pick_dicts(self) -> list[str]:
-        """Show dialog with checkboxes for available dictionaries. Returns list of dict IDs."""
-        from ..common import get_full_config
-        full = get_full_config()
-        dict_cfg = full.get("dictionary", {})
-        buttons = dict_cfg.get("buttons", [])
-        if not buttons:
-            # Fallback: read from config.json defaults
-            buttons = [
-                {"dictionaries": ["diki_uk", "diki_us"], "label": "Diki", "enabled": True},
-                {"dictionaries": ["oxford_uk", "oxford_us"], "label": "Oxford", "enabled": True},
-                {"dictionaries": ["cambridge_uk", "cambridge_us"], "label": "Cambridge", "enabled": False},
-                {"dictionaries": ["longman_uk", "longman_us"], "label": "Longman", "enabled": False},
-            ]
-
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Wybierz słowniki")
-        dlg.setMinimumWidth(300)
-        layout = QVBoxLayout(dlg)
-
-        checks = []
-        for btn in buttons:
-            cb = QCheckBox(btn.get("label", "?"))
-            cb.setChecked(btn.get("enabled", False))
-            cb.dict_ids = btn.get("dictionaries", [])
-            checks.append(cb)
-            layout.addWidget(cb)
-
-        buttons_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons_box.accepted.connect(dlg.accept)
-        buttons_box.rejected.connect(dlg.reject)
-        layout.addWidget(buttons_box)
-
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return []
-
-        dicts = []
-        for cb in checks:
-            if cb.isChecked():
-                dicts.extend(cb.dict_ids)
-        return dicts
-
-    def _wf_move_up(self):
-        idx = self._wf_list.currentRow()
-        if idx > 0:
-            self._wf_data[idx], self._wf_data[idx - 1] = self._wf_data[idx - 1], self._wf_data[idx]
-            self._wf_refresh()
-            self._wf_list.setCurrentRow(idx - 1)
-
-    def _wf_move_down(self):
-        idx = self._wf_list.currentRow()
-        if 0 <= idx < len(self._wf_data) - 1:
-            self._wf_data[idx], self._wf_data[idx + 1] = self._wf_data[idx + 1], self._wf_data[idx]
-            self._wf_refresh()
-            self._wf_list.setCurrentRow(idx + 1)
-
-    def _wf_remove(self):
-        idx = self._wf_list.currentRow()
-        if idx >= 0:
-            del self._wf_data[idx]
-            self._wf_refresh()
-
-    # ------------------------------------------------------------------
     # Save
     # ------------------------------------------------------------------
 
@@ -519,8 +361,3 @@ class AIGeneratorTab(QWidget):
                     ai["providers"][name]["reasoning_effort"] = re_widget.text().strip()
 
         self._prompts.apply(cfg)
-
-        cfg.setdefault("workflow", {})
-        cfg["workflow"]["enabled"] = self._wf_enabled.isChecked()
-        cfg["workflow"]["editor_label"] = self._wf_label.text().strip()
-        cfg["workflow"]["steps"] = self._wf_data

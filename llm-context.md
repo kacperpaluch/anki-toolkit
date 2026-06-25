@@ -50,7 +50,8 @@ anki-toolkit/
 │   ├── status_tab.py                # Zakładka: Start — dashboard konfiguracji
 │   ├── modules_tab.py               # Zakładka: Moduły
 │   ├── dictionary_tab.py            # Zakładka: Słownik
-│   ├── ai_generator_tab.py          # Zakładka: AI Generator
+│   ├── ai_generator_tab.py          # Zakładka: AI Generator (Prompty + Dostawcy; workflow przeniesiony do workflows_tab)
+│   ├── workflows_tab.py             # Zakładka: Workflowy — lista workflowów + WorkflowEditDialog + checkboxy context_menu
 │   ├── prompts_tab.py               # Zakładka: Prompty (edytor + podgląd + kolorowanie składni)
 │   ├── prompt_wizard.py             # Dialog „Nowe zadanie AI” (opcjonalny szablon startowy)
 │   ├── prompt_templates.py          # Startowe szablony promptów (czysta logika, testowalna)
@@ -76,11 +77,11 @@ anki-toolkit/
 │   ├── __init__.py
 │   ├── _generator.py
 │   ├── editor_ui.py
-│   ├── browser_ui.py                # batch AI (równoległy) + batch workflow + CollectionOp
+│   ├── browser_ui.py                # batch AI (równoległy) + batch workflow (per-notatka) + CollectionOp
 │   ├── field_generator.py
 │   ├── template_engine.py
 │   ├── stats.py                     # statystyki użycia (user_files/) + match_pricing()
-│   ├── workflow.py                  # execute_step() współdzielony przez edytor i batch
+│   ├── workflow.py                  # workflowy (lista): get_workflows/get_context_menu/migrate_workflows/execute_step (AI/Dict/TTS/Rozdziel)
 │   └── providers/
 │       ├── __init__.py              # rejestr + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral)
 │       ├── base.py                  # BaseProvider + OpenAICompatProvider + _parse_chat_completion/_parse_messages
@@ -133,7 +134,7 @@ anki-toolkit/
 |---|---|---|
 | `common/` | Współdzielone narzędzia: HTML cleaning, HTTP z retry, konfiguracja, widgety Qt — używane przez wszystkie moduły | importowane selektywnie |
 | `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor (async, `saveNow` przed fetchowaniem) + submenu batchowe (w tle, z paskiem postępu i anulowaniem; zapis jednym `CollectionOp` = jeden krok undo) | `on_editor_buttons_init`, `add_to_context_menu` |
-| `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); fallback modeli (per-prompt `fallback_provider`+`fallback_model` nadpisuje per-dostawca `fallback_model`); batch w tle **równoległy** (`parallel_requests`, per-job `FieldGenerator`) z paczkami i anulowaniem, zapis jednym `CollectionOp`; batch workflow w przeglądarce ("Generuj fiszkę (workflow)"); workflow "Generuj fiszkę" w edytorze (AI → Słownik → TTS); `reasoning_effort` z fallbackiem; pola oflagowane `manual_only` pomijane w batchu/workflow, dostępne przez submenu „Generuj zablokowane" lub PPM; akcja „Rozdziel + generuj naukę (p1–p3)" łączy split `przyklad`→`p1/p2/p3` (reużywa `field_splitter`) z batchem AI dla pól `*-nauka`; akcja „Generuj wszystko: puste → TTS → rozdziel → zablokowane" (`_on_full_pipeline`) — łańcuch 4 kroków (puste pola → TTS → split `przyklad` → pola zablokowane) spinanych przez callback `on_complete`, każdy startuje po commicie poprzedniego, kroki bez konfiguracji pomijane | `on_editor_buttons_init`, `add_to_context_menu` |
+| `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); fallback modeli (per-prompt `fallback_provider`+`fallback_model` nadpisuje per-dostawca `fallback_model`); batch w tle **równoległy** (`parallel_requests`, per-job `FieldGenerator`) z paczkami i anulowaniem, zapis jednym `CollectionOp`; **workflowy** (lista nazwanych, `config["workflows"]`) — każdy to pozycja w PPM przeglądarki i opcjonalny przycisk edytora (`editor_button`); batch workflow w przeglądarce iteruje kroki per-notatka (`_on_workflow_browser`), edytor sekwencyjnie (`run_workflow_editor`); kroki przez `execute_step` (AI/Słownik/TTS/Rozdziel pole), krok AI z parametrem `fields` (`empty`/`manual`/lista pól); dwa domyślne pipeline'y („Generuj wszystko: puste→TTS→rozdziel→zablokowane", „Rozdziel + generuj naukę (p1–p3)") to teraz zwykłe workflowy; `migrate_workflows()` konwertuje starą sekcję `workflow`; widoczność wbudowanych sekcji PPM przez `config["context_menu"]`; `reasoning_effort` z fallbackiem; pola `manual_only` pomijane w batchu/workflow, dostępne przez submenu „Generuj zablokowane" lub PPM | `on_editor_buttons_init`, `add_to_context_menu`, `migrate_workflows` |
 | `tts/` | Generuje audio MP3 przez Kokoro lub OpenRouter TTS API; przycisk w edytorze + submenu w przeglądarce; "Uruchom wszystkie" działa jako jedna operacja; Anuluj odwołuje niewystartowane żądania (`cancel_futures`); zapis batcha jednym `CollectionOp` | `on_editor_buttons_init`, `add_to_context_menu` |
 | `filtered_deck/` | Tworzy talię filtrowaną z formularzem ustawień; nazwa talii i deck docelowy konfigurowalne | `setup_menu(parent_menu)` |
 | `audio_normalizer/` | Normalizuje głośność plików audio ffmpegiem (EBU R128); po normalizacji synchronizuje zmodyfikowane pliki z Anki media DB przez `write_data()` | `setup_menu(parent_menu)` |
@@ -149,8 +150,8 @@ anki-toolkit/
 Anki importuje `anki-toolkit/__init__.py` przy starcie. Główny `__init__.py`:
 1. Czyta sekcję `modules` z konfiguracji
 2. Importuje tylko włączone moduły (`true` w sekcji `modules`)
-3. Rejestruje hooki edytora (natychmiast, bez `main_window_did_init`); kolejność to AI/workflow → słownik → TTS, więc główny przycisk workflow jest pierwszy
-4. Rejestruje **jeden** centralny hook `_on_browser_context_menu` — tworzy submenu **Anki Toolkit** w prawym kliknięciu i wywołuje `add_to_context_menu(browser, toolkit_menu)` każdego włączonego modułu przeglądarki
+3. Rejestruje hooki edytora (natychmiast, bez `main_window_did_init`); przy włączonym `ai_generator` wywołuje raz `migrate_workflows()` (stary `workflow` → `workflows`); kolejność to AI/workflowy → słownik → TTS, więc przyciski workflowów są pierwsze
+4. Rejestruje **jeden** centralny hook `_on_browser_context_menu` — tworzy submenu **Anki Toolkit**, wywołuje `ai_generator.add_to_context_menu` (workflowy + submenu pól), a sekcje pozostałych modułów (dictionary/tts/field_splitter) tylko gdy włączone i niewyłączone w `config["context_menu"]` (czytane świeżo przy każdym kliknięciu)
 5. Po załadowaniu okna głównego tworzy submenu **Narzędzia → Anki Toolkit** i przekazuje je do `setup_menu(parent_menu)` każdego modułu
 6. Dodaje na końcu submenuu separator i pozycję **Ustawienia...**
 
@@ -204,7 +205,8 @@ settings/
 ├── status_tab.py            # StatusTab — dashboard gotowości, pipeline, lista problemów
 ├── modules_tab.py           # ModulesTab
 ├── dictionary_tab.py        # DictionaryTab
-├── ai_generator_tab.py      # AIGeneratorTab + model discovery + embedded PromptsTab; dostawcy jako lista+detal
+├── ai_generator_tab.py      # AIGeneratorTab + model discovery + embedded PromptsTab; dostawcy jako lista+detal (bez workflow)
+├── workflows_tab.py         # WorkflowsTab + WorkflowEditDialog — lista workflows + kroki + checkboxy context_menu
 ├── prompts_tab.py           # PromptsTab (embedded in AI Generator tab, not standalone)
 ├── prompt_wizard.py         # NewPromptDialog — dialog „Nowe zadanie AI”
 ├── prompt_templates.py      # TEMPLATES + build_prompt() + guess_field() — czysta logika
@@ -219,7 +221,8 @@ Zakładki (9 zakładek):
 - **Start** — dashboard pipeline'u: klikalne chipy kroków workflow (✓/⚠/○) ze strzałkami, globalny status (Gotowe / N rzeczy do zrobienia — liczony tylko z modułów faktycznie używanych), sekcja „Do zrobienia" (jedyne miejsce z problemami, przyciski Napraw), wiersz pozostałych modułów; `refresh(cfg)` odbudowuje zawartość — SettingsDialog wywołuje ją przy każdym przejściu na Start z configiem zebranym z **niezapisanego** stanu pozostałych zakładek (`_collect_config()`)
 - **Moduły** — włącz/wyłącz każdy moduł (wymaga restartu)
 - **Słownik** — pola, format IPA, wiktionary_ipa_fallback, diki_ipa_fallback + diki_ipa_fallback_source, przyciski w edytorze, limity sieci (max_retries, page_timeout, mp3_timeout)
-- **AI Generator** — podzakładki **Workflow**, **Prompty**, **Dostawcy**; każdy prompt zapisuje dostawcę, model, opcjonalnie `fallback_provider` i `fallback_model` (nadpisuje fallback dostawcy); listy modeli filtrują po dowolnym fragmencie nazwy; dostawcy AI są rozdzieleni na karty z polem „Model zapasowy" (fallback_model), a limity batch/parallel_requests/retry/request timeout/`free_model_rate_limit` (limit RPM dla modeli `:free` OpenRouter) są w sekcji **Zaawansowane**
+- **AI Generator** — podzakładki **Prompty**, **Dostawcy** (workflow przeniesiony do osobnej zakładki Workflowy); każdy prompt zapisuje dostawcę, model, opcjonalnie `fallback_provider` i `fallback_model` (nadpisuje fallback dostawcy); listy modeli filtrują po dowolnym fragmencie nazwy; dostawcy AI są rozdzieleni na karty z polem „Model zapasowy" (fallback_model), a limity batch/parallel_requests/retry/request timeout/`free_model_rate_limit` (limit RPM dla modeli `:free` OpenRouter) są w sekcji **Zaawansowane**
+- **Workflowy** — `WorkflowsTab`: lista nazwanych workflowów (Dodaj/Edytuj/Usuń, ▲▼ = kolejność w PPM), `WorkflowEditDialog` (nazwa, `editor_button`, kroki AI/Słownik/TTS/Rozdziel z parametrami — dialogi `_pick_ai_fields`/`_pick_dicts`); na dole checkboxy `context_menu` (widoczność wbudowanych sekcji PPM); `apply()` zapisuje `config["workflows"]` i `config["context_menu"]` (jedyne miejsce zapisu tych kluczy)
 - **TTS** — dostawca (Kokoro / OpenRouter), klucz API OpenRouter (lub współdzielony z AI), model (z przyciskiem Pobierz), głosy (QTableWidget z checkboxami + przyciskami ▶ podglądu per głos — `generate_audio` z krótkim sample → `av_player.play_file`), zadania TTS (Dodaj/Edytuj/Usuń), speed, wydajność (max_workers, max_retries, timeout)
 - **Normalizacja** — ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków
 - **Narzędzia** — trzy sekcje jako QGroupBox: Talia filtrowana (deck_name, search_deck), Czyszczenie HTML (show_tooltip, auto_run_startup, skip_field), Rozdzielanie pól (source_field, separator, target_fields jako tekst przecinkami, overwrite checkbox)
@@ -255,7 +258,8 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `nbsp_remover` | `nbsp_remover/` | Zakładka Narzędzia (sekcja Czyszczenie HTML) |
 | `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
 | `sibling_manager` | `sibling_manager/` | Zakładka Narzędzia (sekcja Sibling Manager) |
-| `workflow` | `ai_generator/` | Zakładka AI Generator → Workflow |
+| `workflows` | `ai_generator/` | Zakładka Workflowy (lista nazwanych workflowów) |
+| `context_menu` | `ai_generator/` | Zakładka Workflowy (widoczność wbudowanych sekcji PPM) |
 
 ---
 
@@ -276,7 +280,8 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/status_tab.py` | Zakładka Start — dashboard pipeline'u: chipy kroków workflow, globalny status, lista „Do zrobienia", wiersz modułów pomocniczych; `refresh(cfg)` przebudowuje widok |
 | `settings/modules_tab.py` | Zakładka Moduły — `ModulesTab` |
 | `settings/dictionary_tab.py` | Zakładka Słownik — `DictionaryTab` |
-| `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`; nazwy dostawców z rejestru `PROVIDERS`/`PROVIDER_LABELS`; dostawcy jako lista z detalem (✓/○ wg klucza API, aktualizowane na żywo); combo modelu ładowane z `cached_models` (cache przeżywa restart); przycisk **Pobierz** fetchuje z API i aktualizuje combo + `cached_models` w `apply()`; pole „Model zapasowy" (fallback_model) per dostawca; sekcja Zaawansowane: batch/parallel/retry/timeout/`free_model_rate_limit` |
+| `settings/ai_generator_tab.py` | Zakładka AI Generator — `AIGeneratorTab`; podzakładki Prompty + Dostawcy (edytor workflow usunięty — przeniesiony do `workflows_tab.py`); nazwy dostawców z rejestru `PROVIDERS`/`PROVIDER_LABELS`; dostawcy jako lista z detalem (✓/○ wg klucza API, aktualizowane na żywo); combo modelu ładowane z `cached_models` (cache przeżywa restart); przycisk **Pobierz** fetchuje z API i aktualizuje combo + `cached_models` w `apply()`; pole „Model zapasowy" (fallback_model) per dostawca; sekcja Zaawansowane: batch/parallel/retry/timeout/`free_model_rate_limit` |
+| `settings/workflows_tab.py` | Zakładka Workflowy — `WorkflowsTab` (lista workflowów + checkboxy `context_menu`) i `WorkflowEditDialog` (nazwa, `editor_button`, kroki); helpery `_pick_ai_fields` (empty/manual/konkretne pola), `_pick_dicts` (wybór słowników, pusty = pomiń), `_step_label`; `apply()` zapisuje `config["workflows"]` + `config["context_menu"]` |
 | `settings/prompts_tab.py` | Zakładka Prompty — `PromptsTab`; lista zadań w kolejności generowania (▲▼ + dopisek „zależy od"), wybór dostawcy i modelu per prompt (pobieranie modeli przyciskiem **Pobierz** + filtrowanie MatchContains + cache `cached_models` z configu), pola dostawcy/modelu zapasowego (`fallback_provider` + `fallback_model` z własnym przyciskiem **Pobierz** — listy współdzielone z dostawcą głównym), comboboxy typu notatki i pola docelowego z danymi z kolekcji, checkbox „Tylko na żądanie" (`manual_only`), przyciski „Wstaw pole ▾" i „Wstaw warunek ▾", kolorowanie składni (`_TemplateHighlighter`), walidacja na żywo, przycisk „Podgląd…" (`PromptPreviewDialog`) |
 | `settings/prompt_wizard.py` | `NewPromptDialog` — jednostronicowy dialog nowego zadania: typ notatki, pole docelowe, dostawca, model, checkbox „Tylko na żądanie" (`manual_only`) + opcjonalny szablon startowy (domyślnie pusty); po wybraniu szablonu mapowanie pól, blok `{% if %}` z checkboxa |
 | `settings/prompt_templates.py` | `TEMPLATES` (definicja, przykłady, część mowy, IPA, pusty), `build_prompt()`, `guess_field()` — czysta logika bez Anki, testowana w `tests/` |
@@ -293,9 +298,9 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/providers/opencode_go.py` | OpenCode Go — auto-detect formatu (Chat Completions vs Anthropic Messages), `User-Agent` header, reasoning jako wolny tekst |
 | `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera; bliźniacze endpointy przez wspólny `_fetch_simple()`, dispatcher `fetch_models()` |
 | `ai_generator/field_generator.py` | Główna logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope pól, `overwrite=True` nadpisuje pełne; pola z `manual_only=True` pomijane gdy `only_fields=None` (batch/workflow/przycisk AI); zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła); **fallback modeli**: gdy `provider.call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy i modelu; statystyki fallbacku zliczane osobno; **FreeModelRateLimiter**: singleton, sliding-window (deque+lock), blokuje wątek gdy model zawiera `:free` a limit RPM osiągnięty; konfigurowalny przez `free_model_rate_limit` (domyślnie 15) |
-| `ai_generator/editor_ui.py` | UI edytora — główny przycisk workflow przed przyciskiem AI (wszystkie puste), async (`run_in_background` + `saveNow`), ochrona `_GENERATING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu: „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola z promptem, `overwrite=True`) |
-| `ai_generator/workflow.py` | Workflow "Generuj fiszkę" — `execute_step(note, step) -> (modified, error)` (bg, bez zapisu do kolekcji; zapis robi caller na main thread); edytor: sekwencyjne kroki, guard `_RUNNING` |
-| `ai_generator/browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego; pomija pola `manual_only`) oraz submenu `Generuj zablokowane ▸` (pojawia się tylko gdy istnieją pola `manual_only=True`; „Wszystkie zablokowane" + per-pole); `_all_configured_target_fields(config, manual_only=False)` rozdziela listy; batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) i batch workflow; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`); `_run_batch`/`_save_changed_notes` przyjmują `on_complete` (odpala po commicie) — `_on_full_pipeline` spina nim łańcuch: puste → `tts.process_tasks_async` → `field_splitter._run_batch` → zablokowane |
+| `ai_generator/editor_ui.py` | UI edytora — przycisk per workflow z `editor_button` (przed przyciskiem AI), główny przycisk AI (wszystkie puste), async (`run_in_background` + `saveNow`), ochrona `_GENERATING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu: „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola z promptem, `overwrite=True`) |
+| `ai_generator/workflow.py` | Workflowy — `get_workflows()`/`get_context_menu()`/`migrate_workflows()`; `execute_step(note, step) -> (modified, error)` obsługuje moduły ai/dictionary/tts/field_splitter (bg, bez zapisu do kolekcji; zapis robi caller na main thread); `_resolve_ai_fields(step, cfg)` mapuje `fields` (empty/manual/lista) na `only_fields`; `run_workflow_editor(editor, workflow)` — sekwencyjne kroki, guard `_RUNNING`; stałe `DEFAULT_CONTEXT_MENU` + `_DEFAULT_PIPELINES` (re-seed przy migracji) |
+| `ai_generator/browser_ui.py` | UI przeglądarki — `add_to_context_menu` iteruje `get_workflows()` (każdy = jedna pozycja), potem submenu `Generuj pola ▸`/`Generuj zablokowane ▸` gated przez `context_menu` (`ai_fields`/`ai_blocked`); `_all_configured_target_fields(config, manual_only=False)` rozdziela listy pól; batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) przez `_run_batch`; batch workflow `_on_workflow_browser(browser, workflow)` iteruje kroki per-notatka przez `execute_step`; zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
 | `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING`; odtwarza audio po pobraniu; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk |
 | `dictionary/browser_ui.py` | UI przeglądarki — submenu batch |
@@ -303,7 +308,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
 | `tts/config.py` | Konfiguracja TTS — `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` |
 | `tts/api.py` | API TTS — `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` |
-| `tts/processor.py` | Przetwarzanie notatek — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async(..., on_complete=None)` (zapis jednym `CollectionOp`; `on_complete` odpala na każdym wyjściu — spina full pipeline z `ai_generator.browser_ui`); `process_single_note(note, config, tasks=None, overwrite=False) -> (changed, error)` — `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; bez zapisu do kolekcji, używane przez workflow i PPM w edytorze |
+| `tts/processor.py` | Przetwarzanie notatek — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async(..., on_complete=None)` (zapis jednym `CollectionOp`; `on_complete` odpala na każdym wyjściu — pozostałość po dawnym full pipeline, obecnie bez wywołań); `process_single_note(note, config, tasks=None, overwrite=False) -> (changed, error)` — `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; bez zapisu do kolekcji, używane przez workflow i PPM w edytorze |
 | `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`; używa wspólnych funkcji procesora; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`, strip sound tags) |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
@@ -353,13 +358,13 @@ dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_c
 
 ai_generator/__init__.py        ← re-eksport: on_editor_buttons_init, add_to_context_menu
     └── _generator.py           ← zarządzanie stanem generatora (config-aware cache, reset); używa common/ADDON_NAME
-    └── editor_ui.py            ← workflow button przed AI; saveNow(start) przed zadaniem, _GENERATING guard; PPM na polu → _on_generate_field_editor (only_fields, overwrite=True)
-    └── browser_ui.py           ← add_to_context_menu (submenu "Generuj pola ▸" — wszystkie puste + per-pole; submenu "Generuj zablokowane ▸" gdy istnieją pola manual_only; akcja "Generuj wszystko" = _on_full_pipeline łańcuch przez on_complete: puste→TTS→split→zablokowane; batch AI równoległy + batch workflow; zapis przez CollectionOp)
+    └── editor_ui.py            ← przyciski workflowów (editor_button) przed AI; saveNow(start) przed zadaniem, _GENERATING guard; PPM na polu → _on_generate_field_editor (only_fields, overwrite=True)
+    └── browser_ui.py           ← add_to_context_menu (workflowy z get_workflows; submenu "Generuj pola ▸"/"Generuj zablokowane ▸" gated przez context_menu; batch AI równoległy + batch workflow _on_workflow_browser; zapis przez CollectionOp)
     └── field_generator.py      (FieldGenerator — logika bez UI); process_note(note, only_fields=None, overwrite=False); pola manual_only pomijane gdy only_fields=None; używa common/clean_html_normalized, safe_str
         └── template_engine.py  (render_template, template_structure_problems — czyste funkcje)
         └── stats.py            (record_request / record_note — statystyki użycia, bez zależności od Anki)
         └── providers/          (BaseProvider/OpenAICompatProvider + 7 implementacji + model_discovery); używa common/http.post_json (retry w jednym miejscu)
-    └── workflow.py             (AI → Dict → TTS sekwencyjnie, _RUNNING guard); używa common/ADDON_NAME
+    └── workflow.py             (workflowy: get_workflows/migrate_workflows/execute_step AI/Dict/TTS/Rozdziel, _RUNNING guard); używa common/ADDON_NAME
 
 tts/__init__.py                 ← add_to_context_menu + exports on_editor_buttons_init
     └── config.py               (_DEFAULTS, get_tts_config, validate_config, get_tasks); używa common/config get_module_config

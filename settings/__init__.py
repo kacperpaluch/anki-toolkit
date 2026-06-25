@@ -12,6 +12,7 @@ from .status_tab import StatusTab
 from .modules_tab import ModulesTab
 from .dictionary_tab import DictionaryTab
 from .ai_generator_tab import AIGeneratorTab
+from .workflows_tab import WorkflowsTab
 from .tts_tab import TTSTab
 from .audio_normalizer_tab import AudioNormalizerTab
 from .narzedzia_tab import NarzedziaTab
@@ -51,6 +52,7 @@ class SettingsDialog(QDialog):
             ("Moduły",           ModulesTab(cfg)),
             ("Słownik",          DictionaryTab(cfg)),
             ("AI Generator",     AIGeneratorTab(cfg)),
+            ("Workflowy",        WorkflowsTab(cfg)),
             ("TTS",              TTSTab(cfg)),
             ("Normalizacja",     AudioNormalizerTab(cfg)),
             ("Narzędzia",        NarzedziaTab(cfg)),

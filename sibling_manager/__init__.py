@@ -17,7 +17,7 @@ Entry points:
   - Reviewer hook: manages siblings automatically after each review
   - Sync hook: batch catch-up after syncing from phone/AnkiWeb
   - Tools -> Anki Toolkit -> "Uwolnij karty zawieszone przez Sibling Manager..."
-  - Tools -> Anki Toolkit -> "Przetwórz kolekcję (sync catch-up)..."
+  - Tools -> Anki Toolkit -> "Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)..."
 """
 
 import logging
@@ -218,6 +218,6 @@ def setup_menu(parent_menu=None):
     action1.triggered.connect(_confirm_unsuspend_all)
     menu.addAction(action1)
 
-    action2 = QAction("Przetwórz kolekcję (sync catch-up)...", mw)
+    action2 = QAction("Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...", mw)
     action2.triggered.connect(_confirm_sync_scan)
     menu.addAction(action2)

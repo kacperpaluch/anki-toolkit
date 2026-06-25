@@ -10,7 +10,6 @@ from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
-from anki.collection import OpChanges
 
 from ._generator import get_config
 from .field_generator import FieldGenerator
@@ -32,22 +31,14 @@ def _make_progress(browser: Browser, label: str, total: int, title: str):
     return progress, cancel_flag
 
 
-def _save_changed_notes(browser: Browser, changed_notes: list, summary: str,
-                        on_complete=None):
-    """Persist modified notes as one undoable operation, then show the summary.
-
-    on_complete (if given) runs after the save commits — used to chain steps.
-    """
+def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
+    """Persist modified notes as one undoable operation, then show the summary."""
     if not changed_notes:
         tooltip(summary, period=8000)
-        if on_complete:
-            on_complete()
         return
 
     def _saved(_changes):
         tooltip(summary, period=8000)
-        if on_complete:
-            on_complete()
 
     CollectionOp(
         parent=browser,
@@ -84,11 +75,9 @@ def _on_generate_field_browser(browser: Browser, field_name: str):
 
 
 def _run_batch(browser: Browser, nids, config: dict,
-               only_fields, label: str, on_complete=None):
+               only_fields, label: str):
     """Run a parallel AI batch. only_fields=None = all configured empty fields;
     only_fields={name} = only that target field, still skipping filled ones.
-
-    on_complete (if given) runs after the save commits — used to chain steps.
     """
     batch_limit: int = max(1, config.get("batch_limit", 3))
     sleep_time: float = config.get("batch_sleep", 1.0)
@@ -175,64 +164,21 @@ def _run_batch(browser: Browser, nids, config: dict,
             parts.append("przerwano")
         if state["last_error"]:
             parts.append(state["last_error"])
-        _save_changed_notes(browser, changed_notes, " · ".join(parts), on_complete)
+        _save_changed_notes(browser, changed_notes, " · ".join(parts))
 
     mw.taskman.run_in_background(task, on_done)
 
 
 # ---------------------------------------------------------------------------
-# Full pipeline — generate empty → TTS all → split przyklad → generate blocked
+# Workflow batch — runs a workflow's steps per selected note
 # ---------------------------------------------------------------------------
 
-def _on_full_pipeline(browser: Browser):
-    """One click: generuj puste → TTS wszystkie → rozdziel przyklad → zablokowane.
+def _on_workflow_browser(browser: Browser, workflow: dict):
+    from .workflow import execute_step
 
-    Each step runs only after the previous one has committed to the collection,
-    so every step reads the fields the previous step just wrote.
-    """
-    nids = list(browser.selected_notes())
-    if not nids:
-        tooltip("Nie zaznaczono żadnych notatek.")
-        return
-
-    config = get_config()
-    manual_fields = set(_all_configured_target_fields(config, manual_only=True))
-
-    from ..tts.processor import process_tasks_async
-    from ..tts.config import get_tts_config, get_tasks
-    from ..field_splitter import _run_batch as fs_run_batch
-
-    def step4_blocked():
-        if not manual_fields:
-            return
-        _run_batch(browser, nids, config,
-                   only_fields=manual_fields, label="AI: zablokowane")
-
-    def step3_split():
-        fs_run_batch(nids, on_complete=step4_blocked)
-
-    def step2_tts():
-        tasks = get_tasks(get_tts_config())
-        if not tasks:
-            step3_split()
-            return
-        process_tasks_async(browser, nids, tasks, on_complete=step3_split)
-
-    _run_batch(browser, nids, config, only_fields=None,
-               label="Generowanie przez AI", on_complete=step2_tts)
-
-
-# ---------------------------------------------------------------------------
-# Workflow batch — AI → Dictionary → TTS for each selected note
-# ---------------------------------------------------------------------------
-
-def _on_workflow_browser(browser: Browser):
-    from .workflow import get_workflow_config, execute_step
-
-    wf = get_workflow_config()
-    steps = [s for s in wf.get("steps", []) if isinstance(s, dict)]
+    steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
     if not steps:
-        tooltip("Brak skonfigurowanego workflow. Sprawdź ustawienia.")
+        tooltip("Brak kroków w tym workflow. Sprawdź ustawienia.")
         return
 
     nids = browser.selected_notes()
@@ -240,7 +186,7 @@ def _on_workflow_browser(browser: Browser):
         tooltip("Nie zaznaczono żadnych notatek.")
         return
 
-    label = wf.get("editor_label", "Generuj fiszkę")
+    label = workflow.get("name", "Workflow")
     progress, cancel_flag = _make_progress(
         browser, f"{label}...", len(nids), "Workflow"
     )
@@ -300,46 +246,6 @@ def _on_workflow_browser(browser: Browser):
     mw.taskman.run_in_background(task, on_done)
 
 
-def _on_split_then_nauka(browser: Browser):
-    """One click: split przyklad → p1/p2/p3, then AI-generate the *-nauka fields.
-
-    # ponytail: hardcoded to the user's przyklad → p1/p2/p3 → p{1,2,3}-nauka
-    # flow. Generalise only if a second such chain appears.
-    """
-    nids = list(browser.selected_notes())
-    if not nids:
-        tooltip("Nie zaznaczono żadnych notatek.")
-        return
-
-    try:
-        from ..field_splitter import (
-            _get_config as _fs_get_config,
-            _process_note as _fs_split,
-        )
-    except Exception:
-        tooltip("Moduł „Rozdzielanie pól” jest wyłączony.", period=4000)
-        return
-
-    fs_cfg = _fs_get_config()
-    config = get_config()
-    nauka_fields = {"p1-nauka", "p2-nauka", "p3-nauka"}
-
-    def split_op(col):
-        changed = []
-        for nid in nids:
-            note = col.get_note(nid)
-            if _fs_split(note, fs_cfg):
-                changed.append(note)
-        return col.update_notes(changed) if changed else OpChanges()
-
-    def after_split(_changes):
-        # Split is saved; now generate the nauka fields (reads fresh p1/p2/p3).
-        _run_batch(browser, nids, config, only_fields=nauka_fields,
-                   label="AI: nauka (p1–p3)")
-
-    CollectionOp(parent=browser, op=split_op).success(after_split).run_in_background()
-
-
 def _all_configured_target_fields(config: dict, manual_only: bool = False) -> list[str]:
     """Flattened list of distinct target field names across all note types.
 
@@ -368,44 +274,44 @@ def _all_configured_target_fields(config: dict, manual_only: bool = False) -> li
 
 
 def add_to_context_menu(browser: Browser, menu):
-    from .workflow import get_workflow_config
+    from .workflow import get_workflows, get_context_menu
 
-    wf = get_workflow_config()
-    if wf.get("enabled", True) and wf.get("steps"):
-        label = wf.get("editor_label", "Generuj fiszkę")
-        wf_action = QAction(f"{label} (workflow)", browser)
-        qconnect(wf_action.triggered, lambda: _on_workflow_browser(browser))
+    cm = get_context_menu()
+
+    # User-defined workflows first — each is one menu entry.
+    for wf in get_workflows():
+        if not [s for s in wf.get("steps", []) if isinstance(s, dict)]:
+            continue
+        name = wf.get("name", "Workflow")
+        wf_action = QAction(name, browser)
+        qconnect(
+            wf_action.triggered,
+            lambda _checked=False, w=wf: _on_workflow_browser(browser, w),
+        )
         menu.addAction(wf_action)
 
     config = get_config()
     target_fields = _all_configured_target_fields(config)
     manual_fields = _all_configured_target_fields(config, manual_only=True)
 
-    nauka_action = QAction("Rozdziel + generuj naukę (p1–p3)", browser)
-    qconnect(nauka_action.triggered, lambda: _on_split_then_nauka(browser))
-    menu.addAction(nauka_action)
+    if cm.get("ai_fields", True):
+        gen_menu = menu.addMenu("Generuj pola")
+        all_action = QAction("Wszystkie puste", browser)
+        qconnect(all_action.triggered, lambda: _on_generate_browser(browser))
+        gen_menu.addAction(all_action)
 
-    pipeline_action = QAction("Generuj wszystko: puste → TTS → rozdziel → zablokowane", browser)
-    qconnect(pipeline_action.triggered, lambda: _on_full_pipeline(browser))
-    menu.addAction(pipeline_action)
+        if target_fields:
+            gen_menu.addSeparator()
+            for field_name in target_fields:
+                action = QAction(f"AI: {field_name}", browser)
+                qconnect(
+                    action.triggered,
+                    lambda _checked=False, fn=field_name:
+                        _on_generate_field_browser(browser, fn),
+                )
+                gen_menu.addAction(action)
 
-    gen_menu = menu.addMenu("Generuj pola")
-    all_action = QAction("Wszystkie puste", browser)
-    qconnect(all_action.triggered, lambda: _on_generate_browser(browser))
-    gen_menu.addAction(all_action)
-
-    if target_fields:
-        gen_menu.addSeparator()
-        for field_name in target_fields:
-            action = QAction(f"AI: {field_name}", browser)
-            qconnect(
-                action.triggered,
-                lambda _checked=False, fn=field_name:
-                    _on_generate_field_browser(browser, fn),
-            )
-            gen_menu.addAction(action)
-
-    if manual_fields:
+    if cm.get("ai_blocked", True) and manual_fields:
         blocked_menu = menu.addMenu("Generuj zablokowane")
         all_blocked = QAction("Wszystkie zablokowane", browser)
         qconnect(

@@ -34,6 +34,7 @@ def _enabled(name: str) -> bool:
 # ---------------------------------------------------------------------------
 if _enabled("ai_generator"):
     from . import ai_generator
+    ai_generator.migrate_workflows()  # legacy single workflow → workflows list
     gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
@@ -61,22 +62,29 @@ if _enabled("sibling_manager"):
 # ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
-_context_modules = []
-if _enabled("dictionary"):
-    _context_modules.append(dictionary.add_to_context_menu)
-if _enabled("ai_generator"):
-    _context_modules.append(ai_generator.add_to_context_menu)
-if _enabled("tts"):
-    _context_modules.append(tts.add_to_context_menu)
+# ai_generator builds the workflows + its own (toggleable) field submenus.
+# The atomic building-block sections are gated by config["context_menu"], read
+# fresh on each right-click so settings changes apply without restart.
 if _enabled("field_splitter"):
     from . import field_splitter
-    _context_modules.append(field_splitter.add_to_context_menu)
 
-if _context_modules:
+_has_context = any(
+    _enabled(m) for m in ("dictionary", "ai_generator", "tts", "field_splitter")
+)
+
+if _has_context:
     def _on_browser_context_menu(browser, menu):
+        cm = (mw.addonManager.getConfig(ADDON_NAME) or {}).get("context_menu", {})
         toolkit_menu = menu.addMenu("Anki Toolkit")
-        for fn in _context_modules:
-            fn(browser, toolkit_menu)
+
+        if _enabled("ai_generator"):
+            ai_generator.add_to_context_menu(browser, toolkit_menu)
+        if _enabled("dictionary") and cm.get("dictionary", True):
+            dictionary.add_to_context_menu(browser, toolkit_menu)
+        if _enabled("tts") and cm.get("tts", True):
+            tts.add_to_context_menu(browser, toolkit_menu)
+        if _enabled("field_splitter") and cm.get("field_splitter", True):
+            field_splitter.add_to_context_menu(browser, toolkit_menu)
 
     addHook("browser.onContextMenu", _on_browser_context_menu)
 
