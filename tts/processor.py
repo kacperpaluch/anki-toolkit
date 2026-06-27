@@ -33,7 +33,14 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
 
     Returns (work_items, split_contexts):
       work_items     — [{task_i, mode, seg_i, text, voice[, target_field]}]
-      split_contexts — {task_i: (target_field, split_sep, raw_segments)}
+      split_contexts — {task_i: (target_field, split_sep, raw_segments, mode)}
+
+    Modes:
+      single      — one audio per note, written to target_field
+      split       — split source, audio appended after each segment, written
+                    back interleaved (keeps the words)
+      split_audio — split source, write ONLY the [sound:...] tags concatenated
+                    into a separate target_field (no words)
     """
     work_items: list[dict] = []
     split_contexts: dict = {}
@@ -44,8 +51,14 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
         target_field = task.get("target_field", "")
         split_sep = task.get("split_separator", "<br><br>")
 
-        if mode == "split":
+        if mode in ("split", "split_audio"):
             if source_field not in note:
+                continue
+            # split_audio writes to a separate field — skip if it already has
+            # audio (regen strips it first via overwrite).
+            if mode == "split_audio" and (
+                target_field not in note or "[sound:" in note[target_field]
+            ):
                 continue
             raw_segments = split_separator_regex(split_sep).split(note[source_field])
             note_voices = list(voices)
@@ -59,14 +72,14 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
                     continue
                 work_items.append({
                     "task_i": task_i,
-                    "mode": "split",
+                    "mode": mode,
                     "seg_i": seg_i,
                     "text": text,
                     "voice": note_voices[seg_i % len(note_voices)],
                 })
                 task_has_items = True
             if task_has_items:
-                split_contexts[task_i] = (target_field, split_sep, raw_segments)
+                split_contexts[task_i] = (target_field, split_sep, raw_segments, mode)
         else:
             if source_field not in note or target_field not in note:
                 continue
@@ -104,13 +117,19 @@ def apply_results_to_note(note, work_items: list[dict], split_contexts: dict,
             note[item["target_field"]] = f"[sound:{fname}]"
             changed = True
 
-    for task_i, (target_field, split_sep, raw_segments) in split_contexts.items():
+    for task_i, (target_field, split_sep, raw_segments, mode) in split_contexts.items():
         seg_map = {
             seg_i: fname
             for (ti, seg_i), fname in results.items()
             if ti == task_i and seg_i >= 0
         }
         if not seg_map:
+            continue
+        if mode == "split_audio":
+            note[target_field] = "".join(
+                f"[sound:{seg_map[i]}]" for i in sorted(seg_map)
+            )
+            changed = True
             continue
         parts = []
         for i, seg in enumerate(raw_segments):

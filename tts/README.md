@@ -37,8 +37,9 @@ Każde zadanie definiuje:
 - **Pole docelowe** — gdzie zapisać `[sound:...]`
 - **Tryb**:
   - `single` — jedno audio na notatkę (np. dla pola `ang`)
-  - `split` — każde zdanie/segment dostaje osobne audio (np. dla pola `przyklad` rozdzielanego `<br><br>`)
-- **Separator** — regex dzielący tekst w trybie `split` (domyślnie `<br><br>`)
+  - `split` — każdy segment dostaje osobne audio wstawiane **obok słowa** w to samo pole (np. `przyklad` rozdzielany `<br><br>` → `słowo [sound:...]`)
+  - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`)
+- **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
 
 Zadania konfiguruje się w **Ustawienia → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
 

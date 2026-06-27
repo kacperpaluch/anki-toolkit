@@ -39,8 +39,11 @@ class TaskEditDialog(QDialog):
         self._mode = QComboBox()
         self._mode.addItem("Pojedyncze audio", "single")
         self._mode.addItem("Dzielone (split)", "split")
-        if task and task.get("mode") == "split":
-            self._mode.setCurrentIndex(1)
+        self._mode.addItem("Dzielone — tylko audio", "split_audio")
+        if task:
+            idx = self._mode.findData(task.get("mode", "single"))
+            if idx >= 0:
+                self._mode.setCurrentIndex(idx)
         self._separator = QLineEdit(
             task.get("split_separator", "<br><br>") if task else "<br><br>"
         )
@@ -63,7 +66,9 @@ class TaskEditDialog(QDialog):
         layout.addWidget(buttons)
 
     def _on_mode_changed(self):
-        self._separator.setEnabled(self._mode.currentData() == "split")
+        self._separator.setEnabled(
+            self._mode.currentData() in ("split", "split_audio")
+        )
 
     def get_task(self) -> dict:
         task = {
@@ -72,7 +77,7 @@ class TaskEditDialog(QDialog):
             "target_field": self._target.text().strip(),
             "mode": self._mode.currentData(),
         }
-        if task["mode"] == "split":
+        if task["mode"] in ("split", "split_audio"):
             task["split_separator"] = self._separator.text().strip() or "<br><br>"
         return task
 
@@ -504,7 +509,7 @@ class TTSTab(QWidget):
     def _refresh_task_list(self):
         self._task_list.clear()
         for t in self._tasks_data:
-            mode_str = "split" if t.get("mode") == "split" else "single"
+            mode_str = t.get("mode", "single")
             src = t.get("source_field", "?")
             dst = t.get("target_field", "?")
             item = QListWidgetItem(
