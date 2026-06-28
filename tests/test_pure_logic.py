@@ -3,6 +3,8 @@ import os
 import pathlib
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 from unittest.mock import patch
@@ -812,6 +814,49 @@ class WorkflowMigrationTests(unittest.TestCase):
         # "manual" triggers a lazy import of browser_ui — keep the stub live.
         with patch.dict(sys.modules, mods):
             self.assertEqual(wf._resolve_ai_fields({"fields": "manual"}, {}), {"m1", "m2"})
+
+
+class FreeModelConcurrencyTests(unittest.TestCase):
+    """slot() gates :free requests to max_concurrent in flight; paid models
+    pass straight through (no serialization)."""
+
+    def _limiter(self, max_concurrent):
+        module, _ = load_field_generator_with_stubs()
+        rl = module.FreeModelRateLimiter()
+        rl.configure(15, max_concurrent=max_concurrent)
+        return rl
+
+    def _peak_in_flight(self, rl, model, n_threads):
+        state = {"in": 0, "peak": 0}
+        lock = threading.Lock()
+
+        def worker():
+            with rl.slot(model):
+                with lock:
+                    state["in"] += 1
+                    state["peak"] = max(state["peak"], state["in"])
+                time.sleep(0.05)
+                with lock:
+                    state["in"] -= 1
+
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return state["peak"]
+
+    def test_non_free_model_is_not_gated(self):
+        rl = self._limiter(1)
+        self.assertEqual(self._peak_in_flight(rl, "openai/gpt-5.5", 4), 4)
+
+    def test_free_model_serialized_to_one(self):
+        rl = self._limiter(1)
+        self.assertEqual(self._peak_in_flight(rl, "openai/gpt-oss-120b:free", 6), 1)
+
+    def test_free_model_respects_higher_concurrency(self):
+        rl = self._limiter(2)
+        self.assertEqual(self._peak_in_flight(rl, "openai/gpt-oss-120b:free", 6), 2)
 
 
 if __name__ == "__main__":

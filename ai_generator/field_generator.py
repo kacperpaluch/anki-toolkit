@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from typing import Dict, Optional
 
 from anki.notes import Note
@@ -45,12 +46,25 @@ class FreeModelRateLimiter:
             self._mtx = threading.Lock()
             self._limit = 15
             self._window = 60.0  # seconds
+            # Concurrency gate for :free models. The free endpoint 429s on
+            # simultaneous hits (not on RPM), so we serialize :free requests —
+            # default 1 in flight. Paid models bypass this entirely.
+            self._max_concurrent = 1
+            self._sem = threading.Semaphore(1)
             self._initialized = True
 
-    def configure(self, limit: int, window: float = 60.0) -> None:
+    def configure(self, limit: int, window: float = 60.0,
+                  max_concurrent: int = 1) -> None:
         with self._mtx:
             self._limit = max(1, limit)
             self._window = max(1.0, window)
+            mc = max(1, int(max_concurrent))
+            if mc != self._max_concurrent:
+                # ponytail: Semaphore can't be resized — swap it. A config
+                # change mid-batch could briefly allow >mc in flight; settings
+                # only change on save, so this is harmless.
+                self._max_concurrent = mc
+                self._sem = threading.Semaphore(mc)
 
     def acquire(self, model: str) -> None:
         """Block until a slot is available if *model* is a :free variant."""
@@ -80,6 +94,25 @@ class FreeModelRateLimiter:
                 self._mtx.acquire()
             self._timestamps.append(time.monotonic())
 
+    @contextmanager
+    def slot(self, model: str):
+        """Gate one API call: RPM window + at most _max_concurrent in flight.
+
+        No-op for non-:free models — they run fully parallel. :free requests
+        are serialized so concurrent worker threads don't burst the free
+        endpoint (its 429s come from simultaneity, not from request rate).
+        """
+        if ":free" not in model.lower():
+            yield
+            return
+        self.acquire(model)
+        sem = self._sem  # capture: configure() may swap it concurrently
+        sem.acquire()
+        try:
+            yield
+        finally:
+            sem.release()
+
 
 class FieldGenerator:
     """Fills empty note fields using AI providers configured in config.json.
@@ -98,7 +131,8 @@ class FieldGenerator:
         self._providers: Dict[tuple[str, str], Optional[BaseProvider]] = {}
         self.last_error: Optional[str] = None
         FreeModelRateLimiter().configure(
-            int(config.get("free_model_rate_limit", 15))
+            int(config.get("free_model_rate_limit", 15)),
+            max_concurrent=int(config.get("free_model_max_concurrent", 1)),
         )
 
     def _resolve_provider(self, provider_name: str,
@@ -222,9 +256,9 @@ class FieldGenerator:
             prompt = render_template(prompt_template, fields_map)
 
             _rate_limiter = FreeModelRateLimiter()
-            _rate_limiter.acquire(provider.model)
             provider.last_usage = (0, 0)
-            result = provider.call_api(prompt)
+            with _rate_limiter.slot(provider.model):
+                result = provider.call_api(prompt)
             in_tokens, out_tokens = provider.last_usage
             stats.record_request(
                 provider_name, provider.model, in_tokens, out_tokens,
@@ -272,9 +306,9 @@ class FieldGenerator:
                     f"AI: fallback dla pola '{target_field}': "
                     f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
                 )
-                _rate_limiter.acquire(fb_provider.model)
                 fb_provider.last_usage = (0, 0)
-                result = fb_provider.call_api(prompt)
+                with _rate_limiter.slot(fb_provider.model):
+                    result = fb_provider.call_api(prompt)
                 fb_in, fb_out = fb_provider.last_usage
                 stats.record_request(
                     fb_name, fb_provider.model, fb_in, fb_out,

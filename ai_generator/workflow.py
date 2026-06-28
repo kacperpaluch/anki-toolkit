@@ -128,17 +128,22 @@ def _resolve_ai_fields(step: dict, ai_config: dict):
     return None
 
 
-def execute_step(note, step: dict) -> tuple[bool, Optional[str]]:
+def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[str]]:
     """Execute a single workflow step on a note (background thread).
 
     Returns (modified, error_message). The note is mutated in memory only.
+
+    ai_generator: optional FieldGenerator to use for the AI step instead of the
+    shared singleton. The parallel browser batch passes a per-note instance —
+    providers keep per-request state (last_error, last_usage), so sharing one
+    across worker threads would cross-attribute errors and token usage.
     """
     module = step.get("module", "")
     action = step.get("action", "")
 
     if module == "ai" and action == "generate":
         from ._generator import get_generator, get_config
-        gen = get_generator()
+        gen = ai_generator or get_generator()
         only_fields = _resolve_ai_fields(step, get_config())
         changed = gen.process_note(note, only_fields=only_fields)
         return bool(changed), gen.last_error

@@ -186,46 +186,77 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         tooltip("Nie zaznaczono żadnych notatek.")
         return
 
+    config = get_config()
+    batch_limit: int = max(1, config.get("batch_limit", 3))
+    sleep_time: float = config.get("batch_sleep", 1.0)
+    parallel: int = max(1, int(config.get("parallel_requests", 3)))
+
+    # Preload notes on the main thread (collection is single-threaded). Workers
+    # only mutate notes in memory; the one collection touch left in a worker is
+    # mw.col.media.write_data() inside the TTS step, which the backend
+    # serializes. Collection writes for the notes themselves happen on the main
+    # thread in _save_changed_notes().
+    try:
+        notes = []
+        for nid in nids:
+            note = mw.col.get_note(nid)
+            note.note_type()
+            notes.append(note)
+    except Exception as e:
+        tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
+        return
+
     label = workflow.get("name", "Workflow")
     progress, cancel_flag = _make_progress(
-        browser, f"{label}...", len(nids), "Workflow"
+        browser, f"{label}...", len(notes), "Workflow"
     )
 
-    state = {"errors": 0, "last_error": None}
+    state = {"done": 0, "errors": 0, "last_error": None}
     changed_notes: list = []
+    lock = threading.Lock()
 
-    def task():
-        for i, nid in enumerate(nids):
+    def process_one(note):
+        # Each note gets its own FieldGenerator — steps within one note stay
+        # sequential, but notes run in parallel, so providers must not share
+        # last_error/last_usage across threads.
+        gen = FieldGenerator(config)
+        note_modified = False
+        for step in steps:
             if cancel_flag["cancelled"]:
                 break
-
-            def _update(i=i):
-                progress.setLabelText(f"{label}: notatka {i + 1}/{len(nids)}...")
-                progress.setValue(i + 1)
-            mw.taskman.run_on_main(_update)
-
             try:
-                note = mw.col.get_note(nid)
+                modified, err = execute_step(note, step, ai_generator=gen)
             except Exception as e:
-                state["errors"] += 1
-                state["last_error"] = str(e)
-                continue
-
-            note_modified = False
-            for step in steps:
-                if cancel_flag["cancelled"]:
-                    break
-                try:
-                    modified, err = execute_step(note, step)
-                except Exception as e:
-                    modified, err = False, str(e)
-                note_modified = note_modified or modified
-                if err:
+                modified, err = False, str(e)
+            note_modified = note_modified or modified
+            if err:
+                with lock:
                     state["errors"] += 1
                     state["last_error"] = err
-                    logger.error(f"Workflow batch (nid={nid}): {err}")
+                logger.error(f"Workflow batch (nid={note.id}): {err}")
+        with lock:
             if note_modified:
                 changed_notes.append(note)
+            state["done"] += 1
+            done = state["done"]
+        _report_progress(done)
+
+    def _report_progress(done: int):
+        def _update(d=done):
+            progress.setLabelText(f"{label}: {d}/{len(notes)}...")
+            progress.setValue(d)
+        mw.taskman.run_on_main(_update)
+
+    def task():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
+            for start in range(0, len(notes), batch_limit):
+                if cancel_flag["cancelled"]:
+                    break
+                if start > 0 and sleep_time > 0:
+                    time.sleep(sleep_time)
+                chunk = notes[start:start + batch_limit]
+                futures = [pool.submit(process_one, n) for n in chunk]
+                concurrent.futures.wait(futures)
 
     def on_done(fut):
         progress.close()

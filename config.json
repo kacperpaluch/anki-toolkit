@@ -133,6 +133,7 @@
         "max_retries": 3,
         "request_timeout": 30,
         "free_model_rate_limit": 15,
+        "free_model_max_concurrent": 1,
 
         "providers": {
             "google": {
