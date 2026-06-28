@@ -90,6 +90,9 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
+        # App attribution — pokazuje się w statystykach/rankingach OpenRouter.
+        "HTTP-Referer": "https://github.com/kacperpaluch/anki-toolkit",
+        "X-Title": "Anki Toolkit",
     }
 
     max_retries = int(config.get("max_retries", 3))

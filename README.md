@@ -228,7 +228,7 @@ Pomocniczy przycisk **AI** w toolbarze edytora generuje wszystkie skonfigurowane
 - Główny przycisk **AI** i batch „Wszystkie puste" pomijają pola z treścią — generator uzupełnia tylko puste pola. PPM w edytorze może nadpisać pojedyncze pole („Regeneruj"). Pola oflagowane „Tylko na żądanie" są pomijane w batchu, workflow i głównym przycisku AI — dostępne tylko przez jawne wskazanie (PPM, submenu „Generuj zablokowane").
 - Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
 - **Statystyki użycia** (requesty, tokeny, pola per model, szacowany koszt) są zliczane lokalnie (`user_files/usage_stats.json`) i widoczne w **Ustawienia → Statystyki**.
-- Żądania do OpenRouter wysyłają atrybucję aplikacji (`HTTP-Referer`/`X-Title`), więc w statystykach OpenRouter pojawiają się jako „Anki Toolkit" (automatyczne, bez konfiguracji).
+- Żądania do OpenRouter (zarówno AI, jak i TTS) wysyłają atrybucję aplikacji (`HTTP-Referer`/`X-Title`), więc w statystykach OpenRouter pojawiają się jako „Anki Toolkit" (automatyczne, bez konfiguracji).
 
 Konfiguracja w **Ustawienia → AI Generator**:
 
