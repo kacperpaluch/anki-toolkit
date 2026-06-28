@@ -35,6 +35,33 @@ def plural_pl(n: int, one: str, few: str, many: str) -> str:
     return many
 
 
+def apply_word_replacements(text: str, replacements: dict) -> str:
+    """Replace whole-word abbreviations before TTS synthesis.
+
+    e.g. {"sb": "somebody", "sth": "something"} turns "be reckless of sth"
+    into "be reckless of something". Whole-word and case-insensitive; a
+    capitalised match keeps its leading capital ("Sth" -> "Something"). Only
+    the text passed to the engine changes — the card field is left untouched.
+    """
+    if not replacements:
+        return text
+    mapping = {k.lower(): v for k, v in replacements.items() if k}
+    if not mapping:
+        return text
+    keys = sorted(mapping, key=len, reverse=True)
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(k) for k in keys) + r")\b", re.IGNORECASE
+    )
+
+    def _sub(m):
+        out = mapping[m.group(0).lower()]
+        if m.group(0)[:1].isupper():
+            out = out[:1].upper() + out[1:]
+        return out
+
+    return pattern.sub(_sub, text)
+
+
 def split_separator_regex(separator: str) -> "re.Pattern":
     """Compile a regex matching one or more occurrences of a split separator.
 

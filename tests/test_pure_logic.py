@@ -451,6 +451,20 @@ class TextHelperTests(unittest.TestCase):
         self.assertEqual(regex.split("a<br><br>b"), ["a", "b"])
         self.assertEqual(regex.split("a<br>  <br>b"), ["a", "b"])
 
+    def test_apply_word_replacements(self):
+        repl = {"sb": "somebody", "sth": "something"}
+        f = text_helpers.apply_word_replacements
+        self.assertEqual(f("be reckless of sth", repl), "be reckless of something")
+        self.assertEqual(f("tell sb sth", repl), "tell somebody something")
+        # whole-word only: substrings inside other words are untouched
+        self.assertEqual(f("absinthe", repl), "absinthe")
+        # case-insensitive match; a capitalised match keeps its leading capital
+        self.assertEqual(f("Sth happened", repl), "Something happened")
+        self.assertEqual(f("SB", repl), "Somebody")
+        # empty / no match are no-ops
+        self.assertEqual(f("plain text", repl), "plain text")
+        self.assertEqual(f("sth", {}), "sth")
+
     def test_plural_pl(self):
         plural = lambda n: text_helpers.plural_pl(n, "krok", "kroki", "kroków")
         self.assertEqual(plural(1), "krok")

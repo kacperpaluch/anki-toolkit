@@ -232,6 +232,40 @@ class TTSTab(QWidget):
         speed_form.addRow("Szybkość (speed):", self._speed)
         layout.addLayout(speed_form)
 
+        # -- Word replacements (applied only to text sent to the engine) --
+        repl_group = QGroupBox("Zamiana wyrazów (przed syntezą)")
+        rg = QVBoxLayout(repl_group)
+        self._repl_table = QTableWidget(0, 2)
+        self._repl_table.setHorizontalHeaderLabels(["Skrót", "Zamiennik"])
+        self._repl_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self._repl_table.verticalHeader().setVisible(False)
+        self._repl_table.setMaximumHeight(140)
+        for k, v in (t.get("replacements") or {}).items():
+            self._add_repl_row(k, v)
+        rg.addWidget(self._repl_table)
+
+        repl_btns = QWidget()
+        rbh = QHBoxLayout(repl_btns)
+        rbh.setContentsMargins(0, 0, 0, 0)
+        rbh.setSpacing(4)
+        repl_add = QPushButton("Dodaj")
+        repl_add.clicked.connect(lambda: self._add_repl_row("", ""))
+        repl_del = QPushButton("Usuń")
+        repl_del.clicked.connect(self._remove_repl_row)
+        rbh.addWidget(repl_add)
+        rbh.addWidget(repl_del)
+        rbh.addStretch()
+        rg.addWidget(repl_btns)
+
+        rg.addWidget(hint_label(
+            "Skrót zamieniany na pełne słowo tylko w tekście wysyłanym do TTS"
+            " (np. sb → somebody). Zamieniane są całe słowa, bez rozróżniania"
+            " wielkości liter; treść karty pozostaje bez zmian."
+        ))
+        layout.addWidget(repl_group)
+
         # -- Tasks --
         tasks_group = QGroupBox("Zadania TTS")
         tasks_layout = QVBoxLayout(tasks_group)
@@ -546,6 +580,32 @@ class TTSTab(QWidget):
         self._refresh_task_list()
 
     # ------------------------------------------------------------------
+    # Word replacements
+    # ------------------------------------------------------------------
+
+    def _add_repl_row(self, key: str, value: str):
+        r = self._repl_table.rowCount()
+        self._repl_table.insertRow(r)
+        self._repl_table.setItem(r, 0, QTableWidgetItem(key))
+        self._repl_table.setItem(r, 1, QTableWidgetItem(value))
+
+    def _remove_repl_row(self):
+        r = self._repl_table.currentRow()
+        if r >= 0:
+            self._repl_table.removeRow(r)
+
+    def _collect_replacements(self) -> dict:
+        out = {}
+        for r in range(self._repl_table.rowCount()):
+            k_item = self._repl_table.item(r, 0)
+            v_item = self._repl_table.item(r, 1)
+            k = k_item.text().strip() if k_item else ""
+            v = v_item.text().strip() if v_item else ""
+            if k and v:
+                out[k] = v
+        return out
+
+    # ------------------------------------------------------------------
     # Voice preview
     # ------------------------------------------------------------------
 
@@ -642,6 +702,7 @@ class TTSTab(QWidget):
         else:
             t["openrouter_model"] = self._or_model.currentText().split("  (")[0].strip()
         t["voices"] = [v.strip() for v in self._voices.text().split(",") if v.strip()]
+        t["replacements"] = self._collect_replacements()
         t["speed"] = round(self._speed.value(), 2)
         t["tasks"] = self._tasks_data
         t["max_workers"] = self._tts_max_workers.value()

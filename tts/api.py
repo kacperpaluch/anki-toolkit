@@ -5,13 +5,14 @@ import logging
 import time
 import urllib.request
 
-from ..common import normalize_float
+from ..common import normalize_float, apply_word_replacements
 from ..common.http import post_json
 
 logger = logging.getLogger(__name__)
 
 
 def generate_audio(text: str, config: dict, voice: str) -> bytes:
+    text = apply_word_replacements(text, config.get("replacements") or {})
     provider = config.get("tts_provider", "kokoro")
     if provider == "openrouter":
         model = config.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")

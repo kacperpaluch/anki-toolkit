@@ -22,7 +22,7 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()` (dispatcher + statystyki), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); **wyjątek `raise Exception(...)` rzucany wewnątrz `_generate_*`** gdy `err` niepuste (`api.py:64,106`), a nie na poziomie `generate_audio()` (ten jedynie łapie i re-raise dla statystyk). `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
+| `api.py` | API TTS: `generate_audio()` (dispatcher + statystyki; **na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); **wyjątek `raise Exception(...)` rzucany wewnątrz `_generate_*`** gdy `err` niepuste (`api.py:64,106`), a nie na poziomie `generate_audio()` (ten jedynie łapie i re-raise dla statystyk). `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks, on_complete=None)` (batch z `QProgressDialog` i `CollectionOp`; `on_complete` odpala się na **każdym** wyjściu — sukces, miękki skip „brak pól", błąd — żeby łańcuch zewnętrzny szedł dalej; spina full pipeline z `ai_generator.browser_ui`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
 | `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
 
@@ -134,6 +134,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
   "use_ai_openrouter_key": false,
   "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
   "voices": ["af_bella", "af_heart", "bm_lewis"],
+  "replacements": {"sb": "somebody", "sth": "something"},
   "speed": 0.9,
   "button_label": "TTS",
   "max_workers": 12,
@@ -149,6 +150,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
 - `voices` — lista głosów do losowania
+- `replacements` — dict `{skrót: pełne_słowo}` rozwijany przez `apply_word_replacements()` (`common/text.py`) na tekście wejściowym `generate_audio()`, zanim trafi do payloadu. Whole-word (`\b`), `re.IGNORECASE`, wielka litera trafienia zachowywana, klucze sortowane od najdłuższego (alternacja longest-first). Karta nietknięta — zmienia się tylko tekst wysyłany do silnika. UI: tabela Skrót/Zamiennik w `settings/tts_tab.py` (`_add_repl_row`/`_remove_repl_row`/`_collect_replacements`)
 - `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Jeśli klucz nie istnieje → backward compat czyta legacy pola `ang_source_field`/`ang_target_field`/`przyklad_target_field` ze starego configu (pola nie są już w `_DEFAULTS` ani w UI); pusta lista = brak zadań
 - `max_workers` — liczba wątków w `ThreadPoolExecutor`
 - `max_retries` i `timeout` — retry logic w `common.http.post_json()` (HTTP 429/5xx; timeouty zgłaszane jako błąd); przekazywane przez `_generate_*` do `post_json()`

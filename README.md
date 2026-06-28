@@ -15,7 +15,7 @@ anki-toolkit/
 │   ├── __init__.py
 │   ├── consts.py                    # ADDON_NAME (wyliczane z nazwy folderu wtyczki)
 │   ├── html.py                      # clean_html(), clean_html_normalized()
-│   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl()
+│   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl(), apply_word_replacements()
 │   ├── http.py                      # fetch_url(), fetch_text(), post_json() (retry dla POST), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
