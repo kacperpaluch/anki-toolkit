@@ -108,7 +108,7 @@ Przycisk workflow w edytorze:
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
 - Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
 - Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, prompt) po prawej; model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
-- Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele (combo z cache `cached_models` zapisywanym w configu — przeżywa restart), model zapasowy (fallback_model), temperatura, reasoning/max tokens; sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags/free_model_rate_limit
+- Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele (combo z cache `cached_models` zapisywanym w configu — przeżywa restart), model zapasowy (fallback_model), temperatura, reasoning/max tokens, **limit RPM + maks. równoległych per dostawca** (OpenRouter dodatkowo checkbox „tylko :free"); sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.
 
@@ -126,9 +126,9 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
     "openai":     {"api_key": "...", "model": "gpt-4o", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
     "google":     {"api_key": "...", "model": "gemini-2.0-flash", "temperature": 0.2, "fallback_model": "", "cached_models": []},
     "anthropic":  {"api_key": "...", "model": "claude-3-5-haiku-20241022", "temperature": 0.2, "max_tokens": 2048, "fallback_model": "", "cached_models": []},
-    "openrouter": {"api_key": "...", "model": "anthropic/claude-3.5-haiku", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
+    "openrouter": {"api_key": "...", "model": "anthropic/claude-3.5-haiku", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": [], "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true},
     "cometapi":   {"api_key": "...", "model": "grok-4-1-fast-non-reasoning", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
-    "mistral":    {"api_key": "...", "model": "mistral-small-latest", "temperature": 0.2, "fallback_model": "", "cached_models": []},
+    "mistral":    {"api_key": "...", "model": "mistral-small-latest", "temperature": 0.2, "fallback_model": "", "cached_models": [], "rpm": 40, "max_concurrent": 1},
     "opencode_go": {"api_key": "...", "model": "deepseek-v4-pro", "temperature": 0.6, "reasoning_effort": "max", "fallback_model": "", "cached_models": []}
   },
   "note_types": {
@@ -151,6 +151,9 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 - `batch_sleep` — pauza między grupami kart (unikanie rate limitów API)
 - `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana do `BaseProvider` przez `get_provider()` i `field_generator._resolve_provider()`; domyślnie `3`
 - `request_timeout` — timeout urlopen w `common.http.post_json()` (delegowane z `BaseProvider._post()`); domyślnie `30` sekund
+- `providers.<name>.rpm` — limit żądań na minutę dla dostawcy; żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje; `0`/brak = bez limitu. OpenRouter domyślnie `20`, Mistral `40` (≈0.83 req/s free tier z marginesem)
+- `providers.<name>.max_concurrent` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe API zwykle wymagają `1`
+- `providers.openrouter.rate_limit_free_only` — gdy `true` (domyślnie dla OpenRoutera), limit dotyczy tylko modeli z `:free` w nazwie; gdy `false`, wszystkich żądań. Pole istnieje tylko dla OpenRoutera; inni dostawcy zawsze dławią wszystko. Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` są czytane jako back-compat dla OpenRoutera, gdy brak per-provider `rpm`
 - `providers.openai.reasoning_effort` / `providers.cometapi.reasoning_effort` / `providers.openrouter.reasoning_effort` — dropdown z wartościami `none/minimal/low/medium/high/xhigh`; wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`); dla tych modeli nie wysyłane `temperature`; fallback automatyczny przy HTTP 400
 - `providers.opencode_go.reasoning_effort` — wolny tekst (QLineEdit w UI); wartości per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują; puste = nie wysyłane; fallback automatyczny przy HTTP 400; `opencode_go` wymaga `User-Agent` header (Cloudflare blokuje brak UA); auto-detect formatu API: Chat Completions dla GLM/Kimi/DeepSeek/MiMo, Anthropic Messages dla MiniMax M2.5/M2.7/Qwen3.5/3.6 Plus
 - Generator jest config-aware: porównuje bieżący config z `_cached_config` — jeśli config się zmienił, tworzy nowy generator z nowymi providerami; reset też wywoływany jawnie przez `settings/_reload_module_configs()` po zapisaniu ustawień
@@ -199,22 +202,22 @@ else:
 
 Fallback używa tego samego promptu (już wyrenderowanego), ale nowa instancja providera z innym modelem/kluczem. `stats.record_request()` jest wołane osobno dla głównego i fallbackowego wywołania.
 
-## Rate limiter dla modeli `:free` (OpenRouter)
+## Rate limiter per dostawca (`RateLimiter`)
 
-OpenRouter nakłada limit 20 RPM na modele z sufiksem `:free`. Klasa `FreeModelRateLimiter` w `field_generator.py` implementuje sliding-window rate limiter (deque timestampów + `threading.Lock`):
+Klasa `RateLimiter` w `field_generator.py` — singleton z **jednym kubełkiem (bucket) per dostawca**. Kubełek wymusza:
 
-- **Singleton** — jeden instancja per proces; limit jest per API key, nie per `FieldGenerator`
-- Sprawdza czy `model.lower()` zawiera `:free` — jeśli nie, natychmiast wraca (brak narzutu)
-- Jeśli tak: usuwa timestampy starsze niż 60s z deque, jeśli `len >= limit` → czeka do najstarszego timestampa + 60s
-- Konfigurowalny przez `config["free_model_rate_limit"]` (domyślnie 15), ustawiany w `FieldGenerator.__init__` przez `FreeModelRateLimiter().configure(limit)`
-- Wywoływany przed każdym `provider.call_api()` w `process_note()` — zarówno dla modelu głównego jak i fallbackowego
-- Wątkowo-bezpieczny: lock zwalniany podczas sleep (inne wątki mogą wejść do `acquire()` i zakolejkować się); po obudzeniu wątek **re-sprawdza** limit w pętli `while True` — inny wątek mógł zająć slot jako pierwszy
+- **Równomierne tempo (RPM)** — odstęp `60/rpm` sekund między *startami* żądań, więc batch nie burstuje (kluczowe dla darmowego tieru API typu Mistral: 0.83 req/s). `rpm<=0` = bez limitu tempa.
+- **Limit jednoczesności** — semafor `max_concurrent`; `max_concurrent<=0` = bez limitu.
+- **Zakres `free_only`** — gdy `True`, kubełek dotyczy **tylko** modeli z `:free` w nazwie (warianty darmowe OpenRoutera); płatne modele tego dostawcy przechodzą bez dławienia. Gdy `False`, limit obejmuje **wszystkie** żądania dostawcy (darmowy klucz API dławi cały klucz, nie pojedyncze modele).
 
-```python
-# ponytail: release lock during sleep so other threads can queue.
-# After waking, re-check the limit in the while loop — another thread
-# may have taken the slot we were waiting for.
-```
+Szczegóły:
+- **Singleton** — jeden per proces; limity są per API key, więc bucket per nazwa dostawcy
+- `configure(provider, rpm, max_concurrent, free_only)` — wołane w `FieldGenerator._configure_rate_limit()` podczas rozwiązywania dostawcy; czyta per-provider `rpm`/`max_concurrent`/`rate_limit_free_only`. **Back-compat**: jeśli `openrouter` nie ma per-provider `rpm`, bierze stare globalne `free_model_rate_limit`/`free_model_max_concurrent` (z `free_only=True`)
+- `slot(provider, model)` — context manager owijający każde `provider.call_api()` (główne + fallback); no-op gdy brak limitu dla danego dostawcy/modelu
+- Pacing trzyma lock kubełka przez `time.sleep`, więc starty pozostają równomiernie rozłożone nawet przy wielu wątkach batcha
+- **TPM (tokeny/min) nie jest egzekwowane** — liczba tokenów znana dopiero po odpowiedzi; sporadyczne przekroczenia łapie backoff 429 w `common/http.post_json`
+
+UI: pola **Limit RPM** i **Maks. równoległych** są na karcie każdego dostawcy (`settings/ai_generator_tab.py`); checkbox **„Limit tylko dla modeli :free"** tylko dla OpenRoutera.
 
 ## Dodanie nowego dostawcy AI
 
@@ -264,5 +267,5 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - `editor.saveNow(apply)` w `on_done` synchronizuje stan webview → `editor.note` przed aplikowaniem wyników AI; zachowuje edycje pól których AI nie dotknęło. `apply()` pisze do notatki złapanej na starcie i sprawdza tożsamość (`editor.note is note`) — jeśli użytkownik przełączył kartę w trakcie generowania, wynik jest zapisywany do kolekcji przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
 - Pola konfiguracyjne note-type (`target`, `provider`, `prompt`) są normalizowane przez `safe_str()` z `common.text` przed użyciem; wartości liczbowe (`batch_sleep`, `temperature`) pochodzą z widgetów Qt (zakresy wymuszone w UI) lub z `.get()` z wartością domyślną
-- Throttling jest wyłącznie na poziomie przeglądarki (sleep co `batch_limit` notatek) — `field_generator` nie ma własnych sleep'ów między polami
+- Throttling: paczki na poziomie przeglądarki (sleep co `batch_limit` notatek) + per-dostawca tempo/jednoczesność przez `RateLimiter.slot()` w `field_generator` (patrz „Rate limiter per dostawca")
 - **Statystyki użycia**: każdy `call_api()` wywołuje `self._capture_usage(res_data)` (BaseProvider) — wyciąga tokeny z `usage.prompt/completion_tokens` (OpenAI-compat), `usage.input/output_tokens` (Anthropic) lub `usageMetadata` (Gemini) do `provider.last_usage`; `field_generator.process_note()` rejestruje przez `stats.record_request()` (per provider/model) i `stats.record_note()`; dashboard w **Ustawienia → Statystyki** z wyborem zakresu (dziś/7/30/365 dni/wszystko/własny zakres dat od–do — `get_stats(start=..., end=...)`, granice inclusive)

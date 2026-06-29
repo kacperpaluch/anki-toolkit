@@ -210,7 +210,7 @@ Domyślne workflowy (po migracji ze starej konfiguracji): „Generuj fiszkę" (A
 
 **Co jest widoczne w PPM:** w **Ustawienia → Workflowy** decydujesz też o widoczności wbudowanych (auto-generowanych) sekcji menu — checkboxy „Pobierz wymowę", „TTS", „Generuj pola", „Generuj zablokowane", „Rozdziel pole". Workflowy są zawsze na górze menu.
 
-**Batch w przeglądarce:** prawy klik → **Anki Toolkit → [nazwa workflow]** uruchamia łańcuch dla wszystkich zaznaczonych notatek — z paskiem postępu, przyciskiem Anuluj i zapisem jako **jedna operacja z undo** (Ctrl+Z cofa cały batch). Notatki są przetwarzane **równolegle** (`parallel_requests`, paczki `batch_limit`), a kroki w obrębie jednej notatki idą po kolei; żądania do modeli `:free` są przy tym serializowane (patrz niżej), więc równoległość przyspiesza kroki płatne bez wywoływania lawiny 429.
+**Batch w przeglądarce:** prawy klik → **Anki Toolkit → [nazwa workflow]** uruchamia łańcuch dla wszystkich zaznaczonych notatek — z paskiem postępu, przyciskiem Anuluj i zapisem jako **jedna operacja z undo** (Ctrl+Z cofa cały batch). Notatki są przetwarzane **równolegle** (`parallel_requests`, paczki `batch_limit`), a kroki w obrębie jednej notatki idą po kolei; żądania do dostawców z limitem RPM/jednoczesności są przy tym dławione per dostawca (patrz niżej), więc równoległość przyspiesza kroki bez limitu bez wywoływania lawiny 429.
 
 ---
 
@@ -241,9 +241,10 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | `parallel_requests` | Liczba notatek przetwarzanych równolegle w batchu (domyślnie 3) |
 | `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
 | `request_timeout` | Timeout żądania do API w sekundach (domyślnie 30) |
-| `free_model_rate_limit` | Limit RPM dla modeli `:free` OpenRouter (domyślnie 15; max 20 wg OpenRouter) |
-| `free_model_max_concurrent` | Ile żądań do modeli `:free` może lecieć **jednocześnie** (domyślnie 1). Darmowe endpointy zwracają 429 przy równoległych uderzeniach, więc są serializowane niezależnie od `parallel_requests` |
-| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura osobno dla każdego dostawcy; dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
+| `providers.<nazwa>.rpm` | Limit żądań na minutę dla dostawcy — żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje. `0` = bez limitu. OpenRouter `20`, Mistral `40` (≈0.83 req/s free tier z marginesem) |
+| `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (domyślnie 1 dla darmowych tierów). `0` = bez limitu |
+| `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: gdy `true` (domyślnie), limit dotyczy wyłącznie modeli `:free`; gdy `false` — wszystkich żądań |
+| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura, **limit RPM + maks. równoległych** osobno dla każdego dostawcy (OpenRouter ma dodatkowo „tylko :free"); dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
 | Prompty | Dostawca, model, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; nadpisuje fallback z poziomu dostawcy |
 
 `reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
@@ -311,16 +312,15 @@ Konfiguracja w **Ustawienia → AI Generator**:
 - **Dostawcy** — pole „Model zapasowy" przy każdym dostawcy
 - **Prompty** — pola „Dostawca zapasowy" i „Model zapasowy" przy każdym prompcie
 
-#### Modele `:free` (OpenRouter) — rate limiter
+#### Limity API per dostawca — rate limiter
 
-OpenRouter oferuje darmowe warianty modeli z sufiksem `:free` (np. `meta-llama/llama-3.2-3b:free`). Mają one limit **20 żądań na minutę** (RPM) narzucony przez OpenRouter, a same darmowe endpointy odrzucają (HTTP 429) żądania przychodzące **jednocześnie** — niezależnie od tempa.
+Darmowe tiery API mają limity, które łatwo przekroczyć w batchu (np. Mistral free: **0.83 żądania/s** i 25 000 tokenów/min; OpenRouter `:free`: **20 RPM** + odrzucanie żądań przychodzących jednocześnie). Każdy dostawca ma własne ustawienia limitu na swojej karcie (**Ustawienia → AI Generator → Dostawcy**):
 
-Wtyczka chroni przed obydwoma problemami:
+- **Limit RPM** — maks. żądań na minutę. Żądania są **rozkładane równomiernie** (`60/RPM` sekund odstępu między startami), więc batch nie wystrzeliwuje serii naraz. `0` = bez limitu. Jeśli dostawca podaje limit jako RPS, pomnóż ×60 (np. Mistral 0.83 RPS → `50`; domyślnie `40` zostawia margines).
+- **Maks. równoległych** — bramka (semafor) ogranicza liczbę żądań lecących jednocześnie do tego dostawcy (domyślnie **1** dla darmowych tierów). Eliminuje 429 z burstów, nawet gdy batch przetwarza wiele notatek równolegle (`parallel_requests`).
+- **Limit tylko dla modeli `:free`** (checkbox, tylko OpenRouter) — zaznaczone: limit dotyczy wyłącznie modeli z `:free` w nazwie, płatne modele OpenRoutera lecą bez dławienia. U innych dostawców limit zawsze obejmuje wszystkie żądania (darmowy klucz API dławi cały klucz).
 
-- **Limit tempa (RPM)** — żądania do modeli `:free` są ograniczane do **15 RPM** (`free_model_rate_limit`, konfigurowalne w Ustawienia → AI Generator → Zaawansowane → „Limit RPM dla :free"). Gdy limit jest osiągnięty, wtyczka czeka do zwolnienia miejsca w oknie 60-sekundowym — nie odrzuca żądań, tylko pauzuje.
-- **Limit jednoczesności** — przez bramkę (semafor) naraz leci najwyżej `free_model_max_concurrent` żądań `:free` (domyślnie **1**), nawet gdy batch przetwarza wiele notatek równolegle (`parallel_requests`). To eliminuje 429 wynikające z burstów, a płatne kroki (np. `gpt-5.5`) dalej lecą w pełni równolegle.
-
-Oba mechanizmy dotyczą zarówno modelu głównego jak i fallbackowego, jeśli są `:free`. Płatne modele (bez `:free` w nazwie) nie są ograniczane przez żaden z nich — przechodzą bez kolejkowania.
+Limity dotyczą zarówno modelu głównego, jak i fallbackowego. Limit tokenów na minutę (TPM) nie jest egzekwowany wprost — sporadyczne przekroczenia łapie automatyczny retry przy HTTP 429.
 
 ---
 

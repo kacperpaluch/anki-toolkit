@@ -4,7 +4,7 @@ from functools import partial
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
-    QSpinBox, QDoubleSpinBox, QComboBox, QPushButton, QTabWidget,
+    QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox, QPushButton, QTabWidget,
     QListWidget, QListWidgetItem,
     QStackedWidget, QSizePolicy,
 )
@@ -148,13 +148,56 @@ class AIGeneratorTab(QWidget):
             prov_form.addRow("Model domyślny:", model_row)
             prov_form.addRow("Temperatura:", temp)
             prov_form.addRow("Model zapasowy:", fallback_model)
+
+            # --- Rate limit (per provider) -------------------------------
+            # Back-compat: openrouter prefills from the old global :free knobs.
+            _is_or = name == "openrouter"
+            rpm = QSpinBox()
+            rpm.setRange(0, 1000)
+            rpm.setValue(int(p.get(
+                "rpm", ai.get("free_model_rate_limit", 20) if _is_or else 0)))
+            rpm.setToolTip(
+                "Maks. żądań na minutę dla tego dostawcy. Żądania są rozkładane "
+                "równomiernie (60/RPM s odstępu), więc batch nie burstuje.\n"
+                "0 = bez limitu.\n"
+                "Jeśli dostawca podaje limit jako RPS (żądania/s), pomnóż ×60:\n"
+                "  Mistral free 0.83 RPS → 50 RPM (40 zostawia margines)\n"
+                "  OpenRouter 20 RPM → wpisz 20."
+            )
+            max_conc = QSpinBox()
+            max_conc.setRange(0, 16)
+            max_conc.setValue(int(p.get(
+                "max_concurrent",
+                ai.get("free_model_max_concurrent", 1) if _is_or else 0)))
+            max_conc.setToolTip(
+                "Maks. równoległych żądań do tego dostawcy.\n"
+                "0 = bez limitu. Darmowe API zwykle wymagają 1."
+            )
+            prov_form.addRow("Limit RPM:", rpm)
+            prov_form.addRow("Maks. równoległych:", max_conc)
+
             widgets = {
                 "api_key": api_key_field,
                 "model": model_combo,
                 "temperature": temp,
                 "fallback_model": fallback_model,
                 "fetch_btn": fetch_btn,
+                "rpm": rpm,
+                "max_concurrent": max_conc,
             }
+
+            # ':free' is an OpenRouter-only concept (free model variants live
+            # only there). Other providers' limits always cover every request.
+            if _is_or:
+                free_only = QCheckBox("Limit tylko dla modeli :free")
+                free_only.setChecked(bool(p.get("rate_limit_free_only", True)))
+                free_only.setToolTip(
+                    "Zaznaczone: limit dotyczy tylko modeli z ':free' w nazwie "
+                    "— płatne modele OpenRoutera nie są dławione.\n"
+                    "Odznaczone: limit dotyczy wszystkich żądań OpenRoutera."
+                )
+                prov_form.addRow("", free_only)
+                widgets["rate_limit_free_only"] = free_only
             if name in ("openai", "cometapi", "openrouter"):
                 reasoning_effort = QComboBox()
                 reasoning_effort.addItems(_OPENAI_REASONING_EFFORTS)
@@ -224,21 +267,15 @@ class AIGeneratorTab(QWidget):
         self._request_timeout.setSuffix(" s")
         self._request_timeout.setValue(ai.get("request_timeout", 30))
         self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
-        self._free_rate_limit = QSpinBox()
-        self._free_rate_limit.setRange(1, 20)
-        self._free_rate_limit.setValue(ai.get("free_model_rate_limit", 15))
-        self._free_rate_limit.setToolTip(
-            "Limit żądań na minutę dla modeli :free (OpenRouter).\n"
-            "OpenRouter zezwala na 20 RPM — 15 zostawia margines bezpieczeństwa.\n"
-            "Dotyczy tylko modeli z ':free' w nazwie (np. meta-llama/llama-3.2-3b:free).\n"
-            "Płatne modele nie są ograniczane przez tę wartość."
-        )
         adv_form.addRow("Limit paczki:", self._batch_limit)
         adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
         adv_form.addRow("Równoległe żądania:", self._parallel_requests)
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
         adv_form.addRow("Timeout żądania:", self._request_timeout)
-        adv_form.addRow("Limit RPM dla :free:", self._free_rate_limit)
+        adv_form.addRow(hint_label(
+            "Limity RPM / równoległości ustawisz osobno dla każdego dostawcy "
+            "wyżej (sekcja „Dostawcy AI”)."
+        ))
         adv_body.addLayout(adv_form)
         layout.addWidget(adv_container)
         layout.addStretch()
@@ -343,7 +380,8 @@ class AIGeneratorTab(QWidget):
         ai["parallel_requests"] = self._parallel_requests.value()
         ai["max_retries"] = self._ai_max_retries.value()
         ai["request_timeout"] = self._request_timeout.value()
-        ai["free_model_rate_limit"] = self._free_rate_limit.value()
+        ai.pop("free_model_rate_limit", None)  # migrated to per-provider rpm
+        ai.pop("free_model_max_concurrent", None)
         ai.setdefault("providers", {})
         for name, w in self._provider_widgets.items():
             ai["providers"].setdefault(name, {})
@@ -354,6 +392,11 @@ class AIGeneratorTab(QWidget):
             ]
             ai["providers"][name]["temperature"] = round(w["temperature"].value(), 2)
             ai["providers"][name]["fallback_model"] = w["fallback_model"].text().strip()
+            ai["providers"][name]["rpm"] = w["rpm"].value()
+            ai["providers"][name]["max_concurrent"] = w["max_concurrent"].value()
+            if "rate_limit_free_only" in w:
+                ai["providers"][name]["rate_limit_free_only"] = \
+                    w["rate_limit_free_only"].isChecked()
             if "reasoning_effort" in w:
                 re_widget = w["reasoning_effort"]
                 if hasattr(re_widget, "currentText"):

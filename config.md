@@ -108,7 +108,7 @@ Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (le
 
 **`request_timeout`** — timeout pojedynczego żądania do API AI w sekundach. Domyślnie `30`.
 
-**`free_model_rate_limit`** — limit żądań na minutę (RPM) dla modeli darmowych OpenRouter (model ID z sufiksem `:free`, np. `meta-llama/llama-3.2-3b:free`). Domyślnie `15`. OpenRouter zezwala na maks. 20 RPM dla modeli `:free` — 15 zostawia margines bezpieczeństwa. Gdy limit jest osiągnięty, wtyczka czeka do zwolnienia miejsca w oknie 60-sekundowym. Dotyczy tylko modeli z `:free` w nazwie; płatne modele nie są ograniczane. Limit jest globalny (per proces), współdzielony między wątkami batcha.
+Limity tempa (RPM) i jednoczesności są ustawiane **per provider** — patrz `providers.<nazwa>.rpm` / `max_concurrent` / `rate_limit_free_only` poniżej.
 
 ---
 
@@ -120,6 +120,11 @@ Każdy provider wymaga:
 - `"temperature"` — losowość odpowiedzi (0.0–1.0, zalecane 0.2)
 - `"fallback_model"` — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste `""` = brak fallbacku na poziomie providera; używa tego samego providera i klucza API; prompt może nadpisać własnym `fallback_provider` + `fallback_model`
 - `"cached_models"` — lista modeli pobranych przez przycisk **Pobierz**; zapisywana automatycznie przy OK w ustawieniach; przeżywa restart Anki — nie trzeba ponownie pobierać listy po restarcie; odświeżenie przyciskiem **Pobierz** nadpisuje tę listę
+
+Limity API (opcjonalne, per provider — pola **Limit RPM** i **Maks. równoległych** na karcie dostawcy):
+- `"rpm"` — maks. żądań na minutę; żądania rozkładane równomiernie (`60/rpm` s odstępu między startami, anti-burst); `0`/brak = bez limitu. Jeśli dostawca podaje limit jako RPS, pomnóż ×60 (Mistral free 0.83 RPS → ~50; domyślnie `40` z marginesem, OpenRouter `20`)
+- `"max_concurrent"` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe tiery zwykle wymagają `1`
+- `"rate_limit_free_only"` — **tylko OpenRouter**: `true` (domyślnie) = limit dotyczy wyłącznie modeli z `:free` w nazwie (płatne lecą bez dławienia); `false` = wszystkich żądań. Inni dostawcy zawsze dławią wszystkie żądania (darmowy klucz API limituje cały klucz). Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` są czytane jako back-compat dla OpenRoutera, gdy brak per-provider `rpm`. Limit (RPM/TPM nieliczony — TPM łapie retry 429) jest per proces, współdzielony między wątkami batcha
 
 OpenAI obsługuje dodatkowe pole:
 - `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.

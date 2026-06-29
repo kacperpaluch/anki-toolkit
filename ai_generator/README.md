@@ -79,7 +79,9 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 | `parallel_requests` | Liczba równoległych żądań API w batchu (1–16, domyślnie `3`) — `ThreadPoolExecutor` w `browser_ui._run_batch` |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
-| `free_model_rate_limit` | Limit RPM dla modeli `:free` OpenRouter (domyślnie `15`; OpenRouter max 20); blokuje wątek gdy limit osiągnięty, sliding-window 60s |
+| `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter `20`, Mistral `40` |
+| `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (semafor); `0` = bez limitu; darmowe API zwykle `1` |
+| `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: `true` = limit dotyczy tylko modeli `:free`, `false` = wszystkich żądań |
 
 ### Konfiguracja dostawców
 
@@ -249,22 +251,20 @@ Właściwości:
 - Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
 - Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"
 
-## Modele `:free` — rate limiter
+## Rate limiter per dostawca
 
-OpenRouter oferuje darmowe warianty modeli z sufiksem `:free` (np. `meta-llama/llama-3.2-3b:free`, `google/gemini-2.0-flash:free`). Mają one limit **20 żądań na minutę** narzucony przez OpenRouter.
+Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0.83 req/s + 25k tokenów/min; OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → AI Generator → Dostawcy**:
 
-Wtyczka automatycznie ogranicza żądania do modeli `:free`:
-
-- Domyślny limit: **15 RPM** (z marginesem bezpieczeństwa poniżej 20)
-- Konfigurowalne w **Ustawienia → AI Generator → Zaawansowane → Limit RPM dla :free** (1–20)
-- Sliding window 60 sekund — gdy limit osiągnięty, wątek czeka do zwolnienia miejsca (nie odrzuca żądań)
-- Globalny, współdzielony między wątkami batcha (`ThreadPoolExecutor`)
-- Dotyczy zarówno modelu głównego jak i fallbackowego, jeśli oba są `:free`
-- Płatne modele (bez `:free` w nazwie) nie są ograniczane
+- **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (Mistral 0.83 RPS → ~50; domyślnie `40` z marginesem, OpenRouter `20`)
+- **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
+- **Limit tylko dla modeli `:free`** (`providers.openrouter.rate_limit_free_only`, tylko OpenRouter) — zaznaczone: limit obejmuje wyłącznie modele `:free`, płatne lecą bez dławienia; u innych dostawców limit zawsze obejmuje wszystkie żądania
+- Dotyczy modelu głównego i fallbackowego; TPM (tokeny/min) nie jest egzekwowane wprost — łapie je retry przy HTTP 429
+- Back-compat: stare `free_model_rate_limit`/`free_model_max_concurrent` są czytane dla OpenRoutera, gdy brak per-provider `rpm`
 
 ```json
-"ai_generator": {
-    "free_model_rate_limit": 15
+"providers": {
+    "openrouter": { "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true },
+    "mistral":    { "rpm": 40, "max_concurrent": 1 }
 }
 ```
 

@@ -3,7 +3,6 @@
 import logging
 import threading
 import time
-from collections import deque
 from contextlib import contextmanager
 from typing import Dict, Optional
 
@@ -18,100 +17,105 @@ from .providers import get_provider, BaseProvider
 logger = logging.getLogger(__name__)
 
 
-class FreeModelRateLimiter:
-    """Sliding-window rate limiter for OpenRouter :free models.
+class RateLimiter:
+    """Per-provider request pacing: even RPM spacing + a concurrency cap.
 
-    OpenRouter allows 20 RPM for free model variants (model ID ending with
-    ':free'). We default to 15 RPM for safety margin. Thread-safe — batch
-    uses ThreadPoolExecutor, so multiple threads may hit this concurrently.
+    Singleton with one bucket per provider. A bucket spaces request *starts* by
+    60/rpm so requests don't burst past an RPS/RPM cap (e.g. Mistral free tier's
+    0.83 req/s), and caps how many run at once. rpm<=0 disables pacing,
+    max_concurrent<=0 disables the cap. Thread-safe — the browser batch hits
+    this from a ThreadPoolExecutor.
 
-    ponytail: global singleton, per-process. Limit is per API key, not per
-    instance. deque+lock is simpler than a token bucket and precise enough
-    for 60s windows.
+    free_only=True applies the bucket only to models whose id contains ':free'
+    (OpenRouter free variants); paid models on the same provider pass straight
+    through. free_only=False throttles every request for the provider — used by
+    free-tier API keys (e.g. Mistral) where the whole key is rate-limited.
+
+    ponytail: paces request *starts*, not tokens. A tokens-per-minute cap
+    (Mistral free = 25k TPM) can't be known before the call returns; the 429
+    backoff in post_json() absorbs the occasional overflow. Add token
+    accounting only if TPM 429s actually persist.
     """
 
     _instance = None
-    _lock = threading.Lock()
+    _new_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            with cls._lock:
+            with cls._new_lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
-        if not hasattr(self, "_initialized"):
-            self._timestamps: deque = deque()
+        if not hasattr(self, "_buckets"):
+            self._buckets: dict[str, dict] = {}
             self._mtx = threading.Lock()
-            self._limit = 15
-            self._window = 60.0  # seconds
-            # Concurrency gate for :free models. The free endpoint 429s on
-            # simultaneous hits (not on RPM), so we serialize :free requests —
-            # default 1 in flight. Paid models bypass this entirely.
-            self._max_concurrent = 1
-            self._sem = threading.Semaphore(1)
-            self._initialized = True
 
-    def configure(self, limit: int, window: float = 60.0,
-                  max_concurrent: int = 1) -> None:
+    def configure(self, provider: str, rpm: int = 0,
+                  max_concurrent: int = 0, free_only: bool = False) -> None:
+        interval = 60.0 / rpm if rpm and rpm > 0 else 0.0
+        mc = int(max_concurrent) if max_concurrent and max_concurrent > 0 else 0
         with self._mtx:
-            self._limit = max(1, limit)
-            self._window = max(1.0, window)
-            mc = max(1, int(max_concurrent))
-            if mc != self._max_concurrent:
-                # ponytail: Semaphore can't be resized — swap it. A config
-                # change mid-batch could briefly allow >mc in flight; settings
-                # only change on save, so this is harmless.
-                self._max_concurrent = mc
-                self._sem = threading.Semaphore(mc)
+            old = self._buckets.get(provider)
+            # ponytail: Semaphore can't be resized — rebuild the bucket only
+            # when concurrency changes, preserving the last-start timestamp so
+            # an in-progress batch keeps its pacing.
+            if old is None or old["mc"] != mc:
+                self._buckets[provider] = {
+                    "lock": threading.Lock(),
+                    "sem": threading.Semaphore(mc) if mc else None,
+                    "last": old["last"] if old else 0.0,
+                    "mc": mc,
+                    "interval": interval,
+                    "free_only": free_only,
+                }
+            else:
+                old["interval"] = interval
+                old["free_only"] = free_only
 
-    def acquire(self, model: str) -> None:
-        """Block until a slot is available if *model* is a :free variant."""
-        if ":free" not in model.lower():
-            return
-        with self._mtx:
-            while True:
-                now = time.monotonic()
-                cutoff = now - self._window
-                while self._timestamps and self._timestamps[0] < cutoff:
-                    self._timestamps.popleft()
-                if len(self._timestamps) < self._limit:
-                    break
-                # Slot full — wait until the oldest timestamp exits the window.
-                wait = self._timestamps[0] + self._window - now
-                if wait <= 0:
-                    continue  # timestamp already expired, retry immediately
-                logger.info(
-                    f"Rate limit :free ({self._limit} RPM) — czekam {wait:.1f}s"
-                )
-                # ponytail: release lock during sleep so other threads can
-                # enter acquire() and also queue up. After waking, re-check
-                # the limit in the while loop — another thread may have taken
-                # the slot we were waiting for.
-                self._mtx.release()
-                time.sleep(wait)
-                self._mtx.acquire()
-            self._timestamps.append(time.monotonic())
+    def _bucket_for(self, provider: str, model: str) -> Optional[dict]:
+        b = self._buckets.get(provider)
+        if not b:
+            return None
+        if b["free_only"] and ":free" not in model.lower():
+            return None
+        if b["interval"] <= 0 and not b["sem"]:
+            return None
+        return b
 
     @contextmanager
-    def slot(self, model: str):
-        """Gate one API call: RPM window + at most _max_concurrent in flight.
+    def slot(self, provider: str, model: str):
+        """Gate one API call for *provider*: RPM spacing + concurrency cap.
 
-        No-op for non-:free models — they run fully parallel. :free requests
-        are serialized so concurrent worker threads don't burst the free
-        endpoint (its 429s come from simultaneity, not from request rate).
+        No-op when the provider has no applicable limit. Concurrent worker
+        threads are paced to one start every 60/rpm seconds, so a batch never
+        bursts past the provider's rate limit.
         """
-        if ":free" not in model.lower():
+        b = self._bucket_for(provider, model)
+        if b is None:
             yield
             return
-        self.acquire(model)
-        sem = self._sem  # capture: configure() may swap it concurrently
-        sem.acquire()
+        sem = b["sem"]  # capture: configure() may swap it concurrently
+        if sem:
+            sem.acquire()
         try:
+            interval = b["interval"]
+            if interval > 0:
+                # Hold the bucket lock across the sleep so request starts stay
+                # evenly spaced even with several worker threads queued here.
+                with b["lock"]:
+                    wait = b["last"] + interval - time.monotonic()
+                    if wait > 0:
+                        logger.info(
+                            f"Rate limit {provider} — czekam {wait:.1f}s"
+                        )
+                        time.sleep(wait)
+                    b["last"] = time.monotonic()
             yield
         finally:
-            sem.release()
+            if sem:
+                sem.release()
 
 
 class FieldGenerator:
@@ -130,10 +134,6 @@ class FieldGenerator:
         self._config = config
         self._providers: Dict[tuple[str, str], Optional[BaseProvider]] = {}
         self.last_error: Optional[str] = None
-        FreeModelRateLimiter().configure(
-            int(config.get("free_model_rate_limit", 15)),
-            max_concurrent=int(config.get("free_model_max_concurrent", 1)),
-        )
 
     def _resolve_provider(self, provider_name: str,
                           requested_model: str = "") -> Optional[BaseProvider]:
@@ -186,6 +186,7 @@ class FieldGenerator:
             effective_cfg["model"] = effective_model
             provider = get_provider(provider_name, effective_cfg,
                                     max_retries=max_retries, timeout=request_timeout)
+            self._configure_rate_limit(provider_name, provider_cfg)
             self._providers[cache_key] = provider
             return provider
         except ValueError as e:
@@ -193,6 +194,29 @@ class FieldGenerator:
             logger.error(self.last_error)
             self._providers[cache_key] = None
             return None
+
+    def _configure_rate_limit(self, provider_name: str, provider_cfg: dict) -> None:
+        """Register this provider's rate-limit bucket from its config.
+
+        Reads per-provider `rpm`, `max_concurrent`, `rate_limit_free_only`.
+        Back-compat: if openrouter has no per-provider `rpm`, fall back to the
+        legacy global `free_model_rate_limit`/`free_model_max_concurrent`
+        (which only ever throttled :free models)."""
+        rpm = int(provider_cfg.get("rpm", 0) or 0)
+        max_concurrent = int(provider_cfg.get("max_concurrent", 0) or 0)
+        free_only = bool(provider_cfg.get("rate_limit_free_only", False))
+        if not rpm and provider_name == "openrouter":
+            rpm = int(self._config.get("free_model_rate_limit", 0) or 0)
+            if rpm:
+                free_only = True
+                if not max_concurrent:
+                    max_concurrent = int(
+                        self._config.get("free_model_max_concurrent", 1) or 1
+                    )
+        RateLimiter().configure(
+            provider_name, rpm=rpm,
+            max_concurrent=max_concurrent, free_only=free_only,
+        )
 
     def process_note(self, note: Note,
                      only_fields: Optional[set] = None,
@@ -255,9 +279,9 @@ class FieldGenerator:
             prompt_template = safe_str(field_cfg.get("prompt", ""))
             prompt = render_template(prompt_template, fields_map)
 
-            _rate_limiter = FreeModelRateLimiter()
+            _rate_limiter = RateLimiter()
             provider.last_usage = (0, 0)
-            with _rate_limiter.slot(provider.model):
+            with _rate_limiter.slot(provider_name, provider.model):
                 result = provider.call_api(prompt)
             in_tokens, out_tokens = provider.last_usage
             stats.record_request(
@@ -307,7 +331,7 @@ class FieldGenerator:
                     f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
                 )
                 fb_provider.last_usage = (0, 0)
-                with _rate_limiter.slot(fb_provider.model):
+                with _rate_limiter.slot(fb_name, fb_provider.model):
                     result = fb_provider.call_api(prompt)
                 fb_in, fb_out = fb_provider.last_usage
                 stats.record_request(

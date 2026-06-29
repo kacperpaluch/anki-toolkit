@@ -165,7 +165,10 @@
                 "temperature": 0.2,
                 "reasoning_effort": "medium",
                 "fallback_model": "",
-                "cached_models": []
+                "cached_models": [],
+                "rpm": 20,
+                "max_concurrent": 1,
+                "rate_limit_free_only": true
             },
             "anthropic": {
                 "api_key": "YOUR_ANTHROPIC_KEY",
@@ -180,7 +183,9 @@
                 "model": "mistral-small-latest",
                 "temperature": 0.2,
                 "fallback_model": "",
-                "cached_models": []
+                "cached_models": [],
+                "rpm": 40,
+                "max_concurrent": 1
             },
             "opencode_go": {
                 "api_key": "YOUR_OPENCODE_GO_KEY",

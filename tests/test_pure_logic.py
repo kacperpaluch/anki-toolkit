@@ -308,76 +308,58 @@ class _FakeNote:
         return 1
 
 
-class FreeModelRateLimiterTests(unittest.TestCase):
-    """Tests for the :free model rate limiter (sliding window)."""
+class RateLimiterTests(unittest.TestCase):
+    """Per-provider rate limiter: even RPM spacing + free_only scoping."""
 
     def setUp(self):
-        import importlib
-        # Re-load field_generator to get a fresh singleton
         self._fg_module, _ = load_field_generator_with_stubs()
-        # Reset singleton by clearing the class attribute
-        self._fg_module.FreeModelRateLimiter._instance = None
+        # Reset singleton so each test gets a fresh set of buckets.
+        self._fg_module.RateLimiter._instance = None
 
-    def test_non_free_models_skip_limiter(self):
-        limiter = self._fg_module.FreeModelRateLimiter()
-        limiter.configure(limit=2)
-        # Should return instantly — no blocking
-        import time
-        start = time.monotonic()
-        limiter.acquire("gpt-4o")
-        limiter.acquire("claude-3.5-haiku")
-        elapsed = time.monotonic() - start
-        self.assertLess(elapsed, 0.1)
+    def _limiter(self):
+        return self._fg_module.RateLimiter()
 
-    def test_free_model_blocks_on_limit(self):
-        limiter = self._fg_module.FreeModelRateLimiter()
-        limiter.configure(limit=2, window=1.0)  # 1s window for fast test
-        import time
-        limiter.acquire("meta-llama/llama-3.2-3b:free")
-        limiter.acquire("meta-llama/llama-3.2-3b:free")
-        # Third call should block until the window slides
+    def test_no_config_is_passthrough(self):
+        rl = self._limiter()
         start = time.monotonic()
-        limiter.acquire("meta-llama/llama-3.2-3b:free")
-        elapsed = time.monotonic() - start
-        self.assertGreater(elapsed, 0.8)  # ~1s wait
+        with rl.slot("mistral", "mistral-small-latest"):
+            pass
+        self.assertLess(time.monotonic() - start, 0.1)
+
+    def test_rpm_paces_request_starts(self):
+        rl = self._limiter()
+        rl.configure("mistral", rpm=120)  # 0.5s spacing
+        with rl.slot("mistral", "mistral-small-latest"):
+            pass
+        start = time.monotonic()
+        with rl.slot("mistral", "mistral-small-latest"):
+            pass
+        # Second start must wait ~one interval (0.5s) after the first.
+        self.assertGreater(time.monotonic() - start, 0.4)
+
+    def test_free_only_skips_paid_models(self):
+        rl = self._limiter()
+        rl.configure("openrouter", rpm=60, free_only=True)  # 1s spacing
+        with rl.slot("openrouter", "anthropic/claude-3.5-haiku"):
+            pass
+        start = time.monotonic()
+        with rl.slot("openrouter", "anthropic/claude-3.5-haiku"):
+            pass
+        # Paid model: not throttled even though a 1s interval is configured.
+        self.assertLess(time.monotonic() - start, 0.2)
+
+    def test_free_only_paces_free_models(self):
+        rl = self._limiter()
+        rl.configure("openrouter", rpm=120, free_only=True)  # 0.5s spacing
+        with rl.slot("openrouter", "meta-llama/llama-3.2-3b:free"):
+            pass
+        start = time.monotonic()
+        with rl.slot("openrouter", "meta-llama/llama-3.2-3b:free"):
+            pass
+        self.assertGreater(time.monotonic() - start, 0.4)
 
     def test_is_singleton(self):
-        a = self._fg_module.FreeModelRateLimiter()
-        b = self._fg_module.FreeModelRateLimiter()
-        self.assertIs(a, b)
-
-    def test_concurrent_threads_respect_global_limit(self):
-        """N threads must not exceed the limit in any 60s window."""
-        import threading
-        import time as _time
-        limiter = self._fg_module.FreeModelRateLimiter()
-        limiter.configure(limit=5, window=1.0)  # 5 RPM in 1s window for fast test
-        results: list = []
-        results_lock = threading.Lock()
-
-        def worker():
-            limiter.acquire("meta-llama/llama-3.2-3b:free")
-            with results_lock:
-                results.append(_time.monotonic())
-
-        threads = [threading.Thread(target=worker) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=5)
-
-        # All 10 should complete (some after waiting), and at no point
-        # should more than `limit` requests be in the window.
-        self.assertEqual(len(results), 10)
-        # Check: in any 1s window, no more than 5 requests
-        results.sort()
-        for i, ts in enumerate(results):
-            window_start = ts - 1.0
-            count_in_window = sum(1 for r in results if r >= window_start and r <= ts)
-            self.assertLessEqual(
-                count_in_window, 5,
-                f"Exceeded limit: {count_in_window} requests in 1s window at index {i}"
-            )
+        self.assertIs(self._limiter(), self._limiter())
 
 
 class TemplateStructureProblemsTests(unittest.TestCase):
@@ -817,13 +799,15 @@ class WorkflowMigrationTests(unittest.TestCase):
 
 
 class FreeModelConcurrencyTests(unittest.TestCase):
-    """slot() gates :free requests to max_concurrent in flight; paid models
-    pass straight through (no serialization)."""
+    """slot() caps in-flight requests at max_concurrent; with free_only set,
+    paid models on the same provider pass straight through."""
 
-    def _limiter(self, max_concurrent):
+    def _limiter(self, max_concurrent, free_only=True):
         module, _ = load_field_generator_with_stubs()
-        rl = module.FreeModelRateLimiter()
-        rl.configure(15, max_concurrent=max_concurrent)
+        module.RateLimiter._instance = None
+        rl = module.RateLimiter()
+        rl.configure("openrouter", rpm=0,
+                     max_concurrent=max_concurrent, free_only=free_only)
         return rl
 
     def _peak_in_flight(self, rl, model, n_threads):
@@ -831,7 +815,7 @@ class FreeModelConcurrencyTests(unittest.TestCase):
         lock = threading.Lock()
 
         def worker():
-            with rl.slot(model):
+            with rl.slot("openrouter", model):
                 with lock:
                     state["in"] += 1
                     state["peak"] = max(state["peak"], state["in"])
