@@ -64,9 +64,10 @@ def _apply(col: Collection, note_ids, rules) -> int:
     for nid in note_ids:
         note = col.get_note(nid)
         tags = set(note.tags)
-        tmpls = note.note_type()["tmpls"]
         for card in note.cards():
-            name = tmpls[card.ord]["name"]
+            # card.template() obsługuje cloze (jeden szablon, ord = numer
+            # cloze) — indeksowanie tmpls[card.ord] rzucałoby IndexError.
+            name = card.template()["name"]
             deck = match_deck(tags, name, rules)
             if not deck:
                 continue

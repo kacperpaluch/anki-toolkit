@@ -20,7 +20,7 @@ Zakładka UI: `settings/deck_router_tab.py` (`DeckRouterTab`). Test: `tests/test
 
 ## Stack
 
-Python 3.9+. Brak zewnętrznych zależności. Używa `col.get_note`, `note.cards()`, `note.note_type()["tmpls"]`, `card.ord`, `col.decks.id(name, create=True)`, `col.set_deck(card_ids, did)`, `col.find_notes`, `aqt.operations.CollectionOp`, `gui_hooks.add_cards_did_add_note`.
+Python 3.9+. Brak zewnętrznych zależności. Używa `col.get_note`, `note.cards()`, `card.template()`, `col.decks.id(name, create=True)`, `col.set_deck(card_ids, did)`, `col.find_notes`, `aqt.operations.CollectionOp`, `gui_hooks.add_cards_did_add_note`.
 
 ## Model danych
 
@@ -47,8 +47,8 @@ Config: `config.json` → `"deck_router": {"rules": [...]}`. Toggle: `modules.de
 
 ### `__init__._apply(col, note_ids, rules) -> int` (mutacja kolekcji)
 
-1. Dla każdej notatki: `tags = set(note.tags)`, `tmpls = note.note_type()["tmpls"]`.
-2. Dla każdej karty: `name = tmpls[card.ord]["name"]`, `deck = match_deck(tags, name, rules)`.
+1. Dla każdej notatki: `tags = set(note.tags)`.
+2. Dla każdej karty: `name = card.template()["name"]` (obsługuje cloze — jeden szablon, `ord` = numer cloze; indeksowanie `tmpls[card.ord]` rzucałoby `IndexError`), `deck = match_deck(tags, name, rules)`.
 3. Jeśli `deck` niepusty: resolve `did` przez `col.decks.id(deck, create=True)` (cache `deck_ids` w obrębie wywołania); jeśli `card.did != did` → dodaj do `to_move[did]`.
 4. `col.set_deck(cids, did)` dla każdej talii. Zwraca liczbę przeniesionych kart.
 5. Karta już we właściwej talii jest pomijana (brak churnu). Karta bez dopasowania nie jest ruszana.
@@ -114,7 +114,7 @@ Soft-import + `_module_enabled()` guard: brak twardej zależności, działa też
 
 ## Anki API używane
 
-- `col.get_note(nid)`, `note.tags`, `note.note_type()["tmpls"]`, `note.cards()`, `card.ord`, `card.did`, `card.id`
+- `col.get_note(nid)`, `note.tags`, `note.cards()`, `card.template()`, `card.did`, `card.id`
 - `col.decks.id(name, create=True)`, `col.set_deck(card_ids, deck_id)`, `col.decks.all_names_and_ids()`
 - `col.models.all()`, `col.find_notes(query)`
 - `aqt.operations.CollectionOp`, `gui_hooks.add_cards_did_add_note`
