@@ -29,6 +29,7 @@ cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
 ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 http_helpers = load_module("http_helpers", "common/http.py")
 field_splitter = load_module("field_splitter_logic", "field_splitter/splitting.py")
+deck_router = load_module("deck_router_logic", "deck_router/logic.py")
 
 
 def load_field_generator_with_stubs(provider_responses=None):
@@ -841,6 +842,34 @@ class FreeModelConcurrencyTests(unittest.TestCase):
     def test_free_model_respects_higher_concurrency(self):
         rl = self._limiter(2)
         self.assertEqual(self._peak_in_flight(rl, "openai/gpt-oss-120b:free", 6), 2)
+
+
+class DeckRouterMatchTest(unittest.TestCase):
+    def test_tag_only_rule_matches_any_template(self):
+        rules = [{"tag": "abc123", "deck": "Osobne"}]
+        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "Osobne")
+        self.assertEqual(deck_router.match_deck({"abc123"}, "p1-nauka", rules), "Osobne")
+
+    def test_no_tag_no_match(self):
+        rules = [{"tag": "abc123", "deck": "Osobne"}]
+        self.assertIsNone(deck_router.match_deck({"inne"}, "pol-ang", rules))
+
+    def test_template_scoped_rule(self):
+        rules = [{"tag": "abc123", "template": "pol-ang", "deck": "A"}]
+        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "A")
+        self.assertIsNone(deck_router.match_deck({"abc123"}, "ang-pol", rules))
+
+    def test_first_matching_rule_wins(self):
+        rules = [
+            {"tag": "abc123", "template": "pol-ang", "deck": "A"},
+            {"tag": "abc123", "deck": "B"},
+        ]
+        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "A")
+        self.assertEqual(deck_router.match_deck({"abc123"}, "ang-pol", rules), "B")
+
+    def test_incomplete_rules_ignored(self):
+        self.assertIsNone(deck_router.match_deck({"abc123"}, "x", [{"tag": "abc123"}]))
+        self.assertIsNone(deck_router.match_deck({"abc123"}, "x", [{"deck": "A"}]))
 
 
 if __name__ == "__main__":

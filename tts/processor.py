@@ -16,7 +16,10 @@ from aqt import mw
 from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 
-from ..common import unique_filename, clean_html, split_separator_regex, unique
+from ..common import (
+    unique_filename, clean_html, split_separator_regex, unique,
+    start_progress, update_progress, finish_progress,
+)
 
 from .api import generate_audio
 from .config import get_tts_config, validate_config, get_tasks
@@ -209,7 +212,7 @@ def generate_for_items(
 
 
 # ---------------------------------------------------------------------------
-# Async batch processing (QProgressDialog + cancel + single-undo save)
+# Async batch processing (natywny pasek mw.progress + cancel + single-undo save)
 # ---------------------------------------------------------------------------
 
 def process_task_async(browser, nids: list, task: dict):
@@ -223,8 +226,6 @@ def process_tasks_async(browser, nids: list, tasks: list[dict], on_complete=None
 
 def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
                          on_complete=None):
-    from aqt.qt import QProgressDialog, Qt
-
     # ponytail: on_complete fires on every exit (success, soft skip, error) so a
     # chained pipeline keeps going — TTS failing shouldn't block later steps.
     def _continue():
@@ -259,27 +260,13 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
         _continue()
         return
 
-    progress = QProgressDialog(f"{label}...", "Anuluj", 0, len(all_items), browser)
-    progress.setWindowTitle("TTS")
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.setAutoClose(False)
-    progress.setAutoReset(False)
-    progress.setValue(0)
-
-    cancel_flag = {"cancelled": False}
-    progress.canceled.connect(lambda: cancel_flag.update(cancelled=True))
+    cancel_flag = start_progress(label, len(all_items), "TTS")
 
     state = {"done": 0}
 
     def on_progress():
         state["done"] += 1
-        done = state["done"]
-
-        def _update(d=done):
-            progress.setLabelText(f"{label}... {d}/{progress.maximum()}")
-            progress.setValue(d)
-        mw.taskman.run_on_main(_update)
+        update_progress(cancel_flag, label, state["done"], len(all_items))
 
     def bg_task():
         return generate_for_items(
@@ -290,7 +277,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
         )
 
     def on_done(fut):
-        progress.close()
+        finish_progress()
         try:
             results, errors, first_error = fut.result()
         except Exception as e:

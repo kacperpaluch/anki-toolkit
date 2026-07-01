@@ -15,7 +15,7 @@ Wtyczka automatycznie wykrywa ścieżkę do `ffmpeg` (PATH, `/opt/homebrew/bin`,
 
 **Narzędzia → Anki Toolkit → Normalizuj Audio (ffmpeg)**
 
-Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje pozostałe. Postęp widoczny jest w oknie dialogowym. Po zakończeniu wyświetlane jest podsumowanie z liczbą przetworzonych plików i ewentualnych błędów.
+Wtyczka skanuje katalog media Anki, pomija pliki już przetworzone i normalizuje pozostałe. Postęp widać na **natywnym pasku Anki** z przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku operacji. Po zakończeniu wyświetlane jest podsumowanie z liczbą przetworzonych plików i ewentualnych błędów.
 
 ### Auto-normalizacja
 

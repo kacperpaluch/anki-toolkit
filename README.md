@@ -1,6 +1,6 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca osiem narzędzi do zarządzania kartami Anki.
+Scalona wtyczka łącząca dziewięć narzędzi do zarządzania kartami Anki.
 
 ## Struktura
 
@@ -18,6 +18,7 @@ anki-toolkit/
 │   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl(), apply_word_replacements()
 │   ├── http.py                      # fetch_url(), fetch_text(), post_json() (retry dla POST), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
+│   ├── progress.py                  # start_progress()/update_progress()/finish_progress() — natywny pasek mw.progress dla batchy (backup/sync się nie wcina)
 │   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_note_type_names, get_fields_for_note_type, get_sample_notes
 │
@@ -36,6 +37,7 @@ anki-toolkit/
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
+│   ├── deck_router_tab.py           # Zakładka: Deck Router — tabela reguł tag → talia
 │   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI + koszty
 │   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów
 │
@@ -98,6 +100,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── deck_router/                     # Moduł 9: kierowanie kart do talii wg tagu
+│   ├── __init__.py                  # hook add-cards + route_after_edit() + menu retro
+│   ├── logic.py                     # match_deck() — czysta logika dopasowania reguły
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -136,6 +144,7 @@ Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
+| **Deck Router** | Tabela reguł tag → talia (szablon i talia z list rozwijanych); kieruje karty do talii wg tagu notatki |
 | **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 | **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
 
@@ -156,7 +165,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "audio_normalizer":  true,
     "nbsp_remover":      true,
     "field_splitter":    true,
-    "sibling_manager":   true
+    "sibling_manager":   true,
+    "deck_router":       true
 }
 ```
 
@@ -326,7 +336,7 @@ Limity dotyczą zarówno modelu głównego, jak i fallbackowego. Limit tokenów 
 
 ### TTS
 
-Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z QProgressDialog i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta, wszystkie zadania). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
+Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z natywnym paskiem postępu Anki i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta, wszystkie zadania). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
 
 **PPM na polu docelowym w edytorze** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — strip `[sound:...]` i generuj nowe). Działa też w oknie dodawania nowej karty.
 - **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
@@ -488,6 +498,33 @@ Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
 | `show_tooltip` | `true` | Tooltip po sync catch-up ("zawieszono X, odwieszono Y") |
 
 **Współistnienie z SibPush:** Jeśli używałeś wcześniej SibPush, **wyłącz go** przed włączeniem tego modułu — oba zarządzają zawieszaniem i mogłyby konfliktować.
+
+---
+
+### Deck Router (`deck_router`)
+
+Kieruje karty do talii na podstawie **tagu notatki** (opcjonalnie zawężone do konkretnego szablonu karty). Uzupełnia natywny **Deck Override**, który działa tylko per-szablon — nie da się nim rozdzielić kart tego samego szablonu na różne talie w zależności od tego, co to za karta.
+
+**Zasada działania:**
+1. Reguła = `{tag, (opcjonalnie) szablon, talia}`.
+2. Dla każdej karty reguły są sprawdzane po kolei — **pierwsza pasująca wygrywa** (tag na notatce **oraz** szablon zgodny, albo szablon pusty = wszystkie karty notatki).
+3. Pasująca karta → przeniesiona do talii z reguły (talia tworzona automatycznie). Karta już we właściwej talii jest pomijana.
+4. **Notatka bez pasującej reguły nie jest ruszana** — zostaje wg natywnego Deck Override. Pusta lista reguł = moduł nic nie robi.
+
+Tag jest własnością notatki, więc reguła bez szablonu przenosi cały komplet kart notatki do jednej talii; reguła ze szablonem pozwala rozbić karty jednej notatki na różne talie.
+
+**Kiedy się odpala:** przy dodawaniu w oknie **Dodaj** (`add_cards_did_add_note`), po AI-workflow/batchu w przeglądarce (dla zmienionych notatek), oraz ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** (retroaktywne uporządkowanie po tagach z reguł, w tle, jeden krok undo).
+
+Konfiguracja w **Ustawienia → Deck Router** — tabela reguł. Szablon i talia z list rozwijanych (pobieranych z kolekcji, więc bez literówek); talia jest edytowalna, więc można wpisać nową (zostanie utworzona; zagnieżdżanie przez `::`).
+
+```json
+"deck_router": {
+    "rules": [
+        {"tag": "abc123", "template": "pol-ang", "deck": "Angielski::Osobne::pol-ang"},
+        {"tag": "abc123", "deck": "Angielski::Osobne"}
+    ]
+}
+```
 
 ---
 

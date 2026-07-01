@@ -9,8 +9,8 @@ Normalizuje głośność wszystkich plików audio w katalogu media Anki do stand
 | Plik | Rola |
 |---|---|
 | `__init__.py` | Entry point — `setup_menu(parent_menu=None)` rejestruje akcję w menu Anki Toolkit + `watcher.init_auto_normalize()` |
-| `gui.py` | `ProgressDialog` (Qt) + `Worker(QThread)` — czyta konfigurację przez `addonManager` (używa `common.ADDON_NAME`), przekazuje parametry do `logic.process_collection`; po zakończeniu wywołuje `_sync_media_files()` → `mw.col.media.write_data()` dla każdego zmodyfikowanego pliku |
-| `logic.py` | Skanowanie media, historia, wywołania ffmpeg, równoległość; `process_collection` zwraca `(count, errors, modified_files)`; `normalize_file` zwraca `(success, new_mtime)` |
+| `gui.py` | `run_normalization()` — czyta konfigurację przez `addonManager` (używa `common.ADDON_NAME`), uruchamia `logic.process_collection` przez `mw.taskman.run_in_background` z natywnym paskiem `mw.progress` (`common.progress`: `start_progress`/`update_progress`/`finish_progress`); w `on_done` wywołuje `_sync_media_files()` → `mw.col.media.write_data()` dla każdego zmodyfikowanego pliku. Nie ma już własnego `QThread`/`QDialog` — pasek `mw.progress` trzyma Anki „busy", więc backup/sync się odkłada i nie zasłania Anuluj |
+| `logic.py` | Skanowanie media, historia, wywołania ffmpeg, równoległość; `process_collection(..., should_cancel=None)` zwraca `(count, errors, modified_files)` — `should_cancel()` pollowane między plikami (`executor.shutdown(cancel_futures=True)` + break); `normalize_file` zwraca `(success, new_mtime)` |
 | `config.py` | Wartości domyślne: `FFMPEG_CMD` (auto-detect), `LOUDNORM_OPTS`, `AUDIO_EXTENSIONS`, `MAX_WORKERS`, `AUTO_NORMALIZE` — używane jako fallback |
 | `watcher.py` | Auto-normalizacja — `QFileSystemWatcher` na `mw.col.media.dir()` + `QTimer` debounce 3s + flaga `_normalizing` (ochrona przed feedback loop: ffmpeg temp+rename i `media.write_data` sync nie re-triggerują). `_run_auto_normalize()` czyta konfigurację na głównym wątku, po czym uruchamia `logic.process_collection` (ffmpeg) przez `mw.taskman.run_in_background` — **nie blokuje UI**; sync media DB (`media.write_data`) i tooltip wykonują się w `on_done` na głównym wątku, a `_normalizing` jest zwalniane dopiero tam (przez cały czas pracy chroni przed re-triggerem). Po normalizacji tooltip w prawym dolnym rogu ("Znormalizowano N plik(ów) audio.") jeśli `show_tooltip=true`. `init_auto_normalize()` rejestruje `gui_hooks.profile_did_open` (startuje watcher gdy `auto_normalize=true`) — wzorzec jak `nbsp_remover` (start natychmiast jeśli `mw.col` już otwarte) |
 
@@ -24,9 +24,9 @@ Narzędzia → Anki Toolkit → Normalizuj Audio
       → loudnorm_opts = cfg["loudnorm_opts"]
       → max_workers = cfg["max_workers"]
       → sprawdź czy ffmpeg dostępny (shutil.which)
-      → ProgressDialog.show()
-      → Worker(max_workers, ffmpeg_cmd, loudnorm_opts).start()
-          → logic.process_collection(callback, max_workers, ffmpeg_cmd, loudnorm_opts)
+      → start_progress("Normalizacja audio", 0, "Normalizacja Audio")   # common.progress → natywny mw.progress (Anki „busy")
+      → mw.taskman.run_in_background(task, on_done)
+          → task(): logic.process_collection(progress_cb, max_workers, ffmpeg_cmd, loudnorm_opts, should_cancel)
               → os.listdir(mw.col.media.dir())        # wszystkie pliki media
               → filtruj po config.AUDIO_EXTENSIONS
               → dla każdego: needs_processing(path, name, history)  # mtime check
@@ -40,10 +40,11 @@ Narzędzia → Anki Toolkit → Normalizuj Audio
                       → return (True, new_mtime)
               → save_history(history)                   # zapisz mtime
               → return (count, errors, modified_files)
-          → Worker emituje sygnały Qt do ProgressDialog
-          → on_finished(count, errors, modified_files)
+          → progress_cb(processed, total, name) → update_progress(...) (główny wątek, czyta want_cancel → cancel_flag)
+          → on_done(fut) (główny wątek):
+              → finish_progress()
               → _sync_media_files(modified_files)       # mw.col.media.write_data() dla każdego pliku
-  → showInfo z liczbą przetworzonych / błędów
+              → showInfo z liczbą przetworzonych / błędów (+ „(przerwano)" gdy anulowano)
 ```
 
 ## Konfiguracja (sekcja `audio_normalizer` w config.json)
@@ -88,26 +89,15 @@ def _get_normalizer_config() -> dict:
     return full.get("audio_normalizer", {})
 ```
 
-`Worker` otrzymuje wartości przy tworzeniu (`__init__`) — jest odizolowany od addonManager podczas działania w wątku. Sygnał `finished_processing` emituje `(count, errors, modified_files)` — lista nazw plików które zostały znormalizowane.
+Wartości konfiguracji są odczytane na głównym wątku w `run_normalization()` i przekazane do `task()` przez closure — worker (`logic.process_collection`) nie dotyka `addonManager` podczas pracy w tle. `task()` zwraca `(count, errors, modified_files)` przez `future`.
 
-`on_finished(count, errors, modified_files)` wywołuje `_sync_media_files(modified_files)` przed wyświetleniem podsumowania — każdy plik jest re-readowany przez `mw.col.media.write_data()` aby zaktualizować hash w Anki media DB.
-
-`start_normalization` zatrzymuje poprzedni worker przed stworzeniem nowego (guard przed podwójnym wywołaniem):
-
-```python
-def start_normalization(self, max_workers, ffmpeg_cmd, loudnorm_opts):
-    if self.worker is not None and self.worker.isRunning():
-        self.worker.quit()
-        self.worker.wait()
-    self.worker = Worker(...)
-    ...
-```
+`on_done(fut)` woła `finish_progress()`, potem `_sync_media_files(modified_files)` przed podsumowaniem — każdy plik jest re-readowany przez `mw.col.media.write_data()`, aby zaktualizować hash w Anki media DB. Anulowanie: `should_cancel=lambda: cancel_flag["cancelled"]`; `cancel_flag` jest ustawiane przez `update_progress` (czyta `mw.progress.want_cancel()` na głównym wątku).
 
 ## Zależności
 
 - Stdlib: `os`, `json`, `subprocess`, `concurrent.futures`, `shutil`, `time`
-- Anki API: `mw.col.media.dir()`, `mw.col.media.write_data()`, `mw.addonManager.getConfig()`, `gui_hooks.profile_did_open`
-- Własne: `common.ADDON_NAME`
-- PyQt6: `QThread`, `pyqtSignal`, `QDialog`, `QProgressBar`, `QFileSystemWatcher`, `QTimer`
+- Anki API: `mw.col.media.dir()`, `mw.col.media.write_data()`, `mw.addonManager.getConfig()`, `mw.taskman.run_in_background`, `mw.progress` (natywny pasek przez `common.progress`), `gui_hooks.profile_did_open`
+- Własne: `common.ADDON_NAME`, `common.progress` (`start_progress`/`update_progress`/`finish_progress`)
+- PyQt6: `QFileSystemWatcher`, `QTimer` (watcher), `QAction`, `QMessageBox` (menu/potwierdzenie)
 - Wymaga zainstalowanego **ffmpeg** w systemie
 - Brak pip packages

@@ -16,7 +16,7 @@ W submenu dostępne są:
 - **Wszystkie włączone słowniki** — używa wszystkich aktywnych pozycji z `buttons`
 - **Pobierz z Diki / Oxford / ...** — uruchamia batch tylko dla wybranego przycisku/słownika
 
-Anki **nie zamraża się** podczas przetwarzania — batch działa w tle. Widoczny pasek postępu z licznikiem i przycisk **Anuluj**.
+Batch działa w tle i pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.
 
 ### Inteligentne uzupełnianie
 

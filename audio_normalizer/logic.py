@@ -109,10 +109,13 @@ def normalize_file(file_path, ffmpeg_cmd=None, loudnorm_opts=None):
         logger.error(f"Error processing {file_path}: {e}")
         return False, None
 
-def process_collection(progress_callback=None, max_workers=None, ffmpeg_cmd=None, loudnorm_opts=None):
+def process_collection(progress_callback=None, max_workers=None, ffmpeg_cmd=None,
+                       loudnorm_opts=None, should_cancel=None):
     """
     Główna funkcja przetwarzająca.
     progress_callback(processed_count, total_count, current_filename)
+    should_cancel() -> bool — pollowana między plikami; True przerywa (już
+    uruchomione ffmpeg dokończą, reszta jest anulowana).
 
     Returns:
         (processed_count, errors, modified_files) — modified_files to lista nazw plików
@@ -156,6 +159,9 @@ def process_collection(progress_callback=None, max_workers=None, ffmpeg_cmd=None
         }
 
         for i, future in enumerate(concurrent.futures.as_completed(future_to_file)):
+            if should_cancel and should_cancel():
+                executor.shutdown(wait=False, cancel_futures=True)
+                break
             filename = future_to_file[future]
             success, new_mtime = future.result()
 

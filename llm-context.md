@@ -43,6 +43,7 @@ anki-toolkit/
 │   ├── http.py                      # fetch_url(), fetch_text(), post_json() (POST z retry), extract_http_error(), RETRYABLE_STATUS_CODES
 │   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
 │   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
+│   ├── progress.py                  # start_progress()/update_progress()/finish_progress() — natywny pasek mw.progress dla batchy (Anki „busy" → backup/sync się odkłada)
 │   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_note_type_names, get_fields_for_note_type, get_sample_notes
 │
 ├── settings/                        # dialog ustawień (wszystkie moduły, jeden UI)
@@ -124,6 +125,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── deck_router/                     # Moduł 9 — kierowanie kart do talii wg tagu
+│   ├── __init__.py                  # hook add-cards + route_after_edit() + setup_menu (retro)
+│   ├── logic.py                     # match_deck() — czysta logika dopasowania reguły
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/
     └── test_pure_logic.py           # testy czystej logiki bez uruchamiania Anki
 ```
@@ -132,7 +139,7 @@ anki-toolkit/
 
 | Katalog | Co robi | Punkt wejścia |
 |---|---|---|
-| `common/` | Współdzielone narzędzia: HTML cleaning, HTTP z retry, konfiguracja, widgety Qt — używane przez wszystkie moduły | importowane selektywnie |
+| `common/` | Współdzielone narzędzia: HTML cleaning, HTTP z retry, konfiguracja, widgety Qt, natywny pasek postępu (`progress.py`) — używane przez wszystkie moduły | importowane selektywnie |
 | `dictionary/` | Pobiera audio MP3 i IPA z Oxford/Cambridge/Diki/Longman przez scraping HTML; edytor (async, `saveNow` przed fetchowaniem) + submenu batchowe (w tle, z paskiem postępu i anulowaniem; zapis jednym `CollectionOp` = jeden krok undo) | `on_editor_buttons_init`, `add_to_context_menu` |
 | `ai_generator/` | Generuje treść pól kart przez AI (7 dostawców); fallback modeli (per-prompt `fallback_provider`+`fallback_model` nadpisuje per-dostawca `fallback_model`); batch w tle **równoległy** (`parallel_requests`, per-job `FieldGenerator`) z paczkami i anulowaniem, zapis jednym `CollectionOp`; **workflowy** (lista nazwanych, `config["workflows"]`) — każdy to pozycja w PPM przeglądarki i opcjonalny przycisk edytora (`editor_button`); batch workflow w przeglądarce przetwarza notatki **równolegle** (`_on_workflow_browser`, `ThreadPoolExecutor(parallel_requests)`, per-notatka `FieldGenerator`; kroki w obrębie notatki sekwencyjne), edytor sekwencyjnie jedną notatkę (`run_workflow_editor`); kroki przez `execute_step(note, step, ai_generator=None)` (AI/Słownik/TTS/Rozdziel pole), krok AI z parametrem `fields` (`empty`/`manual`/lista pól); dwa domyślne pipeline'y („Generuj wszystko: puste→TTS→rozdziel→zablokowane", „Rozdziel + generuj naukę (p1–p3)") to teraz zwykłe workflowy; `migrate_workflows()` konwertuje starą sekcję `workflow`; widoczność wbudowanych sekcji PPM przez `config["context_menu"]`; `reasoning_effort` z fallbackiem; pola `manual_only` pomijane w batchu/workflow, dostępne przez submenu „Generuj zablokowane" lub PPM | `on_editor_buttons_init`, `add_to_context_menu`, `migrate_workflows` |
 | `tts/` | Generuje audio MP3 przez Kokoro lub OpenRouter TTS API; przycisk w edytorze + submenu w przeglądarce; "Uruchom wszystkie" działa jako jedna operacja; Anuluj odwołuje niewystartowane żądania (`cancel_futures`); zapis batcha jednym `CollectionOp` | `on_editor_buttons_init`, `add_to_context_menu` |
@@ -141,6 +148,7 @@ anki-toolkit/
 | `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
 | `field_splitter/` | Rozdziela pole źródłowe (np. `przyklad`) po separatorze (`<br><br>`) i **kopiuje** części do pól docelowych (`p1`, `p2`, `p3`…); source nietknięte; browser context menu (batch) + Tools menu (kolekcja); zapis jednym `CollectionOp` | `add_to_context_menu(browser, menu)` + `setup_menu(parent_menu)` |
 | `sibling_manager/` | Dynamiczne zawieszanie siblingów: po odpowiedzi na kartę (hook `reviewer_did_answer_card`) zawiesza NEW siblingi dopóki aktywna karta nie dojrzeje (interval ≥ próg, default 30 dni); gdy dojrzeje uwalnia wszystkie zawieszone na raz; karty w nauce/review nie są dotykane; tag `tk-sib-suspended` na notatce; `ignore_tag` wyłącza moduł per-notatka; **sync catch-up**: hook `sync_did_finish` → batch scan wszystkich notatek z NEW siblingami (`process_note_sync` — sprawdza wszystkie non-NEW karty, nie zna konkretnej odpowiedzi); `process_note`/`process_note_sync` zwracają `(suspended, unsuspended)`; **logi**: `log.info` z licznikami po review + po sync scan; **tooltip** po sync scan ("zawieszono X, odwieszono Y", gated przez `show_tooltip`); reaktywny alternatywa dla SibPush; Tools menu → unsuspend all + manual sync catch-up (`CollectionOp`); batch ops zwracają `_changes_for_ui()` (OpChanges `card`/`note`/`study_queues`) po realnej mutacji zamiast pustego `OpChanges()` — inaczej UI nie odświeżało się od razu | `gui_hooks.reviewer_did_answer_card` + `gui_hooks.sync_did_finish` + `setup_menu(parent_menu)` |
+| `deck_router/` | Kierowanie kart do talii wg **tagu notatki** (+ opcjonalnie szablonu) — uzupełnia natywny Deck Override (tylko per-szablon). Reguła `{tag, template?, deck}`; `match_deck(tags, template_name, rules)` (czysta) zwraca deck pierwszej pasującej reguły albo `None` (tag na notatce **oraz** szablon zgodny/pusty=wszystkie); `_apply(col, note_ids, rules)` przenosi karty `col.set_deck` do `col.decks.id(deck, create=True)`, pomija już-właściwe i bez dopasowania (notatka bez reguły nietknięta); trzy wyzwalacze: hook `add_cards_did_add_note` (okno Dodaj), `route_after_edit(parent, note_ids)` wołane z `ai_generator/browser_ui._save_changed_notes` (po AI-batchu/workflow; guard `_module_enabled()`+reguły w środku, soft-import = brak twardej zależności), `setup_menu` → retro `col.find_notes` po tagach reguł (`CollectionOp`); UI `DeckRouterTab` (tabela, szablon+talia z list rozwijanych z kolekcji, talia edytowalna) | `gui_hooks.add_cards_did_add_note` + `route_after_edit` + `setup_menu(parent_menu)` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -240,7 +248,8 @@ Zakładki (9 zakładek):
     "audio_normalizer":  true,
     "nbsp_remover":      true,
     "field_splitter":    true,
-    "sibling_manager":   true
+    "sibling_manager":   true,
+    "deck_router":       true
 }
 ```
 
@@ -258,6 +267,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `nbsp_remover` | `nbsp_remover/` | Zakładka Narzędzia (sekcja Czyszczenie HTML) |
 | `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
 | `sibling_manager` | `sibling_manager/` | Zakładka Narzędzia (sekcja Sibling Manager) |
+| `deck_router` | `deck_router/` | Zakładka Deck Router (tabela reguł tag → talia) |
 | `workflows` | `ai_generator/` | Zakładka Workflowy (lista nazwanych workflowów) |
 | `context_menu` | `ai_generator/` | Zakładka Workflowy (widoczność wbudowanych sekcji PPM) |
 
@@ -274,6 +284,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `common/text.py` | `unique()`, `safe_str()`, `unique_filename()`, `normalize_float()`, `split_separator_regex()` (separator splitu z tolerancją białych znaków), `plural_pl()` (polska liczba mnoga), `apply_word_replacements()` (zamiana całych słów, case-insensitive z zachowaniem wielkiej litery — używane przez TTS przed syntezą) |
 | `common/http.py` | `fetch_url()` / `fetch_text()` (GET z retry), `post_json()` (POST bytes z retry na 429/5xx; zwraca `(bytes\|None, err\|None)` — używane przez providerów AI i TTS), `extract_http_error()` (parsuje JSON body HTTPError), `RETRYABLE_STATUS_CODES` |
 | `common/config.py` | `get_full_config()`, `save_full_config()`, `get_module_config()`, `save_module_config()` |
+| `common/progress.py` | `start_progress(label, total, title)` → cancel_flag, `update_progress(cancel_flag, label, done, total)` (czyta `mw.progress.want_cancel()` na głównym wątku), `finish_progress()` — natywny pasek `mw.progress` dla batchy (dictionary/tts/ai_generator/audio_normalizer); trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj |
 | `common/debug_log.py` | Bufor logów w pamięci (deque 2000 wpisów) — `setup_logging()` (handler na loggerze pakietu, wołane przy starcie), `set_debug()`, `get_log_lines()`, `get_log_seq()`, `clear_log()`; wszystkie moduły logują przez `logging.getLogger(__name__)` i propagują do tego bufora |
 | `common/ui.py` | Widgety Qt: `palette()` (kolory zależne od motywu — jedno źródło dla wszystkich zakładek), `hint_label()`, `_expanding_line_edit`, `_filterable_combo` (QCompleter z MatchContains), `_api_key_widget`, `_scrollable`, `collapsible_section(title, expanded)` (zwijana sekcja „zaawansowane" — toggle ▸/▾), `FlowLayout` (zawijanie kafelków do nowego wiersza), `get_note_type_names`, `get_fields_for_note_type`, `get_sample_notes` |
 | `settings/__init__.py` | Dialog ustawień — `open_settings()`, `SettingsDialog`; nawigacja **pionowa**: `QListWidget` (ikony + nieklikalne nagłówki grup TREŚĆ/SYSTEM/WGLĄD) + `QStackedWidget`; `_open_tab(title)` i `_on_nav_changed(row)` mapują wiersz→stronę (status_tab nawiguje po `title`); kolejność zakładek wg zadania |
@@ -347,6 +358,7 @@ common/                         ← współdzielone narzędzia (html, http, text
     ├── text.py                 ← unique / safe_str / unique_filename / normalize_float — używane przez tts, ai_generator
     ├── http.py                 ← RETRYABLE_STATUS_CODES, fetch_url, fetch_text, post_json (POST z retry), extract_http_error — używane przez providers, dictionary, tts
     ├── config.py               ← get_full_config, get_module_config — używane przez tts/config.py, nbsp_remover/utils.py
+    ├── progress.py             ← start_progress / update_progress / finish_progress (natywny mw.progress) — używane przez dictionary, tts, ai_generator, audio_normalizer batche
     └── ui.py                   ← widgety Qt, palette, hint_label, _expanding_line_edit, _api_key_widget, _scrollable — używane przez settings
 
 dictionary/__init__.py          ← re-eksport: on_editor_buttons_init, add_to_context_menu (używa common/ui dla widgetów, common/consts dla ADDON_NAME)
@@ -373,7 +385,7 @@ tts/__init__.py                 ← add_to_context_menu + exports on_editor_butt
     └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config; PPM na target_field → _on_tts_field_editor (overwrite=True dla Regeneruj)); używa processor.process_single_note
 
 audio_normalizer/__init__.py
-    └── gui.py                  (ProgressDialog, Worker(QThread)); używa common/ADDON_NAME
+    └── gui.py                  (run_normalization → mw.taskman.run_in_background + natywny pasek common/progress; _sync_media_files); używa common/ADDON_NAME
         └── logic.py            (process_collection, normalize_file)
             └── config.py       (wartości domyślne: FFMPEG_CMD, LOUDNORM_OPTS, MAX_WORKERS)
 
@@ -403,6 +415,10 @@ field_splitter/
 sibling_manager/
     ├── logic.py                (process_note — reactive, reviewer hook; process_note_sync — batch, sync catch-up; _cleanup_tag; używa anki.cards CARD_TYPE_NEW/QUEUE_TYPE_SUSPENDED)
     └── __init__.py             (on_reviewer_did_answer_card hook + on_sync_did_finish hook + _run_sync_scan CollectionOp + setup_menu: unsuspend all + manual sync catch-up; używa common/config get_module_config)
+
+deck_router/
+    ├── logic.py                (match_deck(tags, template_name, rules) — pierwsza pasująca reguła wygrywa; bez importów Anki, testowalne)
+    └── __init__.py             (on_add_note hook + route_after_edit CollectionOp + _reorganize/setup_menu retro; _apply przenosi col.set_deck do col.decks.id(create=True); używa common/config get_module_config)
 ```
 
 ---

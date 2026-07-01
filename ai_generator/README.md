@@ -49,8 +49,7 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 
 - Pola które już mają treść są **zawsze pomijane** w batchu — generator uzupełnia tylko puste pola.
 - Jeśli nie zaznaczysz żadnych notatek, pojawi się krótki tooltip z informacją.
-- Anki **nie zamraża się** podczas przetwarzania — batch działa w tle.
-- Widoczny pasek postępu z licznikiem i przycisk **Anuluj**.
+- Praca AI dzieje się w tle. Batch pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.
 - Po zakończeniu jeden tooltip z podsumowaniem, np. `"Zaktualizowano: 12"`, `"Zaktualizowano: 8 · przerwano"` albo licznik błędów z ostatnim błędem API.
 
 ## Konfiguracja (`config.json` → sekcja `ai_generator`)

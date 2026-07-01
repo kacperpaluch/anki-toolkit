@@ -12,7 +12,8 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "filtered_deck":     true,
     "audio_normalizer":  true,
     "nbsp_remover":      true,
-    "field_splitter":    true
+    "field_splitter":    true,
+    "deck_router":       true
 }
 ```
 
@@ -291,6 +292,36 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 Akcje:
 - **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — reset wszystkich zawieszeń + usuwa tagi (jeden krok undo)
 - **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...** — ręczny batch scan (ten sam co auto po syncu)
+
+---
+
+## Sekcja `deck_router` — kierowanie kart do talii wg tagu
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Deck Router** — reguły dodajesz/usuwasz w tabeli (szablon i talia z list rozwijanych), bez ręcznej edycji JSON.
+
+Natywny Deck Override w Anki działa tylko per-szablon karty — nie da się nim rozdzielić kart z tego samego szablonu na różne talie w zależności od tagu. Ten moduł dokłada kierowanie **per-tag**: gdy notatka ma skonfigurowany tag, jej pasujące karty są przenoszone do talii z reguły (nadpisując natywny override dla tych kart). Notatki bez pasującej reguły nie są ruszane.
+
+**`rules`** — lista reguł. Każda reguła:
+
+- **`tag`** — tag, który musi być na notatce, żeby reguła zadziałała.
+- **`deck`** — nazwa talii docelowej (tworzona automatycznie, jeśli nie istnieje). Zagnieżdżenie przez `::`, np. `"Angielski::Osobne"`.
+- **`template`** *(opcjonalne)* — nazwa szablonu karty (np. `"pol-ang"`). Pominięty, pusty lub `"*"` = wszystkie karty notatki. Podany = tylko karty z tego szablonu — reszta kart notatki zostaje wg natywnego override.
+
+Reguły są sprawdzane po kolei — **pierwsza pasująca wygrywa** dla danej karty. Reguły węższe (z `template`) umieszczaj przed szerszymi (bez `template`).
+
+```json
+"deck_router": {
+    "rules": [
+        {"tag": "abc123", "template": "pol-ang", "deck": "Angielski::Osobne::pol-ang"},
+        {"tag": "abc123", "deck": "Angielski::Osobne"}
+    ]
+}
+```
+
+Kiedy się odpala:
+- przy dodawaniu karty w oknie **Dodaj**,
+- po AI-batchu/workflow w przeglądarce (dla zmienionych notatek),
+- ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty...** — przechodzi po wszystkich notatkach z tagami z reguł i przenosi ich karty.
 
 ---
 

@@ -11,7 +11,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `_generator` |
 | `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
 | `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z QProgressDialog, cancel_flag; `_run_batch(only_fields=..., on_complete=None)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione); `on_complete` (opcjonalny) odpala się po commicie zapisu — używane do łańcuchowania kroków. Akcja `Rozdziel + generuj naukę (p1–p3)` (`_on_split_then_nauka`) łączy dwa kroki: CollectionOp rozdziela `przyklad`→`p1/p2/p3` (reużywa `field_splitter._process_note`), a po zapisie odpala `_run_batch(only_fields={p1-nauka,p2-nauka,p3-nauka})` — pola `manual_only`, więc jawny `only_fields` je obejmuje. Akcja `Generuj wszystko: puste → TTS → rozdziel → zablokowane` (`_on_full_pipeline`) — łańcuch 4 kroków spinanych przez `on_complete`: `_run_batch(only_fields=None)` → `tts.processor.process_tasks_async` → `field_splitter._run_batch` → `_run_batch(only_fields=manual_fields)`; każdy krok startuje po commicie poprzedniego (czyta świeże pola), kroki bez konfiguracji są pomijane |
+| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z natywnym paskiem `mw.progress` przez wspólny helper `common.progress` (`start_progress`/`update_progress`/`finish_progress`, `want_cancel()`) zamiast własnego QProgressDialog — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj; po zapisie `_save_changed_notes` woła `deck_router.route_after_edit` (soft-import); cancel_flag; `_run_batch(only_fields=..., on_complete=None)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione); `on_complete` (opcjonalny) odpala się po commicie zapisu — używane do łańcuchowania kroków. Akcja `Rozdziel + generuj naukę (p1–p3)` (`_on_split_then_nauka`) łączy dwa kroki: CollectionOp rozdziela `przyklad`→`p1/p2/p3` (reużywa `field_splitter._process_note`), a po zapisie odpala `_run_batch(only_fields={p1-nauka,p2-nauka,p3-nauka})` — pola `manual_only`, więc jawny `only_fields` je obejmuje. Akcja `Generuj wszystko: puste → TTS → rozdziel → zablokowane` (`_on_full_pipeline`) — łańcuch 4 kroków spinanych przez `on_complete`: `_run_batch(only_fields=None)` → `tts.processor.process_tasks_async` → `field_splitter._run_batch` → `_run_batch(only_fields=manual_fields)`; każdy krok startuje po commicie poprzedniego (czyta świeże pola), kroki bez konfiguracji są pomijane |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
@@ -65,8 +65,10 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
   → "Wszystkie puste" → _on_generate_browser() → _run_batch(only_fields=None)
   → "AI: def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
   → notatki wczytywane z mw.col.get_note(nid) NA GŁÓWNYM WĄTKU (kolekcja Anki jest jednowątkowa); note.note_type() rozgrzewa cache modeli — workery robią na nim już tylko odczyt z pamięci
-  → QProgressDialog z przyciskiem Anuluj
-  → mw.taskman.run_in_background(task)         # nie blokuje UI
+  → start_progress() (common/progress.py) = natywny pasek mw.progress.start(max=total, immediate=True) (NIE własny QProgressDialog)
+      → celowo: trzyma Anki w stanie "busy", więc timer automatycznego backupu/synchronizacji odkłada się zamiast wyskakiwać własnym modalem NAD paskiem batcha i blokować Anuluj
+      → anulowanie: update_progress() na głównym wątku czyta mw.progress.want_cancel() → ustawia cancel_flag; workery przerywają między chunkami
+  → mw.taskman.run_in_background(task)         # praca w tle; pasek mw.progress blokuje całe okno Anki na czas batcha
       → ThreadPoolExecutor(max_workers=parallel_requests)
       → chunk po batch_limit notatek (sleep batch_sleep między chunkami)
       → dla każdej (wczytanej wcześniej) notatki w chunku (równolegle w puli):
@@ -75,10 +77,11 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
           → changed_notes.append(note) jeśli gen zmienił pola
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):
-      → progress.close()
+      → mw.progress.finish()                     # zamknąć nasz pasek PRZED CollectionOp (inaczej "already busy")
       → _save_changed_notes(browser, changed_notes, summary, on_complete)
           → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
               .success(lambda: tooltip + on_complete()).run_in_background()
+          → po zapisie: deck_router.route_after_edit(browser, [n.id for n in changed_notes]) (soft-import, no-op gdy moduł wyłączony/brak reguł)
           → on_complete (jeśli podany) odpala się PO commicie zapisu — spina łańcuch kroków
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
@@ -244,9 +247,9 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 ## Zależności
 
 - Stdlib: `json`, `re`, `logging`
-- Anki API: `mw.addonManager.getConfig`, `mw.col.get_note`, `mw.col.update_note`, `mw.taskman.run_in_background`, `mw.taskman.run_on_main`
+- Anki API: `mw.addonManager.getConfig`, `mw.col.get_note`, `mw.col.update_note`, `mw.taskman.run_in_background`, `mw.taskman.run_on_main`, `mw.progress.start/update/finish/want_cancel` (natywny pasek batcha)
 - Własne: `common.ADDON_NAME`, `common.clean_html_normalized`, `common.safe_str`, `common.http.post_json` (POST z retry)
-- Qt: `QProgressDialog` (pasek postępu z przyciskiem Anuluj w trybie batch)
+- Batch używa natywnego paska `mw.progress` (nie `QProgressDialog`) — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj
 - Brak pip packages
 
 ## Uwagi implementacyjne

@@ -23,7 +23,7 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
 | `api.py` | API TTS: `generate_audio()` (dispatcher + statystyki; **na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); **wyjątek `raise Exception(...)` rzucany wewnątrz `_generate_*`** gdy `err` niepuste (`api.py:64,106`), a nie na poziomie `generate_audio()` (ten jedynie łapie i re-raise dla statystyk). `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Logi |
-| `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks, on_complete=None)` (batch z `QProgressDialog` i `CollectionOp`; `on_complete` odpala się na **każdym** wyjściu — sukces, miękki skip „brak pól", błąd — żeby łańcuch zewnętrzny szedł dalej; spina full pipeline z `ai_generator.browser_ui`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
+| `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks, on_complete=None)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`; `on_complete` odpala się na **każdym** wyjściu — sukces, miękki skip „brak pól", błąd — żeby łańcuch zewnętrzny szedł dalej; spina full pipeline z `ai_generator.browser_ui`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
 | `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
 
 ## Przepływ danych
@@ -45,7 +45,7 @@ _process_batch_async(browser, nids, tasks, label, on_complete=None):
       note = mw.col.get_note(nid)
       build_note_work_items(note, tasks, voices)  →  (work_items, split_contexts)
       all_items.extend(items)   # wszystkie zadania razem, jeden pool na notatkę
-  → QProgressDialog(maximum = len(all_items))
+  → start_progress(label, len(all_items), "TTS")  # common.progress → natywny mw.progress (Anki „busy" → backup/sync się odkłada)
   → run_in_background(bg_task)
       → generate_for_items(all_items, config,
             key_fn=lambda item: (item["nid"], item["task_i"], item["seg_i"]),
@@ -55,7 +55,7 @@ _process_batch_async(browser, nids, tasks, label, on_complete=None):
           → mw.col.media.write_data(unique_filename(), bytes)
           → results[(nid, task_i, seg_i)] = filename
   → on_done (główny wątek):
-      → progress.close()
+      → finish_progress()   # PRZED CollectionOp (dwa mw.progress = „already busy")
       → grouped per nid → fresh note = mw.col.get_note(nid)
       → apply_results_to_note(note, items, split_contexts, per_note)
       → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))

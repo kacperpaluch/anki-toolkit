@@ -11,24 +11,11 @@ from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
+from ..common import start_progress, update_progress, finish_progress
 from ._generator import get_config
 from .field_generator import FieldGenerator
 
 logger = logging.getLogger(__name__)
-
-
-def _make_progress(browser: Browser, label: str, total: int, title: str):
-    progress = QProgressDialog(label, "Anuluj", 0, total, browser)
-    progress.setWindowTitle(title)
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.setAutoClose(False)
-    progress.setAutoReset(False)
-    progress.setValue(0)
-
-    cancel_flag = {"cancelled": False}
-    progress.canceled.connect(lambda: cancel_flag.update(cancelled=True))
-    return progress, cancel_flag
 
 
 def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
@@ -38,6 +25,11 @@ def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
         return
 
     def _saved(_changes):
+        try:
+            from ..deck_router import route_after_edit
+            route_after_edit(browser, [n.id for n in changed_notes])
+        except Exception:
+            logger.exception("deck_router: routing po edycji nie powiódł się")
         tooltip(summary, period=8000)
 
     CollectionOp(
@@ -99,9 +91,7 @@ def _run_batch(browser: Browser, nids, config: dict,
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
 
-    progress, cancel_flag = _make_progress(
-        browser, f"{label}...", len(notes), "AI Generator"
-    )
+    cancel_flag = start_progress(label, len(notes), "AI Generator")
 
     state = {"done": 0, "changed": 0, "failures": 0, "last_error": None}
     changed_notes: list = []
@@ -134,10 +124,7 @@ def _run_batch(browser: Browser, nids, config: dict,
         _report_progress(done)
 
     def _report_progress(done: int):
-        def _update(d=done):
-            progress.setLabelText(f"Przetwarzanie {d}/{len(notes)}...")
-            progress.setValue(d)
-        mw.taskman.run_on_main(_update)
+        update_progress(cancel_flag, label, done, len(notes))
 
     def task():
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
@@ -151,7 +138,7 @@ def _run_batch(browser: Browser, nids, config: dict,
                 concurrent.futures.wait(futures)
 
     def on_done(fut):
-        progress.close()
+        finish_progress()
         try:
             fut.result()
         except Exception as e:
@@ -207,9 +194,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         return
 
     label = workflow.get("name", "Workflow")
-    progress, cancel_flag = _make_progress(
-        browser, f"{label}...", len(notes), "Workflow"
-    )
+    cancel_flag = start_progress(label, len(notes), "Workflow")
 
     state = {"done": 0, "errors": 0, "last_error": None}
     changed_notes: list = []
@@ -242,10 +227,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         _report_progress(done)
 
     def _report_progress(done: int):
-        def _update(d=done):
-            progress.setLabelText(f"{label}: {d}/{len(notes)}...")
-            progress.setValue(d)
-        mw.taskman.run_on_main(_update)
+        update_progress(cancel_flag, label, done, len(notes))
 
     def task():
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
@@ -259,7 +241,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
                 concurrent.futures.wait(futures)
 
     def on_done(fut):
-        progress.close()
+        finish_progress()
         try:
             fut.result()
         except Exception as e:

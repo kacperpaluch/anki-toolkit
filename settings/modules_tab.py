@@ -15,6 +15,7 @@ class ModulesTab(QWidget):
         "nbsp_remover":      "Czyszczenie HTML — &nbsp; i tagi <div>",
         "field_splitter":    "Rozdzielanie pól — kopiowanie do p1, p2, p3...",
         "sibling_manager":   "Sibling Manager — dynamiczne zawieszanie siblingów",
+        "deck_router":       "Deck Router — kierowanie kart do talii wg tagu",
     }
 
     def __init__(self, cfg: dict):

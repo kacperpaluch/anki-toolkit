@@ -60,6 +60,13 @@ if _enabled("sibling_manager"):
     gui_hooks.sync_did_finish.append(sibling_manager.on_sync_did_finish)
 
 # ---------------------------------------------------------------------------
+# deck_router — route cards to decks by tag (+ optional card template)
+# ---------------------------------------------------------------------------
+if _enabled("deck_router"):
+    from . import deck_router
+    gui_hooks.add_cards_did_add_note.append(deck_router.on_add_note)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.
@@ -115,6 +122,10 @@ if _enabled("field_splitter"):
 if _enabled("sibling_manager"):
     from . import sibling_manager
     _menu_modules.append(sibling_manager)
+
+if _enabled("deck_router"):
+    from . import deck_router
+    _menu_modules.append(deck_router)
 
 
 def _setup_menus(*_args, **_kwargs):

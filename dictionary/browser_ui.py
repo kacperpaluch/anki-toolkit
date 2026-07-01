@@ -4,7 +4,7 @@ from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ..common import ADDON_NAME
+from ..common import ADDON_NAME, start_progress, update_progress, finish_progress
 
 from .service import process_note_group
 
@@ -31,20 +31,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     if not dictionary_groups:
         return
 
-    progress = QProgressDialog("Pobieranie wymowy...", "Anuluj", 0, len(note_ids), browser)
-    progress.setWindowTitle("Słownik")
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.setAutoClose(False)
-    progress.setAutoReset(False)
-    progress.setValue(0)
-
-    cancel_flag = {"cancelled": False}
-
-    def _set_cancelled():
-        cancel_flag["cancelled"] = True
-
-    progress.canceled.connect(_set_cancelled)
+    cancel_flag = start_progress("Pobieranie wymowy", len(note_ids), "Słownik")
 
     missing_audio_count = 0
     changed_notes: list = []
@@ -56,10 +43,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
             if cancel_flag["cancelled"]:
                 break
 
-            def _update(i=i):
-                progress.setLabelText(f"Pobieranie... ({i + 1}/{len(note_ids)})")
-                progress.setValue(i + 1)
-            mw.taskman.run_on_main(_update)
+            update_progress(cancel_flag, "Pobieranie", i + 1, len(note_ids))
 
             note = mw.col.get_note(nid)
             note_modified = False
@@ -76,7 +60,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
                 missing_audio_count += 1
 
     def on_done(fut):
-        progress.close()
+        finish_progress()
         try:
             fut.result()
         except Exception as e:

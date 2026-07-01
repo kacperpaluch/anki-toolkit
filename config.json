@@ -7,7 +7,8 @@
         "audio_normalizer":  true,
         "nbsp_remover":      true,
         "field_splitter":    true,
-        "sibling_manager":   true
+        "sibling_manager":   true,
+        "deck_router":       true
     },
 
     "dictionary": {
@@ -122,6 +123,10 @@
         "interval": 30,
         "tag": "tk-sib-suspended",
         "ignore_tag": "tk-sib-ignored"
+    },
+
+    "deck_router": {
+        "rules": []
     },
 
     "ai_generator": {
