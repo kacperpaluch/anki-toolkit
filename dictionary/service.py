@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -56,22 +57,42 @@ def process_note_group(note, config: dict, dictionaries: list[str],
     page_cache: dict = {}
     if target_field in note and not note[target_field].strip():
         result.audio_requested = True
-        sound_tags = []
-        audio_results, page_cache = dictionary_service.fetch_audio_group(
-            word, dictionaries,
-            max_retries=max_retries, page_timeout=page_timeout, mp3_timeout=mp3_timeout,
-            batch_cache=batch_cache,
-        )
-        for audio_result in audio_results:
+        # Strip path separators and other filename-unsafe characters
+        safe_word = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
+        media_dir = mw.col.media.dir()
+
+        # The deterministic filename IS the cache: if this source's audio for
+        # this word is already in the media folder (e.g. a previous card for
+        # the same word), reuse it and skip the network fetch entirely. Only
+        # sources without a cached file are actually fetched.
+        tag_by_source: dict[str, str] = {}
+        missing_sources: list[str] = []
+        for source in dictionaries:
+            fname = f"dict_{source}_{safe_word}.mp3"
+            if os.path.exists(os.path.join(media_dir, fname)):
+                tag_by_source[source] = fname
+            else:
+                missing_sources.append(source)
+
+        if missing_sources:
+            audio_results, page_cache = dictionary_service.fetch_audio_group(
+                word, missing_sources,
+                max_retries=max_retries, page_timeout=page_timeout, mp3_timeout=mp3_timeout,
+                batch_cache=batch_cache,
+            )
+            for audio_result in audio_results:
+                filename = f"dict_{audio_result.source}_{safe_word}.mp3"
+                tag_by_source[audio_result.source] = mw.col.media.write_data(
+                    filename, audio_result.data
+                )
+
+        # Emit tags in the configured source order (stable, predictable) —
+        # reused and freshly-fetched files together.
+        ordered = [tag_by_source[s] for s in dictionaries if s in tag_by_source]
+        result.saved_filenames = ordered
+        if ordered:
             result.audio_found = True
-            # Strip path separators and other filename-unsafe characters
-            safe_word = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
-            filename = f"dict_{audio_result.source}_{safe_word}.mp3"
-            media_filename = mw.col.media.write_data(filename, audio_result.data)
-            sound_tags.append(f"[sound:{media_filename}]")
-            result.saved_filenames.append(media_filename)
-        if sound_tags:
-            note[target_field] = " ".join(sound_tags)
+            note[target_field] = " ".join(f"[sound:{f}]" for f in ordered)
     elif target_field in note and note[target_field].strip():
         result.audio_skipped = True
 

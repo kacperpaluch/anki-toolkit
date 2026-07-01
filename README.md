@@ -182,6 +182,8 @@ Przyciski pojawiają się w toolbarze edytora kart — kliknięcie najpierw zapi
 
 **PPM na polu źródłowym w edytorze** (np. `ang`) — gdy pole ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty.
 
+**Reużycie pobranych plików:** nazwa pliku audio jest deterministyczna (`dict_{źródło}_{słowo}.mp3`), więc przed pobraniem moduł sprawdza, czy taki plik już jest w kolekcji media — jeśli tak, reużywa go i **pomija zapytanie do słownika**. To samo słowo z danego źródła pobierane jest z sieci tylko raz (kolejne karty — dziś, jutro, z edytora czy batcha — biorą gotowy plik). Pobierane są jedynie brakujące źródła.
+
 Konfiguracja w **Ustawienia → Słownik**:
 
 | Pole | Opis |

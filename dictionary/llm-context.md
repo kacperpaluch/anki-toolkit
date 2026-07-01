@@ -9,7 +9,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 | Plik | Rola |
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
-| `service.py` | Czysta logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); używa `clean_html_normalized()` z `common` |
+| `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
 | `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + guard `_FETCHING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch; natywny pasek `mw.progress` przez `common.progress` (`start_progress`/`update_progress`/`finish_progress`); używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
@@ -24,8 +24,11 @@ Kliknięcie przycisku/menu
           → max_retries = config.get("max_retries", 3)
           → page_timeout = config.get("page_timeout", 10)
           → mp3_timeout = config.get("mp3_timeout", 10)
-      → dictionary_service.fetch_audio_group(word, sources, max_retries, page_timeout, mp3_timeout, batch_cache)
-          # batch_cache: dict wspólny dla całego batcha — pomija re-fetch tego samego słowa
+      → CACHE (media folder = cache): dla każdego źródła sprawdź os.path.exists(media_dir / dict_{source}_{safe_word}.mp3)
+          # trafienie → reuse istniejącego pliku, bez sieci; tylko missing_sources idą do fetch_audio_group
+          # deterministyczna nazwa + dedup Anki = persistencja cross-run (kolejne karty tego samego słowa nie pobierają ponownie)
+      → dictionary_service.fetch_audio_group(word, missing_sources, max_retries, page_timeout, mp3_timeout, batch_cache)
+          # batch_cache: dict wspólny dla całego batcha — pomija re-fetch tego samego słowa (komplementarny do cache media)
           # pobiera stronę raz na słownik, uruchamia parsery UK i US na tym samym HTML
           → fetch_text(url, max_retries, timeout=page_timeout)  # 1× GET na słownik (Oxford/Cambridge/Longman)
           → _get_{oxford,cambridge,longman}_audio_url()   # parser UK na tym HTML
@@ -33,7 +36,8 @@ Kliknięcie przycisku/menu
           → fetch_url(audio_url, max_retries, timeout=mp3_timeout)  # GET bajty UK
           → fetch_url(audio_url, max_retries, timeout=mp3_timeout)  # GET bajty US
           # zwraca też page_cache: {"oxford": html, ...}
-      → mw.col.media.write_data(filename, bytes)          # zapisuje do Anki media
+      → mw.col.media.write_data(filename, bytes)          # zapisuje TYLKO świeżo pobrane; nazwa deterministyczna dict_{source}_{safe_word}.mp3
+      → tagi w kolejności `dictionaries` (reused + fetched razem); result.saved_filenames = wszystkie użyte pliki (więc note_modified działa też przy samym reuse)
       → note[target_field] = "[sound:uk.mp3] [sound:us.mp3]"
       → ipa_service.fetch_ipa(word, source, html=page_cache.get(source), max_retries, timeout)
           # html przekazany z cache → brak dodatkowego HTTP GET dla Oxford/Cambridge
