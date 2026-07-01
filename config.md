@@ -125,7 +125,7 @@ Każdy provider wymaga:
 Limity API (opcjonalne, per provider — pola **Limit RPM** i **Maks. równoległych** na karcie dostawcy):
 - `"rpm"` — maks. żądań na minutę; żądania rozkładane równomiernie (`60/rpm` s odstępu między startami, anti-burst); `0`/brak = bez limitu. Jeśli dostawca podaje limit jako RPS, pomnóż ×60 (Mistral free 0.83 RPS → ~50; domyślnie `40` z marginesem, OpenRouter `20`)
 - `"max_concurrent"` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe tiery zwykle wymagają `1`
-- `"rate_limit_free_only"` — **tylko OpenRouter**: `true` (domyślnie) = limit dotyczy wyłącznie modeli z `:free` w nazwie (płatne lecą bez dławienia); `false` = wszystkich żądań. Inni dostawcy zawsze dławią wszystkie żądania (darmowy klucz API limituje cały klucz). Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` są czytane jako back-compat dla OpenRoutera, gdy brak per-provider `rpm`. Limit (RPM/TPM nieliczony — TPM łapie retry 429) jest per proces, współdzielony między wątkami batcha
+- `"rate_limit_free_only"` — **tylko OpenRouter**: `true` (domyślnie) = limit dotyczy wyłącznie modeli z `:free` w nazwie (płatne lecą bez dławienia); `false` = wszystkich żądań. Inni dostawcy zawsze dławią wszystkie żądania (darmowy klucz API limituje cały klucz). Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` (usunięte z szablonu config.json) są nadal czytane jako back-compat dla OpenRoutera, gdy w zapisanej konfiguracji brak per-provider `rpm`. Limit (RPM/TPM nieliczony — TPM łapie retry 429) jest per proces, współdzielony między wątkami batcha
 
 OpenAI obsługuje dodatkowe pole:
 - `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.
@@ -321,7 +321,7 @@ Reguły są sprawdzane po kolei — **pierwsza pasująca wygrywa** dla danej kar
 Kiedy się odpala:
 - przy dodawaniu karty w oknie **Dodaj**,
 - po AI-batchu/workflow w przeglądarce (dla zmienionych notatek),
-- ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty...** — przechodzi po wszystkich notatkach z tagami z reguł i przenosi ich karty.
+- ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty...** albo przycisk **Uporządkuj istniejące karty…** w zakładce Deck Router (działa na regułach z tabeli, także niezapisanych) — przechodzi po wszystkich notatkach z tagami z reguł i przenosi ich karty.
 
 ---
 

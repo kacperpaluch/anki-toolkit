@@ -252,5 +252,5 @@ def get_sample_notes(note_type_name: str, limit: int = 20) -> list[tuple[int, st
                 break
         if len(label) > 60:
             label = label[:57] + "…"
-            out.append((nid, label or f"(notatka {nid})"))
+        out.append((nid, label or f"(notatka {nid})"))
     return out

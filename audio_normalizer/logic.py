@@ -152,28 +152,44 @@ def process_collection(progress_callback=None, max_workers=None, ffmpeg_cmd=None
     errors = 0
     modified_files = []
 
+    seen: set = set()
+
+    def _collect(future, filename):
+        nonlocal processed_count, errors
+        seen.add(filename)
+        success, new_mtime = future.result()
+        if success:
+            modified_files.append(filename)
+            history[filename] = new_mtime
+        else:
+            errors += 1
+        processed_count += 1
+        if progress_callback:
+            progress_callback(processed_count, total, filename)
+
+    cancelled_early = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
             executor.submit(normalize_file, os.path.join(media_dir, f), ffmpeg_cmd, loudnorm_opts): f
             for f in files_to_process
         }
 
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_file)):
+        for future in concurrent.futures.as_completed(future_to_file):
             if should_cancel and should_cancel():
+                cancelled_early = True
                 executor.shutdown(wait=False, cancel_futures=True)
                 break
-            filename = future_to_file[future]
-            success, new_mtime = future.result()
+            _collect(future, future_to_file[future])
 
-            if success:
-                modified_files.append(filename)
-                history[filename] = new_mtime
-            else:
-                errors += 1
-
-            processed_count += 1
-            if progress_callback:
-                progress_callback(processed_count, total, filename)
+    # Wyjście z bloku `with` poczekało na ffmpeg-i, które już działały w chwili
+    # anulowania — ich pliki SĄ zmienione na dysku, więc muszą trafić do
+    # historii i modified_files (sync z media DB), inaczej kolejny przebieg
+    # znormalizowałby je drugi raz (dodatkowy stratny re-encode).
+    if cancelled_early:
+        for future, filename in future_to_file.items():
+            if future.cancelled() or not future.done() or filename in seen:
+                continue
+            _collect(future, filename)
 
     save_history(history)
     return processed_count, errors, modified_files

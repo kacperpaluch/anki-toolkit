@@ -59,6 +59,7 @@ anki-toolkit/
 │   ├── tts_tab.py                   # Zakładka: TTS
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
+│   ├── deck_router_tab.py           # Zakładka: Deck Router — tabela reguł tag → talia + przycisk „Uporządkuj istniejące karty…”
 │   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
 │   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów wtyczki
 │
@@ -106,7 +107,8 @@ anki-toolkit/
 │   ├── __init__.py
 │   ├── config.py
 │   ├── gui.py
-│   └── logic.py
+│   ├── logic.py
+│   └── watcher.py                   # auto-normalizacja: QFileSystemWatcher na katalogu mediów (debounce 3 s)
 │
 ├── nbsp_remover/                    # Moduł 6
 │   ├── __init__.py
@@ -148,7 +150,7 @@ anki-toolkit/
 | `nbsp_remover/` | Czyści HTML w polach kart: `&nbsp;` i `<div>`; czysta funkcja `clean_field()` jest współdzielona przez hook dodawania kart, masowe czyszczenie kolekcji (`CollectionOp`) i testy | `setup_menu(parent_menu)` + auto-hook |
 | `field_splitter/` | Rozdziela pole źródłowe (np. `przyklad`) po separatorze (`<br><br>`) i **kopiuje** części do pól docelowych (`p1`, `p2`, `p3`…); source nietknięte; browser context menu (batch) + Tools menu (kolekcja); zapis jednym `CollectionOp` | `add_to_context_menu(browser, menu)` + `setup_menu(parent_menu)` |
 | `sibling_manager/` | Dynamiczne zawieszanie siblingów: po odpowiedzi na kartę (hook `reviewer_did_answer_card`) zawiesza NEW siblingi dopóki aktywna karta nie dojrzeje (interval ≥ próg, default 30 dni); gdy dojrzeje uwalnia wszystkie zawieszone na raz; karty w nauce/review nie są dotykane; tag `tk-sib-suspended` na notatce; `ignore_tag` wyłącza moduł per-notatka; **sync catch-up**: hook `sync_did_finish` → batch scan wszystkich notatek z NEW siblingami (`process_note_sync` — sprawdza wszystkie non-NEW karty, nie zna konkretnej odpowiedzi); `process_note`/`process_note_sync` zwracają `(suspended, unsuspended)`; **logi**: `log.info` z licznikami po review + po sync scan; **tooltip** po sync scan ("zawieszono X, odwieszono Y", gated przez `show_tooltip`); reaktywny alternatywa dla SibPush; Tools menu → unsuspend all + manual sync catch-up (`CollectionOp`); batch ops zwracają `_changes_for_ui()` (OpChanges `card`/`note`/`study_queues`) po realnej mutacji zamiast pustego `OpChanges()` — inaczej UI nie odświeżało się od razu | `gui_hooks.reviewer_did_answer_card` + `gui_hooks.sync_did_finish` + `setup_menu(parent_menu)` |
-| `deck_router/` | Kierowanie kart do talii wg **tagu notatki** (+ opcjonalnie szablonu) — uzupełnia natywny Deck Override (tylko per-szablon). Reguła `{tag, template?, deck}`; `match_deck(tags, template_name, rules)` (czysta) zwraca deck pierwszej pasującej reguły albo `None` (tag na notatce **oraz** szablon zgodny/pusty=wszystkie); `_apply(col, note_ids, rules)` przenosi karty `col.set_deck` do `col.decks.id(deck, create=True)`, pomija już-właściwe i bez dopasowania (notatka bez reguły nietknięta); trzy wyzwalacze: hook `add_cards_did_add_note` (okno Dodaj), `route_after_edit(parent, note_ids)` wołane z `ai_generator/browser_ui._save_changed_notes` (po AI-batchu/workflow; guard `_module_enabled()`+reguły w środku, soft-import = brak twardej zależności), `setup_menu` → retro `col.find_notes` po tagach reguł (`CollectionOp`); UI `DeckRouterTab` (tabela, szablon+talia z list rozwijanych z kolekcji, talia edytowalna) | `gui_hooks.add_cards_did_add_note` + `route_after_edit` + `setup_menu(parent_menu)` |
+| `deck_router/` | Kierowanie kart do talii wg **tagu notatki** (+ opcjonalnie szablonu) — uzupełnia natywny Deck Override (tylko per-szablon). Reguła `{tag, template?, deck}`; `match_deck(tags, template_name, rules)` (czysta) zwraca deck pierwszej pasującej reguły albo `None` (tag na notatce **oraz** szablon zgodny/pusty=wszystkie); `_apply(col, note_ids, rules)` przenosi karty `col.set_deck` do `col.decks.id(deck, create=True)`, pomija już-właściwe i bez dopasowania (notatka bez reguły nietknięta); trzy wyzwalacze: hook `add_cards_did_add_note` (okno Dodaj), `route_after_edit(parent, note_ids)` wołane z `ai_generator/browser_ui._save_changed_notes` (po AI-batchu/workflow; guard `_module_enabled()`+reguły w środku, soft-import = brak twardej zależności), `setup_menu`/`run_reorganize(rules=None)`/`confirm_reorganize` → retro `col.find_notes` po tagach reguł (`CollectionOp`); UI `DeckRouterTab` (tabela, szablon+talia z list rozwijanych z kolekcji, talia edytowalna, przycisk „Uporządkuj istniejące karty…" działający na regułach z tabeli) | `gui_hooks.add_cards_did_add_note` + `route_after_edit` + `setup_menu(parent_menu)` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -302,7 +304,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `settings/stats_tab.py` | Zakładka Statystyki — `StatsTab`, dashboard użycia AI (czyta `ai_generator/stats.py`) |
 | `settings/logs_tab.py` | Zakładka Logi — `LogsTab`, tryb debugowania + podgląd bufora logów (czyta `common/debug_log.py`) |
 | `ai_generator/stats.py` | Lokalne statystyki użycia — `record_request()`, `record_note()`, `record_tts()` (TTS: requesty/błędy/znaki/pliki per model), `get_stats(days=None, start=None, end=None)` (zwraca też sekcję `tts`), `reset_stats()`, `match_pricing()` (dopasowanie cennika OpenRouter do kluczy statystyk); liczniki per dzień kalendarzowy, zapis do `user_files/usage_stats.json` (migracja legacy przy imporcie), thread-safe (`threading.Lock`) |
-| `ai_generator/_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()` |
+| `ai_generator/_generator.py` | Tylko `get_config()` — sekcja `ai_generator` z configu; bez singletona, każde uruchomienie tworzy świeży `FieldGenerator(get_config())` (brak współdzielonego stanu, zmiany ustawień działają od razu) |
 | `ai_generator/providers/__init__.py` | Rejestr providerów AI + fabryka `get_provider()`; 4 klasy zgodne z OpenAI (`OpenAIProvider`/`OpenRouterProvider`/`CometAPIProvider`/`MistralProvider`) jako cienkie podklasy `OpenAICompatProvider` |
 | `ai_generator/providers/base.py` | `BaseProvider` (ABC — implementuj `call_api()`) + wspólne parsery `_parse_chat_completion()`/`_parse_messages()`; `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
 | `ai_generator/providers/openai_compat.py` | Helpery dla OpenAI-compatible Chat Completions: wykrywa modele OpenAI reasoning, pomija `temperature`, parsuje `message.content` string/list, wykrywa błąd unsupported `reasoning_effort` |
@@ -310,7 +312,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `ai_generator/providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera; bliźniacze endpointy przez wspólny `_fetch_simple()`, dispatcher `fetch_models()` |
 | `ai_generator/field_generator.py` | Główna logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope pól, `overwrite=True` nadpisuje pełne; pola z `manual_only=True` pomijane gdy `only_fields=None` (batch/workflow/przycisk AI); zwraca `dict[str, str]` wypełnionych pól; błędy konfiguracji providera → `last_error` + cache porażki (bez dialogów z wątku tła); **fallback modeli**: gdy `provider.call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy i modelu; statystyki fallbacku zliczane osobno; **RateLimiter**: singleton z kubełkiem per dostawca; każdy kubełek = równomierne tempo (odstęp `60/rpm` między startami żądań, anti-burst dla darmowych tierów typu Mistral 0.83 req/s) + semafor jednoczesności (`max_concurrent`); flaga `free_only` (tylko OpenRouter) zawęża limit do modeli `:free`, inaczej dotyczy wszystkich żądań dostawcy; `configure(provider, rpm, max_concurrent, free_only)` z `_configure_rate_limit()` (back-compat: stare `free_model_rate_limit`/`free_model_max_concurrent` dla OpenRoutera); context manager `slot(provider, model)` owija oba `call_api` (główne + fallback), no-op gdy brak limitu; TPM (tokeny/min) nie egzekwowane — łapie je backoff 429 |
 | `ai_generator/editor_ui.py` | UI edytora — przycisk per workflow z `editor_button` (przed przyciskiem AI), główny przycisk AI (wszystkie puste), async (`run_in_background` + `saveNow`), ochrona `_GENERATING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu: „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola z promptem, `overwrite=True`) |
-| `ai_generator/workflow.py` | Workflowy — `get_workflows()`/`get_context_menu()`/`migrate_workflows()`; `execute_step(note, step, ai_generator=None) -> (modified, error)` obsługuje moduły ai/dictionary/tts/field_splitter (bg, bez zapisu do kolekcji; zapis robi caller na main thread); `ai_generator` opcjonalny — batch równoległy podaje per-notatka `FieldGenerator` zamiast singletona (provider trzyma stan per-żądanie); `_resolve_ai_fields(step, cfg)` mapuje `fields` (empty/manual/lista) na `only_fields`; `run_workflow_editor(editor, workflow)` — sekwencyjne kroki, guard `_RUNNING`; stałe `DEFAULT_CONTEXT_MENU` + `_DEFAULT_PIPELINES` (re-seed przy migracji) |
+| `ai_generator/workflow.py` | Workflowy — `get_workflows()`/`get_context_menu()`/`migrate_workflows()`; `execute_step(note, step, ai_generator=None) -> (modified, error)` obsługuje moduły ai/dictionary/tts/field_splitter (bg, bez zapisu do kolekcji; zapis robi caller na main thread); `ai_generator` opcjonalny — batch równoległy podaje per-notatka `FieldGenerator`, workflow edytora per-przebieg (provider trzyma stan per-żądanie, `None` = świeża instancja dla kroku); `_resolve_ai_fields(step, cfg)` mapuje `fields` (empty/manual/lista) na `only_fields`; `run_workflow_editor(editor, workflow)` — sekwencyjne kroki, guard `_RUNNING`; stałe `DEFAULT_CONTEXT_MENU` + `_DEFAULT_PIPELINES` (re-seed przy migracji) |
 | `ai_generator/browser_ui.py` | UI przeglądarki — `add_to_context_menu` iteruje `get_workflows()` (każdy = jedna pozycja), potem submenu `Generuj pola ▸`/`Generuj zablokowane ▸` gated przez `context_menu` (`ai_fields`/`ai_blocked`); `_all_configured_target_fields(config, manual_only=False)` rozdziela listy pól; batch AI równoległy (per-job `FieldGenerator`, paczki batch_limit+sleep, `overwrite=False`) przez `_run_batch`; batch workflow `_on_workflow_browser(browser, workflow)` **równoległy** (`ThreadPoolExecutor(parallel_requests)`, paczki batch_limit+sleep, per-notatka `FieldGenerator` podawany do `execute_step`; notatki preloadowane na main thread, kroki per-notatka sekwencyjne); zapis zmienionych notatek jednym `CollectionOp` (`update_notes`) |
 | `dictionary/service.py` | Logika biznesowa słownika — `process_note_group()`; używa `clean_html_normalized()` z common |
 | `dictionary/editor_ui.py` | UI edytora — przyciski słownikowe; `saveNow(start)` + `run_in_background` + guard `_FETCHING`; odtwarza audio po pobraniu; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk |
@@ -319,7 +321,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `dictionary/ipa_service.py` | Scrapery IPA + parser Wiktionary API; używa `fetch_text` z common |
 | `tts/config.py` | Konfiguracja TTS — `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` |
 | `tts/api.py` | API TTS — `generate_audio()`, `_generate_kokoro()`, `_generate_openrouter()`, `fetch_openrouter_tts_models()` |
-| `tts/processor.py` | Przetwarzanie notatek; tryby zadań: `single` / `split` (audio obok słowa, w to samo pole) / `split_audio` (same tagi `[sound:...]` sklejone do osobnego pola docelowego, bez słów; `split_contexts` to krotka 4-elem. z `mode`) — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async(..., on_complete=None)` (zapis jednym `CollectionOp`; `on_complete` odpala na każdym wyjściu — pozostałość po dawnym full pipeline, obecnie bez wywołań); `process_single_note(note, config, tasks=None, overwrite=False) -> (changed, error)` — `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; bez zapisu do kolekcji, używane przez workflow i PPM w edytorze |
+| `tts/processor.py` | Przetwarzanie notatek; tryby zadań: `single` / `split` (audio obok słowa, w to samo pole) / `split_audio` (same tagi `[sound:...]` sklejone do osobnego pola docelowego, bez słów; `split_contexts` to krotka 4-elem. z `mode`) — wspólne `build_note_work_items()`, `generate_for_items()` (pula wątków, anulowanie z `cancel_futures`, używa nazwy zwracanej przez `write_data`), `apply_results_to_note()`; batch `process_task_async()`/`process_tasks_async(browser, nids, tasks)` (zapis jednym `CollectionOp`); `process_single_note(note, config, tasks=None, overwrite=False) -> (changed, error)` — `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; bez zapisu do kolekcji, używane przez workflow i PPM w edytorze |
 | `tts/editor_ui.py` | Przycisk TTS w edytorze — `saveNow(start)`, `_GENERATING`, `validate_config()`; używa wspólnych funkcji procesora; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`, strip sound tags) |
 | `audio_normalizer/logic.py` | ffmpeg wrapper + historia przetworzonych plików |
 | `nbsp_remover/cleaning.py` | Czysta funkcja `clean_field()` + regexy do czyszczenia HTML |
@@ -385,9 +387,10 @@ tts/__init__.py                 ← add_to_context_menu + exports on_editor_butt
     └── editor_ui.py            (przycisk TTS w edytorze; saveNow + _GENERATING + validate_config; PPM na target_field → _on_tts_field_editor (overwrite=True dla Regeneruj)); używa processor.process_single_note
 
 audio_normalizer/__init__.py
-    └── gui.py                  (run_normalization → mw.taskman.run_in_background + natywny pasek common/progress; _sync_media_files); używa common/ADDON_NAME
-        └── logic.py            (process_collection, normalize_file)
-            └── config.py       (wartości domyślne: FFMPEG_CMD, LOUDNORM_OPTS, MAX_WORKERS)
+    ├── gui.py                  (run_normalization → mw.taskman.run_in_background + natywny pasek common/progress; _sync_media_files); używa common/ADDON_NAME
+    │   └── logic.py            (process_collection — po anulowaniu dozbiera wyniki dokończonych ffmpeg-ów, normalize_file)
+    │       └── config.py       (wartości domyślne: FFMPEG_CMD, LOUDNORM_OPTS, MAX_WORKERS)
+    └── watcher.py              (auto-normalizacja: QFileSystemWatcher + debounce 3 s + guard _normalizing; profile_did_open)
 
 settings/__init__.py            (SettingsDialog, open_settings); używa common/ADDON_NAME, get_full_config, save_full_config
     ├── status_tab.py           (StatusTab — dashboard pipeline'u, refresh(cfg) wołane przy przejściu na Start)
@@ -400,6 +403,9 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
     ├── tts_tab.py              (TTSTab); używa common/ui widgetów, tts/api fetch_openrouter_tts_models
     ├── audio_normalizer_tab.py (AudioNormalizerTab); używa common/ui widgetów
     ├── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów
+    ├── workflows_tab.py        (WorkflowsTab + WorkflowEditDialog); używa common/ui widgetów, ai_generator/workflow DEFAULT_CONTEXT_MENU
+    ├── deck_router_tab.py      (DeckRouterTab — tabela reguł + _collect_rules + przycisk „Uporządkuj istniejące karty…" → deck_router.confirm_reorganize); używa common/ui hint_label
+    ├── logs_tab.py             (LogsTab); używa common/debug_log
     └── stats_tab.py            (StatsTab); używa ai_generator/stats get_stats, reset_stats
 
 nbsp_remover/
@@ -418,7 +424,7 @@ sibling_manager/
 
 deck_router/
     ├── logic.py                (match_deck(tags, template_name, rules) — pierwsza pasująca reguła wygrywa; bez importów Anki, testowalne)
-    └── __init__.py             (on_add_note hook + route_after_edit CollectionOp + _reorganize/setup_menu retro; _apply przenosi col.set_deck do col.decks.id(create=True); używa common/config get_module_config)
+    └── __init__.py             (on_add_note hook + route_after_edit CollectionOp + run_reorganize/confirm_reorganize/setup_menu retro; _apply przenosi col.set_deck do col.decks.id(create=True); używa common/config get_module_config)
 ```
 
 ---

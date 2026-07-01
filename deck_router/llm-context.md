@@ -68,9 +68,10 @@ Zwraca reguły z configu przefiltrowane do tych z niepustym `tag` i `deck` (odpo
 - Wołane z `ai_generator/browser_ui.py` w `_save_changed_notes._saved` (jedyny punkt zapisu notatek po batchu/workflow), dla `[n.id for n in changed_notes]`.
 - **Guard w środku**: `_module_enabled()` (bo caller importuje bezwarunkowo) + niepuste reguły + niepuste `note_ids`. Uruchamia `CollectionOp` z `_apply`; tooltip z liczbą przeniesionych, gdy `> 0`.
 
-### `_reorganize()` / `setup_menu` — retroaktywne menu
+### `run_reorganize(rules=None, parent=None)` / `confirm_reorganize()` / `setup_menu` — retroaktywne uruchomienie
 
-- Query `col.find_notes(" OR ".join(f"tag:{t}" for t in tags))` po tagach z reguł → `_apply`. `CollectionOp` w tle, tooltip z liczbą przeniesionych. `_confirm_reorganize` pyta przez `QMessageBox`.
+- Query `col.find_notes(" OR ".join(f"tag:{t}" for t in tags))` po tagach z reguł → `_apply`. `CollectionOp` w tle, tooltip z liczbą przeniesionych. `confirm_reorganize(rules, parent)` pyta przez `QMessageBox` i woła `run_reorganize`.
+- `rules=None` = czytaj zapisaną konfigurację (ścieżka z menu Narzędzia); `DeckRouterTab` podaje reguły zebrane z tabeli (`_collect_rules()`), więc przycisk w zakładce działa też na niezapisanych regułach.
 
 ## OpChanges
 
@@ -105,7 +106,8 @@ Soft-import + `_module_enabled()` guard: brak twardej zależności, działa też
 
 - `QTableWidget` 3 kolumny: Tag (`QTableWidgetItem` tekst), Szablon (`QComboBox` `(wszystkie)` + `_collect_templates()`), Talia (`QComboBox` edytowalny, `_collect_decks()`, `NoInsert`).
 - `_collect_templates()` — union nazw szablonów ze wszystkich `mw.col.models.all()`. `_collect_decks()` — `mw.col.decks.all_names_and_ids()`.
-- `apply(cfg)` — buduje `rules`; wiersze z pustym tagiem lub talią pomijane; `template == "(wszystkie)"` → nie zapisywane (pole `template` pominięte). Zarejestrowana w `settings/__init__.py` (grupa „System", ikona 🎯).
+- `_collect_rules()` — wspólny zbieracz reguł z tabeli (wiersze z pustym tagiem lub talią pomijane; `template == "(wszystkie)"` → pole `template` pominięte); używany przez `apply(cfg)` (zapis do `cfg["deck_router"]["rules"]`) i przycisk **„Uporządkuj istniejące karty…”** (`_run_now` → `confirm_reorganize(rules, parent=self)` — działa na regułach z tabeli, także niezapisanych).
+- Zarejestrowana w `settings/__init__.py` (grupa „System", ikona 🎯).
 
 ## Zależności
 

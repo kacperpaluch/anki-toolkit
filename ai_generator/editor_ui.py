@@ -4,7 +4,8 @@ from aqt.editor import Editor
 from aqt.qt import QAction, QMenu
 from aqt import gui_hooks
 
-from ._generator import get_generator, get_config
+from ._generator import get_config
+from .field_generator import FieldGenerator
 
 # Tracks editor instances currently generating — prevents double-click races.
 _GENERATING: set[int] = set()
@@ -17,7 +18,10 @@ def _on_generate_editor(editor: Editor):
         return
     _GENERATING.add(editor_id)
 
-    gen = get_generator()  # read config on main thread
+    # Świeża instancja per uruchomienie (config czytany na głównym wątku) —
+    # dwa równoległe generowania (np. dwa okna edytora) nie współdzielą
+    # last_error/last_usage providera.
+    gen = FieldGenerator(get_config())
 
     def start():
         # Note captured here — after saveNow synced webview → editor.note,
@@ -74,7 +78,7 @@ def _on_generate_field_editor(editor: Editor, field_name: str):
         return
     _GENERATING.add(editor_id)
 
-    gen = get_generator()
+    gen = FieldGenerator(get_config())
 
     def start():
         note = editor.note

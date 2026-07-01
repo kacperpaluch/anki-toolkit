@@ -196,6 +196,9 @@ class TTSTab(QWidget):
         self._or_voice_list.setMaximumHeight(200)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        # connect raz — _update_voice_checklist przebudowuje wiersze wielokrotnie,
+        # a ponowny connect przy każdej przebudowie akumulowałby połączenia.
+        self._or_voice_list.itemChanged.connect(self._on_voice_checklist_changed)
         orf.addRow(self._or_voice_list)
 
         orl.addLayout(orf)
@@ -487,7 +490,6 @@ class TTSTab(QWidget):
             )
 
         self._or_voice_list.blockSignals(False)
-        self._or_voice_list.itemChanged.connect(self._on_voice_checklist_changed)
         self._on_voice_checklist_changed(None)
         self._update_voices_row_visibility()
 

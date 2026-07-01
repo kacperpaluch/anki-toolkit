@@ -23,7 +23,7 @@ Tag jest własnością **notatki**, więc wszystkie jej karty dzielą ten sam ta
 |---|---|
 | Okno **Dodaj** | Hook `add_cards_did_add_note` — przy ręcznym dodaniu notatki |
 | **AI-workflow / batch w przeglądarce** | Po zapisaniu zmienionych notatek (`route_after_edit` wołane z `ai_generator`) |
-| **Ręcznie** | Narzędzia → Anki Toolkit → „Deck Router: uporządkuj istniejące karty…” — przechodzi po wszystkich notatkach z tagami z reguł |
+| **Ręcznie** | Narzędzia → Anki Toolkit → „Deck Router: uporządkuj istniejące karty…” albo przycisk **„Uporządkuj istniejące karty…”** w zakładce ustawień — przechodzi po wszystkich notatkach z tagami z reguł |
 
 ## Konfiguracja
 
@@ -53,6 +53,7 @@ Reguły z pustym tagiem lub pustą talią są przy zapisie pomijane.
 ## Menu
 
 - **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** — retroaktywne uporządkowanie: znajduje notatki z tagami z reguł i przenosi ich karty (w tle, jeden krok undo).
+- Ta sama akcja jest dostępna przyciskiem **„Uporządkuj istniejące karty…”** w zakładce **Ustawienia → Deck Router** — używa reguł aktualnie widocznych w tabeli (także jeszcze niezapisanych), więc można od razu przetestować nową regułę.
 
 ## Włączanie / wyłączanie
 

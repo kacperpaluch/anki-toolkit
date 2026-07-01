@@ -133,17 +133,20 @@ def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[st
 
     Returns (modified, error_message). The note is mutated in memory only.
 
-    ai_generator: optional FieldGenerator to use for the AI step instead of the
-    shared singleton. The parallel browser batch passes a per-note instance —
-    providers keep per-request state (last_error, last_usage), so sharing one
-    across worker threads would cross-attribute errors and token usage.
+    ai_generator: optional FieldGenerator for the AI step. Callers running
+    multiple steps/notes pass their own instance (per note in the parallel
+    browser batch, per run in the editor workflow) — providers keep
+    per-request state (last_error, last_usage), so sharing one across worker
+    threads would cross-attribute errors and token usage. None = a fresh
+    instance for this one step.
     """
     module = step.get("module", "")
     action = step.get("action", "")
 
     if module == "ai" and action == "generate":
-        from ._generator import get_generator, get_config
-        gen = ai_generator or get_generator()
+        from ._generator import get_config
+        from .field_generator import FieldGenerator
+        gen = ai_generator or FieldGenerator(get_config())
         only_fields = _resolve_ai_fields(step, get_config())
         changed = gen.process_note(note, only_fields=only_fields)
         return bool(changed), gen.last_error
@@ -204,6 +207,12 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
     """
     total = len(steps)
 
+    # Jedna instancja na cały przebieg — kroki AI reużywają cache providerów,
+    # a równoległe przebiegi (dwa okna edytora) nie współdzielą stanu.
+    from ._generator import get_config
+    from .field_generator import FieldGenerator
+    gen = FieldGenerator(get_config())
+
     def run_step(i: int):
         if i >= total:
             _RUNNING.discard(editor_id)
@@ -225,7 +234,7 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
         logger.info(f"Workflow: krok {i + 1}/{total} ({module}/{action}), nid={note.id}")
 
         def bg_task():
-            return execute_step(note, step)
+            return execute_step(note, step, ai_generator=gen)
 
         def on_done(future):
             try:

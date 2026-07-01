@@ -773,9 +773,12 @@ class PromptsTab(QWidget):
         key = item.data(Qt.ItemDataRole.UserRole)
         self._current_key = None
         del self._data[key]
+        # takeItem zaznacza sąsiedni element → currentItemChanged już wczytał
+        # go do edytora; placeholder pokazujemy tylko gdy lista jest pusta.
         self._list.takeItem(self._list.row(item))
-        self._editor_widget.setVisible(False)
-        self._editor_placeholder.setVisible(True)
+        if self._list.currentItem() is None:
+            self._editor_widget.setVisible(False)
+            self._editor_placeholder.setVisible(True)
 
     def apply(self, cfg: dict) -> None:
         self._save_current_to_data(self._list.currentItem())

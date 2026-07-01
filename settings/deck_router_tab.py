@@ -52,8 +52,16 @@ class DeckRouterTab(QWidget):
         add_btn.clicked.connect(lambda: self._add_row("", "", ""))
         del_btn = QPushButton("－ Usuń zaznaczoną")
         del_btn.clicked.connect(self._del_row)
+        run_btn = QPushButton("Uporządkuj istniejące karty…")
+        run_btn.setToolTip(
+            "Przejdź po notatkach z tagami z powyższych reguł i przenieś ich karty "
+            "do właściwych talii. Używa reguł z tabeli — także niezapisanych."
+        )
+        run_btn.clicked.connect(self._run_now)
         btns.addWidget(add_btn)
         btns.addWidget(del_btn)
+        btns.addSpacing(12)
+        btns.addWidget(run_btn)
         btns.addStretch()
         layout.addLayout(btns)
 
@@ -121,7 +129,7 @@ class DeckRouterTab(QWidget):
         if r >= 0:
             self._table.removeRow(r)
 
-    def apply(self, cfg: dict) -> None:
+    def _collect_rules(self) -> list[dict]:
         rules = []
         for r in range(self._table.rowCount()):
             tag_item = self._table.item(r, 0)
@@ -141,5 +149,12 @@ class DeckRouterTab(QWidget):
             if template:
                 rule["template"] = template
             rules.append(rule)
+        return rules
+
+    def _run_now(self) -> None:
+        from ..deck_router import confirm_reorganize
+        confirm_reorganize(self._collect_rules(), parent=self)
+
+    def apply(self, cfg: dict) -> None:
         cfg.setdefault("deck_router", {})
-        cfg["deck_router"]["rules"] = rules
+        cfg["deck_router"]["rules"] = self._collect_rules()

@@ -2,16 +2,16 @@
 
 ## Co robi
 
-Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (główny przycisk workflow + pomocniczy przycisk AI) i przeglądarce (batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
+Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (przyciski workflowów + pomocniczy przycisk AI) i przeglądarce (równoległy batch dla zaznaczonych notatek). Pomija pola, które już mają treść.
 
 ## Pliki
 
 | Plik | Rola |
 |---|---|
-| `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `_generator` |
-| `_generator.py` | Zarządzanie stanem generatora — `get_generator()`, `reset_generator()`, config-aware cache; używa `common.ADDON_NAME` |
-| `editor_ui.py` | UI edytora — najpierw przycisk workflow (jeśli włączony), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego); batch z natywnym paskiem `mw.progress` przez wspólny helper `common.progress` (`start_progress`/`update_progress`/`finish_progress`, `want_cancel()`) zamiast własnego QProgressDialog — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj; po zapisie `_save_changed_notes` woła `deck_router.route_after_edit` (soft-import); cancel_flag; `_run_batch(only_fields=..., on_complete=None)` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery tylko mutują je w pamięci; batch zawsze `overwrite=False` (pomija wypełnione); `on_complete` (opcjonalny) odpala się po commicie zapisu — używane do łańcuchowania kroków. Akcja `Rozdziel + generuj naukę (p1–p3)` (`_on_split_then_nauka`) łączy dwa kroki: CollectionOp rozdziela `przyklad`→`p1/p2/p3` (reużywa `field_splitter._process_note`), a po zapisie odpala `_run_batch(only_fields={p1-nauka,p2-nauka,p3-nauka})` — pola `manual_only`, więc jawny `only_fields` je obejmuje. Akcja `Generuj wszystko: puste → TTS → rozdziel → zablokowane` (`_on_full_pipeline`) — łańcuch 4 kroków spinanych przez `on_complete`: `_run_batch(only_fields=None)` → `tts.processor.process_tasks_async` → `field_splitter._run_batch` → `_run_batch(only_fields=manual_fields)`; każdy krok startuje po commicie poprzedniego (czyta świeże pola), kroki bez konfiguracji są pomijane |
+| `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `workflow` (`migrate_workflows`) |
+| `_generator.py` | Tylko `get_config()` — czyta sekcję `ai_generator` z configu wtyczki. Bez singletona: każde uruchomienie (przycisk, PPM, workflow, batch) tworzy własny `FieldGenerator(get_config())`, więc równoległe generowania nie współdzielą stanu providerów (`last_error`/`last_usage`), a zmiany ustawień działają od razu |
+| `editor_ui.py` | UI edytora — przyciski workflow (per workflow z `editor_button`), potem przycisk AI (wszystkie puste pola); `_GENERATING` guard zapobiega podwójnemu kliknięciu; świeży `FieldGenerator(get_config())` per uruchomienie; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
+| `browser_ui.py` | UI przeglądarki — najpierw pozycje workflowów (po jednej na workflow z `config["workflows"]` → `_on_workflow_browser`), potem submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego) i `Generuj zablokowane ▸` (pola `manual_only`); batch z natywnym paskiem `mw.progress` przez wspólny helper `common.progress` (`start_progress`/`update_progress`/`finish_progress`, `want_cancel()`) zamiast własnego QProgressDialog — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj; po zapisie `_save_changed_notes(browser, changed_notes, summary)` woła `deck_router.route_after_edit` (soft-import); cancel_flag; `_run_batch(only_fields=...)` i `_on_workflow_browser` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery (`ThreadPoolExecutor(parallel_requests)`, chunki po `batch_limit`) tylko mutują je w pamięci, per-notatka własny `FieldGenerator`; batch pól zawsze `overwrite=False` (pomija wypełnione); dawne hardcodowane pipeline'y („Generuj wszystko…", „Rozdziel + generuj naukę…") są teraz zwykłymi workflowami seedowanymi przez `migrate_workflows()` |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
@@ -22,7 +22,7 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `providers/google.py` | Google Gemini (generateContent API — własny rozbiór `candidates[0].content.parts`) |
 | `providers/opencode_go.py` | OpenCode Go — Chat Completions dla większości modeli (`_parse_chat_completion`), Anthropic Messages dla MiniMax/Qwen3.x (`_parse_messages`); auto-detect na podstawie nazwy modelu; reasoning jako wolny string; `User-Agent` header (Cloudflare) |
 | `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; bliźniacze endpointy `{"data":[{"id":...}]}` (openai/mistral/anthropic/cometapi/opencode_go) idą przez wspólny `_fetch_simple()` z predykatem `keep`; Google i OpenRouter mają własne fetchery |
-| `workflow.py` | Workflow "Generuj fiszkę" — sekwencyjne uruchamianie AI → Dict → TTS na pojedynczej notatce w edytorze; guard `_RUNNING` blokuje podwójne odpalenie; używa `common.ADDON_NAME` |
+| `workflow.py` | Nazwane workflowy (`config["workflows"]`, lista `{name, editor_button, steps}`) — `get_workflows()`, `migrate_workflows()` (legacy pojedynczy `workflow` → lista + seed dwóch dawnych pipeline'ów + `context_menu`), `get_context_menu()`; `execute_step(note, step, ai_generator=None)` — wspólny wykonawca kroku (AI/dictionary/TTS/field_splitter), mutuje notatkę w pamięci; `run_workflow_editor()` — sekwencyjne kroki na jednej notatce w edytorze, jeden `FieldGenerator` per przebieg, guard `_RUNNING` blokuje podwójne odpalenie |
 
 ## Przepływ danych
 
@@ -31,7 +31,7 @@ Kliknięcie przycisku (edytor)
   → editor_ui._on_generate_editor()
   → sprawdź _GENERATING — jeśli ten edytor już generuje: tooltip "Generowanie już trwa..." i return
   → dodaj editor_id do _GENERATING
-  → _generator.get_generator()                   # config-aware: porównuje z _cached_config, tworzy nowy gdy config się zmienił
+  → gen = FieldGenerator(get_config())           # świeża instancja per uruchomienie — brak współdzielonego stanu między oknami edytora
   → editor.saveNow(start)                        # synchronizuje webview → editor.note PRZED zadaniem
       → start() (callback na głównym wątku po saveNow):
           → note = editor.note                   # świeży stan po synchronizacji
@@ -78,30 +78,26 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):
       → mw.progress.finish()                     # zamknąć nasz pasek PRZED CollectionOp (inaczej "already busy")
-      → _save_changed_notes(browser, changed_notes, summary, on_complete)
+      → _save_changed_notes(browser, changed_notes, summary)
           → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
-              .success(lambda: tooltip + on_complete()).run_in_background()
           → po zapisie: deck_router.route_after_edit(browser, [n.id for n in changed_notes]) (soft-import, no-op gdy moduł wyłączony/brak reguł)
-          → on_complete (jeśli podany) odpala się PO commicie zapisu — spina łańcuch kroków
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
-Pełny pipeline (menu kontekstowe → Generuj wszystko: puste → TTS → rozdziel → zablokowane):
-  → _on_full_pipeline(browser) — nids złapane raz, manual_fields z _all_configured_target_fields(manual_only=True)
-  → łańcuch przez callbacki on_complete (każdy krok = osobny CollectionOp/batch, startuje po commicie poprzedniego):
-      krok 1: _run_batch(only_fields=None, on_complete=step2_tts)            # wszystkie puste
-      krok 2: process_tasks_async(browser, nids, tasks, on_complete=step3)  # TTS; brak zadań → od razu step3
-      krok 3: field_splitter._run_batch(nids, on_complete=step4_blocked)    # rozdziel przyklad
-      krok 4: _run_batch(only_fields=manual_fields, label="AI: zablokowane")# terminalny, bez on_complete
-  → kroki bez konfiguracji są pomijane (on_complete i tak odpala — łańcuch leci dalej);
-    twardy błąd TTS nie blokuje split/zablokowanych
+Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
+  → _on_workflow_browser(browser, workflow) — notatki preładowane na głównym wątku, jak w _run_batch
+  → ThreadPoolExecutor(parallel_requests), chunki po batch_limit; per notatka:
+      → gen = FieldGenerator(config)             # kroki w obrębie notatki sekwencyjne, notatki równolegle
+      → dla każdego kroku: execute_step(note, step, ai_generator=gen)
+  → zapis i routing jak wyżej (_save_changed_notes)
 
-Przycisk workflow w edytorze:
-  → editor_ui.on_editor_buttons_init() dodaje go przed przyciskiem AI, jeśli `workflow.enabled=true` i `workflow.steps` nie jest puste
-  → workflow.run_workflow_editor(editor)
+Przyciski workflowów w edytorze:
+  → editor_ui.on_editor_buttons_init() dodaje po jednym przycisku na każdy workflow z `editor_button=true` i niepustymi `steps` (przed przyciskiem AI)
+  → workflow.run_workflow_editor(editor, workflow)
       → jeśli editor_id jest w `_RUNNING`: tooltip "Workflow już trwa..." i return
       → saveNow → notatka jest łapana RAZ na starcie — wszystkie kroki działają na niej,
         więc przełączenie karty w edytorze w trakcie nie miesza danych między notatkami
-      → sekwencyjnie wykonuje kroki z configu: AI, dictionary, TTS (każdy w tle; update_note pomijany dla note.id == 0);
+      → jeden FieldGenerator per przebieg (cache providerów między krokami AI, brak współdzielenia między oknami)
+      → sekwencyjnie wykonuje kroki: execute_step(note, step, ai_generator=gen) (każdy w tle; update_note pomijany dla note.id == 0);
         wewnątrz kroku TTS pliki audio są generowane równolegle (tts.processor.process_single_note → ThreadPoolExecutor)
       → po ostatnim kroku usuwa editor_id z `_RUNNING`, wywołuje `editor.loadNote()` (tylko gdy edytor nadal pokazuje tę notatkę) i pokazuje jedno podsumowanie
 ```
@@ -109,11 +105,11 @@ Przycisk workflow w edytorze:
 ## Konfiguracja
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
-- Zakładka **AI Generator → Workflow** — kolejność kroków i etykieta przycisku edytora (`Generuj fiszkę`)
+- Zakładka **Workflowy** (osobna, top-level) — lista nazwanych workflowów (nazwa, flaga przycisku edytora, kroki z parametrami) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
 - Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, prompt) po prawej; model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
 - Zakładka **AI Generator → Dostawcy** — karty dostawców AI, klucze API, modele (combo z cache `cached_models` zapisywanym w configu — przeżywa restart), model zapasowy (fallback_model), temperatura, reasoning/max tokens, **limit RPM + maks. równoległych per dostawca** (OpenRouter dodatkowo checkbox „tylko :free"); sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
 
-Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu ustawień generator jest resetowany i przy kolejnym użyciu pobiera świeżą konfigurację.
+Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomienie generowania tworzy świeży `FieldGenerator(get_config())`, więc kolejne użycie czyta aktualną konfigurację.
 
 ### Sekcja `ai_generator` w config.json (szablon domyślny)
 
@@ -156,11 +152,11 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — po zapisaniu usta
 - `request_timeout` — timeout urlopen w `common.http.post_json()` (delegowane z `BaseProvider._post()`); domyślnie `30` sekund
 - `providers.<name>.rpm` — limit żądań na minutę dla dostawcy; żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje; `0`/brak = bez limitu. OpenRouter domyślnie `20`, Mistral `40` (≈0.83 req/s free tier z marginesem)
 - `providers.<name>.max_concurrent` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe API zwykle wymagają `1`
-- `providers.openrouter.rate_limit_free_only` — gdy `true` (domyślnie dla OpenRoutera), limit dotyczy tylko modeli z `:free` w nazwie; gdy `false`, wszystkich żądań. Pole istnieje tylko dla OpenRoutera; inni dostawcy zawsze dławią wszystko. Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` są czytane jako back-compat dla OpenRoutera, gdy brak per-provider `rpm`
+- `providers.openrouter.rate_limit_free_only` — gdy `true` (domyślnie dla OpenRoutera), limit dotyczy tylko modeli z `:free` w nazwie; gdy `false`, wszystkich żądań. Pole istnieje tylko dla OpenRoutera; inni dostawcy zawsze dławią wszystko. Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` (usunięte z szablonu config.json) są nadal czytane jako back-compat dla OpenRoutera, gdy w zapisanej konfiguracji brak per-provider `rpm`
 - `providers.openai.reasoning_effort` / `providers.cometapi.reasoning_effort` / `providers.openrouter.reasoning_effort` — dropdown z wartościami `none/minimal/low/medium/high/xhigh`; wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`); dla tych modeli nie wysyłane `temperature`; fallback automatyczny przy HTTP 400
 - `providers.opencode_go.reasoning_effort` — wolny tekst (QLineEdit w UI); wartości per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują; puste = nie wysyłane; fallback automatyczny przy HTTP 400; `opencode_go` wymaga `User-Agent` header (Cloudflare blokuje brak UA); auto-detect formatu API: Chat Completions dla GLM/Kimi/DeepSeek/MiMo, Anthropic Messages dla MiniMax M2.5/M2.7/Qwen3.5/3.6 Plus
-- Generator jest config-aware: porównuje bieżący config z `_cached_config` — jeśli config się zmienił, tworzy nowy generator z nowymi providerami; reset też wywoływany jawnie przez `settings/_reload_module_configs()` po zapisaniu ustawień
-- Każdy prompt zapisuje `provider` i `model`; starsze wpisy bez `model` używają `providers.<provider>.model`. Instancje providerów są cache'owane per `(provider, model)`.
+- Bez globalnego cache generatora: każde uruchomienie tworzy świeży `FieldGenerator(get_config())` (edytor per klik, workflow per przebieg, batch per notatka) — konfiguracja działa od razu po zapisie ustawień, bez resetu
+- Każdy prompt zapisuje `provider` i `model`; starsze wpisy bez `model` używają `providers.<provider>.model`. Instancje providerów są cache'owane per `(provider, model)` w obrębie jednej instancji `FieldGenerator`.
 - Pola generowane są w kolejności kluczy w `note_types`; pole może referencjonować wynik poprzedniego pola przez `{{nazwa}}` w prompcie
 
 ## Silnik szablonów

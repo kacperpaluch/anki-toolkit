@@ -24,15 +24,6 @@ from .stats_tab import StatsTab
 from .logs_tab import LogsTab
 
 
-def _reload_module_configs() -> None:
-    """Reset cached module state so next use picks up the new config."""
-    try:
-        from .. import ai_generator as _ai_mod
-        _ai_mod.reset_generator()
-    except ImportError:
-        pass
-
-
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent or mw)
@@ -178,7 +169,6 @@ class SettingsDialog(QDialog):
             )
 
         save_full_config(cfg)
-        _reload_module_configs()
         tooltip("Ustawienia zapisane. Niektóre zmiany wymagają restartu Anki.")
         self.accept()
 

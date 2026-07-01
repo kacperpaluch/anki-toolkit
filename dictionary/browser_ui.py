@@ -31,7 +31,15 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     if not dictionary_groups:
         return
 
-    cancel_flag = start_progress("Pobieranie wymowy", len(note_ids), "Słownik")
+    # Notatki wczytywane na głównym wątku — kolekcja Anki jest jednowątkowa,
+    # wątek roboczy tylko mutuje je w pamięci (ten sam wzorzec co batch AI/TTS).
+    try:
+        notes = [mw.col.get_note(nid) for nid in note_ids]
+    except Exception as e:
+        tooltip(f"Błąd wczytywania notatek: {e}", parent=mw, period=5000)
+        return
+
+    cancel_flag = start_progress("Pobieranie wymowy", len(notes), "Słownik")
 
     missing_audio_count = 0
     changed_notes: list = []
@@ -39,13 +47,12 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     def task():
         nonlocal missing_audio_count
         batch_cache: dict = {}
-        for i, nid in enumerate(note_ids):
+        for i, note in enumerate(notes):
             if cancel_flag["cancelled"]:
                 break
 
-            update_progress(cancel_flag, "Pobieranie", i + 1, len(note_ids))
+            update_progress(cancel_flag, "Pobieranie", i + 1, len(notes))
 
-            note = mw.col.get_note(nid)
             note_modified = False
             note_missing_audio = False
             for dictionaries in dictionary_groups:

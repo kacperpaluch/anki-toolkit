@@ -17,15 +17,16 @@ Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międ
 - Kliknięcie przycisku podczas trwającej generacji pokazuje tooltip **"Generowanie już trwa..."** — podwójne kliknięcie jest ignorowane
 - Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej
 
-### Workflow "Generuj fiszkę"
+### Workflowy
 
-Przycisk w toolbarze edytora (pokazuje się gdy workflow ma skonfigurowane kroki). Uruchamia AI → Słownik → TTS sekwencyjnie. Konfiguracja w **Ustawienia → AI Generator → Workflow**:
-- Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**
-- Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman)
+Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Każdy workflow jest pozycją w menu PPM przeglądarki, a z flagą **„Pokaż jako przycisk w edytorze”** — także przyciskiem w toolbarze edytora. Konfiguracja w **Ustawienia → Workflowy**:
+- Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**, **+ Rozdziel**
+- Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / zablokowane / konkretne)
 - Zmieniaj kolejność ▲▼, usuwaj kroki
-- Etykieta przycisku konfigurowalna; domyślnie **Generuj fiszkę**
 
-Kroki wykonują się sekwencyjnie w tle. Każdy krok czeka na poprzedni. Notatka jest łapana raz na starcie workflow — przełączenie karty w edytorze w trakcie nie miesza danych między notatkami.
+W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
+
+Dwa dawne wbudowane pipeline'y — **„Generuj wszystko: puste → TTS → rozdziel → zablokowane”** i **„Rozdziel + generuj naukę (p1–p3)”** — są teraz zwykłymi, edytowalnymi workflowami (seedowane automatycznie przy migracji).
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
@@ -33,17 +34,6 @@ Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
 Submenu zawiera:
 - **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (obecne zachowanie)
 - **AI: `def`**, **AI: `cz_mowy`** itd. — generuje tylko wybrane pole docelowe, pomija wypełnione
-
-Dodatkowo w menu **Anki Toolkit** jest akcja **Rozdziel + generuj naukę (p1–p3)** — w jednym kliknięciu rozdziela pole `przyklad` na `p1`/`p2`/`p3` (przez moduł Field Splitter), a po zapisie generuje pola `p1-nauka`/`p2-nauka`/`p3-nauka`. Wymaga włączonego modułu „Rozdzielanie pól".
-
-Oraz akcja **Generuj wszystko: puste → TTS → rozdziel → zablokowane** — pełny łańcuch czterech kroków w jednym kliknięciu:
-
-1. **Generuj pola → wszystkie puste** (`_run_batch(only_fields=None)`)
-2. **TTS → uruchom wszystkie** zadania (`tts.processor.process_tasks_async`)
-3. **Rozdziel pole `przyklad`** → `p1`/`p2`/`p3`… (`field_splitter._run_batch`)
-4. **Generuj zablokowane → wszystkie** pola `manual_only` (`_run_batch(only_fields=manual_fields)`)
-
-Każdy krok startuje dopiero **po zapisaniu poprzedniego do kolekcji** (przez callback `on_complete`), więc krok N+1 czyta pola, które krok N właśnie zapisał. Kroki bez konfiguracji (brak zadań TTS, brak skonfigurowanych pól docelowych split, brak pól `manual_only`) są pomijane — łańcuch przechodzi do następnego. Twardy błąd TTS też nie blokuje rozdzielenia ani generowania zablokowanych. Wykorzystuje moduły TTS i Field Splitter, jeśli są włączone.
 
 Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
 
@@ -258,7 +248,7 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0
 - **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
 - **Limit tylko dla modeli `:free`** (`providers.openrouter.rate_limit_free_only`, tylko OpenRouter) — zaznaczone: limit obejmuje wyłącznie modele `:free`, płatne lecą bez dławienia; u innych dostawców limit zawsze obejmuje wszystkie żądania
 - Dotyczy modelu głównego i fallbackowego; TPM (tokeny/min) nie jest egzekwowane wprost — łapie je retry przy HTTP 429
-- Back-compat: stare `free_model_rate_limit`/`free_model_max_concurrent` są czytane dla OpenRoutera, gdy brak per-provider `rpm`
+- Back-compat: stare `free_model_rate_limit`/`free_model_max_concurrent` (usunięte z szablonu config.json) są nadal czytane dla OpenRoutera, gdy w zapisanej konfiguracji brak per-provider `rpm`
 
 ```json
 "providers": {

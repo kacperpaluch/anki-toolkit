@@ -84,12 +84,8 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
                for b in config.get("buttons", [])
                if b.get("enabled") and b.get("dictionaries")]
 
-    if not enabled:
-        return
-
-    if len(enabled) == 1:
-        # Single dictionary — simple button
-        label, dicts = enabled[0]
+    # One button per enabled dictionary group
+    for label, dicts in enabled:
         btn = editor.addButton(
             None,
             f"fetch_{'_'.join(dicts)}",
@@ -98,17 +94,6 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
             label=label,
         )
         buttons.append(btn)
-    else:
-        # Multiple dictionaries — one button per dictionary group
-        for label, dicts in enabled:
-            btn = editor.addButton(
-                None,
-                f"fetch_{'_'.join(dicts)}",
-                lambda ed=editor, d=dicts: _on_fetch_audio_editor(ed, d),
-                tip=label,
-                label=label,
-            )
-            buttons.append(btn)
 
 
 # ---------------------------------------------------------------------------

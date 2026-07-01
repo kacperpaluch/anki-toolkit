@@ -80,8 +80,9 @@ anki-toolkit/
 ├── audio_normalizer/                # Moduł 5: normalizacja audio przez ffmpeg
 │   ├── __init__.py
 │   ├── config.py                    # konfiguracja ffmpeg, parametry EBU R128
-│   ├── gui.py                       # dialog postępu Qt + wątek roboczy
-│   └── logic.py                     # skanowanie plików, historia, przetwarzanie równoległe
+│   ├── gui.py                       # uruchomienie z menu — natywny pasek mw.progress + praca w tle
+│   ├── logic.py                     # skanowanie plików, historia, przetwarzanie równoległe
+│   └── watcher.py                   # auto-normalizacja: watcher katalogu mediów (debounce 3 s)
 │
 ├── nbsp_remover/                    # Moduł 6: czyszczenie &nbsp; i tagów <div>
 │   ├── __init__.py
@@ -515,7 +516,7 @@ Kieruje karty do talii na podstawie **tagu notatki** (opcjonalnie zawężone do 
 
 Tag jest własnością notatki, więc reguła bez szablonu przenosi cały komplet kart notatki do jednej talii; reguła ze szablonem pozwala rozbić karty jednej notatki na różne talie.
 
-**Kiedy się odpala:** przy dodawaniu w oknie **Dodaj** (`add_cards_did_add_note`), po AI-workflow/batchu w przeglądarce (dla zmienionych notatek), oraz ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** (retroaktywne uporządkowanie po tagach z reguł, w tle, jeden krok undo).
+**Kiedy się odpala:** przy dodawaniu w oknie **Dodaj** (`add_cards_did_add_note`), po AI-workflow/batchu w przeglądarce (dla zmienionych notatek), oraz ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** albo przyciskiem **Uporządkuj istniejące karty…** w zakładce ustawień (działa na regułach z tabeli, także niezapisanych) — retroaktywne uporządkowanie po tagach z reguł, w tle, jeden krok undo.
 
 Konfiguracja w **Ustawienia → Deck Router** — tabela reguł. Szablon i talia z list rozwijanych (pobieranych z kolekcji, więc bez literówek); talia jest edytowalna, więc można wpisać nową (zostanie utworzona; zagnieżdżanie przez `::`).
 

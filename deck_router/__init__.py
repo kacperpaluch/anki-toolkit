@@ -137,10 +137,17 @@ def route_after_edit(parent, note_ids) -> None:
 # Trigger: retroactive menu action
 # ---------------------------------------------------------------------------
 
-def _reorganize() -> None:
-    rules = _rules()
+def run_reorganize(rules=None, parent=None) -> None:
+    """Przejdź po notatkach z tagami z reguł i przenieś ich karty.
+
+    rules=None czyta zapisaną konfigurację (ścieżka z menu Narzędzia);
+    zakładka ustawień podaje reguły z tabeli (również niezapisane).
+    """
+    if rules is None:
+        rules = _rules()
+    parent = parent or mw
     if not rules:
-        tooltip("Deck Router: brak reguł w konfiguracji.", parent=mw, period=4000)
+        tooltip("Deck Router: brak reguł w konfiguracji.", parent=parent, period=4000)
         return
 
     counter = {"moved": 0}
@@ -155,25 +162,25 @@ def _reorganize() -> None:
         return _ui_changes() if counter["moved"] else OpChanges()
 
     def on_success(_changes: OpChanges) -> None:
-        tooltip(f"Deck Router: przeniesiono {counter['moved']} kart", parent=mw, period=4000)
+        tooltip(f"Deck Router: przeniesiono {counter['moved']} kart", parent=parent, period=4000)
 
-    CollectionOp(parent=mw, op=op).success(on_success).run_in_background()
+    CollectionOp(parent=parent, op=op).success(on_success).run_in_background()
 
 
-def _confirm_reorganize() -> None:
+def confirm_reorganize(rules=None, parent=None) -> None:
     result = QMessageBox.question(
-        mw, "Deck Router",
+        parent or mw, "Deck Router",
         "Przejść po istniejących notatkach z tagami z reguł i przenieść "
         "ich karty do właściwych talii?",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No,
     )
     if result == QMessageBox.StandardButton.Yes:
-        _reorganize()
+        run_reorganize(rules, parent=parent)
 
 
 def setup_menu(parent_menu=None):
     menu = parent_menu or mw.form.menuTools
     action = QAction("Deck Router: uporządkuj istniejące karty...", mw)
-    action.triggered.connect(_confirm_reorganize)
+    action.triggered.connect(lambda _checked=False: confirm_reorganize())
     menu.addAction(action)

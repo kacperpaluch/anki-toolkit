@@ -219,27 +219,18 @@ def process_task_async(browser, nids: list, task: dict):
     _process_batch_async(browser, nids, [task], label=task.get("label", "TTS"))
 
 
-def process_tasks_async(browser, nids: list, tasks: list[dict], on_complete=None):
+def process_tasks_async(browser, nids: list, tasks: list[dict]):
     """Run multiple TTS tasks as one browser operation with one progress dialog."""
-    _process_batch_async(browser, nids, tasks, label="TTS", on_complete=on_complete)
+    _process_batch_async(browser, nids, tasks, label="TTS")
 
 
-def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
-                         on_complete=None):
-    # ponytail: on_complete fires on every exit (success, soft skip, error) so a
-    # chained pipeline keeps going — TTS failing shouldn't block later steps.
-    def _continue():
-        if on_complete:
-            on_complete()
-
+def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
     config = get_tts_config()
     if not validate_config(config):
-        _continue()
         return
 
     voices = unique(config.get("voices", []))
     if not voices:
-        _continue()
         return
 
     # Collect everything up front (main thread): one entry per note.
@@ -257,7 +248,6 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
 
     if not all_items:
         tooltip(f"\"{label}\": brak pól wymagających generowania.")
-        _continue()
         return
 
     cancel_flag = start_progress(label, len(all_items), "TTS")
@@ -282,7 +272,6 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
             results, errors, first_error = fut.result()
         except Exception as e:
             tooltip(f"TTS: błąd — {e}", period=5000)
-            _continue()
             return
 
         # Group results per note and apply (main thread, fresh note objects).
@@ -313,12 +302,10 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str,
 
         if not changed_notes:
             tooltip(summary, period=8000)
-            _continue()
             return
 
         def _saved(_changes):
             tooltip(summary, period=10000)
-            _continue()
 
         CollectionOp(
             parent=browser,
