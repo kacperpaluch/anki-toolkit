@@ -14,7 +14,7 @@ from aqt.qt import (
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
     QPushButton, Qt, QComboBox, QMenu, QPlainTextEdit,
     QSyntaxHighlighter, QTextCharFormat, QColor, QFont,
-    QDialog, QDialogButtonBox, QCheckBox,
+    QDialog, QDialogButtonBox, QCheckBox, QDoubleSpinBox,
 )
 
 from ..common import clean_html_normalized
@@ -190,6 +190,7 @@ class PromptsTab(QWidget):
                     "manual_only": bool(field_cfg.get("manual_only", False)),
                     "fallback_provider": field_cfg.get("fallback_provider", ""),
                     "fallback_model":    field_cfg.get("fallback_model", ""),
+                    "temperature":       field_cfg.get("temperature"),
                 }
 
         # Default provider for the wizard: first one with a real API key.
@@ -288,6 +289,21 @@ class PromptsTab(QWidget):
         self._btn_fetch_models.setFixedWidth(70)
         model_layout.addWidget(self._ed_model)
         model_layout.addWidget(self._btn_fetch_models)
+        self._ed_temperature = QDoubleSpinBox()
+        # Minimum (-0.05) is the special "inherit" value — real temperatures
+        # start at 0.0, so anything negative means "use the provider default".
+        self._ed_temperature.setRange(-0.05, 2.0)
+        self._ed_temperature.setSingleStep(0.05)
+        self._ed_temperature.setDecimals(2)
+        self._ed_temperature.setSpecialValueText("— domyślna dostawcy")
+        self._ed_temperature.setValue(self._ed_temperature.minimum())
+        self._ed_temperature.setMaximumWidth(180)
+        self._ed_temperature.setToolTip(
+            "Temperatura tylko dla tego promptu — niska (0.0–0.3) dla definicji\n"
+            "i faktów, wyższa (0.7–1.0) dla przykładowych zdań i zadań kreatywnych.\n"
+            "„— domyślna dostawcy” = użyj temperatury z karty dostawcy.\n"
+            "Fallback tego promptu również używa tej temperatury."
+        )
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
@@ -327,6 +343,7 @@ class PromptsTab(QWidget):
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
         form.addRow("Model AI:", model_row)
+        form.addRow("Temperatura:", self._ed_temperature)
         form.addRow(self._ed_manual_only)
         form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
         form.addRow("Model zapasowy:", fb_model_row)
@@ -454,6 +471,11 @@ class PromptsTab(QWidget):
             "manual_only": self._ed_manual_only.isChecked(),
             "fallback_provider": self._ed_fallback_provider.currentData() or "",
             "fallback_model":    self._ed_fallback_model.currentText().strip(),
+            # Negative = the special "inherit provider default" spinbox value.
+            "temperature": (
+                round(self._ed_temperature.value(), 2)
+                if self._ed_temperature.value() >= 0 else None
+            ),
         }
 
         if new_key != old_key:
@@ -491,6 +513,11 @@ class PromptsTab(QWidget):
             entry.get("fallback_provider", "") or entry["provider"],
             self._ed_fallback_model,
             entry.get("fallback_model", ""),
+        )
+        temp = entry.get("temperature")
+        self._ed_temperature.setValue(
+            temp if isinstance(temp, (int, float))
+            else self._ed_temperature.minimum()
         )
         self._ed_manual_only.setChecked(entry.get("manual_only", False))
         self._ed_prompt.setPlainText(entry["prompt"])
@@ -803,5 +830,7 @@ class PromptsTab(QWidget):
                 field_cfg["fallback_provider"] = fb_provider
             if fb_model:
                 field_cfg["fallback_model"] = fb_model
+            if entry.get("temperature") is not None:
+                field_cfg["temperature"] = entry["temperature"]
             note_types[nt_name][field_name] = field_cfg
         cfg["ai_generator"]["note_types"] = note_types

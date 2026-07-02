@@ -110,6 +110,8 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 
 `fallback_model` (puste `""` = brak fallbacku na poziomie providera) — model zapasowy uruchamiany gdy główny model zawiedzie. Używa tego samego providera i klucza API. Prompt może nadpisać ten fallback własnym `fallback_provider` + `fallback_model` (patrz sekcja **Fallback modeli** poniżej).
 
+`temperature` to **temperatura domyślna** providera — używana przez prompty bez własnej wartości. Każdy prompt może ją nadpisać kluczem `temperature` w `note_types` (UI: Prompty → pole „Temperatura"; „— domyślna dostawcy" = dziedzicz).
+
 `reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
 - **openai / cometapi / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
@@ -184,6 +186,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
             "target": "def",
             "provider": "openai",
             "model": "gpt-4o-mini",
+            "temperature": 0.1,
             "prompt": "Write a definition for: {{ang}}"
         }
     }
@@ -197,6 +200,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - `model` — model używany przez ten prompt; brak wartości używa modelu domyślnego dostawcy
 - `fallback_provider` (opcjonalne) — dostawca zapasowy; puste/brak = ten sam dostawca co główny
 - `fallback_model` (opcjonalne) — model zapasowy; puste/brak = brak fallbacku per-prompt (użyty `fallback_model` z dostawcy, jeśli ustawiony)
+- `temperature` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji/faktów, wyższa (0.7–1.0) dla przykładowych zdań; fallback promptu używa tej samej wartości
 - `prompt` — treść prompta z opcjonalnymi szablonami
 
 ## Fallback modeli
@@ -237,7 +241,7 @@ Przykład per-dostawca (ten sam provider, tańszy model):
 ```
 
 Właściwości:
-- Fallback używa tego samego promptu, temperature i reasoning_effort
+- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); reasoning_effort pochodzi z konfiguracji dostawcy fallbackowego
 - Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
 - Statystyki użycia zliczają fallback osobno (per `provider/model`)
 - Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`

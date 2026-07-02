@@ -136,14 +136,18 @@ class FieldGenerator:
         self.last_error: Optional[str] = None
 
     def _resolve_provider(self, provider_name: str,
-                          requested_model: str = "") -> Optional[BaseProvider]:
-        """Resolve and cache a provider for one concrete provider/model pair."""
+                          requested_model: str = "",
+                          temperature: Optional[float] = None) -> Optional[BaseProvider]:
+        """Resolve and cache a provider for one concrete provider/model pair.
+
+        temperature: per-prompt override; None = use the provider's default.
+        """
         providers_cfg = self._config.get("providers", {})
         provider_cfg = providers_cfg.get(provider_name)
         effective_model = requested_model.strip()
         if isinstance(provider_cfg, dict) and not effective_model:
             effective_model = safe_str(provider_cfg.get("model"))
-        cache_key = (provider_name, effective_model)
+        cache_key = (provider_name, effective_model, temperature)
 
         if cache_key in self._providers:
             provider = self._providers[cache_key]
@@ -184,6 +188,8 @@ class FieldGenerator:
             request_timeout = int(self._config.get("request_timeout", 30))
             effective_cfg = dict(provider_cfg)
             effective_cfg["model"] = effective_model
+            if temperature is not None:
+                effective_cfg["temperature"] = temperature
             provider = get_provider(provider_name, effective_cfg,
                                     max_retries=max_retries, timeout=request_timeout)
             self._configure_rate_limit(provider_name, provider_cfg)
@@ -272,7 +278,12 @@ class FieldGenerator:
                 continue
 
             model_name = safe_str(field_cfg.get("model"))
-            provider = self._resolve_provider(provider_name, model_name)
+            # Per-prompt temperature — property of the task, so the fallback
+            # call below reuses it too. None = provider default.
+            temperature = field_cfg.get("temperature")
+            if not isinstance(temperature, (int, float)):
+                temperature = None
+            provider = self._resolve_provider(provider_name, model_name, temperature)
             if provider is None:
                 continue
 
@@ -323,7 +334,7 @@ class FieldGenerator:
                     logger.error(f"AI: {self.last_error}")
                     continue
                 fb_name = fallback_provider_name.strip() or provider_name
-                fb_provider = self._resolve_provider(fb_name, fallback_model)
+                fb_provider = self._resolve_provider(fb_name, fallback_model, temperature)
                 if fb_provider is None:
                     continue
                 logger.warning(

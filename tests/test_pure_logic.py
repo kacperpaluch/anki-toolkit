@@ -79,7 +79,9 @@ def load_field_generator_with_stubs(provider_responses=None):
     def fake_get_provider(name, cfg, **_kwargs):
         calls.append((name, cfg["model"]))
         responses = (provider_responses or {}).get((name, cfg["model"]))
-        return FakeProvider(cfg["model"], responses)
+        provider = FakeProvider(cfg["model"], responses)
+        provider.cfg = dict(cfg)  # inspectable by temperature tests
+        return provider
 
     providers_mod.get_provider = fake_get_provider
     modules = {
@@ -143,6 +145,30 @@ class AiProviderModelResolutionTests(unittest.TestCase):
             ("openai", "gpt-5.6"),
             ("openai", "gpt-default"),
         ])
+
+    def test_per_prompt_temperature_overrides_provider_default(self):
+        module, _calls = load_field_generator_with_stubs()
+        generator = module.FieldGenerator({
+            "providers": {
+                "openai": {
+                    "api_key": "sk-test",
+                    "model": "gpt-4o",
+                    "temperature": 0.2,
+                }
+            }
+        })
+
+        default = generator._resolve_provider("openai", "gpt-4o")
+        low = generator._resolve_provider("openai", "gpt-4o", 0.0)
+        high = generator._resolve_provider("openai", "gpt-4o", 0.9)
+
+        self.assertEqual(default.cfg["temperature"], 0.2)
+        self.assertEqual(low.cfg["temperature"], 0.0)
+        self.assertEqual(high.cfg["temperature"], 0.9)
+        # Each temperature is a separate cached instance; same temp = cache hit.
+        self.assertIsNot(default, low)
+        self.assertIsNot(low, high)
+        self.assertIs(low, generator._resolve_provider("openai", "gpt-4o", 0.0))
 
 
 class FallbackTests(unittest.TestCase):

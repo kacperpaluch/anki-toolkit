@@ -118,7 +118,7 @@ Limity tempa (RPM) i jednoczesności są ustawiane **per provider** — patrz `p
 Każdy provider wymaga:
 - `"api_key"` — klucz API
 - `"model"` — nazwa modelu
-- `"temperature"` — losowość odpowiedzi (0.0–1.0, zalecane 0.2)
+- `"temperature"` — **temperatura domyślna** providera (0.0–2.0, zalecane 0.2); używana przez prompty, które nie mają własnej `"temperature"` (patrz sekcja `note_types` niżej)
 - `"fallback_model"` — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste `""` = brak fallbacku na poziomie providera; używa tego samego providera i klucza API; prompt może nadpisać własnym `fallback_provider` + `fallback_model`
 - `"cached_models"` — lista modeli pobranych przez przycisk **Pobierz**; zapisywana automatycznie przy OK w ustawieniach; przeżywa restart Anki — nie trzeba ponownie pobierać listy po restarcie; odświeżenie przyciskiem **Pobierz** nadpisuje tę listę
 
@@ -161,6 +161,7 @@ Klucz to nazwa typu notatki (dokładnie jak w Anki). Każde pole to obiekt z:
 - `"prompt"` — treść prompta
 - `"fallback_provider"` (opcjonalne) — dostawca zapasowy uruchamiany gdy główny model zawiedzie; puste/brak = użyj tego samego dostawcy co główny model
 - `"fallback_model"` (opcjonalne) — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste/brak = brak fallbacku per-prompt (wtedy używany jest `fallback_model` z konfiguracji dostawcy, jeśli ustawiony)
+- `"temperature"` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak klucza = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji i faktów, wyższa (0.7–1.0) dla przykładowych zdań. Fallback tego promptu również jej używa. W UI: Ustawienia → AI Generator → Prompty → pole „Temperatura" („— domyślna dostawcy" = brak nadpisania)
 - `"manual_only"` (opcjonalne, `true`/`false`, domyślnie `false`) — pole wykluczone z batcha "Wszystkie puste", workflow oraz głównego przycisku AI w edytorze. Dostępne tylko przez jawne wskazanie: submenu "Generuj zablokowane ▸" w przeglądarce lub PPM na polu w edytorze.
 
 W promptach dostępne są:

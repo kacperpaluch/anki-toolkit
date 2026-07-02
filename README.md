@@ -257,8 +257,8 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | `providers.<nazwa>.rpm` | Limit żądań na minutę dla dostawcy — żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje. `0` = bez limitu. OpenRouter `20`, Mistral `40` (≈0.83 req/s free tier z marginesem) |
 | `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (domyślnie 1 dla darmowych tierów). `0` = bez limitu |
 | `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: gdy `true` (domyślnie), limit dotyczy wyłącznie modeli `:free`; gdy `false` — wszystkich żądań |
-| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura, **limit RPM + maks. równoległych** osobno dla każdego dostawcy (OpenRouter ma dodatkowo „tylko :free"); dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
-| Prompty | Dostawca, model, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; nadpisuje fallback z poziomu dostawcy |
+| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura domyślna, **limit RPM + maks. równoległych** osobno dla każdego dostawcy (OpenRouter ma dodatkowo „tylko :free"); dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
+| Prompty | Dostawca, model, temperatura, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; temperatura i fallback nadpisują wartości z poziomu dostawcy („— domyślna dostawcy" = dziedzicz) |
 
 `reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
 
@@ -290,7 +290,7 @@ Edytor promptów (zakładka **Prompty**):
 - Walidacja na żywo: nieznane pola, błędy struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony) oraz użycie pola generowanego przez późniejsze zadanie.
 - **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność, a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
 
-Każde pole notatki może używać innego dostawcy i modelu. Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
+Każde pole notatki może używać innego dostawcy, modelu i temperatury (np. niska dla definicji, wyższa dla przykładowych zdań). Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 
 #### Dodanie nowego dostawcy AI
 
@@ -318,7 +318,7 @@ Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, 
 - Per-prompt `fallback_provider` pusty = użyj tego samego dostawcy co główny model
 - Per-prompt `fallback_model` pusty = brak fallbacku per-prompt → sprawdź `fallback_model` dostawcy
 - Obie puste = brak fallbacku (zachowanie jak wcześniej — błąd jest logowany)
-- Fallback używa tego samego promptu, temperature, reasoning_effort i klucza API co model główny (jeśli ten sam dostawca) lub klucza API dostawcy zapasowego (jeśli inny dostawca)
+- Fallback używa tego samego promptu i tej samej temperatury co zadanie (per-prompt, a gdy brak — domyślnej dostawcy fallbackowego) oraz klucza API dostawcy zapasowego (jeśli inny niż główny)
 - Statystyki użycia zliczają fallback osobno (per `provider/model`)
 - Log zawiera ostrzeżenie z info który model → który fallback został użyty
 

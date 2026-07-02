@@ -129,6 +129,11 @@ class AIGeneratorTab(QWidget):
             temp.setRange(0.0, 2.0)
             temp.setSingleStep(0.05)
             temp.setValue(p.get("temperature", 0.2))
+            temp.setToolTip(
+                "Temperatura używana przez prompty bez własnej wartości.\n"
+                "Każdy prompt może ją nadpisać w zakładce Prompty\n"
+                "(pole „Temperatura”)."
+            )
 
             fallback_model = _expanding_line_edit(p.get("fallback_model", ""))
             fallback_model.setPlaceholderText("np. gpt-4o-mini (puste = brak fallbacku)")
@@ -146,7 +151,7 @@ class AIGeneratorTab(QWidget):
                 "może wybrać własny model. Wpisywanie filtruje listę po fragmencie."
             )
             prov_form.addRow("Model domyślny:", model_row)
-            prov_form.addRow("Temperatura:", temp)
+            prov_form.addRow("Temperatura domyślna:", temp)
             prov_form.addRow("Model zapasowy:", fallback_model)
 
             # --- Rate limit (per provider) -------------------------------
