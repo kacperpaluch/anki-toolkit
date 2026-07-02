@@ -130,7 +130,7 @@ Limity API (opcjonalne, per provider — pola **Limit RPM** i **Maks. równoleg�
 OpenAI obsługuje dodatkowe pole:
 - `"reasoning_effort"` — poziom reasoning dla modeli, które go obsługują: `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`; domyślnie `"medium"`. Przy modelach bez obsługi reasoning parametr nie jest wysyłany do API. Przy modelach reasoning OpenAI parametr `"temperature"` również nie jest wysyłany, bo część tych modeli nie obsługuje niestandardowej temperatury.
 
-Providerzy zgodni z OpenAI Chat Completions (`cometapi`, `openrouter`, `mistral`) również pomijają `"temperature"`, jeśli nazwa modelu wskazuje na OpenAI reasoning (`gpt-5...`, `o3...`, także z prefiksem typu `openai/gpt-5.4`). Dla natywnych modeli, np. `mistral-small-latest`, temperatura nadal jest wysyłana.
+Providerzy zgodni z OpenAI Chat Completions (`cometapi`, `openrouter`, `mistral`, `nvidia`) również pomijają `"temperature"`, jeśli nazwa modelu wskazuje na OpenAI reasoning (`gpt-5...`, `o3...`, także z prefiksem typu `openai/gpt-5.4`). Dla natywnych modeli, np. `mistral-small-latest`, temperatura nadal jest wysyłana.
 
 Tylko Anthropic obsługuje dodatkowe pole:
 - `"max_tokens"` — maksymalna długość odpowiedzi (wymagane przez Anthropic API, domyślnie `2048`). Zwiększ przy generowaniu długich tekstów.
@@ -145,6 +145,7 @@ Dostępni providerzy i przykładowe modele:
 | `anthropic` | `claude-3-5-haiku-20241022`, `claude-3-5-sonnet-20241022` |
 | `google` | `gemini-2.0-flash`, `gemini-1.5-pro` |
 | `mistral` | `mistral-small-latest`, `mistral-medium-latest` |
+| `nvidia` | `meta/llama-3.3-70b-instruct`, `nvidia/llama-3.1-nemotron-70b-instruct` |
 | `opencode_go` | `deepseek-v4-pro`, `deepseek-v4-flash`, `kimi-k2.6`, `glm-5.1` |
 
 Klucz API dla `google` uzyskasz na [Google AI Studio](https://aistudio.google.com/apikey).

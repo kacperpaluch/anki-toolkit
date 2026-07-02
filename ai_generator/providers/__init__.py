@@ -32,6 +32,12 @@ class MistralProvider(OpenAICompatProvider):
     LABEL = "Mistral"
     SUPPORTS_REASONING_EFFORT = False
 
+
+class NvidiaProvider(OpenAICompatProvider):
+    API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+    LABEL = "NVIDIA NIM"
+    SUPPORTS_REASONING_EFFORT = False
+
 PROVIDERS = {
     "openai": OpenAIProvider,
     "cometapi": CometAPIProvider,
@@ -39,6 +45,7 @@ PROVIDERS = {
     "anthropic": AnthropicProvider,
     "google": GoogleProvider,
     "mistral": MistralProvider,
+    "nvidia": NvidiaProvider,
     "opencode_go": OpenCodeGoProvider,
 }
 
@@ -50,6 +57,7 @@ PROVIDER_LABELS = {
     "anthropic": "Anthropic",
     "google": "Google Gemini",
     "mistral": "Mistral",
+    "nvidia": "NVIDIA NIM",
     "opencode_go": "OpenCode Go",
 }
 

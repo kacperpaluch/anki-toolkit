@@ -190,6 +190,13 @@
                 "rpm": 40,
                 "max_concurrent": 1
             },
+            "nvidia": {
+                "api_key": "YOUR_NVIDIA_API_KEY",
+                "model": "meta/llama-3.3-70b-instruct",
+                "temperature": 0.2,
+                "fallback_model": "",
+                "cached_models": []
+            },
             "opencode_go": {
                 "api_key": "YOUR_OPENCODE_GO_KEY",
                 "model": "deepseek-v4-pro",

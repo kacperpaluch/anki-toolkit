@@ -114,7 +114,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 
 - **openai / cometapi / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
 - **opencode_go** — wolny tekst (QLineEdit). Wartości różnią się per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują reasoning. Puste pole = parametr nie jest wysyłany. Fallback automatyczny jeśli API zwróci błąd.
-- **mistral** — nie obsługuje `reasoning_effort` (własne modele, nie proxy OpenAI).
+- **mistral / nvidia** — nie obsługują `reasoning_effort`.
 - **anthropic / google** — nie mają pola `reasoning_effort` w UI.
 
 `max_tokens` jest wymagany przez Anthropic API (inni dostawcy go ignorują). Domyślnie `2048`. Zwiększ jeśli generujesz długie odpowiedzi (np. rozbudowane przykłady zdań).
@@ -129,6 +129,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 | `openrouter` | `openrouter.ai` | openrouter.ai/keys |
 | `cometapi` | `api.cometapi.com` | cometapi.com |
 | `mistral` | `api.mistral.ai` | console.mistral.ai |
+| `nvidia` | `integrate.api.nvidia.com` | build.nvidia.com |
 | `opencode_go` | `opencode.ai/zen/go/v1` | opencode.ai/auth |
 
 ### Pobieranie dostępnych modeli
@@ -143,6 +144,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `openrouter` | `GET /v1/models` | nie (publiczne) |
 | `cometapi` | `GET /api/models` | nie (publiczne) |
 | `mistral` | `GET /v1/models` | tak |
+| `nvidia` | `GET /v1/models` | nie (publiczne) |
 | `opencode_go` | `GET /zen/go/v1/models` | tak |
 
 Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
@@ -161,6 +163,7 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 | `cometapi` | `grok-4-1-fast-non-reasoning` | Alternatywny dostęp |
 | `mistral` | `mistral-small-latest` | Szybki, tani |
 | `mistral` | `mistral-medium-latest` | Silniejszy |
+| `nvidia` | `meta/llama-3.3-70b-instruct` | Darmowe kredyty na start |
 | `opencode_go` | `deepseek-v4-pro` | Reasoning, tani w subskrypcji Go |
 | `opencode_go` | `deepseek-v4-flash` | Bardzo tani, szybki |
 | `opencode_go` | `kimi-k2.6` | Dobry do kodowania |

@@ -161,6 +161,26 @@ def fetch_mistral_models(api_key: str, force: bool = False) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# NVIDIA NIM — models endpoint is public, no API key needed
+# ---------------------------------------------------------------------------
+
+def fetch_nvidia_models(force: bool = False) -> list[str]:
+    return _fetch_simple(
+        ("nvidia",),
+        "https://integrate.api.nvidia.com/v1/models",
+        None,
+        lambda m: not any(s in m for s in ("embed", "rerank", "-ocr", "clip")),
+        [
+            "meta/llama-3.3-70b-instruct",
+            "meta/llama-3.1-8b-instruct",
+            "nvidia/llama-3.1-nemotron-70b-instruct",
+            "deepseek-ai/deepseek-r1",
+        ],
+        force,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Anthropic
 # ---------------------------------------------------------------------------
 
@@ -255,6 +275,8 @@ def fetch_models(provider: str, api_key: str = "", force: bool = False) -> list[
         return fetch_anthropic_models(api_key, force)
     elif provider == "cometapi":
         return fetch_cometapi_models(force)
+    elif provider == "nvidia":
+        return fetch_nvidia_models(force)
     elif provider == "opencode_go":
         return fetch_opencode_go_models(api_key, force)
     return []

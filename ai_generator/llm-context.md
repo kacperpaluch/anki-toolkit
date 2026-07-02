@@ -15,13 +15,13 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model)`; **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
-| `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 4 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL`, (Mistral) `SUPPORTS_REASONING_EFFORT = False` i (OpenRouter) `EXTRA_HEADERS` z atrybucją aplikacji (`HTTP-Referer`/`X-Title`) |
+| `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 5 cienkich klas zgodnych z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`, `NvidiaProvider`) dziedziczących po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL`, (Mistral, NVIDIA) `SUPPORTS_REASONING_EFFORT = False` i (OpenRouter) `EXTRA_HEADERS` z atrybucją aplikacji (`HTTP-Referer`/`X-Title`) |
 | `providers/base.py` | ABC `BaseProvider` — interfejs + `_post(url, data, headers)` (POST z retry, deleguje do `common.http.post_json`) + `_post_with_reasoning_fallback()` (ponowna próba bez `reasoning_effort` gdy API zwróci błąd wspominający ten parametr) + wspólne parsery odpowiedzi `_parse_chat_completion()` (format OpenAI choices→message→content) i `_parse_messages()` (format Anthropic, pierwszy blok `type=="text"`); klasa `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
 | `providers/openai_compat.py` | Helpery dla providerów zgodnych z Chat Completions: wykrywanie modeli OpenAI reasoning, pomijanie `temperature`, parsowanie `message.content` string/list, `is_reasoning_effort_unsupported_error()` |
 | `providers/anthropic.py` | Anthropic (Messages API, inny format niż OpenAI); `call_api()` deleguje rozbiór do `BaseProvider._parse_messages()` |
 | `providers/google.py` | Google Gemini (generateContent API — własny rozbiór `candidates[0].content.parts`) |
 | `providers/opencode_go.py` | OpenCode Go — Chat Completions dla większości modeli (`_parse_chat_completion`), Anthropic Messages dla MiniMax/Qwen3.x (`_parse_messages`); auto-detect na podstawie nazwy modelu; reasoning jako wolny string; `User-Agent` header (Cloudflare) |
-| `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; bliźniacze endpointy `{"data":[{"id":...}]}` (openai/mistral/anthropic/cometapi/opencode_go) idą przez wspólny `_fetch_simple()` z predykatem `keep`; Google i OpenRouter mają własne fetchery |
+| `providers/model_discovery.py` | Pobieranie dostępnych modeli z API każdego providera + dispatcher `fetch_models()`; bliźniacze endpointy `{"data":[{"id":...}]}` (openai/mistral/anthropic/cometapi/nvidia/opencode_go) idą przez wspólny `_fetch_simple()` z predykatem `keep`; Google i OpenRouter mają własne fetchery |
 | `workflow.py` | Nazwane workflowy (`config["workflows"]`, lista `{name, editor_button, steps}`) — `get_workflows()`, `migrate_workflows()` (legacy pojedynczy `workflow` → lista + seed dwóch dawnych pipeline'ów + `context_menu`), `get_context_menu()`; `execute_step(note, step, ai_generator=None)` — wspólny wykonawca kroku (AI/dictionary/TTS/field_splitter), mutuje notatkę w pamięci; `run_workflow_editor()` — sekwencyjne kroki na jednej notatce w edytorze, jeden `FieldGenerator` per przebieg, guard `_RUNNING` blokuje podwójne odpalenie |
 
 ## Przepływ danych
@@ -128,6 +128,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
     "openrouter": {"api_key": "...", "model": "anthropic/claude-3.5-haiku", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": [], "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true},
     "cometapi":   {"api_key": "...", "model": "grok-4-1-fast-non-reasoning", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
     "mistral":    {"api_key": "...", "model": "mistral-small-latest", "temperature": 0.2, "fallback_model": "", "cached_models": [], "rpm": 40, "max_concurrent": 1},
+    "nvidia":     {"api_key": "...", "model": "meta/llama-3.3-70b-instruct", "temperature": 0.2, "fallback_model": "", "cached_models": []},
     "opencode_go": {"api_key": "...", "model": "deepseek-v4-pro", "temperature": 0.6, "reasoning_effort": "max", "fallback_model": "", "cached_models": []}
   },
   "note_types": {
@@ -228,7 +229,7 @@ UI: pola **Limit RPM** i **Maks. równoległych** są na karcie każdego dostawc
 | Provider | Format żądania | Pole z odpowiedzią |
 |---|---|---|
 | OpenAI / CometAPI / OpenRouter | `{"messages": [...], "reasoning_effort": opcjonalnie}` | `choices[0].message.content` |
-| Mistral | `{"messages": [...]}` | `choices[0].message.content` |
+| Mistral / NVIDIA NIM | `{"messages": [...]}` | `choices[0].message.content` |
 | Anthropic | `{"messages": [...], "max_tokens": self.max_tokens or 2048}` | `content[0].text` |
 | Google | `{"contents": [{"parts": [{"text": ...}]}]}` | `candidates[0].content.parts[0].text` |
 | OpenCode Go (chat) | `{"messages": [...], "temperature": ..., "reasoning_effort": opcjonalnie}` | `choices[0].message.content` |
@@ -236,7 +237,7 @@ UI: pola **Limit RPM** i **Maks. równoległych** są na karcie każdego dostawc
 
 `max_tokens` dla Anthropic i OpenCode Go Messages (wymagany przez API) pochodzi z `provider_cfg.get("max_tokens")` → `BaseProvider.max_tokens`. Domyślnie `2048`. Konfigurowalny per-provider w `config.json`.
 
-Providery zgodne z OpenAI Chat Completions współdzielą `OpenAICompatProvider.call_api()` (w `base.py`) i helpery z `providers/openai_compat.py`. Jeśli nazwa modelu wygląda jak OpenAI reasoning, `temperature` nie jest wysyłane. `reasoning_effort` jest wysyłane przez `openai`, `cometapi` i `openrouter` (tylko dla rozpoznanych modeli reasoning); `mistral` go nie wysyła (`SUPPORTS_REASONING_EFFORT = False`); `opencode_go` wysyła `reasoning_effort` bezpośrednio jako wolny string jeśli ustawiony (bez sprawdzania nazwy modelu). Jeśli model nie obsługuje `reasoning_effort` (HTTP 400 wspominający ten parametr), `_post_with_reasoning_fallback()` automatycznie ponawia żądanie bez niego.
+Providery zgodne z OpenAI Chat Completions współdzielą `OpenAICompatProvider.call_api()` (w `base.py`) i helpery z `providers/openai_compat.py`. Jeśli nazwa modelu wygląda jak OpenAI reasoning, `temperature` nie jest wysyłane. `reasoning_effort` jest wysyłane przez `openai`, `cometapi` i `openrouter` (tylko dla rozpoznanych modeli reasoning); `mistral` i `nvidia` go nie wysyłają (`SUPPORTS_REASONING_EFFORT = False`); `opencode_go` wysyła `reasoning_effort` bezpośrednio jako wolny string jeśli ustawiony (bez sprawdzania nazwy modelu). Jeśli model nie obsługuje `reasoning_effort` (HTTP 400 wspominający ten parametr), `_post_with_reasoning_fallback()` automatycznie ponawia żądanie bez niego.
 
 Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla formatu OpenAI (`choices[0].message.content`, z `extract_message_content` dla string/list) i `_parse_messages()` dla formatu Anthropic (pierwszy blok `type=="text"`); Google ma własny rozbiór `candidates`. Wszystkie walidują strukturę odpowiedzi przed dostępem — sprawdzają niepustość tablic i istnienie kluczy. Błędy parsowania są logowane przez `self.logger` i zapisywane do `self.last_error`. Retry (3 próby, exponential backoff dla HTTP 429/5xx oraz błędów połączenia/timeoutów) jest zaimplementowany w `common.http.post_json()` — `BaseProvider._post(url, data, headers)` serializuje `data` do JSON i deleguje; `self.last_error` jest ustawiane z zwróconego stringa błędu. Klucz API Google jest wysyłany w nagłówku `x-goog-api-key` (nie w URL-u — URL-e trafiają do logów).
 
@@ -251,8 +252,8 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 ## Uwagi implementacyjne
 
 - `BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens`, `reasoning_effort` — przekazywane przez `get_provider()` z wartości czytanych przez `_resolve_provider()` z `self._config` oraz z `provider_cfg`
-- `openai_compat.add_temperature_if_supported()` jest używany przez `openai`, `cometapi`, `openrouter`, `mistral`
-- `openai_compat.add_reasoning_effort_if_supported()` jest używany przez `openai`, `cometapi`, `openrouter`; `mistral` go nie używa; `opencode_go` nie używa — wysyła `reasoning_effort` bezpośrednio jako wolny string
+- `openai_compat.add_temperature_if_supported()` jest używany przez `openai`, `cometapi`, `openrouter`, `mistral`, `nvidia`
+- `openai_compat.add_reasoning_effort_if_supported()` jest używany przez `openai`, `cometapi`, `openrouter`; `mistral` i `nvidia` go nie używają; `opencode_go` nie używa — wysyła `reasoning_effort` bezpośrednio jako wolny string
 - `BaseProvider._post(url, data, headers)` serializuje `data` do JSON i deleguje do `common.http.post_json()` z `self.max_retries` i `self.timeout`; ustawia `self.last_error` z zwróconego stringa błędu (lub `None` przy sukcesie)
 - `BaseProvider._post_with_reasoning_fallback()` opakowuje `_post()`: jeśli żądanie zwróci błąd zawierający `"reasoning_effort"`, usuwa ten parametr z body i ponawia; używany też przez `opencode_go`
 - `field_generator.py` nie zawiera żadnych wywołań `showWarning` ani Qt UI — błędy są logowane przez `logger` i ustawiane w `self.last_error`; ewentualne ostrzeżenia Qt są wywoływane przez `editor_ui`/`browser_ui` w głównym wątku

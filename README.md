@@ -59,7 +59,7 @@ anki-toolkit/
 │   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty) + dopasowanie cen
 │   ├── workflow.py                  # workflowy (lista nazwanych): get_workflows/migrate_workflows/execute_step (AI/Dict/TTS/Rozdziel)
 │   └── providers/
-│       ├── __init__.py              # rejestr dostawców + fabryka get_provider() + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral)
+│       ├── __init__.py              # rejestr dostawców + fabryka get_provider() + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral, NVIDIA NIM)
 │       ├── base.py                  # BaseProvider (ABC) + OpenAICompatProvider + wspólne parsery odpowiedzi
 │       ├── openai_compat.py         # helpery OpenAI-compatible
 │       ├── anthropic.py             # Anthropic Messages API
@@ -272,6 +272,7 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | `anthropic` | `https://api.anthropic.com/v1/messages` |
 | `google` | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `mistral` | `https://api.mistral.ai/v1/chat/completions` |
+| `nvidia` | `https://integrate.api.nvidia.com/v1/chat/completions` |
 | `opencode_go` | `https://opencode.ai/zen/go/v1/chat/completions` (większość modeli) / `.../messages` (MiniMax, Qwen3.x) |
 
 #### Szablony promptów

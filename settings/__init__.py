@@ -146,7 +146,7 @@ class SettingsDialog(QDialog):
         warnings = []
         ai = cfg.get("ai_generator", {})
         ai_providers = ai.get("providers", {})
-        for pname in ("openai", "anthropic", "google", "mistral"):
+        for pname in ("openai", "anthropic", "google", "mistral", "nvidia"):
             p = ai_providers.get(pname, {})
             if p.get("model", "").strip() and not p.get("api_key", "").strip():
                 warnings.append(f"AI Generator — {pname}: model ustawiony ale klucz API pusty")
