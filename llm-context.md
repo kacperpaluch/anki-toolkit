@@ -88,7 +88,7 @@ anki-toolkit/
 │       ├── __init__.py              # rejestr + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral, NVIDIA NIM)
 │       ├── base.py                  # BaseProvider + OpenAICompatProvider + _parse_chat_completion/_parse_messages
 │       ├── openai_compat.py
-│       ├── anthropic.py             # Anthropic Messages API
+│       ├── anthropic.py             # Anthropic Messages API (bez temperature — deprecated w ich API)
 │       ├── google.py                # Google Gemini generateContent
 │       ├── opencode_go.py           # OpenCode Go (Chat Completions + Anthropic Messages, auto-detect)
 │       └── model_discovery.py

@@ -260,7 +260,7 @@ Konfiguracja w **Ustawienia → AI Generator**:
 | Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura domyślna, **limit RPM + maks. równoległych** osobno dla każdego dostawcy (OpenRouter ma dodatkowo „tylko :free"); dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
 | Prompty | Dostawca, model, temperatura, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; temperatura i fallback nadpisują wartości z poziomu dostawcy („— domyślna dostawcy" = dziedzicz) |
 
-`reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
+`reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. Anthropic również nie dostaje `temperature` — jest deprecated w ich Messages API (modele > Opus 4.6 przyjmują tylko `1.0`, inne wartości zwracają 400). `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
 
 #### Dostępni dostawcy
 

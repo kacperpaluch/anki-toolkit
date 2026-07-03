@@ -16,10 +16,11 @@ class AnthropicProvider(BaseProvider):
             "x-api-key": self.api_key,
             "anthropic-version": API_VERSION,
         }
+        # temperature jest deprecated w Messages API — nowe modele (>Opus 4.6)
+        # przyjmują tylko 1.0 (default), inne wartości → 400. Pomijamy je całkowicie.
         data = {
             "model": self.model,
             "max_tokens": self.max_tokens if self.max_tokens is not None else 2048,
-            "temperature": self.temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
         try:
