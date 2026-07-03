@@ -55,6 +55,7 @@ anki-toolkit/
 │   ├── editor_ui.py                 # przycisk AI + przyciski workflowów (per editor_button)
 │   ├── browser_ui.py                # menu przeglądarki + batch
 │   ├── field_generator.py           # logika generowania, niezależna od dostawcy
+│   ├── batch_backfill.py            # Batch API Anthropic + OpenAI (async, ~50% taniej) — masowy backfill
 │   ├── template_engine.py           # silnik szablonów {{pole}} / {% if %}
 │   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty) + dopasowanie cen
 │   ├── workflow.py                  # workflowy (lista nazwanych): get_workflows/migrate_workflows/execute_step (AI/Dict/TTS/Rozdziel)
@@ -292,6 +293,17 @@ Edytor promptów (zakładka **Prompty**):
 - **Grupowanie i filtr** — zadania są pogrupowane nagłówkami per typ notatki, a combobox nad listą filtruje widok do jednego typu (wygodne, gdy masz wiele typów notatek).
 
 Każde pole notatki może używać innego dostawcy, modelu i temperatury (np. niska dla definicji, wyższa dla przykładowych zdań). Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
+
+#### Batch API (masowy backfill, ~50% taniej — Anthropic i OpenAI)
+
+Do jednorazowego lub okresowego wypełniania dużej liczby notatek dostępny jest **osobny, tańszy tryb** oparty na Batch API — [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch). Jest asynchroniczny (wynik zwykle < 1h, do 24h) i **~50% tańszy** od zwykłego generowania. W przeglądarce: PPM → **Anki Toolkit ▸ Batch API (Anthropic/OpenAI, tańszy)**:
+
+- **Wyślij zaznaczone — wszystkie pola** lub **Batch: `<pole>`** — możesz wysłać wszystkie puste pola, albo wybrać konkretne pole (przydatne, gdy różne pola mają różnych dostawców). Pola z dostawcą `anthropic` i `openai` trafiają każde do swojego Batch API; pozostałe (OpenRouter/CometAPI/Mistral/NVIDIA — brak zgodnego endpointu) są pomijane z informacją. Dialog pokazuje podsumowanie (zapytania per dostawca/model) do potwierdzenia. Trafienie wyniku w pole jest deterministyczne — mapa `custom_id → (notatka, pole)` jest zapisywana w `user_files/ai_batches.json` (przeżywa restart Anki).
+- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki. To samo dzieje się automatycznie i cicho przy każdym otwarciu profilu.
+
+Wspólny rdzeń (wybór pól, mapa pól, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: Anthropic wysyła zapytania inline i pobiera wynik z `results_url`, OpenAI uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a ponieważ jego batch wymaga jednego modelu — zapytania OpenAI są grupowane po modelu (osobny batch na model).
+
+Ograniczenia: dostawcy `anthropic`/`openai`, bez fallbacku, wynik wpisywany **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania). Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
 
 #### Dodanie nowego dostawcy AI
 

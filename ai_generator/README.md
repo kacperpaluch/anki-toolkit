@@ -42,6 +42,18 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 - Praca AI dzieje się w tle. Batch pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.
 - Po zakończeniu jeden tooltip z podsumowaniem, np. `"Zaktualizowano: 12"`, `"Zaktualizowano: 8 · przerwano"` albo licznik błędów z ostatnim błędem API.
 
+### Batch API (masowy backfill, ~50% taniej — Anthropic i OpenAI)
+
+Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Batch API (Anthropic/OpenAI, tańszy) ▸**:
+
+- **Wyślij zaznaczone — wszystkie pola** / **Batch: `<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. Pola `anthropic` i `openai` trafiają każde do swojego batcha; pozostali dostawcy (OpenRouter/CometAPI/Mistral/NVIDIA — brak zgodnego endpointu) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
+- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy każdym otwarciu profilu Anki.
+
+Szczegóły:
+- Trafienie wyniku w pole jest **deterministyczne** — mapa `custom_id → (notatka, pole)` zapisywana jest w `user_files/ai_batches.json` (przeżywa restart). Wynik wpisywany jest **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania); usunięta notatka / zmienione pole → wynik pomijany.
+- Wspólny rdzeń (wybór pól, mapa, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: **Anthropic** wysyła zapytania inline i pobiera wynik z `results_url`; **OpenAI** uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a jego batch wymaga jednego modelu, więc zapytania OpenAI są grupowane po modelu (osobny batch na model).
+- Ograniczenia: dostawcy `anthropic`/`openai`, bez fallbacku. Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
+
 ## Konfiguracja (`config.json` → sekcja `ai_generator`)
 
 ### Podstawowe ustawienia

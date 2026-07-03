@@ -1,3 +1,3 @@
 from .editor_ui import on_editor_buttons_init
-from .browser_ui import add_to_context_menu
+from .browser_ui import add_to_context_menu, check_pending_batches
 from .workflow import migrate_workflows

@@ -7,11 +7,12 @@ import time
 
 from aqt import mw
 from aqt.operations import CollectionOp
-from aqt.utils import tooltip
+from aqt.utils import tooltip, askUser
 from aqt.qt import *
 from aqt.browser import Browser
 
 from ..common import start_progress, update_progress, finish_progress
+from . import batch_backfill
 from ._generator import get_config
 from .field_generator import FieldGenerator
 
@@ -152,6 +153,118 @@ def _run_batch(browser: Browser, nids, config: dict,
         if state["last_error"]:
             parts.append(state["last_error"])
         _save_changed_notes(browser, changed_notes, " · ".join(parts))
+
+    mw.taskman.run_in_background(task, on_done)
+
+
+# ---------------------------------------------------------------------------
+# Anthropic Batch API backfill — async, ~50% cheaper (separate from sync path)
+# ---------------------------------------------------------------------------
+
+def _on_batch_submit(browser: Browser, only_fields=None):
+    config = get_config()
+    nids = browser.selected_notes()
+    if not nids:
+        tooltip("Nie zaznaczono żadnych notatek.")
+        return
+    try:
+        notes = []
+        for nid in nids:
+            note = mw.col.get_note(nid)
+            note.note_type()
+            notes.append(note)
+    except Exception as e:
+        tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
+        return
+
+    items, skipped = batch_backfill.build_items(notes, config, only_fields=only_fields)
+    if not items:
+        msg = "Brak pustych pól z dostawcą Anthropic/OpenAI w zaznaczeniu."
+        if skipped:
+            msg += f" (pominięto {skipped} pól z innym dostawcą lub bez modelu)"
+        tooltip(msg, period=6000)
+        return
+
+    text = (
+        f"Wyślę {len(items)} zapytań (z {len(notes)} notatek) do Batch API.\n"
+        f"{batch_backfill.summarize(items)}\n\n"
+        f"Batch jest ~50% tańszy, ale asynchroniczny — wyniki pojawią się później "
+        f"(zwykle poniżej 1h, do 24h) i zostaną automatycznie dopisane do pustych "
+        f"pól przy starcie Anki lub po kliknięciu „Sprawdź batche”."
+    )
+    if skipped:
+        text += f"\n\nPominięto {skipped} pól (dostawca inny niż Anthropic/OpenAI lub brak modelu)."
+    text += "\n\nWysłać?"
+    if not askUser(text, title="Batch API — potwierdzenie", parent=browser):
+        return
+
+    def task():
+        return batch_backfill.submit(items, config)
+
+    def on_done(fut):
+        try:
+            records, errors = fut.result()
+        except Exception as e:
+            tooltip(f"Błąd wysyłki batcha: {e}", period=6000)
+            return
+        if not records:
+            tooltip("Batch nie wysłany: " + " · ".join(errors), period=8000)
+            return
+        sent = sum(r["count"] for r in records)
+        msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
+        if errors:
+            msg += " · błędy: " + " · ".join(errors)
+        tooltip(msg, period=8000)
+
+    mw.taskman.run_in_background(task, on_done)
+
+
+def check_pending_batches(silent: bool = True):
+    """Poll pending Anthropic batches and apply any that have finished.
+
+    silent=True (startup) suppresses "nothing yet" tooltips; silent=False
+    (manual button) reports progress even when nothing is ready.
+    """
+    config = get_config()
+    if not batch_backfill.pending_batches():
+        if not silent:
+            tooltip("Brak oczekujących batchy.")
+        return
+
+    def task():
+        return batch_backfill.poll_results(config)
+
+    def on_done(fut):
+        try:
+            ended, still, errors = fut.result()
+        except Exception as e:
+            if not silent:
+                tooltip(f"Błąd sprawdzania batchy: {e}", period=6000)
+            return
+        if not ended:
+            if not silent:
+                parts = [f"W toku: {still}"]
+                if errors:
+                    parts.append(f"błędy odpytania: {len(errors)}")
+                tooltip(" · ".join(parts), period=5000)
+            return
+        summary = batch_backfill.apply_results(mw.col, ended)
+        parts = [f"Batch: dopisano {summary['filled']}"]
+        if summary["failed"]:
+            parts.append(f"błędy: {summary['failed']}")
+        if summary["skipped"]:
+            parts.append(f"pominięto: {summary['skipped']}")
+        if still:
+            parts.append(f"w toku: {still}")
+        msg = " · ".join(parts)
+        changed = summary["changed_notes"]
+        if changed:
+            CollectionOp(
+                parent=mw,
+                op=lambda col: col.update_notes(changed),
+            ).success(lambda _c: tooltip(msg, period=8000)).run_in_background()
+        else:
+            tooltip(msg, period=8000)
 
     mw.taskman.run_in_background(task, on_done)
 
@@ -323,6 +436,28 @@ def add_to_context_menu(browser: Browser, menu):
                         _on_generate_field_browser(browser, fn),
                 )
                 gen_menu.addAction(action)
+
+    if cm.get("ai_fields", True):
+        batch_menu = menu.addMenu("Batch API (Anthropic/OpenAI, tańszy)")
+        submit_all = QAction("Wyślij zaznaczone — wszystkie pola", browser)
+        qconnect(submit_all.triggered, lambda: _on_batch_submit(browser))
+        batch_menu.addAction(submit_all)
+
+        if target_fields:
+            batch_menu.addSeparator()
+            for field_name in target_fields:
+                action = QAction(f"Batch: {field_name}", browser)
+                qconnect(
+                    action.triggered,
+                    lambda _checked=False, fn=field_name:
+                        _on_batch_submit(browser, only_fields={fn}),
+                )
+                batch_menu.addAction(action)
+
+        batch_menu.addSeparator()
+        check_action = QAction("Sprawdź batche i zastosuj wyniki", browser)
+        qconnect(check_action.triggered, lambda: check_pending_batches(silent=False))
+        batch_menu.addAction(check_action)
 
     if cm.get("ai_blocked", True) and manual_fields:
         blocked_menu = menu.addMenu("Generuj zablokowane")

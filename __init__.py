@@ -36,6 +36,10 @@ if _enabled("ai_generator"):
     from . import ai_generator
     ai_generator.migrate_workflows()  # legacy single workflow → workflows list
     gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
+    # Auto-poll oczekujące batche Anthropic po otwarciu profilu (kolekcja gotowa).
+    gui_hooks.profile_did_open.append(
+        lambda: ai_generator.check_pending_batches(silent=True)
+    )
 
 # ---------------------------------------------------------------------------
 # dictionary

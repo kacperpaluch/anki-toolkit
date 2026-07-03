@@ -17,6 +17,45 @@ from .providers import get_provider, BaseProvider
 logger = logging.getLogger(__name__)
 
 
+def _collect_skip_tags(config: dict) -> list:
+    raw = config.get("skip_tags", config.get("skip_tag", []))
+    if isinstance(raw, str):
+        return [t.strip() for t in raw.split(",") if t.strip()]
+    return [t for t in raw if isinstance(t, str) and t.strip()]
+
+
+def iter_note_fields(note: Note, config: dict,
+                     only_fields: Optional[set] = None,
+                     overwrite: bool = False):
+    """Yield (field_cfg, target_field) for each field eligible for generation.
+
+    Shared selection logic for the sync generator and the batch backfill:
+    honors skip_tags, the note-type config, only_fields, manual_only (only in
+    auto mode, i.e. only_fields=None) and the empty-field skip.
+    """
+    skip_tags = _collect_skip_tags(config)
+    if skip_tags and any(t in note.tags for t in skip_tags):
+        return
+    nt_config = config.get("note_types", {}).get(note.note_type()["name"])
+    if not nt_config:
+        return
+    for field_cfg in nt_config.values():
+        if not isinstance(field_cfg, dict):
+            continue
+        target_field = safe_str(field_cfg.get("target"))
+        if not target_field or target_field not in note:
+            continue
+        if only_fields is not None and target_field not in only_fields:
+            continue
+        # manual_only wyklucza pole z trybu auto (only_fields=None); jawne
+        # only_fields (PPM, submenu per-pole, batch na zaznaczeniu) je omija.
+        if only_fields is None and field_cfg.get("manual_only"):
+            continue
+        if not overwrite and note[target_field].strip():
+            continue
+        yield field_cfg, target_field
+
+
 class RateLimiter:
     """Per-provider request pacing: even RPM spacing + a concurrency cap.
 
@@ -238,40 +277,12 @@ class FieldGenerator:
         (overwrites). False = skip filled fields (today's behavior).
         """
         self.last_error = None
-        skip_tags_cfg = self._config.get("skip_tags", self._config.get("skip_tag", []))
-        if isinstance(skip_tags_cfg, str):
-            skip_tags = [t.strip() for t in skip_tags_cfg.split(",") if t.strip()]
-        else:
-            skip_tags = [t for t in skip_tags_cfg if isinstance(t, str) and t.strip()]
-        if skip_tags and any(t in note.tags for t in skip_tags):
-            return {}
-
-        note_type_name = note.note_type()["name"]
-        note_types_cfg: dict = self._config.get("note_types", {})
-        nt_config = note_types_cfg.get(note_type_name)
-        if not nt_config:
-            return {}
-
         changed: dict[str, str] = {}
         fields_map = {fld: clean_html_normalized(note[fld]) for fld in note.keys()}
 
-        for _key, field_cfg in nt_config.items():
-            target_field = safe_str(field_cfg.get("target"))
-            if not target_field or target_field not in note:
-                continue
-
-            if only_fields is not None and target_field not in only_fields:
-                continue
-
-            # ponytail: manual_only wyklucza pole z batcha/workflow/generowania
-            # "wszystkie puste"; pomijane tylko gdy only_fields=None (tryb auto).
-            # Jawne tylko_fields (PPM, submenu per-pole) omija ten warunek.
-            if only_fields is None and field_cfg.get("manual_only"):
-                continue
-
-            if not overwrite and note[target_field].strip():
-                continue
-
+        for field_cfg, target_field in iter_note_fields(
+            note, self._config, only_fields=only_fields, overwrite=overwrite
+        ):
             provider_name = safe_str(field_cfg.get("provider"))
             if not provider_name:
                 logger.warning(f"Pole '{target_field}' nie ma ustawionego 'provider' — pomijam.")
