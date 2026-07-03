@@ -211,17 +211,21 @@ class PromptsTab(QWidget):
         left_layout.setContentsMargins(8, 8, 4, 8)
 
         left_layout.addWidget(QLabel("Typ notatki → zadanie:"))
+
+        # Filtr po typie notatki — przy wielu typach płaska lista robi się
+        # nieczytelna; filtr pokazuje tylko wybrany typ.
+        self._filter_combo = QComboBox()
+        self._filter_combo.setToolTip("Pokaż zadania tylko wybranego typu notatki.")
+        self._populate_filter()
+        left_layout.addWidget(self._filter_combo)
+
         self._list = QListWidget()
         self._list.setMinimumWidth(160)
         self._list.setMaximumWidth(240)
-
-        # Config order, not alphabetical — this is the generation order.
-        for key in self._data.keys():
-            item = QListWidgetItem(self._item_text(key, self._data[key]["prompt"]))
-            item.setData(Qt.ItemDataRole.UserRole, key)
-            self._list.addItem(item)
-
         left_layout.addWidget(self._list)
+        # Lista renderowana z self._data przez _rebuild_list() (na końcu __init__,
+        # gdy istnieją już widgety edytora): pogrupowana po typie notatki,
+        # w kolejności configu = kolejności generowania.
 
         order_row = QHBoxLayout()
         self._btn_up = QPushButton("▲")
@@ -392,6 +396,7 @@ class PromptsTab(QWidget):
         layout.addWidget(splitter)
 
         self._list.currentItemChanged.connect(self._on_item_changed)
+        self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
         self._btn_add.clicked.connect(self._on_add)
         self._btn_del.clicked.connect(self._on_delete)
         self._btn_up.clicked.connect(lambda: self._on_move(-1))
@@ -408,9 +413,68 @@ class PromptsTab(QWidget):
         self._btn_insert_cond.clicked.connect(self._on_insert_condition)
         self._btn_preview.clicked.connect(self._on_preview)
 
+        self._rebuild_list()
+
     # ------------------------------------------------------------------
     # List items & ordering
     # ------------------------------------------------------------------
+
+    def _populate_filter(self) -> None:
+        """(Re)fill the note-type filter from the current data, keeping the
+        selection if that type still exists."""
+        current = self._filter_combo.currentData() if self._filter_combo.count() else None
+        self._filter_combo.blockSignals(True)
+        self._filter_combo.clear()
+        self._filter_combo.addItem("— wszystkie typy —", None)
+        seen: list[str] = []
+        for nt, _field in self._data:
+            if nt not in seen:
+                seen.append(nt)
+        for nt in seen:
+            self._filter_combo.addItem(nt, nt)
+        idx = self._filter_combo.findData(current)
+        self._filter_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._filter_combo.blockSignals(False)
+
+    def _rebuild_list(self, select_key: tuple | None = None) -> None:
+        """Render the list from self._data: one non-selectable header per note
+        type, then its tasks. Optionally reselect select_key."""
+        filter_nt = self._filter_combo.currentData()
+        self._list.blockSignals(True)
+        self._list.clear()
+        last_nt = None
+        target_item = None
+        for key, entry in self._data.items():
+            nt = key[0]
+            if filter_nt is not None and nt != filter_nt:
+                continue
+            if nt != last_nt:
+                header = QListWidgetItem(f"──  {nt}  ──")
+                # Enabled but not selectable → visible, not clickable, skipped by ▲▼.
+                header.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                header.setData(Qt.ItemDataRole.UserRole, None)
+                f = header.font()
+                f.setBold(True)
+                header.setFont(f)
+                header.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._list.addItem(header)
+                last_nt = nt
+            item = QListWidgetItem(self._item_text(key, entry["prompt"]))
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            self._list.addItem(item)
+            if key == select_key:
+                target_item = item
+        self._list.blockSignals(False)
+        if target_item is not None:
+            self._list.setCurrentItem(target_item)
+        else:
+            self._current_key = None
+            self._editor_widget.setVisible(False)
+            self._editor_placeholder.setVisible(True)
+
+    def _on_filter_changed(self, _index: int = -1) -> None:
+        self._save_current_to_data(self._list.currentItem())
+        self._rebuild_list(select_key=self._current_key)
 
     def _deps_for(self, key: tuple, prompt: str) -> list[str]:
         """Targets of *other* tasks of the same note type used in this prompt."""
@@ -432,24 +496,27 @@ class PromptsTab(QWidget):
         return text
 
     def _on_move(self, delta: int) -> None:
-        row = self._list.currentRow()
-        new_row = row + delta
-        if row < 0 or not (0 <= new_row < self._list.count()):
+        item = self._list.currentItem()
+        if item is None:
             return
-        self._save_current_to_data(self._list.currentItem())
-        self._list.blockSignals(True)
-        item = self._list.takeItem(row)
-        self._list.insertItem(new_row, item)
-        self._list.setCurrentItem(item)
-        self._list.blockSignals(False)
-        # Rebuild dict in the new list order — apply() and dependency
-        # resolution both follow this order.
-        ordered_keys = [
-            self._list.item(i).data(Qt.ItemDataRole.UserRole)
-            for i in range(self._list.count())
-        ]
-        self._data = {k: self._data[k] for k in ordered_keys}
-        self._validate_prompt()
+        key = item.data(Qt.ItemDataRole.UserRole)
+        if key is None:  # nagłówek grupy
+            return
+        self._save_current_to_data(item)
+        keys = list(self._data.keys())
+        i = keys.index(key)
+        # Reorder within the same note type only — generation order matters
+        # per note type (dependent fields), and groups stay contiguous.
+        j = i + delta
+        while 0 <= j < len(keys) and keys[j][0] != key[0]:
+            j += delta
+        if not (0 <= j < len(keys)) or keys[j][0] != key[0]:
+            return
+        keys[i], keys[j] = keys[j], keys[i]
+        # Rebuild dict in the new order — apply() and dependency resolution
+        # both follow this order.
+        self._data = {k: self._data[k] for k in keys}
+        self._rebuild_list(select_key=key)
 
     # ------------------------------------------------------------------
     # Editor state
@@ -781,6 +848,14 @@ class PromptsTab(QWidget):
             key = (entry["note_type"], f"{base_name}_{i}")
             i += 1
 
+        # Wstaw zaraz za ostatnim zadaniem tego samego typu, żeby lista
+        # pozostała pogrupowana (a nie doklejona na sam koniec).
+        keys = list(self._data.keys())
+        insert_at = len(keys)
+        for idx, k in enumerate(keys):
+            if k[0] == key[0]:
+                insert_at = idx + 1
+        keys.insert(insert_at, key)
         self._data[key] = {
             "target":      entry["target"] or key[1],
             "provider":    entry["provider"],
@@ -788,24 +863,31 @@ class PromptsTab(QWidget):
             "prompt":      entry["prompt"],
             "manual_only": bool(entry.get("manual_only", False)),
         }
-        item = QListWidgetItem(self._item_text(key, entry["prompt"]))
-        item.setData(Qt.ItemDataRole.UserRole, key)
-        self._list.addItem(item)
-        self._list.setCurrentItem(item)
+        self._data = {k: self._data[k] for k in keys}
+        self._populate_filter()
+        # Pokaż grupę nowego wpisu, żeby nie zniknął pod aktywnym filtrem.
+        self._filter_combo.blockSignals(True)
+        self._filter_combo.setCurrentIndex(self._filter_combo.findData(key[0]))
+        self._filter_combo.blockSignals(False)
+        self._rebuild_list(select_key=key)
 
     def _on_delete(self) -> None:
         item = self._list.currentItem()
         if item is None:
             return
         key = item.data(Qt.ItemDataRole.UserRole)
+        if key is None:  # nagłówek grupy — nic do usunięcia
+            return
         self._current_key = None
+        keys = list(self._data.keys())
+        i = keys.index(key)
         del self._data[key]
-        # takeItem zaznacza sąsiedni element → currentItemChanged już wczytał
-        # go do edytora; placeholder pokazujemy tylko gdy lista jest pusta.
-        self._list.takeItem(self._list.row(item))
-        if self._list.currentItem() is None:
-            self._editor_widget.setVisible(False)
-            self._editor_placeholder.setVisible(True)
+        self._populate_filter()
+        # Zaznacz sąsiedni wpis (jak wcześniej); _rebuild_list pokaże placeholder
+        # gdy nic nie zostało / sąsiad jest poza filtrem.
+        remaining = list(self._data.keys())
+        neighbor = remaining[min(i, len(remaining) - 1)] if remaining else None
+        self._rebuild_list(select_key=neighbor)
 
     def apply(self, cfg: dict) -> None:
         self._save_current_to_data(self._list.currentItem())

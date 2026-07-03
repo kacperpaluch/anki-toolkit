@@ -5,6 +5,7 @@ __pycache__/
 
 # Anki runtime — zawierają klucze API i dane użytkownika, NIE commitować
 meta.json
+*.bak
 user_files/
 audio_normalizer/processed_history.json
 ai_generator/usage_stats.json

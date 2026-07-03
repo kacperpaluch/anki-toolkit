@@ -288,7 +288,8 @@ Edytor promptów (zakładka **Prompty**):
 - **Kolorowanie składni** — `{{pola}}` i bloki `{% if %}` są wyróżnione kolorem; pola nieistniejące w typie notatki dostają czerwone faliste podkreślenie.
 - Przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet warunku; zaznaczony tekst trafia do gałęzi „if").
 - Walidacja na żywo: nieznane pola, błędy struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony) oraz użycie pola generowanego przez późniejsze zadanie.
-- **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność, a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
+- **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność (w obrębie jednego typu notatki), a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
+- **Grupowanie i filtr** — zadania są pogrupowane nagłówkami per typ notatki, a combobox nad listą filtruje widok do jednego typu (wygodne, gdy masz wiele typów notatek).
 
 Każde pole notatki może używać innego dostawcy, modelu i temperatury (np. niska dla definicji, wyższa dla przykładowych zdań). Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
 
