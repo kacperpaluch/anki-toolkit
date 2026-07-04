@@ -166,10 +166,12 @@ def inflight_fields() -> set:
 # Backfill jobs — remember a selection so deferred slices auto-submit over time
 # --------------------------------------------------------------------------
 
-def add_job(nids, only_fields) -> str:
+def add_job(nids, only_fields, total: int = 0, sent: int = 0) -> str:
     """Persist a resumable backfill job (the selected notes + optional field
     filter). The auto-poll cycle drains it slice by slice until every field is
-    filled, staying under the OpenAI enqueued-token budget each round."""
+    filled, staying under the OpenAI enqueued-token budget each round.
+
+    total/sent (request counts) drive the progress shown in tooltips."""
     with _LOCK:
         store = _load_store()
         job_id = "job-" + uuid.uuid4().hex[:12]
@@ -179,9 +181,37 @@ def add_job(nids, only_fields) -> str:
             "only_fields": sorted(only_fields) if only_fields else None,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "status": "active",
+            "total": int(total),
+            "sent": int(sent),
         })
         _save_store(store)
     return job_id
+
+
+def record_job_progress(records) -> Optional[str]:
+    """Bump active jobs' sent counters by the requests just submitted (matched
+    by nid) and return a human progress string like '2 874/19 140 zapytań (15%)',
+    or None when no job tracks a total (legacy jobs)."""
+    per_nid = Counter(m.get("nid") for r in records for m in (r.get("map") or {}).values())
+    with _LOCK:
+        store = _load_store()
+        jobs = [j for j in store.get("jobs", []) if j.get("status") == "active"]
+        for job in jobs:
+            nids = set(job.get("nids", []))
+            mine = sum(c for nid, c in per_nid.items() if nid in nids)
+            if mine:
+                job["sent"] = int(job.get("sent") or 0) + mine
+                # a nid can sit in overlapping jobs — credit the first one only
+                for nid in list(per_nid):
+                    if nid in nids:
+                        del per_nid[nid]
+        _save_store(store)
+    tracked = [j for j in jobs if int(j.get("total") or 0) > 0]
+    if not tracked:
+        return None
+    total = sum(int(j["total"]) for j in tracked)
+    sent = min(sum(int(j.get("sent") or 0) for j in tracked), total)
+    return f"{sent:,}/{total:,} zapytań ({100 * sent // total}%)".replace(",", " ")
 
 
 def active_jobs() -> list:
@@ -556,7 +586,9 @@ def _submit_openai(items, config: dict) -> tuple:
     if not batch_id:
         return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
     logger.info(f"Batch OpenAI wysłany: {batch_id} ({len(items)} zapytań, model {items[0]['model']})")
-    return _new_record(batch_id, "openai", items), None
+    rec = _new_record(batch_id, "openai", items)
+    rec["input_file_id"] = file_id  # do skasowania po odebraniu wyników
+    return rec, None
 
 
 _OPENAI_TERMINAL = {"completed", "failed", "expired", "cancelled"}
@@ -578,6 +610,9 @@ def _poll_openai(record: dict, config: dict) -> tuple:
     if info.get("status") not in _OPENAI_TERMINAL:
         return "pending", None
     output_file_id = info.get("output_file_id")
+    # stash for cleanup_openai_files() — the record dict flows into the ended
+    # payload, so the caller can delete both files once results are committed
+    record["output_file_id"] = output_file_id
     results = []
     if output_file_id:
         raw_res = fetch_url(f"{OPENAI_FILES_URL}/{output_file_id}/content",
@@ -652,6 +687,21 @@ def _first_text(content) -> Optional[str]:
         if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
             return block["text"]
     return None
+
+
+def cleanup_openai_files(records, config: dict) -> None:
+    """Delete a finished batch's input/output files from OpenAI storage
+    (network-only — run in a background task, AFTER the results are committed).
+    Old records without input_file_id are skipped silently."""
+    api_key = _openai_key(config)
+    if api_key is None:
+        return
+    for rec in records:
+        if rec.get("provider") != "openai":
+            continue
+        for fid in (rec.get("input_file_id"), rec.get("output_file_id")):
+            if fid:
+                _delete_openai_file(fid, api_key, _timeout(config))
 
 
 def mark_applied(batch_ids) -> None:

@@ -212,8 +212,8 @@ def _on_batch_submit(browser: Browser, only_fields=None):
             return
         # Remember the selection so the auto-poll cycle keeps sending the
         # remaining (deferred) slices until every field is filled — hands-off.
-        batch_backfill.add_job(nids, only_fields)
         sent = sum(r["count"] for r in records)
+        batch_backfill.add_job(nids, only_fields, total=len(items), sent=sent)
         msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
         if errors:
             msg += " · błędy: " + " · ".join(errors)
@@ -273,6 +273,10 @@ def check_pending_batches(silent: bool = True):
             # if Anki dies earlier, the next poll re-downloads and re-applies.
             if applied_ids:
                 batch_backfill.mark_applied(applied_ids)
+                applied_records = [p["record"] for p in ended.values()]
+                mw.taskman.run_in_background(
+                    lambda: batch_backfill.cleanup_openai_files(applied_records, config)
+                )
             if should_advance:
                 _advance_jobs(config)
 
@@ -365,7 +369,11 @@ def _advance_jobs(config: dict):
             return
         if records:
             sent = sum(r["count"] for r in records)
-            tooltip(f"Auto-dosłano {len(records)} batchy ({sent} zapytań).", period=6000)
+            msg = f"Auto-dosłano {len(records)} batchy ({sent} zapytań)."
+            progress = batch_backfill.record_job_progress(records)
+            if progress:
+                msg += f" Zadanie: {progress}."
+            tooltip(msg, period=6000)
         if errors:
             # Silent swallowing hid 2h of failed submits — always surface these.
             logger.warning("Auto-dosyłanie: " + " · ".join(errors))

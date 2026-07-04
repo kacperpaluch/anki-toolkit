@@ -376,6 +376,29 @@ class JobStoreTests(unittest.TestCase):
         self.assertTrue(self.m.job_expired(old))
         self.assertFalse(self.m.job_expired({"created_at": "garbage"}))
 
+    def test_record_job_progress_bumps_and_formats(self):
+        jid = self.m.add_job([1, 2, 3], None, total=10, sent=2)
+        records = [{"map": {"i0": {"nid": 1, "field": "a"},
+                            "i1": {"nid": 2, "field": "b"},
+                            "i2": {"nid": 99, "field": "c"}}}]  # obcy nid — nie liczony
+        progress = self.m.record_job_progress(records)
+        self.assertEqual(progress, "4/10 zapytań (40%)")
+        job = self.m.active_jobs()[0]
+        self.assertEqual(job["sent"], 4)
+        self.assertEqual(job["id"], jid)
+
+    def test_record_job_progress_none_for_legacy_jobs(self):
+        # job sprzed wprowadzenia liczników (bez total) → brak stringa postępu
+        self.m.add_job([1], None)
+        self.assertIsNone(self.m.record_job_progress(
+            [{"map": {"i0": {"nid": 1, "field": "a"}}}]))
+
+    def test_record_job_progress_caps_at_total(self):
+        self.m.add_job([1], None, total=3, sent=3)
+        progress = self.m.record_job_progress(
+            [{"map": {"i0": {"nid": 1, "field": "a"}}}])  # re-send ponad total
+        self.assertEqual(progress, "3/3 zapytań (100%)")
+
     def test_mark_applied_persists_after_commit(self):
         self.m._append_record({"id": "b1", "provider": "openai",
                                "status": "in_progress", "map": {}})

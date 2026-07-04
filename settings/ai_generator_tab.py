@@ -272,11 +272,25 @@ class AIGeneratorTab(QWidget):
         self._request_timeout.setSuffix(" s")
         self._request_timeout.setValue(ai.get("request_timeout", 30))
         self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
+        self._openai_batch_budget = QSpinBox()
+        self._openai_batch_budget.setRange(50_000, 50_000_000)
+        self._openai_batch_budget.setSingleStep(50_000)
+        self._openai_batch_budget.setGroupSeparatorShown(True)
+        self._openai_batch_budget.setSuffix(" tok.")
+        self._openai_batch_budget.setValue(int(ai.get("openai_batch_token_budget", 1_500_000)))
+        self._openai_batch_budget.setToolTip(
+            "Budżet tokenów kolejki Batch API OpenAI (szacowany rozmiar paczki\n"
+            "i łączny limit naszych batchy w locie). Ustaw poniżej limitu\n"
+            "„enqueued tokens” Twojej organizacji dla używanego modelu —\n"
+            "np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln (wtedy zostaw margines,\n"
+            "np. 750 tys. / 1,5 mln)."
+        )
         adv_form.addRow("Limit paczki:", self._batch_limit)
         adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
         adv_form.addRow("Równoległe żądania:", self._parallel_requests)
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
         adv_form.addRow("Timeout żądania:", self._request_timeout)
+        adv_form.addRow("Budżet kolejki Batch API (OpenAI):", self._openai_batch_budget)
         adv_form.addRow(hint_label(
             "Limity RPM / równoległości ustawisz osobno dla każdego dostawcy "
             "wyżej (sekcja „Dostawcy AI”)."
@@ -385,6 +399,7 @@ class AIGeneratorTab(QWidget):
         ai["parallel_requests"] = self._parallel_requests.value()
         ai["max_retries"] = self._ai_max_retries.value()
         ai["request_timeout"] = self._request_timeout.value()
+        ai["openai_batch_token_budget"] = self._openai_batch_budget.value()
         ai.pop("free_model_rate_limit", None)  # migrated to per-provider rpm
         ai.pop("free_model_max_concurrent", None)
         ai.setdefault("providers", {})
