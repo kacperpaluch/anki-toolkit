@@ -24,7 +24,7 @@ import os
 import threading
 import uuid
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from ..common import clean_html_normalized, safe_str, post_json, fetch_url
@@ -44,6 +44,39 @@ OPENAI_FILES_URL = "https://api.openai.com/v1/files"
 OPENAI_BATCHES_URL = "https://api.openai.com/v1/batches"
 
 _ELIGIBLE_PROVIDERS = ("anthropic", "openai")
+
+# OpenAI enqueues (input + reserved output) tokens from every pending batch
+# against an org-wide cap (2M on lower tiers). One giant batch blows that cap and
+# gets rejected/failed, so we split a model's items into chunks under a token
+# budget and submit them sequentially, stopping the moment the cap is hit. The
+# un-sent fields stay empty, so re-running the same action after the queue drains
+# re-picks exactly them — no deferred queue needed.
+_OPENAI_TOKEN_BUDGET = 1_500_000   # per batch; stays under the common 2M org cap
+_OPENAI_OUTPUT_RESERVE = 1000      # est. output tokens counted toward the cap
+_ENQUEUED_LIMIT_HINT = "enqueued"  # substring of OpenAI's "Enqueued token limit" error
+
+
+def _est_tokens(prompt: str, reserve: int) -> int:
+    # ponytail: len//4 is the standard rough token heuristic; exact counting
+    # needs tiktoken (a dep) for no real gain — we only need chunk sizing.
+    return len(prompt) // 4 + reserve
+
+
+def _chunk_by_tokens(items, budget: int, reserve: int) -> list:
+    """Split items into sublists each under `budget` estimated tokens (min 1/chunk)."""
+    chunks: list = []
+    cur: list = []
+    cur_tok = 0
+    for it in items:
+        t = _est_tokens(it["prompt"], reserve)
+        if cur and cur_tok + t > budget:
+            chunks.append(cur)
+            cur, cur_tok = [], 0
+        cur.append(it)
+        cur_tok += t
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 _USER_FILES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "user_files")
 _PATH = os.path.join(_USER_FILES, "ai_batches.json")
@@ -91,6 +124,73 @@ def _update_status(batch_id: str, status: str) -> None:
 
 def pending_batches() -> list:
     return [b for b in _load_store()["batches"] if b.get("status") == "in_progress"]
+
+
+def _pending_openai_tokens() -> int:
+    """Estimated tokens our own still-running OpenAI batches already enqueue.
+
+    Subtracted from the per-run budget so a re-run while an earlier batch is
+    in progress doesn't push the org over its enqueued-token cap again."""
+    return sum(int(b.get("enq_tokens") or 0)
+               for b in pending_batches() if b.get("provider") == "openai")
+
+
+def inflight_fields() -> set:
+    """{(nid, field)} currently sitting in a pending batch — must not be re-sent."""
+    out: set = set()
+    for b in pending_batches():
+        for meta in (b.get("map") or {}).values():
+            out.add((meta.get("nid"), meta.get("field")))
+    return out
+
+
+# --------------------------------------------------------------------------
+# Backfill jobs — remember a selection so deferred slices auto-submit over time
+# --------------------------------------------------------------------------
+
+def add_job(nids, only_fields) -> str:
+    """Persist a resumable backfill job (the selected notes + optional field
+    filter). The auto-poll cycle drains it slice by slice until every field is
+    filled, staying under the OpenAI enqueued-token budget each round."""
+    with _LOCK:
+        store = _load_store()
+        job_id = "job-" + uuid.uuid4().hex[:12]
+        store.setdefault("jobs", []).append({
+            "id": job_id,
+            "nids": [int(n) for n in nids],
+            "only_fields": sorted(only_fields) if only_fields else None,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "status": "active",
+        })
+        _save_store(store)
+    return job_id
+
+
+def active_jobs() -> list:
+    return [j for j in _load_store().get("jobs", []) if j.get("status") == "active"]
+
+
+# ponytail: a field the model keeps returning empty stays empty and would be
+# re-sent every poll forever — cap a job at the 24h batch window instead of
+# tracking per-field retries. Straggler fields left after that → manual re-run.
+_JOB_MAX_AGE_H = 24
+
+
+def job_expired(job: dict) -> bool:
+    try:
+        created = datetime.strptime(job.get("created_at", ""), "%Y-%m-%d %H:%M")
+    except ValueError:
+        return False
+    return datetime.now() - created > timedelta(hours=_JOB_MAX_AGE_H)
+
+
+def finish_job(job_id: str) -> None:
+    with _LOCK:
+        store = _load_store()
+        for j in store.get("jobs", []):
+            if j.get("id") == job_id:
+                j["status"] = "done"
+        _save_store(store)
 
 
 # --------------------------------------------------------------------------
@@ -189,17 +289,47 @@ def submit(items, config: dict) -> tuple:
         else:
             errors.append(f"Anthropic: {err}")
 
+    budget = int(config.get("openai_batch_token_budget") or _OPENAI_TOKEN_BUDGET)
+    reserve = int(config.get("openai_batch_output_reserve") or _OPENAI_OUTPUT_RESERVE)
     by_model = defaultdict(list)
     for i in items:
         if i["provider"] == "openai":
             by_model[i["model"]].append(i)
+    # OpenAI accepts every create() then FAILS batches asynchronously once the
+    # org's enqueued-token cap is exceeded — so throttling on the create error
+    # is useless. Instead cap the *total* estimated tokens in flight (our own
+    # still-running batches + what we send now) to `budget` (< the 2M org cap)
+    # and defer the rest; re-running the same action after the queue drains
+    # picks up the still-empty fields.
+    already = _pending_openai_tokens()
+    running = 0
+    deferred = 0
     for model, group in by_model.items():
-        rec, err = _submit_openai(group, config)
-        if rec:
-            _append_record(rec)
-            records.append(rec)
-        else:
-            errors.append(f"OpenAI ({model}): {err}")
+        for chunk in _chunk_by_tokens(group, budget, reserve):
+            chunk_tok = sum(_est_tokens(i["prompt"], reserve) for i in chunk)
+            # Send this chunk unless it would push total in-flight over budget —
+            # but always let one chunk through when nothing is enqueued at all,
+            # so a single over-budget item can never wedge the queue forever.
+            if already + running + chunk_tok > budget and (already or running):
+                deferred += len(chunk)
+                continue
+            rec, err = _submit_openai(chunk, config)
+            if rec:
+                rec["enq_tokens"] = chunk_tok
+                _append_record(rec)
+                records.append(rec)
+                running += chunk_tok
+            elif err and _ENQUEUED_LIMIT_HINT in err.lower():
+                deferred += len(chunk)
+            else:
+                errors.append(f"OpenAI ({model}): {err}")
+    if deferred:
+        errors.append(
+            f"OpenAI: limit kolejki tokenów org (~2M) — w locie ~{already + running:,} "
+            f"tok., odłożono {deferred} zapytań. Gdy bieżące batche się skończą "
+            f"(„Sprawdź batche” lub restart Anki), wyślij ten sam batch ponownie — "
+            f"dobierze tylko wciąż puste pola."
+        )
 
     return records, errors
 

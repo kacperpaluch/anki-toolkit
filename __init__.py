@@ -36,10 +36,27 @@ if _enabled("ai_generator"):
     from . import ai_generator
     ai_generator.migrate_workflows()  # legacy single workflow → workflows list
     gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
-    # Auto-poll oczekujące batche Anthropic po otwarciu profilu (kolekcja gotowa).
+    # Auto-poll oczekujące batche po otwarciu profilu (kolekcja gotowa) + cyklicznie
+    # co 5 min: pobiera wyniki gotowych batchy i auto-dosyła kolejne plastry zadań
+    # (hands-off, poniżej limitu kolejki tokenów OpenAI). Timer trzyma referencję
+    # na mw, żeby GC go nie usunął.
     gui_hooks.profile_did_open.append(
         lambda: ai_generator.check_pending_batches(silent=True)
     )
+
+    def _start_batch_timer():
+        old = getattr(mw, "_ankitoolkit_batch_timer", None)
+        if old is not None:  # profile switch → don't stack a second timer
+            old.stop()
+            old.deleteLater()
+        mw._ankitoolkit_batch_timer = QTimer(mw)
+        mw._ankitoolkit_batch_timer.setInterval(5 * 60 * 1000)
+        mw._ankitoolkit_batch_timer.timeout.connect(
+            lambda: ai_generator.check_pending_batches(silent=True)
+        )
+        mw._ankitoolkit_batch_timer.start()
+
+    gui_hooks.profile_did_open.append(_start_batch_timer)
 
 # ---------------------------------------------------------------------------
 # dictionary

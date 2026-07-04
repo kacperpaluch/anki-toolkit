@@ -1,6 +1,7 @@
 """Pure-logic tests for the batch backfill (no Anki, no network)."""
 
 import importlib.util
+import os
 import pathlib
 import sys
 import tempfile
@@ -205,6 +206,147 @@ class FirstTextTests(unittest.TestCase):
         module = load_batch_backfill(_iter)
         self.assertIsNone(module._first_text([]))
         self.assertIsNone(module._first_text(None))
+
+
+class ChunkByTokensTests(unittest.TestCase):
+    def _items(self, module, n, prompt_len):
+        return [{"prompt": "x" * prompt_len, "custom_id": f"i{k}"} for k in range(n)]
+
+    def test_splits_when_over_budget(self):
+        module = load_batch_backfill(_iter)
+        # est per item = 400//4 + 100 = 200 tokens; budget 500 → 2 items/chunk
+        items = self._items(module, 5, 400)
+        chunks = module._chunk_by_tokens(items, budget=500, reserve=100)
+        self.assertEqual([len(c) for c in chunks], [2, 2, 1])
+
+    def test_single_item_always_fits(self):
+        module = load_batch_backfill(_iter)
+        # one item bigger than the whole budget still gets its own chunk
+        items = self._items(module, 1, 40000)
+        chunks = module._chunk_by_tokens(items, budget=500, reserve=0)
+        self.assertEqual([len(c) for c in chunks], [1])
+
+    def test_all_fit_one_chunk(self):
+        module = load_batch_backfill(_iter)
+        items = self._items(module, 3, 40)
+        chunks = module._chunk_by_tokens(items, budget=1_000_000, reserve=100)
+        self.assertEqual(len(chunks), 1)
+
+
+class SubmitOpenAIChunkingTests(unittest.TestCase):
+    def _oa_items(self, n, prompt_len=400):
+        # est per item = prompt_len//4 + reserve(100 in cfg below) = 200 by default
+        return [{"custom_id": f"i{k}", "provider": "openai", "model": "gpt-x",
+                 "prompt": "x" * prompt_len, "nid": k, "field": "f",
+                 "temperature": None}
+                for k in range(n)]
+
+    def _ok_submit(self, calls):
+        def fake_submit(chunk, config):
+            calls["n"] += 1
+            return {"id": f"b{calls['n']}", "provider": "openai",
+                    "count": len(chunk), "map": {}}, None
+        return fake_submit
+
+    def test_caps_total_tokens_and_defers_rest(self):
+        module = load_batch_backfill(_iter)
+        # budget 250, est 200/item → only the first chunk (1 item) fits per run
+        cfg = {"openai_batch_token_budget": 250, "openai_batch_output_reserve": 100}
+        calls = {"n": 0}
+        with patch.object(module, "_submit_openai", side_effect=self._ok_submit(calls)), \
+             patch.object(module, "_pending_openai_tokens", return_value=0), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(self._oa_items(3), cfg)
+
+        self.assertEqual(len(records), 1)           # only what fits the budget
+        self.assertEqual(calls["n"], 1)             # rest never even created
+        self.assertTrue(any("odłożono 2" in e for e in errors))
+
+    def test_all_fit_no_defer(self):
+        module = load_batch_backfill(_iter)
+        cfg = {"openai_batch_token_budget": 10_000, "openai_batch_output_reserve": 100}
+        calls = {"n": 0}
+        with patch.object(module, "_submit_openai", side_effect=self._ok_submit(calls)), \
+             patch.object(module, "_pending_openai_tokens", return_value=0), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(self._oa_items(3), cfg)
+
+        self.assertEqual(len(records), 1)           # all 3 in one batch, all sent
+        self.assertEqual(errors, [])                # nothing deferred
+
+    def test_existing_pending_eats_budget(self):
+        module = load_batch_backfill(_iter)
+        # 10k already in flight ≥ budget → even the first chunk is deferred
+        cfg = {"openai_batch_token_budget": 5_000, "openai_batch_output_reserve": 100}
+        calls = {"n": 0}
+        with patch.object(module, "_submit_openai", side_effect=self._ok_submit(calls)), \
+             patch.object(module, "_pending_openai_tokens", return_value=10_000), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(self._oa_items(3), cfg)
+
+        self.assertEqual(records, [])               # nothing sent — queue already full
+        self.assertEqual(calls["n"], 0)
+        self.assertTrue(any("odłożono 3" in e for e in errors))
+
+    def test_non_quota_error_does_not_defer(self):
+        module = load_batch_backfill(_iter)
+        # singleton chunks; failures keep running-total at 0 so every chunk is tried
+        cfg = {"openai_batch_token_budget": 250, "openai_batch_output_reserve": 100}
+
+        def fake_submit(chunk, config):
+            return None, "boom"
+
+        with patch.object(module, "_submit_openai", side_effect=fake_submit), \
+             patch.object(module, "_pending_openai_tokens", return_value=0), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(self._oa_items(3), cfg)
+
+        self.assertEqual(records, [])
+        self.assertEqual(len(errors), 3)            # every chunk tried, none deferred
+
+
+class JobStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.m = load_batch_backfill(_iter)
+        tmp = tempfile.mkdtemp()
+        self.m._USER_FILES = tmp
+        self.m._PATH = os.path.join(tmp, "ai_batches.json")
+
+    def test_job_lifecycle(self):
+        jid = self.m.add_job([1, 2, 3], {"def", "ipa"})
+        jobs = self.m.active_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["nids"], [1, 2, 3])
+        self.assertEqual(jobs[0]["only_fields"], ["def", "ipa"])
+        self.m.finish_job(jid)
+        self.assertEqual(self.m.active_jobs(), [])
+
+    def test_only_fields_none_persisted(self):
+        self.m.add_job([5], None)
+        self.assertIsNone(self.m.active_jobs()[0]["only_fields"])
+
+    def test_inflight_fields_from_pending(self):
+        self.m._append_record({
+            "id": "b1", "provider": "openai", "status": "in_progress", "count": 2,
+            "map": {"i0": {"nid": 1, "field": "def"},
+                    "i1": {"nid": 2, "field": "ipa"}},
+        })
+        self.assertEqual(self.m.inflight_fields(), {(1, "def"), (2, "ipa")})
+
+    def test_job_expired_after_window(self):
+        from datetime import datetime, timedelta
+        fresh = {"created_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        old = {"created_at": (datetime.now() - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M")}
+        self.assertFalse(self.m.job_expired(fresh))
+        self.assertTrue(self.m.job_expired(old))
+        self.assertFalse(self.m.job_expired({"created_at": "garbage"}))
+
+    def test_pending_openai_tokens_sums_only_in_progress(self):
+        self.m._append_record({"id": "b1", "provider": "openai",
+                               "status": "in_progress", "enq_tokens": 1000, "map": {}})
+        self.m._append_record({"id": "b2", "provider": "openai",
+                               "status": "applied", "enq_tokens": 5000, "map": {}})
+        self.assertEqual(self.m._pending_openai_tokens(), 1000)
 
 
 if __name__ == "__main__":

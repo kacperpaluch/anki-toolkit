@@ -210,6 +210,9 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         if not records:
             tooltip("Batch nie wysłany: " + " · ".join(errors), period=8000)
             return
+        # Remember the selection so the auto-poll cycle keeps sending the
+        # remaining (deferred) slices until every field is filled — hands-off.
+        batch_backfill.add_job(nids, only_fields)
         sent = sum(r["count"] for r in records)
         msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
         if errors:
@@ -220,13 +223,14 @@ def _on_batch_submit(browser: Browser, only_fields=None):
 
 
 def check_pending_batches(silent: bool = True):
-    """Poll pending Anthropic batches and apply any that have finished.
+    """Poll pending batches, apply finished ones, then auto-submit the next slice
+    of any active backfill job (hands-off draining under the OpenAI token cap).
 
-    silent=True (startup) suppresses "nothing yet" tooltips; silent=False
+    silent=True (startup / timer) suppresses "nothing yet" tooltips; silent=False
     (manual button) reports progress even when nothing is ready.
     """
     config = get_config()
-    if not batch_backfill.pending_batches():
+    if not batch_backfill.pending_batches() and not batch_backfill.active_jobs():
         if not silent:
             tooltip("Brak oczekujących batchy.")
         return
@@ -241,30 +245,95 @@ def check_pending_batches(silent: bool = True):
             if not silent:
                 tooltip(f"Błąd sprawdzania batchy: {e}", period=6000)
             return
-        if not ended:
-            if not silent:
-                parts = [f"W toku: {still}"]
-                if errors:
-                    parts.append(f"błędy odpytania: {len(errors)}")
-                tooltip(" · ".join(parts), period=5000)
-            return
-        summary = batch_backfill.apply_results(mw.col, ended)
-        parts = [f"Batch: dopisano {summary['filled']}"]
-        if summary["failed"]:
-            parts.append(f"błędy: {summary['failed']}")
-        if summary["skipped"]:
-            parts.append(f"pominięto: {summary['skipped']}")
-        if still:
-            parts.append(f"w toku: {still}")
-        msg = " · ".join(parts)
+        # Advance jobs when something finished (frees the token budget) or the
+        # queue is fully drained (send the first slice of the remainder).
+        should_advance = bool(ended) or still == 0
+        summary = (batch_backfill.apply_results(mw.col, ended) if ended
+                   else {"filled": 0, "failed": 0, "skipped": 0, "changed_notes": []})
+
+        msg = None
+        if ended:
+            parts = [f"Batch: dopisano {summary['filled']}"]
+            if summary["failed"]:
+                parts.append(f"błędy: {summary['failed']}")
+            if summary["skipped"]:
+                parts.append(f"pominięto: {summary['skipped']}")
+            if still:
+                parts.append(f"w toku: {still}")
+            msg = " · ".join(parts)
+        elif not silent:
+            parts = [f"W toku: {still}"]
+            if errors:
+                parts.append(f"błędy odpytania: {len(errors)}")
+            tooltip(" · ".join(parts), period=5000)
+
+        def after():
+            if should_advance:
+                _advance_jobs(config)
+
         changed = summary["changed_notes"]
         if changed:
+            # Advance only AFTER the write commits, so build_items sees the just
+            # filled fields and doesn't re-send them.
             CollectionOp(
                 parent=mw,
                 op=lambda col: col.update_notes(changed),
-            ).success(lambda _c: tooltip(msg, period=8000)).run_in_background()
+            ).success(lambda _c: (tooltip(msg, period=8000), after())).run_in_background()
         else:
-            tooltip(msg, period=8000)
+            if msg:
+                tooltip(msg, period=8000)
+            after()
+
+    mw.taskman.run_in_background(task, on_done)
+
+
+def _advance_jobs(config: dict):
+    """Submit the next budget-worth of still-empty, not-in-flight fields for each
+    active backfill job. Main thread (reads the collection); HTTP submit runs in
+    a background task. A job whose fields are all filled is marked done."""
+    jobs = batch_backfill.active_jobs()
+    if not jobs:
+        return
+    inflight = batch_backfill.inflight_fields()
+    seen = set(inflight)  # also dedups fields shared across overlapping jobs
+    to_send = []
+    for job in jobs:
+        if batch_backfill.job_expired(job):
+            batch_backfill.finish_job(job["id"])  # 24h window up → stop retrying
+            continue
+        notes = []
+        for nid in job.get("nids", []):
+            try:
+                notes.append(mw.col.get_note(nid))
+            except Exception:
+                pass
+        only = set(job["only_fields"]) if job.get("only_fields") else None
+        raw, _skipped = batch_backfill.build_items(notes, config, only_fields=only)
+        if not raw:
+            batch_backfill.finish_job(job["id"])  # every field filled → done
+            continue
+        for i in raw:
+            key = (i["nid"], i["field"])
+            if key in seen:
+                continue
+            seen.add(key)
+            to_send.append(i)
+    if not to_send:
+        return
+    for n, item in enumerate(to_send):  # unique custom_ids across the combined submit
+        item["custom_id"] = f"i{n}"
+
+    def task():
+        return batch_backfill.submit(to_send, config)
+
+    def on_done(fut):
+        try:
+            records, _errors = fut.result()
+        except Exception:
+            return
+        if records:
+            sent = sum(r["count"] for r in records)
+            tooltip(f"Auto-dosłano {len(records)} batchy ({sent} zapytań).", period=6000)
 
     mw.taskman.run_in_background(task, on_done)
 
