@@ -250,6 +250,7 @@ def check_pending_batches(silent: bool = True):
         should_advance = bool(ended) or still == 0
         summary = (batch_backfill.apply_results(mw.col, ended) if ended
                    else {"filled": 0, "failed": 0, "skipped": 0, "changed_notes": []})
+        applied_ids = list(ended.keys())
 
         msg = None
         if ended:
@@ -268,6 +269,10 @@ def check_pending_batches(silent: bool = True):
             tooltip(" · ".join(parts), period=5000)
 
         def after():
+            # Mark applied only once the results are safely in the collection —
+            # if Anki dies earlier, the next poll re-downloads and re-applies.
+            if applied_ids:
+                batch_backfill.mark_applied(applied_ids)
             if should_advance:
                 _advance_jobs(config)
 
@@ -287,53 +292,85 @@ def check_pending_batches(silent: bool = True):
     mw.taskman.run_in_background(task, on_done)
 
 
+# Guard against overlapping runs (timer tick + manual "Sprawdź batche" +
+# profile open) — two concurrent submits would double-send the same fields.
+_advance_running = False
+
+
 def _advance_jobs(config: dict):
     """Submit the next budget-worth of still-empty, not-in-flight fields for each
     active backfill job. Main thread (reads the collection); HTTP submit runs in
     a background task. A job whose fields are all filled is marked done."""
+    global _advance_running
+    if _advance_running:
+        return
     jobs = batch_backfill.active_jobs()
     if not jobs:
         return
+    cap = batch_backfill.openai_budget_left(config)
+    if cap <= 0:
+        return  # queue full or backing off after a limit hit — next tick retries
     inflight = batch_backfill.inflight_fields()
     seen = set(inflight)  # also dedups fields shared across overlapping jobs
     to_send = []
+    tok = 0
     for job in jobs:
         if batch_backfill.job_expired(job):
             batch_backfill.finish_job(job["id"])  # 24h window up → stop retrying
             continue
-        notes = []
-        for nid in job.get("nids", []):
-            try:
-                notes.append(mw.col.get_note(nid))
-            except Exception:
-                pass
         only = set(job["only_fields"]) if job.get("only_fields") else None
-        raw, _skipped = batch_backfill.build_items(notes, config, only_fields=only)
-        if not raw:
-            batch_backfill.finish_job(job["id"])  # every field filled → done
-            continue
-        for i in raw:
-            key = (i["nid"], i["field"])
-            if key in seen:
+        found = capped = False
+        # Build note-by-note and stop at the token budget — rendering prompts
+        # for the WHOLE remainder (tens of thousands of fields) every 5-min
+        # tick just to defer them again froze the UI for no gain.
+        # ponytail: anthropic items also count toward the (OpenAI) cap; they'd
+        # merely wait one extra tick.
+        for nid in job.get("nids", []):
+            if tok >= cap:
+                capped = True
+                break
+            try:
+                note = mw.col.get_note(nid)
+            except Exception:
                 continue
-            seen.add(key)
-            to_send.append(i)
+            raw, _skipped = batch_backfill.build_items([note], config, only_fields=only)
+            for i in raw:
+                found = True
+                key = (i["nid"], i["field"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                to_send.append(i)
+                tok += batch_backfill.est_item_tokens(i, config)
+        if not found and not capped:
+            batch_backfill.finish_job(job["id"])  # every field filled → done
     if not to_send:
         return
     for n, item in enumerate(to_send):  # unique custom_ids across the combined submit
         item["custom_id"] = f"i{n}"
 
+    _advance_running = True
+
     def task():
         return batch_backfill.submit(to_send, config)
 
     def on_done(fut):
+        global _advance_running
+        _advance_running = False
         try:
-            records, _errors = fut.result()
-        except Exception:
+            records, errors = fut.result()
+        except Exception as e:
+            logger.exception("Auto-dosyłanie batchy nie powiodło się")
+            tooltip(f"Batch: auto-dosyłanie nie powiodło się: {e}", period=8000)
             return
         if records:
             sent = sum(r["count"] for r in records)
             tooltip(f"Auto-dosłano {len(records)} batchy ({sent} zapytań).", period=6000)
+        if errors:
+            # Silent swallowing hid 2h of failed submits — always surface these.
+            logger.warning("Auto-dosyłanie: " + " · ".join(errors))
+            if not records:
+                tooltip("Batch: " + errors[0], period=8000)
 
     mw.taskman.run_in_background(task, on_done)
 

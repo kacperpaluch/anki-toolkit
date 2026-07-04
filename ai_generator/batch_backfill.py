@@ -22,6 +22,8 @@ import json
 import logging
 import os
 import threading
+import time
+import urllib.request
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -54,6 +56,14 @@ _ELIGIBLE_PROVIDERS = ("anthropic", "openai")
 _OPENAI_TOKEN_BUDGET = 1_500_000   # per batch; stays under the common 2M org cap
 _OPENAI_OUTPUT_RESERVE = 1000      # est. output tokens counted toward the cap
 _ENQUEUED_LIMIT_HINT = "enqueued"  # substring of OpenAI's "Enqueued token limit" error
+
+# OpenAI's enqueued-token counter can stay stuck for hours after a wave of
+# failed/completed batches (observed 2026-07-04: every create 400'd for 2h+
+# with nothing visibly enqueued). While it's stuck every create fails, so after
+# one enqueued-limit rejection we stop trying for a while instead of uploading
+# a fresh input file every 5-min tick.
+_OPENAI_BACKOFF_S = 30 * 60
+_openai_blocked_until = 0.0
 
 
 def _est_tokens(prompt: str, reserve: int) -> int:
@@ -113,15 +123,6 @@ def _append_record(record: dict) -> None:
         _save_store(store)
 
 
-def _update_status(batch_id: str, status: str) -> None:
-    with _LOCK:
-        store = _load_store()
-        for b in store["batches"]:
-            if b.get("id") == batch_id:
-                b["status"] = status
-        _save_store(store)
-
-
 def pending_batches() -> list:
     return [b for b in _load_store()["batches"] if b.get("status") == "in_progress"]
 
@@ -133,6 +134,23 @@ def _pending_openai_tokens() -> int:
     in progress doesn't push the org over its enqueued-token cap again."""
     return sum(int(b.get("enq_tokens") or 0)
                for b in pending_batches() if b.get("provider") == "openai")
+
+
+def openai_budget_left(config: dict) -> int:
+    """Estimated enqueued-token budget still available for new OpenAI batches.
+
+    0 while backing off after an enqueued-limit rejection — callers can skip
+    building items entirely instead of submitting into a full queue."""
+    if time.time() < _openai_blocked_until:
+        return 0
+    budget = int(config.get("openai_batch_token_budget") or _OPENAI_TOKEN_BUDGET)
+    return max(0, budget - _pending_openai_tokens())
+
+
+def est_item_tokens(item: dict, config: dict) -> int:
+    """Estimated enqueued tokens for one built item (prompt + output reserve)."""
+    reserve = int(config.get("openai_batch_output_reserve") or _OPENAI_OUTPUT_RESERVE)
+    return _est_tokens(item["prompt"], reserve)
 
 
 def inflight_fields() -> set:
@@ -301,16 +319,21 @@ def submit(items, config: dict) -> tuple:
     # still-running batches + what we send now) to `budget` (< the 2M org cap)
     # and defer the rest; re-running the same action after the queue drains
     # picks up the still-empty fields.
+    global _openai_blocked_until
     already = _pending_openai_tokens()
     running = 0
     deferred = 0
+    # After ANY failed create the next chunk would fail the same way, and each
+    # attempt wastes a full input-file upload — one failure stops this run
+    # (the 5-min poll cycle is the retry).
+    blocked = time.time() < _openai_blocked_until
     for model, group in by_model.items():
         for chunk in _chunk_by_tokens(group, budget, reserve):
             chunk_tok = sum(_est_tokens(i["prompt"], reserve) for i in chunk)
             # Send this chunk unless it would push total in-flight over budget —
             # but always let one chunk through when nothing is enqueued at all,
             # so a single over-budget item can never wedge the queue forever.
-            if already + running + chunk_tok > budget and (already or running):
+            if blocked or (already + running + chunk_tok > budget and (already or running)):
                 deferred += len(chunk)
                 continue
             rec, err = _submit_openai(chunk, config)
@@ -320,8 +343,17 @@ def submit(items, config: dict) -> tuple:
                 records.append(rec)
                 running += chunk_tok
             elif err and _ENQUEUED_LIMIT_HINT in err.lower():
+                # Org queue full (or OpenAI's counter stuck) — back off so the
+                # auto-cycle doesn't upload a file every tick just to get 400'd.
+                _openai_blocked_until = time.time() + _OPENAI_BACKOFF_S
+                blocked = True
                 deferred += len(chunk)
+                errors.append(
+                    f"OpenAI: limit kolejki tokenów org — wstrzymuję wysyłkę na "
+                    f"{_OPENAI_BACKOFF_S // 60} min ({err})"
+                )
             else:
+                blocked = True
                 errors.append(f"OpenAI ({model}): {err}")
     if deferred:
         errors.append(
@@ -453,6 +485,18 @@ def _multipart(fields: dict, file_field: str, filename: str, file_bytes: bytes) 
     return bytes(out), boundary
 
 
+def _delete_openai_file(file_id: str, api_key: str, timeout: int) -> None:
+    """Best-effort cleanup of an uploaded input file whose batch create failed —
+    otherwise every failed create leaves a multi-MB orphan in OpenAI storage."""
+    try:
+        req = urllib.request.Request(
+            f"{OPENAI_FILES_URL}/{file_id}", method="DELETE",
+            headers={"Authorization": f"Bearer {api_key}"})
+        urllib.request.urlopen(req, timeout=timeout).read()
+    except Exception:
+        logger.warning(f"Nie udało się usunąć osieroconego pliku {file_id}")
+
+
 def _submit_openai(items, config: dict) -> tuple:
     api_key = _openai_key(config)
     if api_key is None:
@@ -503,6 +547,7 @@ def _submit_openai(items, config: dict) -> tuple:
         max_retries=_retries(config), timeout=_timeout(config), log=logger,
     )
     if raw is None:
+        _delete_openai_file(file_id, api_key, _timeout(config))
         return None, err
     try:
         batch_id = json.loads(raw.decode("utf-8")).get("id")
@@ -609,6 +654,20 @@ def _first_text(content) -> Optional[str]:
     return None
 
 
+def mark_applied(batch_ids) -> None:
+    """Persist 'applied' status. Call AFTER the note changes are committed —
+    marking earlier would lose the results if Anki dies before the commit
+    (the batch would never be polled again). Re-applying after a crash is
+    idempotent (only still-empty fields are written); stats may double-count."""
+    with _LOCK:
+        store = _load_store()
+        ids = set(batch_ids)
+        for b in store["batches"]:
+            if b.get("id") in ids:
+                b["status"] = "applied"
+        _save_store(store)
+
+
 def apply_results(col, ended: dict) -> dict:
     """Apply ended batches to the collection (MAIN THREAD — touches col).
 
@@ -616,6 +675,8 @@ def apply_results(col, ended: dict) -> dict:
     overwrites edits made between submit and now. custom_ids present in the
     record map but missing from the results (e.g. OpenAI expired requests) are
     counted as failures. Returns a summary with the mutated Note objects.
+    Does NOT mark batches applied — the caller does that via mark_applied()
+    once the notes are committed.
     """
     note_cache: dict = {}
     changed_nids: set = set()
@@ -667,7 +728,6 @@ def apply_results(col, ended: dict) -> dict:
                 failed += 1
                 stats.record_request(provider, meta.get("model", ""), 0, 0,
                                      error=True, field_generated=False)
-        _update_status(bid, "applied")
 
     changed_notes = [note_cache[nid] for nid in changed_nids if note_cache.get(nid)]
     return {"changed_notes": changed_notes,

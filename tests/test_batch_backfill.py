@@ -288,12 +288,15 @@ class SubmitOpenAIChunkingTests(unittest.TestCase):
         self.assertEqual(calls["n"], 0)
         self.assertTrue(any("odłożono 3" in e for e in errors))
 
-    def test_non_quota_error_does_not_defer(self):
+    def test_create_error_stops_the_run(self):
         module = load_batch_backfill(_iter)
-        # singleton chunks; failures keep running-total at 0 so every chunk is tried
+        # singleton chunks; the first failed create stops the run — each retry
+        # would waste another input-file upload on the same doomed call
         cfg = {"openai_batch_token_budget": 250, "openai_batch_output_reserve": 100}
+        calls = {"n": 0}
 
         def fake_submit(chunk, config):
+            calls["n"] += 1
             return None, "boom"
 
         with patch.object(module, "_submit_openai", side_effect=fake_submit), \
@@ -302,7 +305,39 @@ class SubmitOpenAIChunkingTests(unittest.TestCase):
             records, errors = module.submit(self._oa_items(3), cfg)
 
         self.assertEqual(records, [])
-        self.assertEqual(len(errors), 3)            # every chunk tried, none deferred
+        self.assertEqual(calls["n"], 1)             # no retries within one run
+        self.assertTrue(any("boom" in e for e in errors))
+        # non-quota errors don't start the backoff window
+        with patch.object(module, "_pending_openai_tokens", return_value=0):
+            self.assertGreater(module.openai_budget_left(cfg), 0)
+
+    def test_enqueued_limit_backs_off(self):
+        module = load_batch_backfill(_iter)
+        cfg = {"openai_batch_token_budget": 250, "openai_batch_output_reserve": 100}
+        calls = {"n": 0}
+
+        def fake_submit(chunk, config):
+            calls["n"] += 1
+            return None, "400 - Enqueued token limit reached for gpt-x"
+
+        with patch.object(module, "_submit_openai", side_effect=fake_submit), \
+             patch.object(module, "_pending_openai_tokens", return_value=0), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(self._oa_items(3), cfg)
+
+        self.assertEqual(records, [])
+        self.assertEqual(calls["n"], 1)             # one rejection stops the run
+        self.assertTrue(any("odłożono 3" in e for e in errors))
+        with patch.object(module, "_pending_openai_tokens", return_value=0):
+            self.assertEqual(module.openai_budget_left(cfg), 0)   # backoff active
+        # while backing off, submit defers everything without a single create
+        with patch.object(module, "_submit_openai", side_effect=fake_submit), \
+             patch.object(module, "_pending_openai_tokens", return_value=0), \
+             patch.object(module, "_append_record"):
+            records2, errors2 = module.submit(self._oa_items(2), cfg)
+        self.assertEqual(records2, [])
+        self.assertEqual(calls["n"], 1)             # untouched
+        self.assertTrue(any("odłożono 2" in e for e in errors2))
 
 
 class JobStoreTests(unittest.TestCase):
@@ -340,6 +375,13 @@ class JobStoreTests(unittest.TestCase):
         self.assertFalse(self.m.job_expired(fresh))
         self.assertTrue(self.m.job_expired(old))
         self.assertFalse(self.m.job_expired({"created_at": "garbage"}))
+
+    def test_mark_applied_persists_after_commit(self):
+        self.m._append_record({"id": "b1", "provider": "openai",
+                               "status": "in_progress", "map": {}})
+        self.assertEqual(len(self.m.pending_batches()), 1)
+        self.m.mark_applied(["b1"])
+        self.assertEqual(self.m.pending_batches(), [])
 
     def test_pending_openai_tokens_sums_only_in_progress(self):
         self.m._append_record({"id": "b1", "provider": "openai",
