@@ -454,6 +454,23 @@ def add_to_context_menu(browser: Browser, menu):
                 )
                 batch_menu.addAction(action)
 
+        if manual_fields:
+            batch_menu.addSeparator()
+            blocked_all = QAction("Wyślij zaznaczone — wszystkie zablokowane", browser)
+            qconnect(
+                blocked_all.triggered,
+                lambda: _on_batch_submit(browser, only_fields=set(manual_fields)),
+            )
+            batch_menu.addAction(blocked_all)
+            for field_name in manual_fields:
+                action = QAction(f"Batch (zablokowane): {field_name}", browser)
+                qconnect(
+                    action.triggered,
+                    lambda _checked=False, fn=field_name:
+                        _on_batch_submit(browser, only_fields={fn}),
+                )
+                batch_menu.addAction(action)
+
         batch_menu.addSeparator()
         check_action = QAction("Sprawdź batche i zastosuj wyniki", browser)
         qconnect(check_action.triggered, lambda: check_pending_batches(silent=False))
