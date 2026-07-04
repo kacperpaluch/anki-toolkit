@@ -10,11 +10,12 @@ The tab is rebuilt by refresh(cfg) every time it becomes visible, so it
 reflects unsaved changes made in the other tabs of the dialog.
 """
 
+from collections import Counter
 from typing import Callable, Optional
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QFrame, QPushButton, Qt,
+    QFrame, QProgressBar, QPushButton, Qt,
 )
 
 from ..common import plural_pl
@@ -164,6 +165,7 @@ class StatusTab(QWidget):
     def refresh(self, cfg: dict) -> None:
         """Rebuild the dashboard from the given (possibly unsaved) config."""
         self._pal = _palette()
+        self._last_cfg = cfg  # for the batch-progress "Odśwież" button
         _clear_layout(self._layout)
 
         # Dashboard shows one representative workflow as a module-readiness check.
@@ -189,6 +191,7 @@ class StatusTab(QWidget):
 
         self._add_header(cfg, workflow, steps, issues)
         self._add_quick_actions()
+        self._add_batch_progress()
         self._add_pipeline(cfg, steps, statuses)
         self._add_issues(cfg, issues)
         self._add_utility_row(cfg)
@@ -351,6 +354,77 @@ class StatusTab(QWidget):
     # ------------------------------------------------------------------
     # Sections
     # ------------------------------------------------------------------
+
+    def _add_batch_progress(self) -> None:
+        """Batch API — live progress of pending batches and backfill jobs.
+
+        Data comes from user_files/ai_batches.json (not the config), so the
+        section shows only when something is actually running. The whole tab
+        is rebuilt on every visit, so re-entering Start also refreshes this."""
+        try:
+            from ..ai_generator import batch_backfill
+            jobs = batch_backfill.active_jobs()
+            pending = batch_backfill.pending_batches()
+        except Exception:
+            return
+        if not jobs and not pending:
+            return
+
+        pal = self._pal
+        group = QGroupBox("Batch API — postęp")
+        box = QVBoxLayout(group)
+        box.setSpacing(6)
+
+        if pending:
+            per = Counter(b.get("provider", "?") for b in pending)
+            detail = ", ".join(f"{p}: {c}" for p, c in sorted(per.items()))
+            reqs = sum(int(b.get("count") or 0) for b in pending)
+            text = (f"Batche w toku: {len(pending)} ({detail}) — "
+                    f"{reqs} zapytań czeka na wyniki.")
+        else:
+            text = ("Brak batchy w toku — kolejny plaster zadania zostanie "
+                    "wysłany przy najbliższym sprawdzeniu (co minutę).")
+        line = QLabel(text)
+        line.setWordWrap(True)
+        box.addWidget(line)
+
+        for job in jobs:
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"Zadanie z {job.get('created_at', '?')}:"))
+            total = int(job.get("total") or 0)
+            if total:
+                sent = min(int(job.get("sent") or 0), total)
+                bar = QProgressBar()
+                bar.setRange(0, total)
+                bar.setValue(sent)
+                bar.setFormat(
+                    f"{sent:,} / {total:,} zapytań wysłanych (%p%)".replace(",", " ")
+                )
+                row.addWidget(bar, 1)
+            else:
+                legacy = QLabel("w toku (starsze zadanie bez licznika)")
+                legacy.setStyleSheet(f"color: {pal['muted']};")
+                row.addWidget(legacy, 1)
+            box.addLayout(row)
+
+        buttons = QHBoxLayout()
+        check_btn = QPushButton("Sprawdź batche teraz")
+        check_btn.setToolTip("Pobierz wyniki gotowych batchy i doślij kolejny plaster.")
+        check_btn.clicked.connect(self._check_batches_now)
+        refresh_btn = QPushButton("Odśwież")
+        refresh_btn.clicked.connect(lambda: self.refresh(self._last_cfg))
+        buttons.addWidget(check_btn)
+        buttons.addWidget(refresh_btn)
+        buttons.addStretch()
+        box.addLayout(buttons)
+
+        self._layout.addWidget(group)
+
+    def _check_batches_now(self) -> None:
+        # ponytail: poll+apply działa w tle — klik „Odśwież” po chwili pokaże
+        # nowy stan; auto-refresh po zakończeniu wymagałby callbacka przez UI.
+        from ..ai_generator.browser_ui import check_pending_batches
+        check_pending_batches(silent=False)
 
     def _add_quick_actions(self) -> None:
         """Row of shortcut buttons to the tabs people configure most often."""

@@ -37,9 +37,10 @@ if _enabled("ai_generator"):
     ai_generator.migrate_workflows()  # legacy single workflow → workflows list
     gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
     # Auto-poll oczekujące batche po otwarciu profilu (kolekcja gotowa) + cyklicznie
-    # co 5 min: pobiera wyniki gotowych batchy i auto-dosyła kolejne plastry zadań
-    # (hands-off, poniżej limitu kolejki tokenów OpenAI). Timer trzyma referencję
-    # na mw, żeby GC go nie usunął.
+    # co minutę: pobiera wyniki gotowych batchy i auto-dosyła kolejne plastry zadań
+    # (hands-off, poniżej limitu kolejki tokenów OpenAI). Poll to jeden darmowy GET
+    # statusu per batch, a batche kończą się w 20 s – 6 min, więc częsty tick skraca
+    # czas między paczkami. Timer trzyma referencję na mw, żeby GC go nie usunął.
     gui_hooks.profile_did_open.append(
         lambda: ai_generator.check_pending_batches(silent=True)
     )
@@ -50,7 +51,7 @@ if _enabled("ai_generator"):
             old.stop()
             old.deleteLater()
         mw._ankitoolkit_batch_timer = QTimer(mw)
-        mw._ankitoolkit_batch_timer.setInterval(5 * 60 * 1000)
+        mw._ankitoolkit_batch_timer.setInterval(60 * 1000)
         mw._ankitoolkit_batch_timer.timeout.connect(
             lambda: ai_generator.check_pending_batches(silent=True)
         )

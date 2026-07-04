@@ -262,6 +262,9 @@ def check_pending_batches(silent: bool = True):
             if still:
                 parts.append(f"w toku: {still}")
             msg = " · ".join(parts)
+            # Tooltip znika po kilku sekundach — zostaw trwały ślad w logach,
+            # symetrycznie do logu „Batch ... wysłany" przy submit.
+            logger.info(msg)
         elif not silent:
             parts = [f"W toku: {still}"]
             if errors:
@@ -325,7 +328,7 @@ def _advance_jobs(config: dict):
         only = set(job["only_fields"]) if job.get("only_fields") else None
         found = capped = False
         # Build note-by-note and stop at the token budget — rendering prompts
-        # for the WHOLE remainder (tens of thousands of fields) every 5-min
+        # for the WHOLE remainder (tens of thousands of fields) every poll
         # tick just to defer them again froze the UI for no gain.
         # ponytail: anthropic items also count toward the (OpenAI) cap; they'd
         # merely wait one extra tick.

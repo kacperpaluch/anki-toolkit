@@ -61,7 +61,7 @@ _ENQUEUED_LIMIT_HINT = "enqueued"  # substring of OpenAI's "Enqueued token limit
 # failed/completed batches (observed 2026-07-04: every create 400'd for 2h+
 # with nothing visibly enqueued). While it's stuck every create fails, so after
 # one enqueued-limit rejection we stop trying for a while instead of uploading
-# a fresh input file every 5-min tick.
+# a fresh input file every poll tick.
 _OPENAI_BACKOFF_S = 30 * 60
 _openai_blocked_until = 0.0
 
@@ -355,7 +355,7 @@ def submit(items, config: dict) -> tuple:
     deferred = 0
     # After ANY failed create the next chunk would fail the same way, and each
     # attempt wastes a full input-file upload — one failure stops this run
-    # (the 5-min poll cycle is the retry).
+    # (the 1-min poll cycle is the retry).
     blocked = time.time() < _openai_blocked_until
     for model, group in by_model.items():
         for chunk in _chunk_by_tokens(group, budget, reserve):
@@ -673,6 +673,10 @@ def poll_results(config: dict) -> tuple:
         status, results = poller(rec, config)
         if status == "ended":
             ended[rec["id"]] = {"record": rec, "results": results or []}
+            logger.info(
+                f"Batch {rec.get('provider', 'anthropic')} zakończony: {rec['id']} "
+                f"({len(results or [])} wyników z {rec.get('count', '?')} zapytań)"
+            )
         elif status == "pending":
             still += 1
         else:
