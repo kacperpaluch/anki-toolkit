@@ -1,6 +1,6 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca dziewięć narzędzi do zarządzania kartami Anki.
+Scalona wtyczka łącząca dziesięć narzędzi do zarządzania kartami Anki.
 
 ## Struktura
 
@@ -38,6 +38,7 @@ anki-toolkit/
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
 │   ├── deck_router_tab.py           # Zakładka: Deck Router — tabela reguł tag → talia
+│   ├── field_hider_tab.py           # Zakładka: Ukrywanie pól — checkboxy pól chowanych w oknie „Dodaj”
 │   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI + koszty
 │   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów
 │
@@ -108,6 +109,11 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── field_hider/                     # Moduł 10: chowanie pól w oknie „Dodaj”
+│   ├── __init__.py                  # indices_to_hide() + hooki edytora + przycisk 👁
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -147,6 +153,7 @@ Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
 | **Deck Router** | Tabela reguł tag → talia (szablon i talia z list rozwijanych); kieruje karty do talii wg tagu notatki |
+| **Ukrywanie pól** | Wybór typu notatki + checkboxy pól chowanych w oknie „Dodaj" (nie rusza przeglądarki ani edycji istniejących kart) |
 | **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 | **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
 
@@ -168,7 +175,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "nbsp_remover":      true,
     "field_splitter":    true,
     "sibling_manager":   true,
-    "deck_router":       true
+    "deck_router":       true,
+    "field_hider":       true
 }
 ```
 
@@ -543,6 +551,26 @@ Konfiguracja w **Ustawienia → Deck Router** — tabela reguł. Szablon i talia
         {"tag": "abc123", "template": "pol-ang", "deck": "Angielski::Osobne::pol-ang"},
         {"tag": "abc123", "deck": "Angielski::Osobne"}
     ]
+}
+```
+
+### Ukrywanie pól (`field_hider`)
+
+Chowa wybrane pola w edytorze **tylko w oknie „Dodaj”** — w przeglądarce i przy edycji istniejących kart pola pozostają widoczne. Przydatne dla pól pomocniczych wypełnianych później automatycznie (np. `p1`, `p1-nauka` uzupełniane przez AI/TTS/rozdzielanie pól): przy ręcznym dodawaniu karty tylko rozpraszają.
+
+**Zasada działania:**
+1. Konfiguracja = mapa `{typ notatki: [nazwy pól do ukrycia]}`.
+2. Chowanie działa **wyłącznie w trybie „Dodaj”** (`editor.addMode`). W przeglądarce/edycji istniejącej karty hook kończy się od razu.
+3. Ukrycie jest **czysto wizualne** (wstrzyknięty CSS `display: none`) — nic nie jest kasowane w notatce; pole nadal istnieje i może zostać wypełnione później.
+4. Przycisk **👁** w pasku edytora „Dodaj” tymczasowo pokazuje schowane pola bez zmiany konfiguracji.
+
+Konfiguracja w **Ustawienia → Ukrywanie pól** — wybierasz typ notatki, zaznaczasz pola do ukrycia (pobierane z kolekcji, bez literówek).
+
+```json
+"field_hider": {
+    "hidden_fields": {
+        "angielski": ["p1", "p2", "p3", "p1-nauka", "p2-nauka", "p3-nauka"]
+    }
 }
 ```
 

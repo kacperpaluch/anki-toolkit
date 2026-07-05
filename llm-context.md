@@ -60,6 +60,7 @@ anki-toolkit/
 │   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
 │   ├── narzedzia_tab.py             # Zakładka: Narzędzia
 │   ├── deck_router_tab.py           # Zakładka: Deck Router — tabela reguł tag → talia + przycisk „Uporządkuj istniejące karty…”
+│   ├── field_hider_tab.py           # Zakładka: Ukrywanie pól — combo typu notatki + checkboxy pól
 │   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI
 │   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów wtyczki
 │
@@ -134,6 +135,11 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── field_hider/                     # Moduł 10 — chowanie pól tylko w oknie „Dodaj”
+│   ├── __init__.py                  # indices_to_hide() + hooki edytora + przycisk 👁
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/
     └── test_pure_logic.py           # testy czystej logiki bez uruchamiania Anki
 ```
@@ -152,6 +158,7 @@ anki-toolkit/
 | `field_splitter/` | Rozdziela pole źródłowe (np. `przyklad`) po separatorze (`<br><br>`) i **kopiuje** części do pól docelowych (`p1`, `p2`, `p3`…); source nietknięte; browser context menu (batch) + Tools menu (kolekcja); zapis jednym `CollectionOp` | `add_to_context_menu(browser, menu)` + `setup_menu(parent_menu)` |
 | `sibling_manager/` | Dynamiczne zawieszanie siblingów: po odpowiedzi na kartę (hook `reviewer_did_answer_card`) zawiesza NEW siblingi dopóki aktywna karta nie dojrzeje (interval ≥ próg, default 30 dni); gdy dojrzeje uwalnia wszystkie zawieszone na raz; karty w nauce/review nie są dotykane; tag `tk-sib-suspended` na notatce; `ignore_tag` wyłącza moduł per-notatka; **sync catch-up**: hook `sync_did_finish` → batch scan wszystkich notatek z NEW siblingami (`process_note_sync` — sprawdza wszystkie non-NEW karty, nie zna konkretnej odpowiedzi); `process_note`/`process_note_sync` zwracają `(suspended, unsuspended)`; **logi**: `log.info` z licznikami po review + po sync scan; **tooltip** po sync scan ("zawieszono X, odwieszono Y", gated przez `show_tooltip`); reaktywny alternatywa dla SibPush; Tools menu → unsuspend all + manual sync catch-up (`CollectionOp`); batch ops zwracają `_changes_for_ui()` (OpChanges `card`/`note`/`study_queues`) po realnej mutacji zamiast pustego `OpChanges()` — inaczej UI nie odświeżało się od razu | `gui_hooks.reviewer_did_answer_card` + `gui_hooks.sync_did_finish` + `setup_menu(parent_menu)` |
 | `deck_router/` | Kierowanie kart do talii wg **tagu notatki** (+ opcjonalnie szablonu) — uzupełnia natywny Deck Override (tylko per-szablon). Reguła `{tag, template?, deck}`; `match_deck(tags, template_name, rules)` (czysta) zwraca deck pierwszej pasującej reguły albo `None` (tag na notatce **oraz** szablon zgodny/pusty=wszystkie); `_apply(col, note_ids, rules)` przenosi karty `col.set_deck` do `col.decks.id(deck, create=True)`, pomija już-właściwe i bez dopasowania (notatka bez reguły nietknięta); trzy wyzwalacze: hook `add_cards_did_add_note` (okno Dodaj), `route_after_edit(parent, note_ids)` wołane z `ai_generator/browser_ui._save_changed_notes` (po AI-batchu/workflow; guard `_module_enabled()`+reguły w środku, soft-import = brak twardej zależności), `setup_menu`/`run_reorganize(rules=None)`/`confirm_reorganize` → retro `col.find_notes` po tagach reguł (`CollectionOp`); UI `DeckRouterTab` (tabela, szablon+talia z list rozwijanych z kolekcji, talia edytowalna, przycisk „Uporządkuj istniejące karty…" działający na regułach z tabeli) | `gui_hooks.add_cards_did_add_note` + `route_after_edit` + `setup_menu(parent_menu)` |
+| `field_hider/` | Chowa pola w edytorze **tylko w oknie „Dodaj”** (guard `editor.addMode` — w przeglądarce/edycji istniejącej karty hook wychodzi od razu). `indices_to_hide(field_names, targets)` (czysta) → 0-based indeksy pól do ukrycia; `on_editor_load_note` wstrzykuje `<style id="hf-style">` z `body:not(.hf-reveal) .field-container[data-index="i"]{display:none!important}` przez `editor.web.eval` (idempotentne, CSS przez `json.dumps`); ukrycie **czysto wizualne**, nic nie kasuje w notatce; `on_editor_buttons_init` dodaje przycisk 👁 (tylko w „Dodaj”) togglujący klasę `hf-reveal` na `<body>` → tymczasowo odsłania. Config `{typ_notatki: [pola]}`; UI `FieldHiderTab` (combo typu + checkboxy pól, `_store_current()` przed przełączeniem typu). Adaptacja wtyczki `anki-hide` (dodano guard `addMode`). Brak `setup_menu` | `gui_hooks.editor_did_load_note` + `gui_hooks.editor_did_init_buttons` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -252,7 +259,8 @@ Zakładki (9 zakładek):
     "nbsp_remover":      true,
     "field_splitter":    true,
     "sibling_manager":   true,
-    "deck_router":       true
+    "deck_router":       true,
+    "field_hider":       true
 }
 ```
 
@@ -271,6 +279,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
 | `sibling_manager` | `sibling_manager/` | Zakładka Narzędzia (sekcja Sibling Manager) |
 | `deck_router` | `deck_router/` | Zakładka Deck Router (tabela reguł tag → talia) |
+| `field_hider` | `field_hider/` | Zakładka Ukrywanie pól (combo typu notatki + checkboxy pól) |
 | `workflows` | `ai_generator/` | Zakładka Workflowy (lista nazwanych workflowów) |
 | `context_menu` | `ai_generator/` | Zakładka Workflowy (widoczność wbudowanych sekcji PPM) |
 
@@ -407,6 +416,7 @@ settings/__init__.py            (SettingsDialog, open_settings); używa common/A
     ├── narzedzia_tab.py        (NarzedziaTab); używa common/ui widgetów
     ├── workflows_tab.py        (WorkflowsTab + WorkflowEditDialog); używa common/ui widgetów, ai_generator/workflow DEFAULT_CONTEXT_MENU
     ├── deck_router_tab.py      (DeckRouterTab — tabela reguł + _collect_rules + przycisk „Uporządkuj istniejące karty…" → deck_router.confirm_reorganize); używa common/ui hint_label
+    ├── field_hider_tab.py      (FieldHiderTab — combo typu notatki + checkboxy pól; _store_current() zapisuje stan przed przełączeniem typu); używa common/ui hint_label, get_note_type_names, get_fields_for_note_type
     ├── logs_tab.py             (LogsTab); używa common/debug_log
     └── stats_tab.py            (StatsTab); używa ai_generator/stats get_stats, reset_stats
 
@@ -427,6 +437,9 @@ sibling_manager/
 deck_router/
     ├── logic.py                (match_deck(tags, template_name, rules) — pierwsza pasująca reguła wygrywa; bez importów Anki, testowalne)
     └── __init__.py             (on_add_note hook + route_after_edit CollectionOp + run_reorganize/confirm_reorganize/setup_menu retro; _apply przenosi col.set_deck do col.decks.id(create=True); używa common/config get_module_config)
+
+field_hider/
+    └── __init__.py             (indices_to_hide(field_names, targets) — czyste jądro, testowalne + self-check pod __main__; on_editor_load_note wstrzykuje CSS chowający pola przez editor.web.eval, guard editor.addMode = tylko okno „Dodaj"; on_editor_buttons_init dodaje przycisk 👁 togglujący hf-reveal; używa common/config get_module_config)
 ```
 
 ---

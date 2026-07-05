@@ -89,6 +89,14 @@ if _enabled("deck_router"):
     gui_hooks.add_cards_did_add_note.append(deck_router.on_add_note)
 
 # ---------------------------------------------------------------------------
+# field_hider — chowa wybrane pola TYLKO w oknie „Dodaj” (nie w przeglądarce)
+# ---------------------------------------------------------------------------
+if _enabled("field_hider"):
+    from . import field_hider
+    gui_hooks.editor_did_load_note.append(field_hider.on_editor_load_note)
+    gui_hooks.editor_did_init_buttons.append(field_hider.on_editor_buttons_init)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.

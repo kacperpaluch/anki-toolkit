@@ -8,7 +8,8 @@
         "nbsp_remover":      true,
         "field_splitter":    true,
         "sibling_manager":   true,
-        "deck_router":       true
+        "deck_router":       true,
+        "field_hider":       true
     },
 
     "dictionary": {
@@ -127,6 +128,10 @@
 
     "deck_router": {
         "rules": []
+    },
+
+    "field_hider": {
+        "hidden_fields": {}
     },
 
     "ai_generator": {

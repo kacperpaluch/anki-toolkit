@@ -20,6 +20,7 @@ from .tts_tab import TTSTab
 from .audio_normalizer_tab import AudioNormalizerTab
 from .narzedzia_tab import NarzedziaTab
 from .deck_router_tab import DeckRouterTab
+from .field_hider_tab import FieldHiderTab
 from .stats_tab import StatsTab
 from .logs_tab import LogsTab
 
@@ -53,6 +54,7 @@ class SettingsDialog(QDialog):
             ("Moduły",       "🧩", ModulesTab(cfg),         "System"),
             ("Narzędzia",    "🛠", NarzedziaTab(cfg),       "System"),
             ("Deck Router",  "🎯", DeckRouterTab(cfg),      "System"),
+            ("Ukrywanie pól","🙈", FieldHiderTab(cfg),      "System"),
             ("Normalizacja", "🎚", AudioNormalizerTab(cfg), "System"),
             ("Statystyki",   "📊", StatsTab(cfg),           "Wgląd"),
             ("Logi",         "📜", LogsTab(cfg),            "Wgląd"),
