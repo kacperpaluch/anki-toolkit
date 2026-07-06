@@ -97,6 +97,14 @@ if _enabled("field_hider"):
     gui_hooks.editor_did_init_buttons.append(field_hider.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
+# web_bridge — HTTP mostek (127.0.0.1:8766): userscript słownikowy (diki.pl /
+# Oxford / Longman) wpisuje pola do otwartego okna „Dodaj”
+# ---------------------------------------------------------------------------
+if _enabled("web_bridge"):
+    from . import web_bridge
+    gui_hooks.profile_did_open.append(web_bridge.start_server)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.

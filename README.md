@@ -114,6 +114,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── web_bridge/                      # Moduł 11: mostek HTTP strona WWW → okno „Dodaj”
+│   ├── __init__.py                  # serwer HTTP 127.0.0.1:8766 + wpis pól do edytora
+│   ├── dictionaries-to-anki.user.js # userscript: diki / Oxford / Longman / Cambridge → Anki
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -176,7 +182,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "field_splitter":    true,
     "sibling_manager":   true,
     "deck_router":       true,
-    "field_hider":       true
+    "field_hider":       true,
+    "web_bridge":        true
 }
 ```
 
@@ -573,6 +580,18 @@ Konfiguracja w **Ustawienia → Ukrywanie pól** — wybierasz typ notatki, zazn
     }
 }
 ```
+
+### Web Bridge (`web_bridge`)
+
+Mostek HTTP **strona WWW → otwarte okno „Dodaj"**. Klikasz przycisk na słowniku w przeglądarce, a tekst wpisuje się do pola aktualnie otwartej karty — nic nie zapisuje się samo (zatwierdzasz Enterem). W odróżnieniu od AnkiConnect `guiAddCards` (zamyka i otwiera okno na nowo, podmieniając całą notatkę) **rusza tylko wskazane pola w oknie, które już masz otwarte**.
+
+**Zasada działania:**
+1. Moduł wystawia serwer HTTP na `127.0.0.1:8766` (osobny wątek). `POST {"fields": {"nazwa_pola": "wartość"}}` wpisuje te pola do edytora otwartego okna „Dodaj”.
+2. Okno „Dodaj” musi być otwarte — inaczej endpoint zwraca błąd. Które pole dostaje jaką wartość decyduje **strona wysyłająca**, więc moduł jest uniwersalny.
+3. Dołączony userscript [`web_bridge/dictionaries-to-anki.user.js`](web_bridge/dictionaries-to-anki.user.js) dodaje przyciski na **diki.pl** (hasło → `ang`, tłumaczenie → `pol`, „oba”), **Oxford Learner's**, **Longman/LDOCE** i **Cambridge** (hasło → `ang`, definicja → `def`, przykłady → `przyklad` **doklejane** przez `<br><br>`; Cambridge EN-PL dodatkowo tłumaczenie → `pol`). Nazwy pól zmienisz w bloku `FIELDS` na górze skryptu.
+4. Userscript strzela przez `GM_xmlhttpRequest`/`GM.xmlHttpRequest` (omija *mixed content* https→http://127.0.0.1 i CORS), więc **AnkiConnect nie jest potrzebny**.
+
+Bez własnej zakładki — port i mapowanie pól są w kodzie/userscripcie. Włączanie: **Ustawienia → Moduły** (`modules.web_bridge`). Szczegóły: [`web_bridge/README.md`](web_bridge/README.md).
 
 ---
 

@@ -9,7 +9,8 @@
         "field_splitter":    true,
         "sibling_manager":   true,
         "deck_router":       true,
-        "field_hider":       true
+        "field_hider":       true,
+        "web_bridge":        true
     },
 
     "dictionary": {
