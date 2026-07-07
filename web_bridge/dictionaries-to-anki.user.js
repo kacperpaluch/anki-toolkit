@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.3
+// @version      4.4
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8766). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -111,11 +111,11 @@
   // ── Oxford / LDOCE — przycisk przy każdym elemencie pasującym do selektora ───
   // Oxford: definicja .def (w .sensetop), przykład .x; LDOCE: definicja .DEF, przykład .EXAMPLE.
   // opts.append=true dla przykładów → doklejane z separatorem po stronie mostka.
-  function injectButtons(selector, label, field, opts) {
+  function injectButtons(selector, label, field, opts, getText) {
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.ankiDone) return;      // dataset = pewny znacznik, niezależny od sąsiadów
       el.dataset.ankiDone = '1';
-      const text = clean(el.textContent);
+      const text = getText ? getText(el) : clean(el.textContent);
       if (!text) return;
       el.after(makeBtn(label, () => ({ [field]: text }), opts));
     });
@@ -127,7 +127,12 @@
       injectDiki();
     } else if (host.includes('oxfordlearnersdictionaries.com')) {
       injectButtons('h1.headword', '→ hasło', FIELDS.headword);
-      injectButtons('.def', '→ def', FIELDS.definition);
+      // Oxford: „(of a person)” siedzi w osobnym .dis-g tuż przed .def — doklej go jako prefiks
+      injectButtons('.def', '→ def', FIELDS.definition, {}, (el) => {
+        const dis = el.previousElementSibling;
+        const prefix = dis && dis.classList.contains('dis-g') ? clean(dis.textContent) + ' ' : '';
+        return prefix + clean(el.textContent);
+      });
       injectButtons('.x', '+ przykład', FIELDS.example, { append: true });
     } else if (host.includes('ldoceonline.com')) {
       injectButtons('.HWD', '→ hasło', FIELDS.headword);
