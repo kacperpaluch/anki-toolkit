@@ -13,6 +13,7 @@ otwarte, inaczej endpoint zwraca błąd.
 import json
 import logging
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:
@@ -24,8 +25,26 @@ except ImportError:  # pozwala odpalić self-check (__main__) bez Anki
 logger = logging.getLogger(__name__)
 
 HOST, PORT = "127.0.0.1", 8766
+MAX_BODY = 1_000_000  # 1 MB — pola słownikowe to kilobajty
+
+# Strony z userscripta. GM_xmlhttpRequest nie wysyła nagłówka Origin (brak → OK);
+# przeglądarka przy cross-origin POST wysyła go ZAWSZE, więc żądania fetch()
+# z innych witryn są odrzucane — obca strona nie wstrzyknie pól do okna „Dodaj".
+ALLOWED_ORIGIN_HOSTS = {
+    "www.diki.pl",
+    "www.oxfordlearnersdictionaries.com",
+    "www.ldoceonline.com",
+    "dictionary.cambridge.org",
+}
 
 _server = None  # trzyma referencję, żeby przetrwał między przełączeniami profilu
+
+
+def _origin_allowed(origin: str | None) -> bool:
+    if not origin:
+        return True  # GM_xmlhttpRequest / curl / lokalne skrypty
+    host = urllib.parse.urlparse(origin).hostname
+    return host in ALLOWED_ORIGIN_HOSTS
 
 
 def _join(existing: str, value: str, separator: str) -> str:
@@ -86,10 +105,13 @@ def _run_on_main_sync(fn, timeout=5):
 
 class _Handler(BaseHTTPRequestHandler):
     def _cors(self):
-        origin = self.headers.get("Origin", "*")
-        self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Nagłówki CORS tylko dla dozwolonych originów — ale to walidacja
+        # w do_POST faktycznie blokuje (simple request text/plain omija preflight).
+        origin = self.headers.get("Origin")
+        if origin and _origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def do_OPTIONS(self):  # preflight
         self.send_response(200)
@@ -97,8 +119,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if not _origin_allowed(self.headers.get("Origin")):
+            self.send_response(403)
+            self.end_headers()
+            return
         try:
-            length = int(self.headers.get("Content-Length", 0))
+            length = min(int(self.headers.get("Content-Length", 0)), MAX_BODY)
             body = json.loads(self.rfile.read(length) or b"{}")
             fields = body.get("fields")
             if not isinstance(fields, dict) or not fields:

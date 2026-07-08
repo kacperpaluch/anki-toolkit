@@ -47,9 +47,10 @@ OPTIONS → 200 (+ nagłówki CORS)
 
 ### `_Handler(BaseHTTPRequestHandler)`
 
-- `_cors()` — echo `Origin` (fallback `*`), `Allow-Methods: POST, OPTIONS`, `Allow-Headers: Content-Type`. Dzięki temu userscript/`fetch` z `https://<słownik>` przechodzi bez konfiguracji AnkiConnect.
-- `do_OPTIONS` — preflight → `200` + CORS.
-- `do_POST` — czyta `Content-Length` bajtów, `json.loads`, waliduje `body["fields"]` (musi być niepustym dict), woła `_run_on_main_sync(lambda: _apply_fields(fields))`. Zawsze odpowiada `200` z `{"ok": not error, "error": error}` (błędy logiczne w polu `error`, nie w kodzie HTTP). Cały blok w `try/except` → wyjątek parsowania też ląduje jako `error`.
+- `_origin_allowed(origin)` — allowlista hostów `ALLOWED_ORIGIN_HOSTS` (domeny z userscripta). **Brak nagłówka `Origin` → dozwolone** (GM_xmlhttpRequest/curl go nie wysyłają; przeglądarka przy cross-origin POST wysyła ZAWSZE) — dzięki temu obca strona WWW nie wstrzyknie pól przez `fetch()`, nawet simple requestem `text/plain` omijającym preflight.
+- `_cors()` — nagłówki CORS (`Allow-Origin: <origin>`, `Allow-Methods`, `Allow-Headers`) tylko gdy `Origin` obecny i na allowliście; faktyczną blokadą jest jednak walidacja w `do_POST`, nie CORS.
+- `do_OPTIONS` — preflight → `200` (+ CORS jeśli origin dozwolony).
+- `do_POST` — najpierw `_origin_allowed` (**niedozwolony `Origin` → `403` bez przetwarzania**), potem czyta `Content-Length` bajtów (cap `MAX_BODY` = 1 MB), `json.loads`, waliduje `body["fields"]` (musi być niepustym dict), woła `_run_on_main_sync(lambda: _apply_fields(fields))`. Poza 403 zawsze odpowiada `200` z `{"ok": not error, "error": error}` (błędy logiczne w polu `error`, nie w kodzie HTTP). Cały blok w `try/except` → wyjątek parsowania też ląduje jako `error`.
 - `log_message` nadpisane na `pass` — cisza w konsoli Anki.
 
 ### `_apply_fields(fields, append=False, separator="<br><br>") -> str | None` (WĄTEK GŁÓWNY)

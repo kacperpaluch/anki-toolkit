@@ -668,9 +668,9 @@ def poll_results(config: dict) -> tuple:
     for rec in pending_batches():
         poller = _POLLERS.get(rec.get("provider", "anthropic"))
         if poller is None:
-            errors.append(rec["id"])
-            continue
-        status, results = poller(rec, config)
+            status, results = "error", None
+        else:
+            status, results = poller(rec, config)
         if status == "ended":
             ended[rec["id"]] = {"record": rec, "results": results or []}
             logger.info(
@@ -679,9 +679,28 @@ def poll_results(config: dict) -> tuple:
             )
         elif status == "pending":
             still += 1
+        elif _batch_expired(rec):
+            # Trwale nieodpytywalny (np. 404 po retencji wyników) — bez tego
+            # wisiałby w in_progress na zawsze i inflight_fields() blokowałoby
+            # jego pola dla wszystkich przyszłych batchy.
+            _set_status([rec["id"]], "expired")
+            logger.warning(f"Batch {rec['id']}: błąd odpytania od >{_BATCH_MAX_AGE_D} dni — porzucam")
         else:
             errors.append(rec["id"])
     return ended, still, errors
+
+
+# Anthropic trzyma wyniki 29 dni, batche OpenAI kończą się w 24h — błąd
+# odpytania utrzymujący się tydzień od utworzenia nie jest przejściowy.
+_BATCH_MAX_AGE_D = 7
+
+
+def _batch_expired(rec: dict) -> bool:
+    try:
+        created = datetime.strptime(rec.get("created_at", ""), "%Y-%m-%d %H:%M")
+    except ValueError:
+        return True  # brak/zepsuta data — i tak nigdy się nie odblokuje
+    return datetime.now() - created > timedelta(days=_BATCH_MAX_AGE_D)
 
 
 def _first_text(content) -> Optional[str]:
@@ -708,18 +727,22 @@ def cleanup_openai_files(records, config: dict) -> None:
                 _delete_openai_file(fid, api_key, _timeout(config))
 
 
-def mark_applied(batch_ids) -> None:
-    """Persist 'applied' status. Call AFTER the note changes are committed —
-    marking earlier would lose the results if Anki dies before the commit
-    (the batch would never be polled again). Re-applying after a crash is
-    idempotent (only still-empty fields are written); stats may double-count."""
+def _set_status(batch_ids, status: str) -> None:
     with _LOCK:
         store = _load_store()
         ids = set(batch_ids)
         for b in store["batches"]:
             if b.get("id") in ids:
-                b["status"] = "applied"
+                b["status"] = status
         _save_store(store)
+
+
+def mark_applied(batch_ids) -> None:
+    """Persist 'applied' status. Call AFTER the note changes are committed —
+    marking earlier would lose the results if Anki dies before the commit
+    (the batch would never be polled again). Re-applying after a crash is
+    idempotent (only still-empty fields are written); stats may double-count."""
+    _set_status(batch_ids, "applied")
 
 
 def apply_results(col, ended: dict) -> dict:

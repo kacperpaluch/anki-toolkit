@@ -42,6 +42,14 @@ def _record_tts_stats(provider: str, model: str, chars: int, error: bool) -> Non
         logger.debug("TTS stats: pominięto zapis statystyk", exc_info=True)
 
 
+def _ensure_audio(raw: bytes, label: str) -> bytes:
+    """HTTP 200 z pustym ciałem lub JSON-owym błędem zamiast MP3 nie może trafić
+    do mediów — [sound:...] w polu blokuje ponowną generację na zawsze."""
+    if not raw or raw.lstrip()[:1] in (b"{", b"["):
+        raise Exception(f"{label}: odpowiedź nie jest audio (pusta lub JSON)")
+    return raw
+
+
 def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
     url = config.get("api_url", "http://localhost:8880/v1/audio/speech")
     payload = {
@@ -63,6 +71,7 @@ def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
     )
     if err:
         raise Exception(f"Kokoro API Error: {err}")
+    raw = _ensure_audio(raw, "Kokoro API")
     logger.debug(
         f"Kokoro TTS OK: voice={voice}, {len(raw)} B w {time.time() - t0:.1f}s"
     )
@@ -108,6 +117,7 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     )
     if err:
         raise Exception(f"OpenRouter TTS Error: {err}")
+    raw = _ensure_audio(raw, "OpenRouter TTS")
     logger.debug(
         f"OpenRouter TTS OK: voice={voice}, {len(raw)} B w {time.time() - t0:.1f}s"
     )

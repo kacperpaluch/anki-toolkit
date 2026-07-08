@@ -590,6 +590,7 @@ Mostek HTTP **strona WWW → otwarte okno „Dodaj"**. Klikasz przycisk na słow
 2. Okno „Dodaj” musi być otwarte — inaczej endpoint zwraca błąd. Które pole dostaje jaką wartość decyduje **strona wysyłająca**, więc moduł jest uniwersalny.
 3. Dołączony userscript [`web_bridge/dictionaries-to-anki.user.js`](web_bridge/dictionaries-to-anki.user.js) dodaje przyciski na **diki.pl** (hasło → `ang`, tłumaczenie → `pol`, „oba”), **Oxford Learner's**, **Longman/LDOCE** i **Cambridge** (hasło → `ang`, definicja → `def`, przykłady → `przyklad` **doklejane** przez `<br><br>`; Cambridge EN-PL dodatkowo tłumaczenie → `pol`). Nazwy pól zmienisz w bloku `FIELDS` na górze skryptu.
 4. Userscript strzela przez `GM_xmlhttpRequest`/`GM.xmlHttpRequest` (omija *mixed content* https→http://127.0.0.1 i CORS), więc **AnkiConnect nie jest potrzebny**.
+5. Żądania z nagłówkiem `Origin` spoza allowlisty domen słownikowych dostają `403` — obca strona WWW nie wstrzyknie pól do okna „Dodaj". Żądania bez `Origin` (userscript przez GM, lokalne skrypty) przechodzą.
 
 Bez własnej zakładki — port i mapowanie pól są w kodzie/userscripcie. Włączanie: **Ustawienia → Moduły** (`modules.web_bridge`). Szczegóły: [`web_bridge/README.md`](web_bridge/README.md).
 

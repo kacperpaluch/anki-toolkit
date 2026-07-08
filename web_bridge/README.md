@@ -41,7 +41,9 @@ Enemy forces invaded the small nation without warning.
 
 ### Dlaczego userscript, a nie zwykły `fetch`
 
-Strony słowników są na `https`, a mostek na `http://127.0.0.1` — przeglądarka (zwłaszcza Safari) blokuje takie żądania jako *mixed content*. Userscript strzela przez `GM_xmlhttpRequest` / `GM.xmlHttpRequest` menedżera, co omija i mixed content, i CORS. Serwer i tak zwraca nagłówki CORS, więc AnkiConnect ani jego `webCorsOriginList` **nie są potrzebne**.
+Strony słowników są na `https`, a mostek na `http://127.0.0.1` — przeglądarka (zwłaszcza Safari) blokuje takie żądania jako *mixed content*. Userscript strzela przez `GM_xmlhttpRequest` / `GM.xmlHttpRequest` menedżera, co omija i mixed content, i CORS. Serwer i tak zwraca nagłówki CORS dla dozwolonych domen, więc AnkiConnect ani jego `webCorsOriginList` **nie są potrzebne**.
+
+Bezpieczeństwo: żądanie z nagłówkiem `Origin` spoza allowlisty domen słownikowych (`ALLOWED_ORIGIN_HOSTS` w `__init__.py`) dostaje `403` — obca strona WWW nie wstrzyknie pól do okna „Dodaj". Żądania **bez** `Origin` (GM_xmlhttpRequest, curl, lokalne skrypty) przechodzą — przeglądarka przy cross-origin POST zawsze go wysyła, więc to nie osłabia ochrony. Dodajesz własny słownik przez `fetch()`? Dopisz jego host do `ALLOWED_ORIGIN_HOSTS` (ścieżka przez GM_xmlhttpRequest działa bez zmian).
 
 ## Endpoint / protokół
 
@@ -57,7 +59,8 @@ Content-Type: application/json
 ```
 
 - `append: true` → dokleja wartość do istniejącej treści pola przez `separator` (domyślnie `<br><br>`); puste pole dostaje samą wartość.
-- `OPTIONS` (preflight) → `200` z nagłówkami CORS. Serwer bindowany tylko na `127.0.0.1` (nie wychodzi w sieć).
+- `OPTIONS` (preflight) → `200` z nagłówkami CORS (tylko dla dozwolonych originów). Serwer bindowany tylko na `127.0.0.1` (nie wychodzi w sieć).
+- `Origin` spoza allowlisty → `403`; body powyżej 1 MB jest ucinane.
 
 ## Konfiguracja i włączanie
 
