@@ -234,11 +234,11 @@ def on_add_note(note) -> None:
     if not _configured(cfg):
         return  # nieskonfigurowany → moduł śpi
 
-    # Panel wie, który wiersz robisz → patch po id. Uwaga: gdy panel jest
+    # Widoczny panel wie, który wiersz robisz → patch po id. Uwaga: gdy panel jest
     # otwarty, KAŻDA dodana notatka odhacza bieżący wiersz, także dodana
     # obok kolejki. ponytail: w praktyce panel otwierasz po to, żeby robić
     # kolejkę; gdyby to gryzło — porównaj pole z wierszem przed patchem.
-    if _panel is not None:
+    if _panel is not None and _panel.isVisible():
         _panel.note_added()
         return
 

@@ -91,7 +91,7 @@ Dzięki temu poza domem panel łączy się przez Tailscale bez zmiany ustawień.
 | `max_rows` | `5000` | Bezpiecznik pętli stronicowania |
 | `random_order` | `false` | Startowy stan checkboxa „Losowo" |
 
-Wiersz bez URL-a w danej kolumnie → zakładka wyszarzona. Zakładki ładują się **leniwie**, przy pierwszym wejściu: Chromium na zakładkę to ~100 MB, a Longmana z Oxfordem często nawet nie otwierasz.
+Wiersz bez URL-a w danej kolumnie → zakładka wyszarzona i czyszczona (`about:blank`), żeby nie dało się przypadkiem kliknąć przycisku userscripta na stronie poprzedniego hasła. Zakładki ładują się **leniwie**, przy pierwszym wejściu: Chromium na zakładkę to ~100 MB, a Longmana z Oxfordem często nawet nie otwierasz.
 
 Klucz API trafia do `meta.json` w profilu Anki (poza gitem). Zmiany w Ustawieniach wymagają ponownego otwarcia panelu — konfigurację bierze przy tworzeniu.
 

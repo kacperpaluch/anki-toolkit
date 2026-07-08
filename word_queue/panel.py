@@ -95,7 +95,10 @@ class _DictTabs(QTabWidget):
         self._pending = {i: urls.get(label) or "" for i, label in enumerate(self._labels)}
         self._pending = {i: url for i, url in self._pending.items() if url}
         for i in range(len(self._labels)):
-            self.setTabEnabled(i, i in self._pending)
+            enabled = i in self._pending
+            self.setTabEnabled(i, enabled)
+            if not enabled:
+                self._views[i].load(QUrl("about:blank"))
         if not self._pending:
             return
         if not self.isTabEnabled(self.currentIndex()):

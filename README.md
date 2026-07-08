@@ -611,7 +611,7 @@ Lista haseł z **n8n DataTable** wewnątrz Anki, obok okna „Dodaj", ze słowni
 **Zasada działania:**
 1. Panel (`QDockWidget`) dokleja się do okna „Dodaj" i pobiera **całą tabelę** z n8n (n8n tnie `limit` na 250, więc ~1000 wierszy = 4 żądania, ok. 0,3 s). Zrobione są chowane checkboxem „Ukryj zrobione", nie usuwane — dzięki temu pomyłkę zawsze da się cofnąć.
 2. Zakładki to `QWebEngineView` z wstrzykniętym **tym samym** userscriptem, co w przeglądarce ([`web_bridge`](web_bridge/README.md)) — przyciski `→ hasło` / `→ def` / `+ przykład` działają identycznie. Ładują się leniwie (Chromium ≈ 100 MB na zakładkę).
-3. Wybór słówka wpisuje je w pole `ang` i ładuje URL-e z kolumn wiersza. Wiersz bez URL-a → zakładka wyszarzona.
+3. Wybór słówka wpisuje je w pole `ang` i ładuje URL-e z kolumn wiersza. Wiersz bez URL-a → zakładka wyszarzona i wyczyszczona, żeby nie zostawała strona poprzedniego hasła.
 4. Enter w Anki odhacza wiersz (`Anki = true`, PATCH po `id`), ale **zostajesz na słówku** — jedno hasło bywa kilkoma kartami. Pole `ang` jest wpisywane z powrotem, gotowe na kolejne znaczenie.
 5. Ptaszek przy słówku to **stan**, nie akcja: zaznaczenie ustawia `true`, odznaczenie `false`. Nieudany PATCH cofa ptaszek.
 6. **Adres zapasowy** (np. Tailscale MagicDNS) używany, gdy domowy nie odpowiada — kolejność: ostatni działający → domowy → zapasowy.

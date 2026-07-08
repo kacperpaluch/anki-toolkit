@@ -90,7 +90,7 @@ gui_hooks.editor_did_init_buttons.append(word_queue.on_editor_buttons_init)  # p
 _menu_modules.append(word_queue)  # → setup_menu(): „Kolejka słówek (n8n)...”
 ```
 
-`on_add_note(note)`: `_configured(cfg)` fałsz → moduł śpi. **Panel otwarty → `_panel.note_added()` i koniec** (patch po `id`; uwaga: każda dodana notatka odhacza bieżący wiersz, także dodana obok kolejki). Bez panelu: `clean_html_normalized(note[word_field])` → `mark_word_done` w tle; `matched == 0` → tylko log, błąd → tooltip.
+`on_add_note(note)`: `_configured(cfg)` fałsz → moduł śpi. **Panel widoczny → `_panel.note_added()` i koniec** (patch po `id`; uwaga: każda dodana notatka odhacza bieżący wiersz, także dodana obok kolejki). Panel ukryty albo brak panelu → fallback: `clean_html_normalized(note[word_field])` → `mark_word_done` w tle; `matched == 0` → tylko log, błąd → tooltip.
 
 `_toggle_panel(addcards)`: brak konfiguracji → tooltip; panel istnieje → `setVisible(not isVisible())`; inaczej tworzy `WordQueuePanel` i podpina `destroyed → _forget_panel` (zamknięcie okna „Dodaj" wraca do fallbacku po słowie).
 
@@ -108,7 +108,7 @@ Userscript sam dispatchuje po `location.hostname`, więc `@match` jest niepotrze
 
 ### `_DictTabs(QTabWidget)` — leniwe ładowanie
 
-`_labels` (indeks → etykieta), `_views` (lista), `_pending` (indeks → URL czekający na pierwsze wejście). `set_urls(dict)` zapisuje pending, wyszarza zakładki bez URL-a (`setTabEnabled`), przeskakuje z wyszarzonej na `min(self._pending)`, woła `_load_current()`. `_load_current` robi `pop` z `_pending`, więc powrót do zakładki nie przeładowuje strony. Mapowanie po **indeksie**, nie po `tabText()` (accelerator `&` by je popsuł).
+`_labels` (indeks → etykieta), `_views` (lista), `_pending` (indeks → URL czekający na pierwsze wejście). `set_urls(dict)` zapisuje pending, wyszarza zakładki bez URL-a (`setTabEnabled`) i ładuje w nich `about:blank`, żeby nie zostawała strona poprzedniego hasła; potem przeskakuje z wyszarzonej na `min(self._pending)` i woła `_load_current()`. `_load_current` robi `pop` z `_pending`, więc powrót do zakładki nie przeładowuje strony. Mapowanie po **indeksie**, nie po `tabText()` (accelerator `&` by je popsuł).
 
 ### `WordQueuePanel(QDockWidget)`
 
