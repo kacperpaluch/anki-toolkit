@@ -18,6 +18,7 @@ class ModulesTab(QWidget):
         "deck_router":       "Deck Router — kierowanie kart do talii wg tagu",
         "field_hider":       "Ukrywanie pól — chowa pola w oknie „Dodaj”",
         "web_bridge":        "Słowniki → Anki — mostek HTTP do okna „Dodaj” (diki/Oxford/Longman, port 8766)",
+        "word_queue":        "Kolejka słówek — po dodaniu karty odhacza słówko w n8n DataTable",
     }
 
     def __init__(self, cfg: dict):

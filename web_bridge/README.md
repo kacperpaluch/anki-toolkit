@@ -62,6 +62,12 @@ Content-Type: application/json
 - `OPTIONS` (preflight) → `200` z nagłówkami CORS (tylko dla dozwolonych originów). Serwer bindowany tylko na `127.0.0.1` (nie wychodzi w sieć).
 - `Origin` spoza allowlisty → `403`; body powyżej 1 MB jest ucinane.
 
+## Drugi konsument: moduł `word_queue`
+
+Ten sam plik userscripta jest wstrzykiwany przez [`word_queue`](../word_queue/README.md) do `QWebEngineView` **wewnątrz Anki** (panel „Kolejka słówek" ze słownikami w zakładkach). Jedno źródło prawdy — przyciski działają identycznie w przeglądarce i w Anki.
+
+Różnica: w Anki nie ma menedżera userscriptów, więc `send()` wpada w gałąź `fetch()`. Działa, bo Chromium traktuje `http://127.0.0.1` jako *potentially trustworthy* (to nie jest mixed content), a `Origin` strony słownika jest na allowliście. Wniosek dla edycji skryptu: **nie usuwaj fallbacku na `fetch`** i nie zakładaj obecności `GM_*`.
+
 ## Konfiguracja i włączanie
 
 Brak własnej zakładki w Ustawieniach — port i mapowanie pól są w kodzie (mostek) i w userscripcie (pola). Włączanie/wyłączanie: **Ustawienia → Moduły** lub `config.json` → `modules.web_bridge`. Zmiana wymaga restartu Anki (serwer startuje na `profile_did_open`). Port zajęty → moduł loguje ostrzeżenie i nie wstaje (nie wysadza wtyczki).

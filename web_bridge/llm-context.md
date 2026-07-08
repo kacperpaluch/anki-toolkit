@@ -82,6 +82,10 @@ OPTIONS → 200 (+ nagłówki CORS)
   - **Cambridge** (`.../dictionary/...`, EN i EN-PL): `.hw.dhw`→`ang`; `.def`→`def`; `.eg`→`przyklad` (append); `.dtrans-se`→`pol` (tłumaczenie sensu; istnieje tylko na EN-PL, na EN selektor nic nie zwraca).
 - `injectButtons(selector, label, field, opts)` — generyczny: przy każdym elemencie dokłada przycisk piszący `{field: text}` z `opts`. Dedupe przez `el.dataset.ankiDone` (niezależne od sąsiadów). `MutationObserver` na `document.body` re-injectuje po zmianach DOM (SPA/leniwe ładowanie).
 
+## Konsumenci userscripta
+
+Dwa, ten sam plik: (1) menedżer userscriptów w przeglądarce; (2) `word_queue/panel.py` → `_dict_profile()` wstrzykuje jego treść jako `QWebEngineScript` (`MainWorld`, `DocumentReady`) do `QWebEngineView` w panelu przy oknie „Dodaj". W (2) `GM_*` nie istnieje → używana jest gałąź `fetch()`; przechodzi, bo `http://127.0.0.1` jest dla Chromium *potentially trustworthy* (nie mixed content), a `Origin` (`https://www.diki.pl` itd.) siedzi w `ALLOWED_ORIGIN_HOSTS`; preflight łapie `do_OPTIONS`. **Fallback na `fetch` jest wymagany** — usunięcie go zabije ścieżkę w Anki. `@match` jest ignorowany w (2), bo `inject()` dispatchuje po `location.hostname`.
+
 ## Rejestracja w root `__init__.py`
 
 ```python

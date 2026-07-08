@@ -120,6 +120,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── word_queue/                      # Moduł 12: kolejka słówek z n8n + słowniki w Anki
+│   ├── __init__.py                  # klient n8n (failover, PATCH), hook, przycisk 📚, menu
+│   ├── panel.py                     # dok przy oknie „Dodaj”: lista + QWebEngineView ze słownikami
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -160,6 +166,7 @@ Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI
 | **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
 | **Deck Router** | Tabela reguł tag → talia (szablon i talia z list rozwijanych); kieruje karty do talii wg tagu notatki |
 | **Ukrywanie pól** | Wybór typu notatki + checkboxy pól chowanych w oknie „Dodaj" (nie rusza przeglądarki ani edycji istniejących kart) |
+| **Kolejka słówek** | Adres n8n (domowy + zapasowy/Tailscale), klucz API, wybór tabeli z rozwijanki (przycisk „Pobierz listę" = test połączenia), mapowanie pola notatki i kolumn, losowa kolejność na starcie |
 | **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
 | **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
 
@@ -183,7 +190,8 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "sibling_manager":   true,
     "deck_router":       true,
     "field_hider":       true,
-    "web_bridge":        true
+    "web_bridge":        true,
+    "word_queue":        true
 }
 ```
 
@@ -596,6 +604,28 @@ Bez własnej zakładki — port i mapowanie pól są w kodzie/userscripcie. Wł�
 
 ---
 
+### Kolejka słówek (`word_queue`)
+
+Lista haseł z **n8n DataTable** wewnątrz Anki, obok okna „Dodaj", ze słownikami w zakładkach. Dodajesz kartę — wiersz w n8n odhacza się sam. Otwierasz przyciskiem **📚** w oknie „Dodaj" albo z menu Narzędzia.
+
+**Zasada działania:**
+1. Panel (`QDockWidget`) dokleja się do okna „Dodaj" i pobiera **całą tabelę** z n8n (n8n tnie `limit` na 250, więc ~1000 wierszy = 4 żądania, ok. 0,3 s). Zrobione są chowane checkboxem „Ukryj zrobione", nie usuwane — dzięki temu pomyłkę zawsze da się cofnąć.
+2. Zakładki to `QWebEngineView` z wstrzykniętym **tym samym** userscriptem, co w przeglądarce ([`web_bridge`](web_bridge/README.md)) — przyciski `→ hasło` / `→ def` / `+ przykład` działają identycznie. Ładują się leniwie (Chromium ≈ 100 MB na zakładkę).
+3. Wybór słówka wpisuje je w pole `ang` i ładuje URL-e z kolumn wiersza. Wiersz bez URL-a → zakładka wyszarzona.
+4. Enter w Anki odhacza wiersz (`Anki = true`, PATCH po `id`), ale **zostajesz na słówku** — jedno hasło bywa kilkoma kartami. Pole `ang` jest wpisywane z powrotem, gotowe na kolejne znaczenie.
+5. Ptaszek przy słówku to **stan**, nie akcja: zaznaczenie ustawia `true`, odznaczenie `false`. Nieudany PATCH cofa ptaszek.
+6. **Adres zapasowy** (np. Tailscale MagicDNS) używany, gdy domowy nie odpowiada — kolejność: ostatni działający → domowy → zapasowy.
+
+Przyciski: **Zrobione →** (odhacz + następne), **Następne** (pominięcie), **Ukryj zrobione**, **Losowo** (tasuje natychmiast), **Odśwież**.
+
+Bez otwartego panelu hook nadal odhacza, dopasowując kolumnę `Slowko` do zawartości pola `ang` — zawodzi, gdy wpiszesz formę inną niż w tabeli. Panel patchuje po `id` i trafia zawsze.
+
+Wymaga włączonego [`web_bridge`](web_bridge/README.md). Konfiguracja: **Ustawienia → Kolejka słówek**. Szczegóły: [`word_queue/README.md`](word_queue/README.md).
+
+---
+
 ## Bezpieczeństwo
 
 Klucze API są przechowywane w profilu Anki w czystym tekście. Nie udostępniaj katalogu profilu publicznie.
+
+Dotyczy to również klucza API n8n (`word_queue`). `config.json` w repo trzyma wyłącznie puste wartości domyślne — Twoje adresy i klucz Anki zapisuje w `meta.json` w katalogu profilu, który jest w `.gitignore`.

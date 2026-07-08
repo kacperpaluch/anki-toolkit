@@ -105,6 +105,14 @@ if _enabled("web_bridge"):
     gui_hooks.profile_did_open.append(web_bridge.start_server)
 
 # ---------------------------------------------------------------------------
+# word_queue — po dodaniu notatki odhacza słówko w n8n DataTable (kolumna Anki)
+# ---------------------------------------------------------------------------
+if _enabled("word_queue"):
+    from . import word_queue
+    gui_hooks.add_cards_did_add_note.append(word_queue.on_add_note)
+    gui_hooks.editor_did_init_buttons.append(word_queue.on_editor_buttons_init)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.
@@ -164,6 +172,10 @@ if _enabled("sibling_manager"):
 if _enabled("deck_router"):
     from . import deck_router
     _menu_modules.append(deck_router)
+
+if _enabled("word_queue"):
+    from . import word_queue
+    _menu_modules.append(word_queue)
 
 
 def _setup_menus(*_args, **_kwargs):

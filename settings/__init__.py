@@ -21,6 +21,7 @@ from .audio_normalizer_tab import AudioNormalizerTab
 from .narzedzia_tab import NarzedziaTab
 from .deck_router_tab import DeckRouterTab
 from .field_hider_tab import FieldHiderTab
+from .word_queue_tab import WordQueueTab
 from .stats_tab import StatsTab
 from .logs_tab import LogsTab
 
@@ -55,6 +56,7 @@ class SettingsDialog(QDialog):
             ("Narzędzia",    "🛠", NarzedziaTab(cfg),       "System"),
             ("Deck Router",  "🎯", DeckRouterTab(cfg),      "System"),
             ("Ukrywanie pól","🙈", FieldHiderTab(cfg),      "System"),
+            ("Kolejka słówek","📚", WordQueueTab(cfg),      "System"),
             ("Normalizacja", "🎚", AudioNormalizerTab(cfg), "System"),
             ("Statystyki",   "📊", StatsTab(cfg),           "Wgląd"),
             ("Logi",         "📜", LogsTab(cfg),            "Wgląd"),

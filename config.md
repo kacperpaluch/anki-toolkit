@@ -13,7 +13,11 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "audio_normalizer":  true,
     "nbsp_remover":      true,
     "field_splitter":    true,
-    "deck_router":       true
+    "sibling_manager":   true,
+    "deck_router":       true,
+    "field_hider":       true,
+    "web_bridge":        true,
+    "word_queue":        true
 }
 ```
 
@@ -394,6 +398,40 @@ Konfiguracja przez **Ustawienia → zakładka Workflowy** (checkboxy na dole). S
 ```
 
 Odczytywane świeżo przy każdym kliknięciu PPM — zmiana działa bez restartu Anki.
+
+---
+
+## Sekcja `word_queue` — kolejka słówek z n8n DataTable
+
+Konfiguracja przez **Ustawienia → zakładka Kolejka słówek**. Klucz API zapisywany jest w `meta.json` w profilu Anki — `config.json` w repo trzyma puste wartości domyślne.
+
+```json
+"word_queue": {
+    "n8n_url": "",
+    "fallback_url": "",
+    "api_key": "",
+    "table_id": "",
+    "word_field": "ang",
+    "word_column": "Slowko",
+    "flag_column": "Anki",
+    "link_columns": {"diki": "URL", "Longman": "Longman", "Oxford": "Oxford"},
+    "page_size": 250,
+    "max_rows": 5000,
+    "random_order": false
+}
+```
+
+- **`n8n_url`** — adres n8n w sieci domowej, próbowany jako pierwszy (np. `http://192.168.1.50:5678`).
+- **`fallback_url`** — adres zapasowy, używany gdy domowy nie odpowiada (np. Tailscale MagicDNS `https://n8n.twoj-tailnet.ts.net`, bez portu). Kolejność prób: ostatni działający → domowy → zapasowy; zwycięzca jest zapamiętywany do końca sesji.
+- **`api_key`** — klucz z n8n → **Settings → API → Create API Key**.
+- **`table_id`** — identyfikator tabeli (**nie** nazwa). Wybierasz z rozwijanki po kliknięciu „Pobierz listę".
+- **`word_field`** — pole notatki, do którego wpisywane jest hasło (domyślnie `ang`; to samo, co `FIELDS.headword` w userscripcie `web_bridge`).
+- **`word_column`** — kolumna tabeli z hasłem. Musi być unikatowa, jeśli korzystasz z odhaczania przy zamkniętym panelu (`filter eq` odhaczyłby wszystkie duplikaty).
+- **`flag_column`** — kolumna typu `boolean`; `false` = do zrobienia. Panel ustawia ją na `true` po dodaniu karty i z powrotem na `false` po odznaczeniu ptaszka.
+- **`link_columns`** — mapa: etykieta zakładki → kolumna z URL-em. Kolejność kluczy wyznacza kolejność zakładek. Wiersz z pustą kolumną → zakładka wyszarzona.
+- **`page_size`** — rozmiar strony przy pobieraniu. **Maksimum akceptowane przez n8n to 250** (większe → `HTTP 400`).
+- **`max_rows`** — bezpiecznik pętli stronicowania po kursorze.
+- **`random_order`** — startowy stan checkboxa „Losowo" w panelu (tasowanie kolejności listy).
 
 ---
 

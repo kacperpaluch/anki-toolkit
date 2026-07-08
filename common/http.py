@@ -98,9 +98,13 @@ def post_json(
     *,
     max_retries: int = 3,
     timeout: int = 30,
+    method: str = "POST",
     log: Optional[logging.Logger] = None,
 ) -> tuple[Optional[bytes], Optional[str]]:
     """POST raw bytes with retry on 429/5xx and connection errors.
+
+    `method` overrides the verb (e.g. "PATCH") — body, headers and retry
+    behaviour are identical.
 
     Returns (response_bytes, None) on success, (None, error_message) on failure.
     HTTP error messages come from extract_http_error() (parses JSON body for
@@ -110,26 +114,26 @@ def post_json(
         log = logger
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(url, data=payload, headers=headers)
+            req = urllib.request.Request(url, data=payload, headers=headers, method=method)
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return response.read(), None
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
                 delay = 2 ** (attempt + 1)
                 log.warning(
-                    f"HTTP {e.code} POST {url}, retrying in {delay}s "
+                    f"HTTP {e.code} {method} {url}, retrying in {delay}s "
                     f"(attempt {attempt + 1}/{max_retries})"
                 )
                 time.sleep(delay)
                 continue
             err = extract_http_error(e)
-            log.error(f"POST {url} failed: {err}")
+            log.error(f"{method} {url} failed: {err}")
             return None, err
         except (urllib.error.URLError, TimeoutError) as e:
             if attempt < max_retries - 1:
                 delay = 2 ** (attempt + 1)
                 log.warning(
-                    f"Connection error POST {url}: {e}, retrying in {delay}s "
+                    f"Connection error {method} {url}: {e}, retrying in {delay}s "
                     f"(attempt {attempt + 1}/{max_retries})"
                 )
                 time.sleep(delay)
