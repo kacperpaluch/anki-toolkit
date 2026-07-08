@@ -45,6 +45,7 @@ from aqt.qt import (
     QWebEngineScript,
     QWidget,
     QWebEngineView,
+    sip,
 )
 from aqt.utils import tooltip
 
@@ -209,6 +210,8 @@ class WordQueuePanel(QDockWidget):
             if error:
                 tooltip(f"n8n: nie pobrano kolejki — {error}", parent=mw, period=5000)
                 return
+            if sip.isdeleted(self):
+                return  # okno „Dodaj" zamknięte, zanim n8n odpowiedział
             if self._shuffle.isChecked():
                 random.shuffle(rows)
             # Stan bierzemy z tabeli, nie z pamięci sesji — po „Odśwież" zrobione
@@ -295,6 +298,8 @@ class WordQueuePanel(QDockWidget):
             except Exception:
                 log.exception("word_queue: PATCH rzucił wyjątkiem")
                 error = "wyjątek (szczegóły w Logach)"
+            if sip.isdeleted(self) or sip.isdeleted(item):
+                return  # okno zamknięte / lista przebudowana, zanim PATCH wrócił
             if error:
                 tooltip(f"n8n: nie zapisano wiersza {row_id} — {error}", parent=mw, period=5000)
                 self._set_check(item, not done)  # rollback do stanu sprzed kliknięcia
@@ -387,8 +392,10 @@ class WordQueuePanel(QDockWidget):
                 self._marked.discard(row_id)
                 tooltip(f"n8n: nie odhaczono wiersza {row_id} — {error}", parent=mw, period=5000)
                 return
+            if sip.isdeleted(self):
+                return  # okno „Dodaj" zamknięte, zanim n8n odpowiedział
             self._done_count += 1
-            if item is not None:
+            if item is not None and not sip.isdeleted(item):
                 self._set_check(item, True)  # bez _set_row — PATCH właśnie poszedł
                 self._style_item(item, True)
                 self._apply_hiding()

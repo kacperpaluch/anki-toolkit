@@ -136,6 +136,7 @@ Stan: `_marked` (zbiór `id` z `flag_column == true`), `_done_count` (licznik pe
 | ptaszek = **stan** (`true`/`false`), nie akcja | cofanie pomyłki bez wchodzenia do viewera n8n |
 | lista = **cała tabela**, zrobione tylko schowane | „Odśwież" z filtrem `false` gubiłby wiersze i blokował cofanie |
 | `_marked` z flagi wiersza, nie z sesji | przeżywa „Odśwież" |
+| callbacki z tła zaczynają od `sip.isdeleted(self/item)` | Anki robi `deleteLater()` na `AddCards` przy zamknięciu, a „Odśwież" kasuje itemy (`clear()`) — odpowiedź n8n potrafi wrócić do martwych widgetów → `RuntimeError` |
 
 ## Zakładka `settings/word_queue_tab.py`
 
@@ -150,5 +151,5 @@ Stan: `_marked` (zbiór `id` z `flag_column == true`), `_done_count` (licznik pe
 - `gui_hooks.add_cards_did_add_note`, `gui_hooks.editor_did_init_buttons`
 - `aqt.dialogs.open("AddCards", mw)`; `AddCards` dziedziczy z `QMainWindow` → `addDockWidget`, `resizeDocks`
 - `editor.addMode`, `editor.parentWindow`, `editor.note`, `editor.loadNote()`, `editor.addButton(...)`
-- `mw.taskman.run_in_background(task, on_done)` — HTTP nigdy na wątku GUI; `future.result()` w callbacku
+- `mw.taskman.run_in_background(task, on_done)` — HTTP nigdy na wątku GUI; `future.result()` w callbacku; w `panel.py` callbacki mają strażnik `sip.isdeleted(...)` (żądanie do padniętego n8n wisi do ~40 s — okno „Dodaj" może w tym czasie zostać zamknięte)
 - `aqt.utils.tooltip`, `common.config.get_full_config` / `save_full_config`

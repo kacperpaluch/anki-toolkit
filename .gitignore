@@ -21,3 +21,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# vexp index (lokalne dane narzędzia)
+.vexp/
