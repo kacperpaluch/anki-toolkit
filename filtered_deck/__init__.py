@@ -1,9 +1,13 @@
 from aqt import mw
-from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QComboBox, QDialogButtonBox, QFormLayout
+from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QComboBox, QSpinBox, QDialogButtonBox, QFormLayout
 from aqt.utils import showInfo, tooltip
 
 from ..common import ADDON_NAME
 
+
+# Anki wymaga liczby w polu limitu talii filtrowanej — "bez limitu" (spinbox=0)
+# mapujemy na tę wartość.
+NO_LIMIT = 999999999
 
 # Predefiniowane presety: (etykieta, search, limit, kolejność)
 # Kolejność 1=losowo dla wszystkich. Działają w dowolnym decku (brak filtra
@@ -11,7 +15,7 @@ from ..common import ADDON_NAME
 PRESETS = [
     ("Uczone w ostatnich 7 dniach", "rated:7", 99999, 1),
     ("Uczone w ostatnich 30 dniach", "rated:30", 99999, 1),
-    ("Wszystkie uczone karty (bez limitu)", "-is:new", 999999, 1),
+    ("Wszystkie uczone karty (bez limitu)", "-is:new", 0, 1),
     ("Trudne karty (pomyłki z 30 dni)", "rated:30:1", 99999, 1),
     ("Losowe karty (uczone lub nie)", "deck:*", 100, 1),
 ]
@@ -36,6 +40,16 @@ class FilterSettingsDialog(QDialog):
         for i, (label, *_rest) in enumerate(PRESETS):
             self.preset_combo.addItem(label, i)
         form.addRow("Preset:", self.preset_combo)
+
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(0, NO_LIMIT)
+        self.limit_spin.setSpecialValueText("Bez limitu")  # wyświetla się przy 0
+        form.addRow("Limit kart:", self.limit_spin)
+
+        # Wybór presetu podpowiada jego domyślny limit; użytkownik może nadpisać.
+        self.preset_combo.currentIndexChanged.connect(self._sync_limit)
+        self._sync_limit()
+
         layout.addLayout(form)
 
         hint = QLabel("Karty z dowolnego decka. Powtórka nie zmienia harmonogramu.")
@@ -52,12 +66,20 @@ class FilterSettingsDialog(QDialog):
 
         self.setLayout(layout)
 
-    def get_preset_index(self):
-        return self.preset_combo.currentData()
+    def _sync_limit(self):
+        self.limit_spin.setValue(PRESETS[self.preset_combo.currentData()][2])
+
+    def get_values(self):
+        # spinbox 0 ("Bez limitu") -> NO_LIMIT
+        return self.preset_combo.currentData(), self.limit_spin.value() or NO_LIMIT
 
 
-def create_filtered_deck(preset_index):
-    label, search_query, card_limit, sort_order = PRESETS[preset_index]
+def create_filtered_deck(preset_index, card_limit=None):
+    label, search_query, default_limit, sort_order = PRESETS[preset_index]
+    if card_limit is None:
+        card_limit = default_limit
+    if not card_limit:  # 0 = bez limitu
+        card_limit = NO_LIMIT
     cfg = _get_config()
     base_name = cfg.get("deck_name", "Powtórka z wyprzedzeniem")
     deck_name = f"{base_name} — {label}"
@@ -123,7 +145,8 @@ def create_filtered_deck(preset_index):
 def show_dialog_and_create():
     dialog = FilterSettingsDialog(mw)
     if dialog.exec():
-        create_filtered_deck(dialog.get_preset_index())
+        preset_index, card_limit = dialog.get_values()
+        create_filtered_deck(preset_index, card_limit)
 
 
 def setup_menu(parent_menu=None):

@@ -419,15 +419,15 @@ Dostępny przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (pr
 
 Dialog pozwala wybrać jeden z predefiniowanych presetów (wszystkie z kolejnością losową):
 
-| Preset | Search Anki | Limit |
+| Preset | Search Anki | Domyślny limit |
 |---|---|---|
 | Uczone w ostatnich 7 dniach | `rated:7` | 99999 |
 | Uczone w ostatnich 30 dniach | `rated:30` | 99999 |
-| Wszystkie uczone karty (bez limitu) | `-is:new` | 999999 |
+| Wszystkie uczone karty (bez limitu) | `-is:new` | Bez limitu |
 | Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 |
 | Losowe karty (uczone lub nie) | `deck:*` | 100 |
 
-Każdy preset tworzy osobną talię `{deck_name} — {nazwa presetu}`. Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
+Pole **Limit kart** podpowiada domyślny limit presetu i można go nadpisać (`0` = „Bez limitu", pobiera wszystkie pasujące karty). Każdy preset tworzy osobną talię `{deck_name} — {nazwa presetu}`. Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
 
 | Pole | Opis |
 |---|---|

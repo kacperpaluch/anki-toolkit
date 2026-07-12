@@ -12,13 +12,13 @@ Tworzy talię filtrowaną w Anki z jednego z predefiniowanych presetów (dialog 
 
 ## Presety (stała `PRESETS`)
 
-Lista krotek `(etykieta, search, limit, order)` — wszystkie z `order=1` (losowo):
+Lista krotek `(etykieta, search, domyślny_limit, order)` — wszystkie z `order=1` (losowo). Domyślny limit trafia do spinboxa i można go nadpisać; `0` = bez limitu (mapowane na stałą `NO_LIMIT`):
 
-| Etykieta | Search | Limit |
+| Etykieta | Search | Domyślny limit |
 |---|---|---|
 | Uczone w ostatnich 7 dniach | `rated:7` | 99999 |
 | Uczone w ostatnich 30 dniach | `rated:30` | 99999 |
-| Wszystkie uczone karty (bez limitu) | `-is:new` | 999999 |
+| Wszystkie uczone karty (bez limitu) | `-is:new` | 0 (bez limitu) |
 | Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 |
 | Losowe karty (uczone lub nie) | `deck:*` | 100 |
 
@@ -27,9 +27,11 @@ Lista krotek `(etykieta, search, limit, order)` — wszystkie z `order=1` (losow
 ```
 Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...
   → FilterSettingsDialog.exec()
-      → użytkownik wybiera preset w QComboBox
-  → create_filtered_deck(preset_index)
-      → label, search, limit, order = PRESETS[preset_index]
+      → użytkownik wybiera preset w QComboBox; QSpinBox podpowiada domyślny
+        limit presetu (_sync_limit), do nadpisania; 0 = "Bez limitu"
+  → create_filtered_deck(preset_index, card_limit)
+      → label, search, default_limit, order = PRESETS[preset_index]
+      → card_limit None → default_limit; card_limit 0/None → NO_LIMIT
       → _get_config() — czyta deck_name (bazę nazwy) z configu (używa ADDON_NAME)
       → deck_name = f"{base} — {label}"
       → reużycie istniejącej talii dyn o tej nazwie LUB col.decks.new_filtered(name)
@@ -64,5 +66,5 @@ Kod obsługuje dwa formaty deck config z bounds checking:
 
 - Anki API: `mw.col.decks`, `mw.col.sched.rebuild_filtered_deck`, `mw.addonManager.getConfig`
 - Własne: `common.ADDON_NAME`
-- PyQt6: `QDialog`, `QVBoxLayout`, `QFormLayout`, `QLabel`, `QComboBox`, `QDialogButtonBox`
+- PyQt6: `QDialog`, `QVBoxLayout`, `QFormLayout`, `QLabel`, `QComboBox`, `QSpinBox`, `QDialogButtonBox`
 - Brak pip packages
