@@ -26,6 +26,12 @@ Znacznik **nigdy nie jest usuwany**. Wyczyszczenie `pX-tak` skasowałoby już wy
 
 Batch przetwarza notatki modelu docelowego bez tagu „ukończonych" i „ignorowanych" (`note:… -tag:done -tag:ignore`). Notatka bez żadnego zdania jest od razu tagowana jako ukończona, żeby skanowanie ją pomijało.
 
+**Nie uruchamia się przy starcie Anki** i nie musi — hook reviewer'a odblokowuje kolejne zdanie dokładnie w momencie, gdy odpowiadasz na kartę i osiąga ona próg (interwał zmienia się tylko przy odpowiedzi), a reviewy z telefonu łapie hook po synchronizacji. Ręczny skan to catch-up „na teraz".
+
+**Talie i subtalie nie mają znaczenia.** Moduł patrzy na model notatki i nazwy **szablonów kart**, nie na talię. Jeśli rozdzielasz karty do subtalii (`ang::ang-pol`, `ang::pol-ang`), config zostaje bez zmian — `main_templates` to `ang-pol`/`pol-ang` (nazwy szablonów).
+
+**Komunikaty:** ręczny skan **zawsze** pokazuje tooltip z wynikiem — również „brak zdań do odblokowania", gdy żadna karta nie osiągnęła progu (dlatego cisza = nic nie było jeszcze dojrzałe). Automatyczny skan po syncu pokazuje tooltip tylko gdy coś odblokował. Po każdej odpowiedzi log trafia do bufora (**Ustawienia → Logi**), bez tooltipa (żeby nie spamować).
+
 ## Konfiguracja
 
 **Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Sentence Unlocker** — wszystko edytowalne z UI:
@@ -35,7 +41,7 @@ Batch przetwarza notatki modelu docelowego bez tagu „ukończonych" i „ignoro
 | `model` | `angielski` | Typ notatki, którego dotyczy moduł (inne modele są pomijane) |
 | `threshold` | `21` | Próg dojrzałości karty w dniach (`ivl ≥ threshold`) |
 | `marker` | `tak` | Wartość wpisywana do pola `-tak` |
-| `main_templates` | `ang-pol, pol-ang` | Karty główne, których dojrzałość odblokowuje pierwsze zdanie |
+| `main_templates` | `ang-pol, pol-ang` | **Nazwy szablonów kart** (typów kart w notatce, **nie talii**), których dojrzałość odblokowuje pierwsze zdanie |
 | `chain` | `p1-nauka:p1-tak, p2-nauka:p2-tak, p3-nauka:p3-tak` | Zdania w kolejności odblokowywania (pary `pole-nauka:pole-tak`) |
 | `ignore_tag` | `tk-unlock-ignored` | Tag wyłączający moduł dla danej notatki |
 | `done_tag` | `tk-unlock-done` | Tag notatek w pełni odblokowanych (pomijane w batchu) |

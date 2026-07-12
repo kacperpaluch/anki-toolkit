@@ -100,8 +100,13 @@ def on_sync_did_finish(*_args):
     QTimer.singleShot(_SYNC_SCAN_DELAY_MS, _run_scan)
 
 
-def _run_scan():
-    """Batch-process notes of the target model that aren't done/ignored."""
+def _run_scan(manual=False):
+    """Batch-process notes of the target model that aren't done/ignored.
+
+    manual=True (Tools menu) always reports the outcome, even 0, so the user
+    gets confirmation. Automatic runs (post-sync) stay quiet unless something
+    was unlocked, to avoid spam.
+    """
     cfg = _get_config()
     model = cfg.get("model", _DEFAULTS["model"])
     args = _logic_args(cfg)
@@ -109,7 +114,7 @@ def _run_scan():
     ignore_tag = args["ignore_tag"]
     show_tooltip = cfg.get("show_tooltip", _DEFAULTS["show_tooltip"])
 
-    counters = {"unlocked": 0, "notes": 0}
+    counters = {"unlocked": 0, "notes": 0, "scanned": 0}
 
     def op(col: Collection) -> OpChanges:
         query = f'"note:{model}"'
@@ -118,6 +123,7 @@ def _run_scan():
         if ignore_tag:
             query += f" -tag:{ignore_tag}"
         nids = col.find_notes(query)
+        counters["scanned"] = len(nids)
         if not nids:
             return OpChanges()
 
@@ -135,10 +141,18 @@ def _run_scan():
         return OpChanges()
 
     def on_success(_changes: OpChanges) -> None:
-        u = counters["unlocked"]
-        log.info("sentence_unlocker: scan complete — odblokowano %d zdań (notatek: %d)",
-                 u, counters["notes"])
-        if show_tooltip and u:
+        u, scanned = counters["unlocked"], counters["scanned"]
+        log.info("sentence_unlocker: scan complete — odblokowano %d zdań "
+                 "(notatek: %d, przeskanowano: %d)", u, counters["notes"], scanned)
+        if manual:
+            if u:
+                tooltip(f"Sentence Unlocker: odblokowano {u} zdań "
+                        f"(przeskanowano {scanned} notatek)", parent=mw, period=4000)
+            else:
+                tooltip("Sentence Unlocker: brak zdań do odblokowania — "
+                        f"żadna z {scanned} notatek nie osiągnęła progu dojrzałości",
+                        parent=mw, period=5000)
+        elif show_tooltip and u:
             tooltip(f"Sentence Unlocker: odblokowano {u} zdań", parent=mw, period=4000)
 
     CollectionOp(parent=mw, op=op).success(on_success).run_in_background()
@@ -157,7 +171,7 @@ def _confirm_scan():
         QMessageBox.StandardButton.No,
     )
     if result == QMessageBox.StandardButton.Yes:
-        _run_scan()
+        _run_scan(manual=True)
 
 
 def setup_menu(parent_menu=None):

@@ -44,14 +44,18 @@ reviewer_did_answer_card(reviewer, card, ease)
   → jeśli model(note) != cfg.model → return  (filtr modelu)
   → process_note(...) → log gdy odblokowano
 
-sync_did_finish → QTimer 500 ms → _run_scan
+sync_did_finish → QTimer 500 ms → _run_scan(manual=False)
   → CollectionOp op(col):
        query = '"note:{model}" -tag:{done_tag} -tag:{ignore_tag}'
        dla każdej notatki: process_note(...) (staggered — jeden krok/skan)
        zwróć _changes_for_ui() gdy coś odblokowano, inaczej pusty OpChanges()
-  → on_success: log + tooltip (gated show_tooltip)
+  → on_success: log; tooltip gdy manual (zawsze, też "0") lub (auto i show_tooltip i unlocked>0)
 
-Menu: "Sentence Unlocker: przeskanuj kolekcję..." → QMessageBox → _run_scan
+Menu: "Sentence Unlocker: przeskanuj kolekcję..." → QMessageBox → _run_scan(manual=True)
+
+Brak skanu przy starcie Anki (niepotrzebny — reactive łapie dojrzewanie przy
+odpowiedzi, sync łapie reviewy z telefonu). Moduł jest deck-agnostyczny —
+filtruje po modelu i nazwach szablonów, nie po talii (subtalie bez znaczenia).
 ```
 
 ## Konfiguracja (`sentence_unlocker` w config.json)
