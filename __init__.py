@@ -82,6 +82,14 @@ if _enabled("sibling_manager"):
     gui_hooks.sync_did_finish.append(sibling_manager.on_sync_did_finish)
 
 # ---------------------------------------------------------------------------
+# sentence_unlocker — progressive gap-fill card gating (reviewer + sync hook)
+# ---------------------------------------------------------------------------
+if _enabled("sentence_unlocker"):
+    from . import sentence_unlocker
+    gui_hooks.reviewer_did_answer_card.append(sentence_unlocker.on_reviewer_did_answer_card)
+    gui_hooks.sync_did_finish.append(sentence_unlocker.on_sync_did_finish)
+
+# ---------------------------------------------------------------------------
 # deck_router — route cards to decks by tag (+ optional card template)
 # ---------------------------------------------------------------------------
 if _enabled("deck_router"):
@@ -168,6 +176,10 @@ if _enabled("field_splitter"):
 if _enabled("sibling_manager"):
     from . import sibling_manager
     _menu_modules.append(sibling_manager)
+
+if _enabled("sentence_unlocker"):
+    from . import sentence_unlocker
+    _menu_modules.append(sentence_unlocker)
 
 if _enabled("deck_router"):
     from . import deck_router

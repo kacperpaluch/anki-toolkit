@@ -8,6 +8,7 @@
     "nbsp_remover": true,
     "field_splitter": true,
     "sibling_manager": true,
+    "sentence_unlocker": true,
     "deck_router": true,
     "field_hider": true,
     "web_bridge": true,
@@ -197,6 +198,20 @@
     "interval": 30,
     "tag": "tk-sib-suspended",
     "ignore_tag": "tk-sib-ignored"
+  },
+  "sentence_unlocker": {
+    "model": "angielski",
+    "threshold": 21,
+    "marker": "tak",
+    "main_templates": ["ang-pol", "pol-ang"],
+    "chain": [
+      {"nauka_field": "p1-nauka", "tak_field": "p1-tak"},
+      {"nauka_field": "p2-nauka", "tak_field": "p2-tak"},
+      {"nauka_field": "p3-nauka", "tak_field": "p3-tak"}
+    ],
+    "ignore_tag": "tk-unlock-ignored",
+    "done_tag": "tk-unlock-done",
+    "show_tooltip": true
   },
   "deck_router": {
     "rules": []

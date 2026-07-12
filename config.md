@@ -14,6 +14,7 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "nbsp_remover":      true,
     "field_splitter":    true,
     "sibling_manager":   true,
+    "sentence_unlocker": true,
     "deck_router":       true,
     "field_hider":       true,
     "web_bridge":        true,
@@ -295,6 +296,51 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 Akcje:
 - **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — reset wszystkich zawieszeń + usuwa tagi (jeden krok undo)
 - **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...** — ręczny batch scan (ten sam co auto po syncu)
+
+---
+
+## Sekcja `sentence_unlocker` — stopniowe odblokowywanie zdań
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Sentence Unlocker) — całość edytowalna z UI, w tym `main_templates` (przecinkami) i `chain` (pary `pole-nauka:pole-tak`).
+
+Gdy karty główne notatki dojrzeją, moduł wpisuje znacznik do pola `pX-tak`, co powoduje wygenerowanie karty-ćwiczenia „Uzupełnij" (szablon `pX-nauka` renderuje się tylko przy `{{#pX-tak}}{{#pX-nauka}}`). Odblokowywanie jest **stopniowe**: kolejne zdanie czeka, aż karta poprzedniego dojrzeje.
+
+**`model`** — typ notatki, którego dotyczy moduł (domyślnie `"angielski"`). Karty innych modeli są ignorowane.
+
+**`threshold`** — próg dojrzałości karty w dniach (domyślnie `21`, `ivl ≥ threshold`).
+
+**`marker`** — wartość wpisywana do pola `-tak` (domyślnie `"tak"`; wystarczy cokolwiek niepustego).
+
+**`main_templates`** — nazwy kart głównych, których dojrzałość odblokowuje pierwsze zdanie (domyślnie `["ang-pol", "pol-ang"]` — muszą dojrzeć **oba**).
+
+**`chain`** — lista zdań w kolejności odblokowywania; każde to `{"nauka_field", "tak_field"}`. `nauka_field` musi być jednocześnie nazwą szablonu karty tego zdania (w modelu `angielski` się pokrywają) — po niej moduł sprawdza dojrzałość karty bramkującej następne zdanie.
+
+**`ignore_tag`** — notatki z tym tagiem są pomijane (domyślnie `"tk-unlock-ignored"`).
+
+**`done_tag`** — tag dodawany do notatek w pełni odblokowanych (i tych bez żadnego zdania), aby batch scan je pomijał (domyślnie `"tk-unlock-done"`).
+
+**`show_tooltip`** — `true` (domyślnie) = tooltip z liczbą odblokowanych zdań po skanowaniu.
+
+> ⚠️ Jednokierunkowo: znacznik **nigdy nie jest usuwany**. Wyczyszczenie `pX-tak` skasowałoby już wygenerowaną kartę razem z jej historią powtórek.
+
+```json
+"sentence_unlocker": {
+    "model": "angielski",
+    "threshold": 21,
+    "marker": "tak",
+    "main_templates": ["ang-pol", "pol-ang"],
+    "chain": [
+        {"nauka_field": "p1-nauka", "tak_field": "p1-tak"},
+        {"nauka_field": "p2-nauka", "tak_field": "p2-tak"},
+        {"nauka_field": "p3-nauka", "tak_field": "p3-tak"}
+    ],
+    "ignore_tag": "tk-unlock-ignored",
+    "done_tag": "tk-unlock-done",
+    "show_tooltip": true
+}
+```
+
+Akcja: **Narzędzia → Anki Toolkit → Sentence Unlocker: przeskanuj kolekcję (odblokuj zdania)...** — ręczny batch scan (ten sam co auto po syncu). Reactive po każdej odpowiedzi na desktopie + auto po `sync_did_finish`.
 
 ---
 

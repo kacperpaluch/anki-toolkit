@@ -7,6 +7,31 @@ from aqt.qt import (
 from ..common.ui import _expanding_line_edit, _scrollable, hint_label
 
 
+def _chain_to_text(chain: list) -> str:
+    """[{'nauka_field': a, 'tak_field': b}, ...] -> 'a:b, c:d'."""
+    return ", ".join(
+        f"{s.get('nauka_field', '')}:{s.get('tak_field', '')}" for s in chain
+    )
+
+
+def _text_to_chain(text: str) -> list:
+    """'a:b, c:d' -> [{'nauka_field': a, 'tak_field': b}, ...] (skips malformed)."""
+    chain = []
+    for pair in text.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        nauka, tak = pair.split(":", 1)
+        nauka, tak = nauka.strip(), tak.strip()
+        if nauka and tak:
+            chain.append({"nauka_field": nauka, "tak_field": tak})
+    return chain
+
+
+def _csv(text: str) -> list:
+    return [t.strip() for t in text.split(",") if t.strip()]
+
+
 class NarzedziaTab(QWidget):
     def __init__(self, cfg: dict):
         super().__init__()
@@ -97,6 +122,51 @@ class NarzedziaTab(QWidget):
         sm_form.addRow("", sm_hint)
         layout.addWidget(sm_group)
 
+        layout.addSpacing(8)
+
+        su = cfg.get("sentence_unlocker", {})
+        su_group = QGroupBox("Sentence Unlocker — odblokowywanie zdań (pX-tak)")
+        su_form = QFormLayout(su_group)
+        su_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._su_model = _expanding_line_edit(su.get("model", "angielski"))
+        su_form.addRow("Typ notatki (model):", self._su_model)
+        self._su_threshold = QSpinBox()
+        self._su_threshold.setRange(1, 365)
+        self._su_threshold.setSuffix(" dni")
+        self._su_threshold.setValue(su.get("threshold", 21))
+        su_form.addRow("Próg dojrzałości (interval):", self._su_threshold)
+        self._su_marker = _expanding_line_edit(su.get("marker", "tak"))
+        su_form.addRow("Wartość znacznika (pX-tak):", self._su_marker)
+        self._su_main = _expanding_line_edit(
+            ", ".join(su.get("main_templates", ["ang-pol", "pol-ang"]))
+        )
+        su_form.addRow("Karty główne (przecinkami):", self._su_main)
+        self._su_chain = _expanding_line_edit(_chain_to_text(
+            su.get("chain", [
+                {"nauka_field": "p1-nauka", "tak_field": "p1-tak"},
+                {"nauka_field": "p2-nauka", "tak_field": "p2-tak"},
+                {"nauka_field": "p3-nauka", "tak_field": "p3-tak"},
+            ])
+        ))
+        su_form.addRow("Zdania (pole-nauka:pole-tak):", self._su_chain)
+        self._su_ignore_tag = _expanding_line_edit(su.get("ignore_tag", "tk-unlock-ignored"))
+        su_form.addRow("Tag ignorowanych:", self._su_ignore_tag)
+        self._su_done_tag = _expanding_line_edit(su.get("done_tag", "tk-unlock-done"))
+        su_form.addRow("Tag ukończonych:", self._su_done_tag)
+        self._su_show_tooltip = QCheckBox("Pokazuj tooltip po skanowaniu")
+        self._su_show_tooltip.setChecked(su.get("show_tooltip", True))
+        su_form.addRow("", self._su_show_tooltip)
+        su_hint = hint_label(
+            "Gdy karty główne dojrzeją (interval ≥ próg), wpisuje znacznik do pierwszego "
+            "pola -tak → generuje kartę zdania 1. Kolejne zdania odblokowują się stopniowo, "
+            "gdy karta poprzedniego zdania dojrzeje. Jednokierunkowo — znacznik nie jest "
+            "usuwany (skasowałby wygenerowaną kartę i jej historię). "
+            "Zdania: pary „pole-nauka:pole-tak” rozdzielone przecinkami, w kolejności odblokowywania.",
+            small=True,
+        )
+        su_form.addRow("", su_hint)
+        layout.addWidget(su_group)
+
         layout.addStretch()
 
         outer = QVBoxLayout(self)
@@ -123,3 +193,13 @@ class NarzedziaTab(QWidget):
         cfg["sibling_manager"]["tag"] = self._sm_tag.text().strip()
         cfg["sibling_manager"]["ignore_tag"] = self._sm_ignore_tag.text().strip()
         cfg["sibling_manager"]["show_tooltip"] = self._sm_show_tooltip.isChecked()
+
+        cfg.setdefault("sentence_unlocker", {})
+        cfg["sentence_unlocker"]["model"] = self._su_model.text().strip()
+        cfg["sentence_unlocker"]["threshold"] = self._su_threshold.value()
+        cfg["sentence_unlocker"]["marker"] = self._su_marker.text().strip()
+        cfg["sentence_unlocker"]["main_templates"] = _csv(self._su_main.text())
+        cfg["sentence_unlocker"]["chain"] = _text_to_chain(self._su_chain.text())
+        cfg["sentence_unlocker"]["ignore_tag"] = self._su_ignore_tag.text().strip()
+        cfg["sentence_unlocker"]["done_tag"] = self._su_done_tag.text().strip()
+        cfg["sentence_unlocker"]["show_tooltip"] = self._su_show_tooltip.isChecked()

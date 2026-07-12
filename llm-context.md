@@ -152,6 +152,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── sentence_unlocker/               # Moduł 13 — stopniowe odblokowywanie zdań (pX-tak)
+│   ├── __init__.py                  # hooki reviewer+sync + _run_scan (CollectionOp) + setup_menu
+│   ├── logic.py                     # process_note() — czysta logika staggered gating
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/
     └── test_pure_logic.py           # testy czystej logiki bez uruchamiania Anki
 ```
@@ -173,6 +179,7 @@ anki-toolkit/
 | `field_hider/` | Chowa pola w edytorze **tylko w oknie „Dodaj”** (guard `editor.addMode` — w przeglądarce/edycji istniejącej karty hook wychodzi od razu). `indices_to_hide(field_names, targets)` (czysta) → 0-based indeksy pól do ukrycia; `on_editor_load_note` wstrzykuje `<style id="hf-style">` z `body:not(.hf-reveal) .field-container[data-index="i"]{display:none!important}` przez `editor.web.eval` (idempotentne, CSS przez `json.dumps`); ukrycie **czysto wizualne**, nic nie kasuje w notatce; `on_editor_buttons_init` dodaje przycisk 👁 (tylko w „Dodaj”) togglujący klasę `hf-reveal` na `<body>` → tymczasowo odsłania. Config `{typ_notatki: [pola]}`; UI `FieldHiderTab` (combo typu + checkboxy pól, `_store_current()` przed przełączeniem typu). Adaptacja wtyczki `anki-hide` (dodano guard `addMode`). Brak `setup_menu` | `gui_hooks.editor_did_load_note` + `gui_hooks.editor_did_init_buttons` |
 | `web_bridge/` | Lokalny serwer HTTP `127.0.0.1:8766` (stdlib `ThreadingHTTPServer`, wątek daemon) wpisujący pola przysłane ze strony WWW do **otwartego okna „Dodaj”** — uniwersalny most przeglądarka→edytor bez tworzenia notatek (alternatywa dla AnkiConnect `guiAddCards`, który zamyka+otwiera okno i podmienia całą notatkę). `POST {"fields":{nazwa:wartość}, "append"?:bool, "separator"?:str}` → `_apply_fields(fields, append, separator)` (na wątku głównym przez `mw.taskman.run_on_main` + `threading.Event`, timeout 5 s): `aqt.dialogs._dialogs["AddCards"][1]` (None→błąd „okno nie otwarte”), wpisuje **tylko istniejące** pola (`name in note`); `append` → `_join(existing, value, sep)` dokleja przez separator (domyślnie `<br><br>`), inaczej **nadpisuje**; `editor.loadNote()`+`activateWindow()`; nie zapisuje notatki (zatwierdza user). Handler zwraca `200 {"ok":bool,"error":str?}`; `Origin` spoza allowlisty `ALLOWED_ORIGIN_HOSTS` (domeny słowników; **brak nagłówka = dozwolone** — GM_xmlhttpRequest/curl go nie wysyłają, a przeglądarka przy cross-origin POST zawsze) → `403`, więc obca strona nie wstrzyknie pól nawet simple requestem omijającym preflight; body cap `MAX_BODY` 1 MB; `_cors()` (+OPTIONS preflight) tylko dla dozwolonych originów → działa z `https://<słownik>` bez konfiguracji AnkiConnect; port zajęty → warning, moduł nie wstaje. Self-check (`__main__`) na `_join`. Dołączony userscript `dictionaries-to-anki.user.js` (diki→`ang`/`pol`; Oxford `h1.headword`→`ang`, `.def`→`def`, `.x`→`przyklad` append; LDOCE `.HWD`→`ang`, `.DEF`→`def`, `.EXAMPLE`→`przyklad` append; Cambridge `.hw.dhw`→`ang`, `.def`→`def`, `.eg`→`przyklad` append, `.dtrans-se`→`pol` [tylko EN-PL]; `clean()` ucina końcowy `:`; `GM_xmlhttpRequest`/`GM.xmlHttpRequest` omija mixed content https→http). Brak zakładki, brak `setup_menu`, tylko stdlib | `gui_hooks.profile_did_open` → `start_server` |
 | `word_queue/` | Kolejka haseł z **n8n DataTable** + słowniki w `QWebEngineView` dokowane do okna „Dodaj”. Klient n8n z **failoverem** (`_via_hosts`: ostatni działający → `n8n_url` → `fallback_url`/Tailscale; zwycięzca cache'owany w `_active_url`; `_get_json` = `fetch_url(max_retries=1, timeout=5)`, bo domyślne 3 retry blokowały ~20 s przed próbą drugiego hosta; `_mark_done` = `post_json(method="PATCH", max_retries=2)`). `fetch_queue` pobiera **całą tabelę** stronicując po `nextCursor` (base64 `{limit,offset}` — `sortBy` trzeba powtarzać; `limit` ≤ 250; bezpiecznik `max_rows`); **bez filtra po fladze**, bo panel chowa zrobione sam — inaczej „Odśwież” gubiłby wiersze odhaczone w sesji i blokował cofanie. `_queue_query`: `json.dumps(separators=(",",":"))` + `quote_via=quote` (n8n zwraca `400 must be url encoded`, gdy spacja wyjdzie jako `+`). `_set_flag(filters, cfg, value)` → PATCH `{filter, data:{flag:bool}, returnData:true}` (`dryRun`/`returnData` w **body**, nie query); `mark_row_done(id)` = ścieżka widocznego panelu (trafia zawsze), `mark_word_done(word)` = fallback bez panelu albo przy panelu ukrytym (zawodzi przy `sprawl` vs `sprawling`). `panel.py`: `_DictTabs` ładuje URL dopiero przy pierwszym wejściu w zakładkę (Chromium ≈100 MB), mapuje po indeksie nie `tabText()`, a zakładki bez URL-a wyszarza i ładuje `about:blank`, żeby nie zostawała strona poprzedniego hasła; `_dict_profile()` = nazwany `QWebEngineProfile` (trwałe ciasteczka) wstrzykujący **ten sam** `web_bridge/dictionaries-to-anki.user.js` w `MainWorld`/`DocumentReady`; `_silent()` (kontekstmenedżer, przywraca **poprzedni** stan) wycisza `itemChanged` przy zmianach programowych — `setCheckState` **i `setData`** je emitują, bez tego `_style_item` powodował drugi PATCH i podwójne zliczenie. Ptaszek = **stan** wiersza (`true`/`false`, rollback przy błędzie), dodanie karty przy widocznym panelu odhacza po `id` ale **nie przeskakuje** (jedno hasło = kilka znaczeń; `_prefill` wpisuje hasło z powrotem, bo hook leci po `_load_new_note()`). Callbacki `run_in_background` w `panel.py` zaczynają od strażnika `sip.isdeleted(self/item)` — zamknięcie okna „Dodaj” (`deleteLater()` w Anki) albo „Odśwież” (`clear()` listy) w trakcie żądania zostawiało martwe widgety i callback rzucał `RuntimeError`. Self-check (`__main__`): query, body, failover | `gui_hooks.add_cards_did_add_note` → `on_add_note`, `gui_hooks.editor_did_init_buttons` → `on_editor_buttons_init` (📚), `setup_menu` |
+| `sentence_unlocker/` | Progresywne odblokowywanie kart gap-fill przez wpisywanie znacznika do pól `pX-tak` (szablony `pX-nauka` generują kartę tylko przy `{{#pX-tak}}{{#pX-nauka}}`). **Stopniowo**: karty główne (`main_templates`, np. `ang-pol`+`pol-ang`) dojrzeją (`ivl ≥ threshold`, default 21) → odblokuj zdanie 1; karta zdania N-1 dojrzeje → odblokuj zdanie N. `process_note(col, nid, threshold, main_templates, chain, marker, ignore_tag, done_tag)` (czysta, testowalna) zwraca 0/1 (staggered ⇒ max 1 na wywołanie); `_tmpl_cards` mapuje nazwa_szablonu→Card po `col.models.get(mid)["tmpls"][card.ord]["name"]` (obecność karty = "odblokowane", jej `ivl` bramkuje kolejne zdanie); `chain` = pary `{nauka_field, tak_field}` (nauka_field == nazwa szablonu). **Jednokierunkowo** — marker nigdy nie usuwany (usunięcie skasowałoby wygenerowaną kartę + historię). Filtr modelu w hooku reviewer'a; `sync_did_finish` → `_run_scan` (CollectionOp, query `"note:{model}" -tag:{done} -tag:{ignore}`); `done_tag` na w pełni odblokowanych + notatkach bez zdań (batch je pomija); Tools menu → ręczny skan; `_changes_for_ui()` po mutacji. UI `narzedzia_tab` edytuje wszystko wraz z `main_templates` (CSV) i `chain` (pary `nauka:tak`, `_text_to_chain`/`_chain_to_text`). Testy: `tests/test_sentence_unlocker.py` | `gui_hooks.reviewer_did_answer_card` + `gui_hooks.sync_did_finish` + `setup_menu(parent_menu)` |
 | `settings/` | Zbiorczy dialog ustawień dla wszystkich modułów | `open_settings()` |
 
 ---
@@ -273,6 +280,7 @@ Zakładki (9 zakładek):
     "nbsp_remover":      true,
     "field_splitter":    true,
     "sibling_manager":   true,
+    "sentence_unlocker": true,
     "deck_router":       true,
     "field_hider":       true,
     "web_bridge":        true,
@@ -294,6 +302,7 @@ Brakujący klucz = `true` (domyślnie włączony). Zmiana wymaga restartu Anki.
 | `nbsp_remover` | `nbsp_remover/` | Zakładka Narzędzia (sekcja Czyszczenie HTML) |
 | `field_splitter` | `field_splitter/` | Zakładka Narzędzia (sekcja Rozdzielanie pól) |
 | `sibling_manager` | `sibling_manager/` | Zakładka Narzędzia (sekcja Sibling Manager) |
+| `sentence_unlocker` | `sentence_unlocker/` | Zakładka Narzędzia (sekcja Sentence Unlocker — w tym `main_templates` i `chain`) |
 | `deck_router` | `deck_router/` | Zakładka Deck Router (tabela reguł tag → talia) |
 | `field_hider` | `field_hider/` | Zakładka Ukrywanie pól (combo typu notatki + checkboxy pól) |
 | `web_bridge` | `web_bridge/` | — (tylko toggle; port w kodzie, mapowanie pól w userscripcie) |
@@ -458,6 +467,10 @@ deck_router/
 
 field_hider/
     └── __init__.py             (indices_to_hide(field_names, targets) — czyste jądro, testowalne + self-check pod __main__; on_editor_load_note wstrzykuje CSS chowający pola przez editor.web.eval, guard editor.addMode = tylko okno „Dodaj"; on_editor_buttons_init dodaje przycisk 👁 togglujący hf-reveal; używa common/config get_module_config)
+
+sentence_unlocker/
+    ├── logic.py                (process_note — staggered gating pól pX-tak; _tmpl_cards nazwa_szablonu→Card; _finish tag done + update_note; bez importów Anki, testowalne)
+    └── __init__.py             (on_reviewer_did_answer_card hook z filtrem modelu + on_sync_did_finish → _run_scan CollectionOp + setup_menu ręczny skan; używa common/config get_module_config)
 ```
 
 ---

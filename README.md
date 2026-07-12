@@ -126,6 +126,12 @@ anki-toolkit/
 │   ├── README.md
 │   └── llm-context.md
 │
+├── sentence_unlocker/               # Moduł 13: stopniowe odblokowywanie zdań (pX-tak)
+│   ├── __init__.py                  # hooki reviewer+sync + batch (CollectionOp) + menu
+│   ├── logic.py                     # process_note() — czysta logika staggered gating
+│   ├── README.md
+│   └── llm-context.md
+│
 └── tests/                           # testy czystej logiki bez uruchamiania Anki
 ```
 
@@ -163,7 +169,7 @@ Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI
 | **Workflowy** | Lista nazwanych workflowów (Dodaj/Edytuj/Usuń, kolejność ▲▼ = kolejność w menu PPM); edytor kroków (AI/Słownik/TTS/Rozdziel) z parametrami; checkbox „Pokaż jako przycisk w edytorze" per workflow; checkboxy widoczności wbudowanych sekcji PPM (Pobierz wymowę / TTS / Generuj pola / Generuj zablokowane / Rozdziel pole) |
 | **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
 | **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
-| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) |
+| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) · Sentence Unlocker (stopniowe odblokowywanie zdań pX-tak) |
 | **Deck Router** | Tabela reguł tag → talia (szablon i talia z list rozwijanych); kieruje karty do talii wg tagu notatki |
 | **Ukrywanie pól** | Wybór typu notatki + checkboxy pól chowanych w oknie „Dodaj" (nie rusza przeglądarki ani edycji istniejących kart) |
 | **Kolejka słówek** | Adres n8n (domowy + zapasowy/Tailscale), klucz API, wybór tabeli z rozwijanki (przycisk „Pobierz listę" = test połączenia), mapowanie pola notatki i kolumn, losowa kolejność na starcie |
@@ -188,6 +194,7 @@ Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
     "nbsp_remover":      true,
     "field_splitter":    true,
     "sibling_manager":   true,
+    "sentence_unlocker": true,
     "deck_router":       true,
     "field_hider":       true,
     "web_bridge":        true,
@@ -542,6 +549,36 @@ Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
 | `show_tooltip` | `true` | Tooltip po sync catch-up ("zawieszono X, odwieszono Y") |
 
 **Współistnienie z SibPush:** Jeśli używałeś wcześniej SibPush, **wyłącz go** przed włączeniem tego modułu — oba zarządzają zawieszaniem i mogłyby konfliktować.
+
+---
+
+### Sentence Unlocker (`sentence_unlocker`)
+
+Stopniowe odblokowywanie kart-ćwiczeń „Uzupełnij". Model `angielski` ma szablony zdań generujące kartę tylko przy niepustym `pX-tak` (`{{#p1-tak}}{{#p1-nauka}}…`). Moduł wpisuje ten znacznik automatycznie, gdy karty dojrzeją — nie dokładasz trudniejszych ćwiczeń, dopóki wcześniejszy materiał nie siedzi. Koncepcyjne przeciwieństwo Sibling Managera (tam zawieszanie, tu tworzenie kart).
+
+**Zasada działania (stopniowo):**
+1. karty główne `ang-pol` **i** `pol-ang` dojrzeją (interval ≥ próg, domyślnie 21 dni) → odblokuj zdanie 1 (`p1-tak` = `tak`)
+2. karta zdania 1 (`p1-nauka`) dojrzeje → odblokuj zdanie 2
+3. karta zdania 2 dojrzeje → odblokuj zdanie 3
+
+**Jednokierunkowość ⚠️:** Znacznik **nigdy nie jest usuwany** — wyczyszczenie `pX-tak` skasowałoby już wygenerowaną kartę razem z jej historią powtórek. Raz odblokowane zostaje odblokowane.
+
+**Uczenie na telefonie + synchronizacja:** Hook reviewer'a działa tylko na desktopie. Po synchronizacji uruchamia się batch scan (hook `sync_did_finish`, CollectionOp) przetwarzający notatki modelu bez tagu ukończonych/ignorowanych. Ręczny catch-up: **Narzędzia → Anki Toolkit → Sentence Unlocker: przeskanuj kolekcję (odblokuj zdania)...**.
+
+Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sentence Unlocker) — w tym `main_templates` (przecinkami) i kolejność zdań `chain` (pary `pole-nauka:pole-tak`):
+
+| Pole | Default | Opis |
+|---|---|---|
+| `model` | `angielski` | Typ notatki, którego dotyczy moduł (inne pomijane) |
+| `threshold` | `21` | Próg dojrzałości karty w dniach (`ivl ≥ threshold`) |
+| `marker` | `tak` | Wartość wpisywana do pola `-tak` |
+| `main_templates` | `ang-pol, pol-ang` | Karty główne bramkujące pierwsze zdanie |
+| `chain` | `p1-nauka:p1-tak, p2-nauka:p2-tak, p3-nauka:p3-tak` | Zdania w kolejności odblokowywania |
+| `ignore_tag` | `tk-unlock-ignored` | Notatki z tym tagiem są pomijane |
+| `done_tag` | `tk-unlock-done` | Tag notatek w pełni odblokowanych (pomijane w batchu) |
+| `show_tooltip` | `true` | Tooltip z podsumowaniem po skanowaniu |
+
+Szczegóły: [`sentence_unlocker/README.md`](sentence_unlocker/README.md).
 
 ---
 
