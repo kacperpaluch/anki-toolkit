@@ -208,16 +208,13 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia**.
 
-**`deck_name`** — nazwa talii filtrowanej do utworzenia/odświeżenia. Domyślnie `"Angielski - Powtórka z wyprzedzeniem"`.
+**`deck_name`** — nazwa **bazowa** talii filtrowanej; wybrany preset dokleja do niej swoją etykietę (np. `... — Uczone w ostatnich 7 dniach`). Domyślnie `"Angielski - Powtórka z wyprzedzeniem"`.
 
-**`search_deck`** — nazwa talii źródłowej, z której pobierane są karty. Domyślnie `"angielski"`.
-
-Akcja: **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {search_deck}...** — otwiera dialog z opcjami (dni do przodu, limit kart, kolejność) i tworzy/rebuduje istniejącą talię filtrowaną (`col.sched.rebuild_filtered_deck`).
+Akcja: **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...** — otwiera dialog z listą predefiniowanych presetów (7/30 dni, wszystkie uczone, trudne karty `rated:30:1`, losowe) i tworzy/rebuduje talię (`col.sched.rebuild_filtered_deck`). Presety obejmują całą kolekcję (brak filtra `deck:`), zawsze z kolejnością losową i `reschedule=false`.
 
 ```json
 "filtered_deck": {
-    "deck_name": "Angielski - Powtórka z wyprzedzeniem",
-    "search_deck": "angielski"
+    "deck_name": "Angielski - Powtórka z wyprzedzeniem"
 }
 ```
 

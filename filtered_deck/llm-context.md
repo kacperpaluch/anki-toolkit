@@ -2,26 +2,39 @@
 
 ## Co robi
 
-Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez formularz Qt. Dostępne przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...**. Nazwa talii i deck docelowy są konfigurowalne w ustawieniach wtyczki.
+Tworzy talię filtrowaną w Anki z jednego z predefiniowanych presetów (dialog Qt z QComboBox). Dostępne przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...**. Presety obejmują całą kolekcję (brak filtra `deck:`) i nie zmieniają harmonogramu (`resched=False`).
 
 ## Pliki
 
 | Plik | Rola |
 |---|---|
-| `__init__.py` | Cały moduł — dialog Qt, logika tworzenia talii, `setup_menu(parent_menu=None)`; używa `common.ADDON_NAME` |
+| `__init__.py` | Cały moduł — stała `PRESETS`, dialog Qt, logika tworzenia talii, `setup_menu(parent_menu=None)`; używa `common.ADDON_NAME` |
+
+## Presety (stała `PRESETS`)
+
+Lista krotek `(etykieta, search, limit, order)` — wszystkie z `order=1` (losowo):
+
+| Etykieta | Search | Limit |
+|---|---|---|
+| Uczone w ostatnich 7 dniach | `rated:7` | 99999 |
+| Uczone w ostatnich 30 dniach | `rated:30` | 99999 |
+| Wszystkie uczone karty (bez limitu) | `-is:new` | 999999 |
+| Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 |
+| Losowe karty (uczone lub nie) | `deck:*` | 100 |
 
 ## Przepływ danych
 
 ```
-Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...
+Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...
   → FilterSettingsDialog.exec()
-      → użytkownik wybiera w QFormLayout: Dni do przodu, Limit kart, Kolejność
-  → create_filtered_deck(days, limit, order)
-      → _get_config() — czyta deck_name i search_deck z configu (używa ADDON_NAME)
-      → col.decks.new_filtered(name)          # tworzy nową talię filtrowaną
-      → search_query = f'prop:due<={days} deck:"{search_deck}"'
-        # nazwa talii w cudzysłowach — nazwy ze spacjami nie psują zapytania
-      → konfiguruje search_query, limit, order, reschedule=False
+      → użytkownik wybiera preset w QComboBox
+  → create_filtered_deck(preset_index)
+      → label, search, limit, order = PRESETS[preset_index]
+      → _get_config() — czyta deck_name (bazę nazwy) z configu (używa ADDON_NAME)
+      → deck_name = f"{base} — {label}"
+      → reużycie istniejącej talii dyn o tej nazwie LUB col.decks.new_filtered(name)
+        (sufiks (1), (2)... tylko gdy nazwę zajmuje zwykła talia)
+      → konfiguruje search, limit, order, reschedule=False, separate=True
       → col.sched.rebuild_filtered_deck(id)    # wypełnia kartami
       → mw.col.decks.select(id) + mw.reset()  # przełącza widok
       → tooltip z liczbą kart
@@ -31,27 +44,15 @@ Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: {deck}...
 
 ```json
 "filtered_deck": {
-    "deck_name": "Angielski - Powtórka z wyprzedzeniem",
-    "search_deck": "angielski"
+    "deck_name": "Angielski - Powtórka z wyprzedzeniem"
 }
 ```
 
 | Pole | Opis |
 |---|---|
-| `deck_name` | Nazwa tworzonej talii filtrowanej |
-| `search_deck` | Nazwa talii do wyszukiwania (`deck:"..."` w query — nazwy ze spacjami są obsługiwane) |
+| `deck_name` | Nazwa bazowa talii — preset dokleja `— {etykieta}` |
 
-Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja "Talia filtrowana").
-
-## Parametry dialogu
-
-| Parametr | Domyślnie | Opis |
-|---|---|---|
-| Dni do przodu | 9999 | `prop:due<=X` — zakres terminów powtórek |
-| Limit kart | 99999 | Max liczba kart w talii |
-| Kolejność | Losowo (1) | Sort order Anki (0–6) |
-
-Wartości sort order: 0=Najdawniej oglądane, 1=Losowo, 2=Rosnące interwały, 3=Malejące interwały, 4=Najwięcej pomyłek, 5=Kolejność dodania, 6=Termin powtórki.
+`search_deck` z wcześniejszych wersji jest ignorowany (presety obejmują całą kolekcję). Edytowalne przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja "Talia filtrowana").
 
 ## Obsługa wersji Anki
 
@@ -63,5 +64,5 @@ Kod obsługuje dwa formaty deck config z bounds checking:
 
 - Anki API: `mw.col.decks`, `mw.col.sched.rebuild_filtered_deck`, `mw.addonManager.getConfig`
 - Własne: `common.ADDON_NAME`
-- PyQt6: `QDialog`, `QVBoxLayout`, `QFormLayout`, `QLabel`, `QSpinBox`, `QComboBox`, `QDialogButtonBox`
+- PyQt6: `QDialog`, `QVBoxLayout`, `QFormLayout`, `QLabel`, `QComboBox`, `QDialogButtonBox`
 - Brak pip packages

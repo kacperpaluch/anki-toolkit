@@ -1,8 +1,20 @@
 from aqt import mw
-from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QSpinBox, QDialogButtonBox, QComboBox, QFormLayout
+from aqt.qt import QAction, QDialog, QVBoxLayout, QLabel, QComboBox, QDialogButtonBox, QFormLayout
 from aqt.utils import showInfo, tooltip
 
 from ..common import ADDON_NAME
+
+
+# Predefiniowane presety: (etykieta, search, limit, kolejność)
+# Kolejność 1=losowo dla wszystkich. Działają w dowolnym decku (brak filtra
+# deck:) i nie zmieniają harmonogramu (resched=False).
+PRESETS = [
+    ("Uczone w ostatnich 7 dniach", "rated:7", 99999, 1),
+    ("Uczone w ostatnich 30 dniach", "rated:30", 99999, 1),
+    ("Wszystkie uczone karty (bez limitu)", "-is:new", 999999, 1),
+    ("Trudne karty (pomyłki z 30 dni)", "rated:30:1", 99999, 1),
+    ("Losowe karty (uczone lub nie)", "deck:*", 100, 1),
+]
 
 
 def _get_config() -> dict:
@@ -13,39 +25,20 @@ def _get_config() -> dict:
 class FilterSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Ustawienia talii filtrowanej")
+        self.setWindowTitle("Talia filtrowana — preset")
         self.setup_ui()
 
     def setup_ui(self):
         layout = QVBoxLayout()
         form = QFormLayout()
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        self.days_spin = QSpinBox()
-        self.days_spin.setRange(0, 36500)
-        self.days_spin.setValue(9999)
-        self.days_spin.setToolTip("Zakres wyszukiwania Anki: prop:due<=X")
-        form.addRow("Dni do przodu:", self.days_spin)
-
-        self.limit_spin = QSpinBox()
-        self.limit_spin.setRange(1, 999999)
-        self.limit_spin.setValue(99999)
-        form.addRow("Limit kart:", self.limit_spin)
-
-        self.order_combo = QComboBox()
-        self.order_combo.addItem("Najdawniej oglądane", 0)
-        self.order_combo.addItem("Losowo", 1)
-        self.order_combo.addItem("Rosnące interwały", 2)
-        self.order_combo.addItem("Malejące interwały", 3)
-        self.order_combo.addItem("Najwięcej pomyłek", 4)
-        self.order_combo.addItem("Kolejność dodania", 5)
-        self.order_combo.addItem("Termin powtórki", 6)
-        self.order_combo.setCurrentIndex(1)
-        form.addRow("Kolejność:", self.order_combo)
-
+        self.preset_combo = QComboBox()
+        for i, (label, *_rest) in enumerate(PRESETS):
+            self.preset_combo.addItem(label, i)
+        form.addRow("Preset:", self.preset_combo)
         layout.addLayout(form)
 
-        hint = QLabel("Talia filtrowana nie zmienia harmonogramu powtórek.")
+        hint = QLabel("Karty z dowolnego decka. Powtórka nie zmienia harmonogramu.")
         hint.setStyleSheet("color: gray;")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -59,20 +52,15 @@ class FilterSettingsDialog(QDialog):
 
         self.setLayout(layout)
 
-    def get_values(self):
-        return (
-            self.days_spin.value(),
-            self.limit_spin.value(),
-            self.order_combo.currentData()
-        )
+    def get_preset_index(self):
+        return self.preset_combo.currentData()
 
 
-def create_filtered_deck(days_ahead, card_limit, sort_order):
+def create_filtered_deck(preset_index):
+    label, search_query, card_limit, sort_order = PRESETS[preset_index]
     cfg = _get_config()
-    deck_name = cfg.get("deck_name", "Angielski - Powtórka z wyprzedzeniem")
-    search_deck = cfg.get("search_deck", "angielski")
-    escaped_deck = search_deck.replace('"', '\\"')
-    search_query = f'prop:due<={days_ahead} deck:"{escaped_deck}"'
+    base_name = cfg.get("deck_name", "Powtórka z wyprzedzeniem")
+    deck_name = f"{base_name} — {label}"
     reschedule = False
 
     try:
@@ -87,10 +75,9 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
             deck_id = existing["id"]
             reused = True
         else:
-            base_name = deck_name
             counter = 1
             while col.decks.by_name(deck_name):
-                deck_name = f"{base_name} ({counter})"
+                deck_name = f"{base_name} — {label} ({counter})"
                 counter += 1
             deck_id = col.decks.new_filtered(deck_name)
         deck = col.decks.get(deck_id)
@@ -127,7 +114,7 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
         mw.col.decks.select(deck_id)
         mw.reset()
         verb = "Zaktualizowano" if reused else "Utworzono"
-        tooltip(f"{verb} talię '{deck_name}'\nKarty: {card_count}\nZakres: {days_ahead} dni.", period=3000)
+        tooltip(f"{verb} talię '{deck_name}'\nKarty: {card_count}", period=3000)
 
     except Exception as e:
         showInfo(f"Błąd podczas tworzenia talii filtrowanej: {str(e)}")
@@ -136,14 +123,11 @@ def create_filtered_deck(days_ahead, card_limit, sort_order):
 def show_dialog_and_create():
     dialog = FilterSettingsDialog(mw)
     if dialog.exec():
-        days, limit, order = dialog.get_values()
-        create_filtered_deck(days, limit, order)
+        create_filtered_deck(dialog.get_preset_index())
 
 
 def setup_menu(parent_menu=None):
-    cfg = _get_config()
-    search_deck = cfg.get("search_deck", "angielski")
     menu = parent_menu or mw.form.menuTools
-    action = QAction(f"Utwórz talię filtrowaną: {search_deck}...", mw)
+    action = QAction("Utwórz talię filtrowaną (preset)...", mw)
     action.triggered.connect(show_dialog_and_create)
     menu.addAction(action)

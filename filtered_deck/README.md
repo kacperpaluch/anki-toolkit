@@ -1,12 +1,24 @@
 # Filtered Deck — talia filtrowana
 
-Tworzy talię filtrowaną w Anki z konfigurowalnymi parametrami przez dialog.
+Tworzy talię filtrowaną w Anki z jednego z predefiniowanych presetów. Karty pobierane są z **dowolnego decka** (cała kolekcja), a oceny **nie zmieniają harmonogramu** powtórek.
 
 ## Jak używać
 
-**Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: ...**
+**Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...**
 
-Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i automatycznie otwierana.
+Pojawia się dialog z listą presetów. Po wybraniu i kliknięciu OK talia jest tworzona i automatycznie otwierana.
+
+## Presety
+
+| Preset | Search Anki | Limit | Kolejność |
+|---|---|---|---|
+| Uczone w ostatnich 7 dniach | `rated:7` | 99999 | Losowo |
+| Uczone w ostatnich 30 dniach | `rated:30` | 99999 | Losowo |
+| Wszystkie uczone karty (bez limitu) | `-is:new` | 999999 | Losowo |
+| Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 | Losowo |
+| Losowe karty (uczone lub nie) | `deck:*` | 100 | Losowo |
+
+Każdy preset tworzy osobną talię o nazwie `{deck_name} — {nazwa presetu}`.
 
 ## Konfiguracja
 
@@ -14,39 +26,19 @@ Pojawia się dialog z ustawieniami. Po kliknięciu OK talia jest tworzona i auto
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
-| `deck_name` | `Angielski - Powtórka z wyprzedzeniem` | Nazwa tworzonej talii filtrowanej |
-| `search_deck` | `angielski` | Nazwa talii do wyszukiwania (`deck:"..."` w query — nazwy ze spacjami są obsługiwane) |
+| `deck_name` | `Angielski - Powtórka z wyprzedzeniem` | Nazwa bazowa — preset dokleja do niej swoją etykietę |
 
 ```json
 "filtered_deck": {
-    "deck_name": "Angielski - Powtórka z wyprzedzeniem",
-    "search_deck": "angielski"
+    "deck_name": "Angielski - Powtórka z wyprzedzeniem"
 }
 ```
 
-## Parametry dialogu
-
-| Parametr | Domyślnie | Opis |
-|---|---|---|
-| **Dni do przodu** | `9999` | Zakres `prop:due<=X` — uwzględnia karty z terminem do X dni w przód. `9999` = wszystkie zaległe i przyszłe |
-| **Limit kart** | `99999` | Maksymalna liczba kart w talii |
-| **Kolejność** | Losowo | Porządek kart w talii |
-
-### Dostępne kolejności
-
-| Nazwa | Wartość wewnętrzna |
-|---|---|
-| Najdawniej oglądane | 0 |
-| Losowo | 1 |
-| Rosnące interwały | 2 |
-| Malejące interwały | 3 |
-| Najwięcej pomyłek | 4 |
-| Kolejność dodania | 5 |
-| Termin powtórki | 6 |
+> `search_deck` z wcześniejszych wersji nie jest już używany — presety obejmują całą kolekcję.
 
 ## Zachowanie
 
-- Jeśli talia filtrowana o tej nazwie już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kopii z sufiksem
+- Jeśli talia filtrowana danego presetu już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kopii z sufiksem
 - Jeśli nazwa jest zajęta przez zwykłą (nie-filtrowaną) talię, tworzona jest z numerem: `(1)`, `(2)` itd.
 - `reschedule = false` — oceny w talii filtrowanej nie zmieniają planowania FSRS/SM-2
 - Po stworzeniu talia jest automatycznie otwierana

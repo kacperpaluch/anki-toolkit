@@ -415,24 +415,25 @@ Każde wygenerowane audio (Kokoro i OpenRouter) jest zliczane w **Ustawienia →
 
 ### Talia filtrowana (`filtered_deck`)
 
-Dostępny przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną: ...** — nazwa talii w menu odpowiada skonfigurowanej nazwie wyszukiwanej talii.
+Dostępny przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...**. Karty pobierane są z **dowolnego decka** (cała kolekcja), a oceny **nie zmieniają harmonogramu** (`reschedule = false`).
 
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
+Dialog pozwala wybrać jeden z predefiniowanych presetów (wszystkie z kolejnością losową):
+
+| Preset | Search Anki | Limit |
+|---|---|---|
+| Uczone w ostatnich 7 dniach | `rated:7` | 99999 |
+| Uczone w ostatnich 30 dniach | `rated:30` | 99999 |
+| Wszystkie uczone karty (bez limitu) | `-is:new` | 999999 |
+| Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 |
+| Losowe karty (uczone lub nie) | `deck:*` | 100 |
+
+Każdy preset tworzy osobną talię `{deck_name} — {nazwa presetu}`. Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
 
 | Pole | Opis |
 |---|---|
-| `deck_name` | Nazwa tworzonej talii filtrowanej (domyślnie `"Angielski - Powtórka z wyprzedzeniem"`) |
-| `search_deck` | Nazwa talii do wyszukiwania w `deck:` (domyślnie `"angielski"`) |
+| `deck_name` | Nazwa bazowa talii — preset dokleja swoją etykietę (domyślnie `"Angielski - Powtórka z wyprzedzeniem"`) |
 
-Jeśli talia filtrowana o tej nazwie już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kolejnych kopii z sufiksem `(1)`, `(2)`…
-
-Dialog przy każdym użyciu pozwala wybrać dodatkowe opcje:
-
-| Opcja | Opis |
-|---|---|
-| Dni do przodu | Zakres `prop:due<=X` (domyślnie 9999 = wszystkie) |
-| Limit kart | Maksymalna liczba kart w talii (domyślnie 99999) |
-| Kolejność | Losowo, wg interwału, wg terminu itp. |
+Jeśli talia danego presetu już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kolejnych kopii z sufiksem `(1)`, `(2)`…
 
 ---
 

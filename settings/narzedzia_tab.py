@@ -22,11 +22,7 @@ class NarzedziaTab(QWidget):
         self._deck_name = _expanding_line_edit(
             fd.get("deck_name", "Angielski - Powtórka z wyprzedzeniem")
         )
-        self._search_deck = _expanding_line_edit(
-            fd.get("search_deck", "angielski")
-        )
-        fd_form.addRow("Nazwa tworzonej talii:", self._deck_name)
-        fd_form.addRow("Wyszukiwana talia (deck:):", self._search_deck)
+        fd_form.addRow("Nazwa bazowa talii:", self._deck_name)
         layout.addWidget(fd_group)
         layout.addSpacing(8)
 
@@ -110,7 +106,6 @@ class NarzedziaTab(QWidget):
     def apply(self, cfg: dict) -> None:
         cfg.setdefault("filtered_deck", {})
         cfg["filtered_deck"]["deck_name"] = self._deck_name.text().strip()
-        cfg["filtered_deck"]["search_deck"] = self._search_deck.text().strip()
 
         cfg.setdefault("nbsp_remover", {})
         cfg["nbsp_remover"]["show_tooltip"] = self._show_tooltip_cb.isChecked()
