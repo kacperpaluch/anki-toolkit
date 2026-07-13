@@ -24,7 +24,7 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
 | `api.py` | API TTS: `generate_audio()` (dispatcher + statystyki; **na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); **wyjątek `raise Exception(...)` rzucany wewnątrz `_generate_*`** gdy `err` niepuste, a nie na poziomie `generate_audio()` (ten jedynie łapie i re-raise dla statystyk); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka → Logi |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` stripuje `[sound:...]` z target fields przed generowaniem; generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
-| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, `_GENERATING`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
+| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(tasks=[task], overwrite=...)` |
 
 ## Przepływ danych
 
@@ -61,9 +61,9 @@ _process_batch_async(browser, nids, tasks, label):
 
 Przycisk edytora (toolbar)
   → _on_tts_editor(editor)
-      → jeśli editor_id w _GENERATING: tooltip i return
+      → jeśli AI/TTS/słownik/workflow już działa na tym edytorze: tooltip i return
       → editor.saveNow(start) synchronizuje webview → note przed odczytem pól
-      → _start_tts_editor(editor, editor_id)
+      → _start_tts_editor(editor, token)
           → validate_config(config), get_tasks(config), unique(voices)
           → build_note_work_items(note, tasks, voices)
           → run_in_background(bg_task):

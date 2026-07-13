@@ -17,9 +17,11 @@ def load_batch_backfill(iter_impl):
     stubbed. iter_impl(note, config, only_fields=None, overwrite=False) controls
     which (field_cfg, target) pairs each note contributes.
     """
-    root_pkg = types.ModuleType("_bb"); root_pkg.__path__ = []
-    ai_pkg = types.ModuleType("_bb.ai_generator"); ai_pkg.__path__ = []
-    providers_pkg = types.ModuleType("_bb.ai_generator.providers"); providers_pkg.__path__ = []
+    root_pkg = types.ModuleType("_bb"); root_pkg.__path__ = [str(ROOT)]
+    ai_pkg = types.ModuleType("_bb.ai_generator")
+    ai_pkg.__path__ = [str(ROOT / "ai_generator")]
+    providers_pkg = types.ModuleType("_bb.ai_generator.providers")
+    providers_pkg.__path__ = [str(ROOT / "ai_generator/providers")]
     common_mod = types.ModuleType("_bb.common")
     common_mod.clean_html_normalized = lambda v: v
     common_mod.safe_str = lambda v: str(v or "").strip()

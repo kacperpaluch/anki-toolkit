@@ -10,7 +10,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
-| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + guard `_FETCHING`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
+| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch; natywny pasek `mw.progress` przez `common.progress` (`start_progress`/`update_progress`/`finish_progress`); używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
 | `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |
@@ -55,7 +55,7 @@ W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `An
 
 Batch działa w tle (`mw.taskman.run_in_background`); notatki są wczytywane (`mw.col.get_note`) na głównym wątku przed startem — kolekcja Anki jest jednowątkowa, wątek roboczy tylko mutuje je w pamięci (ten sam wzorzec co batch AI/TTS), a zapisuje `CollectionOp` na głównym wątku. Postęp przez natywny pasek Anki (`common.progress.start_progress`/`update_progress`/`finish_progress` → `mw.progress`) — trzyma Anki „busy", więc automatyczna kopia zapasowa / sync nie wyskakuje NAD paskiem i nie blokuje Anuluj (kosztem zablokowania całego okna na czas batcha). Anulowanie: `update_progress` czyta `mw.progress.want_cancel()` → ustawia `cancel_flag["cancelled"]`, sprawdzane między notatkami. Po zakończeniu jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
 
-Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw zapisuje bieżące pola (świeżo wpisane słowo jest widoczne), potem fetch w `run_in_background`. Guard `_FETCHING` blokuje podwójne kliknięcie. Po zakończeniu wynik trafia do notatki złapanej na starcie — jeśli użytkownik przełączył kartę w trakcie, zmiany są zapisywane przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki.
+Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw zapisuje bieżące pola (świeżo wpisane słowo jest widoczne), potem fetch w `run_in_background`. Wspólny guard blokuje równoległe AI, TTS, słownik i workflow na tej samej instancji edytora. Po zakończeniu wynik trafia do notatki złapanej na starcie — jeśli użytkownik przełączył kartę w trakcie, zmiany są zapisywane przez `mw.col.update_note()` zamiast do aktualnie wyświetlanej notatki.
 
 ## Konfiguracja (sekcja `dictionary` w config.json)
 

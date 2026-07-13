@@ -23,27 +23,25 @@ import logging
 import os
 import threading
 import time
-import urllib.request
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from ..common import clean_html_normalized, safe_str, post_json, fetch_url
+from ..common import clean_html_normalized, safe_str
 from . import stats
+# Keep these orchestration seams module-level and call them unqualified below:
+# tests patch batch_backfill._submit_* / _poll_* without reaching into backends.
+from .batch_anthropic import first_text as _first_text
+from .batch_anthropic import poll_batch as _anthropic_poll_batch
+from .batch_anthropic import submit_batch as _anthropic_submit_batch
+from .batch_openai import cleanup_files as _cleanup_openai_files
+from .batch_openai import poll_batch as _openai_poll_batch
+from .batch_openai import submit_batch as _openai_submit_batch
 from .field_generator import iter_note_fields
 from .template_engine import render_template
-from .providers.openai_compat import (
-    add_temperature_if_supported,
-    add_reasoning_effort_if_supported,
-)
 
 logger = logging.getLogger(__name__)
-
-ANTHROPIC_BATCHES_URL = "https://api.anthropic.com/v1/messages/batches"
-ANTHROPIC_VERSION = "2023-06-01"
-OPENAI_FILES_URL = "https://api.openai.com/v1/files"
-OPENAI_BATCHES_URL = "https://api.openai.com/v1/batches"
 
 _ELIGIBLE_PROVIDERS = ("anthropic", "openai")
 
@@ -396,255 +394,28 @@ def submit(items, config: dict) -> tuple:
     return records, errors
 
 
-def _retries(config):
-    return int(config.get("max_retries", 3))
-
-
-def _timeout(config):
-    return int(config.get("request_timeout", 30))
-
-
-# --- Anthropic backend -----------------------------------------------------
-
-def _anthropic_headers(config: dict) -> Optional[dict]:
-    api_key = (config.get("providers", {}).get("anthropic", {}) or {}).get("api_key", "")
-    if not api_key or api_key.startswith("YOUR_"):
-        return None
-    return {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}
-
-
 def _submit_anthropic(items, config: dict) -> tuple:
-    headers = _anthropic_headers(config)
-    if headers is None:
-        return None, "Brak klucza API Anthropic — uzupełnij w Ustawieniach."
-    a_cfg = config.get("providers", {}).get("anthropic", {}) or {}
-    raw_max = a_cfg.get("max_tokens")
-    max_tokens = int(raw_max) if raw_max is not None else 2048
-    # temperature omitted — deprecated in the Messages API.
-    requests = [{
-        "custom_id": i["custom_id"],
-        "params": {
-            "model": i["model"],
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": i["prompt"]}],
-        },
-    } for i in items]
-    body = json.dumps({"requests": requests}).encode("utf-8")
-    raw, err = post_json(
-        ANTHROPIC_BATCHES_URL, body,
-        dict(headers, **{"content-type": "application/json"}),
-        max_retries=_retries(config), timeout=_timeout(config), log=logger,
-    )
-    if raw is None:
-        return None, err
-    try:
-        batch_id = json.loads(raw.decode("utf-8")).get("id")
-    except ValueError as e:
-        return None, f"Nieczytelna odpowiedź API: {e}"
+    batch_id, err = _anthropic_submit_batch(items, config)
     if not batch_id:
-        return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
-    logger.info(f"Batch Anthropic wysłany: {batch_id} ({len(items)} zapytań)")
+        return None, err
     return _new_record(batch_id, "anthropic", items), None
 
 
 def _poll_anthropic(record: dict, config: dict) -> tuple:
-    """Returns (status, results): status in {'ended','pending','error'}."""
-    headers = _anthropic_headers(config)
-    if headers is None:
-        return "error", None
-    raw = fetch_url(f"{ANTHROPIC_BATCHES_URL}/{record['id']}",
-                    headers=headers, timeout=_timeout(config))
-    if raw is None:
-        return "error", None
-    try:
-        info = json.loads(raw.decode("utf-8"))
-    except ValueError:
-        return "error", None
-    if info.get("processing_status") != "ended":
-        return "pending", None
-    results_url = info.get("results_url") or f"{ANTHROPIC_BATCHES_URL}/{record['id']}/results"
-    raw_res = fetch_url(results_url, headers=headers, timeout=_timeout(config))
-    if raw_res is None:
-        return "error", None
-    results = []
-    for line in raw_res.decode("utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        res = entry.get("result", {}) or {}
-        msg = res.get("message", {}) or {}
-        usage = msg.get("usage", {}) or {}
-        text = _first_text(msg.get("content")) if res.get("type") == "succeeded" else None
-        results.append({
-            "custom_id": entry.get("custom_id"),
-            "ok": res.get("type") == "succeeded" and bool(text),
-            "text": text,
-            "in_tok": int(usage.get("input_tokens") or 0),
-            "out_tok": int(usage.get("output_tokens") or 0),
-        })
-    return "ended", results
-
-
-# --- OpenAI backend --------------------------------------------------------
-
-def _openai_key(config: dict) -> Optional[str]:
-    api_key = (config.get("providers", {}).get("openai", {}) or {}).get("api_key", "")
-    if not api_key or api_key.startswith("YOUR_"):
-        return None
-    return api_key
-
-
-def _multipart(fields: dict, file_field: str, filename: str, file_bytes: bytes) -> tuple:
-    """Minimal multipart/form-data encoder for the Files API upload."""
-    boundary = "----ankitoolkit" + uuid.uuid4().hex
-    out = bytearray()
-    for k, v in fields.items():
-        out += f"--{boundary}\r\n".encode()
-        out += f'Content-Disposition: form-data; name="{k}"\r\n\r\n'.encode()
-        out += f"{v}\r\n".encode()
-    out += f"--{boundary}\r\n".encode()
-    out += (f'Content-Disposition: form-data; name="{file_field}"; '
-            f'filename="{filename}"\r\n').encode()
-    out += b"Content-Type: application/jsonl\r\n\r\n"
-    out += file_bytes + b"\r\n"
-    out += f"--{boundary}--\r\n".encode()
-    return bytes(out), boundary
-
-
-def _delete_openai_file(file_id: str, api_key: str, timeout: int) -> None:
-    """Best-effort cleanup of an uploaded input file whose batch create failed —
-    otherwise every failed create leaves a multi-MB orphan in OpenAI storage."""
-    try:
-        req = urllib.request.Request(
-            f"{OPENAI_FILES_URL}/{file_id}", method="DELETE",
-            headers={"Authorization": f"Bearer {api_key}"})
-        urllib.request.urlopen(req, timeout=timeout).read()
-    except Exception:
-        logger.warning(f"Nie udało się usunąć osieroconego pliku {file_id}")
+    return _anthropic_poll_batch(record, config)
 
 
 def _submit_openai(items, config: dict) -> tuple:
-    api_key = _openai_key(config)
-    if api_key is None:
-        return None, "Brak klucza API OpenAI — uzupełnij w Ustawieniach."
-    o_cfg = config.get("providers", {}).get("openai", {}) or {}
-    default_temp = o_cfg.get("temperature", 0.7)
-    reasoning = o_cfg.get("reasoning_effort")
-    reasoning = reasoning.strip().lower() if isinstance(reasoning, str) else None
-
-    lines = []
-    for i in items:
-        body = {"model": i["model"], "messages": [{"role": "user", "content": i["prompt"]}]}
-        temp = i["temperature"] if i["temperature"] is not None else default_temp
-        add_temperature_if_supported(body, i["model"], temp)
-        add_reasoning_effort_if_supported(body, i["model"], reasoning)
-        lines.append(json.dumps({
-            "custom_id": i["custom_id"],
-            "method": "POST",
-            "url": "/v1/chat/completions",
-            "body": body,
-        }, ensure_ascii=False))
-    jsonl = ("\n".join(lines) + "\n").encode("utf-8")
-
-    file_bytes, boundary = _multipart({"purpose": "batch"}, "file", "batchinput.jsonl", jsonl)
-    raw, err = post_json(
-        OPENAI_FILES_URL, file_bytes,
-        {"Authorization": f"Bearer {api_key}",
-         "Content-Type": f"multipart/form-data; boundary={boundary}"},
-        max_retries=_retries(config), timeout=_timeout(config), log=logger,
-    )
-    if raw is None:
-        return None, f"upload pliku: {err}"
-    try:
-        file_id = json.loads(raw.decode("utf-8")).get("id")
-    except ValueError as e:
-        return None, f"upload pliku — nieczytelna odpowiedź: {e}"
-    if not file_id:
-        return None, "upload pliku — brak id pliku w odpowiedzi."
-
-    body = json.dumps({
-        "input_file_id": file_id,
-        "endpoint": "/v1/chat/completions",
-        "completion_window": "24h",
-    }).encode("utf-8")
-    raw, err = post_json(
-        OPENAI_BATCHES_URL, body,
-        {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        max_retries=_retries(config), timeout=_timeout(config), log=logger,
-    )
-    if raw is None:
-        _delete_openai_file(file_id, api_key, _timeout(config))
+    metadata, err = _openai_submit_batch(items, config)
+    if not metadata:
         return None, err
-    try:
-        batch_id = json.loads(raw.decode("utf-8")).get("id")
-    except ValueError as e:
-        return None, f"Nieczytelna odpowiedź API: {e}"
-    if not batch_id:
-        return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
-    logger.info(f"Batch OpenAI wysłany: {batch_id} ({len(items)} zapytań, model {items[0]['model']})")
-    rec = _new_record(batch_id, "openai", items)
-    rec["input_file_id"] = file_id  # do skasowania po odebraniu wyników
-    return rec, None
-
-
-_OPENAI_TERMINAL = {"completed", "failed", "expired", "cancelled"}
+    record = _new_record(metadata["id"], "openai", items)
+    record["input_file_id"] = metadata["input_file_id"]
+    return record, None
 
 
 def _poll_openai(record: dict, config: dict) -> tuple:
-    api_key = _openai_key(config)
-    if api_key is None:
-        return "error", None
-    headers = {"Authorization": f"Bearer {api_key}"}
-    raw = fetch_url(f"{OPENAI_BATCHES_URL}/{record['id']}",
-                    headers=headers, timeout=_timeout(config))
-    if raw is None:
-        return "error", None
-    try:
-        info = json.loads(raw.decode("utf-8"))
-    except ValueError:
-        return "error", None
-    if info.get("status") not in _OPENAI_TERMINAL:
-        return "pending", None
-    output_file_id = info.get("output_file_id")
-    # stash for cleanup_openai_files() — the record dict flows into the ended
-    # payload, so the caller can delete both files once results are committed
-    record["output_file_id"] = output_file_id
-    results = []
-    if output_file_id:
-        raw_res = fetch_url(f"{OPENAI_FILES_URL}/{output_file_id}/content",
-                            headers=headers, timeout=_timeout(config))
-        if raw_res is None:
-            return "error", None
-        for line in raw_res.decode("utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                continue
-            resp = entry.get("response") or {}
-            body = resp.get("body") or {}
-            usage = body.get("usage") or {}
-            text = None
-            if resp.get("status_code") == 200:
-                choices = body.get("choices") or []
-                if choices:
-                    text = ((choices[0].get("message") or {}).get("content")) or None
-            results.append({
-                "custom_id": entry.get("custom_id"),
-                "ok": bool(text),
-                "text": text,
-                "in_tok": int(usage.get("prompt_tokens") or 0),
-                "out_tok": int(usage.get("completion_tokens") or 0),
-            })
-    # requests that expired/failed live in error_file (not downloaded); they're
-    # accounted as failures via the leftover pass in apply_results.
-    return "ended", results
+    return _openai_poll_batch(record, config)
 
 
 _POLLERS = {"anthropic": _poll_anthropic, "openai": _poll_openai}
@@ -703,28 +474,11 @@ def _batch_expired(rec: dict) -> bool:
     return datetime.now() - created > timedelta(days=_BATCH_MAX_AGE_D)
 
 
-def _first_text(content) -> Optional[str]:
-    if not isinstance(content, list):
-        return None
-    for block in content:
-        if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
-            return block["text"]
-    return None
-
-
 def cleanup_openai_files(records, config: dict) -> None:
     """Delete a finished batch's input/output files from OpenAI storage
     (network-only — run in a background task, AFTER the results are committed).
     Old records without input_file_id are skipped silently."""
-    api_key = _openai_key(config)
-    if api_key is None:
-        return
-    for rec in records:
-        if rec.get("provider") != "openai":
-            continue
-        for fid in (rec.get("input_file_id"), rec.get("output_file_id")):
-            if fid:
-                _delete_openai_file(fid, api_key, _timeout(config))
+    _cleanup_openai_files(records, config)
 
 
 def _set_status(batch_ids, status: str) -> None:

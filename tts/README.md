@@ -23,7 +23,7 @@ W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki T
 | `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei jako jedną operację z jednym paskiem postępu i jednym podsumowaniem (widoczne tylko gdy >1 zadanie) |
 
 ### Edytor kart (pojedyncza notatka)
-Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania.
+Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, TTS albo workflow, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
 
 **PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stary `[sound:...]` jest usuwany i generowane jest nowe audio). Działa też w oknie dodawania nowej karty (AddCards).
 

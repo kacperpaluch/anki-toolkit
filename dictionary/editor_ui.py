@@ -6,6 +6,11 @@ from aqt.sound import av_player
 from aqt import gui_hooks
 
 from ..common import ADDON_NAME
+from ..common.editor_operation import (
+    active_editor_operation,
+    begin_editor_operation,
+    finish_editor_operation,
+)
 
 from .service import process_note_group
 
@@ -15,66 +20,77 @@ def _get_config() -> dict:
     return full_config.get("dictionary", {})
 
 
-# Tracks editor instances currently fetching — prevents double-click races.
-_FETCHING: set[int] = set()
-
-
 def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
-    editor_id = id(editor)
-    if editor_id in _FETCHING:
-        tooltip("Pobieranie wymowy już trwa...", parent=mw, period=2000)
-        return
-    _FETCHING.add(editor_id)
-
     config = _get_config()
+    token = begin_editor_operation(editor, "pobieranie wymowy")
+    if token is None:
+        tooltip(
+            f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
+            parent=mw,
+            period=2500,
+        )
+        return
 
-    def start():
+    def start_inner():
         # saveNow synced the webview → editor.note, so the source field
         # reflects what the user just typed.
         note = editor.note
         if note is None:
-            _FETCHING.discard(editor_id)
+            finish_editor_operation(editor, token)
             return
 
         def task():
             return process_note_group(note, config, dictionaries)
 
         def on_done(fut):
-            _FETCHING.discard(editor_id)
             try:
                 result = fut.result()
             except Exception as e:
+                finish_editor_operation(editor, token)
                 tooltip(f"Błąd pobierania wymowy: {e}", parent=mw, period=5000)
                 return
+            try:
+                if result.note_modified:
+                    # Only refresh the editor if it still shows the processed note;
+                    # otherwise persist directly so the fetched audio isn't lost.
+                    if editor.note is note:
+                        editor.loadNote()
+                    elif note.id:
+                        mw.col.update_note(note)
 
-            if result.note_modified:
-                # Only refresh the editor if it still shows the processed note;
-                # otherwise persist directly so the fetched audio isn't lost.
-                if editor.note is note:
-                    editor.loadNote()
-                elif note.id:
-                    mw.col.update_note(note)
+                    audio_files = result.saved_filenames
 
-                audio_files = result.saved_filenames
+                    def play_next(files):
+                        if not files:
+                            return
+                        file = files.pop(0)
+                        av_player.play_file(file)
+                        if files:
+                            QTimer.singleShot(1200, lambda: play_next(files))
 
-                def play_next(files):
-                    if not files:
-                        return
-                    file = files.pop(0)
-                    av_player.play_file(file)
-                    if files:
-                        QTimer.singleShot(1200, lambda: play_next(files))
-
-                if audio_files:
-                    play_next(audio_files)
-            elif result.audio_skipped:
-                tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
-            elif result.audio_requested and not result.audio_found:
-                tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
+                    if audio_files:
+                        play_next(audio_files)
+                elif result.audio_skipped:
+                    tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
+                elif result.audio_requested and not result.audio_found:
+                    tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
+            finally:
+                finish_editor_operation(editor, token)
 
         mw.taskman.run_in_background(task, on_done)
 
-    editor.saveNow(start)
+    def start():
+        try:
+            start_inner()
+        except Exception:
+            finish_editor_operation(editor, token)
+            raise
+
+    try:
+        editor.saveNow(start)
+    except Exception:
+        finish_editor_operation(editor, token)
+        raise
 
 
 def on_editor_buttons_init(buttons: list, editor: Editor):

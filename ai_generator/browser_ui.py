@@ -391,11 +391,20 @@ def _advance_jobs(config: dict):
 # ---------------------------------------------------------------------------
 
 def _on_workflow_browser(browser: Browser, workflow: dict):
-    from .workflow import execute_step
+    from .workflow import disabled_step_modules, execute_step
 
     steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
     if not steps:
         tooltip("Brak kroków w tym workflow. Sprawdź ustawienia.")
+        return
+
+    disabled = disabled_step_modules(steps)
+    if disabled:
+        tooltip(
+            "Workflow wymaga wyłączonych modułów: " + ", ".join(disabled)
+            + ". Włącz je w ustawieniach i uruchom ponownie Anki.",
+            period=6000,
+        )
         return
 
     nids = browser.selected_notes()

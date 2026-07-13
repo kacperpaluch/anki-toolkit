@@ -135,6 +135,7 @@ Testy czystej logiki można uruchomić bez Anki:
 ```bash
 python3 tests/test_pure_logic.py
 python3 tests/test_batch_backfill.py
+python3 tests/test_editor_operations.py
 python3 tests/test_sentence_unlocker.py
 ```
 

@@ -51,7 +51,7 @@ jednego modułu jest automatycznie izolowana.
 
 ```text
 __init__.py              rejestracja modułów i hooków
-common/                  HTTP, tekst, konfiguracja, logi, UI, progress
+common/                  HTTP, tekst, konfiguracja, logi, UI, progress, guard edytora
 settings/                domenowy dialog ustawień
 ai_generator/            generowanie pól, workflowy, providerzy, Batch API
 dictionary/              pobieranie nagrań i IPA
@@ -176,6 +176,7 @@ Testy używają `unittest` i stubów Anki. Działają bez instalacji `anki`:
 ```bash
 python3 tests/test_pure_logic.py
 python3 tests/test_batch_backfill.py
+python3 tests/test_editor_operations.py
 python3 tests/test_sentence_unlocker.py
 ```
 

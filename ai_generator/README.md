@@ -14,7 +14,7 @@ Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międ
 - **Pola docelowe AI** są zawsze nadpisywane wynikiem — kliknięcie przycisku AI to wyraźna intencja wypełnienia tych pól
 - **Pola których AI nie dotyka** (np. wpisujesz coś w polu `pol` podczas gdy AI generuje `def`) są zachowane — `saveNow` synchronizuje je przed odświeżeniem
 - Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
-- Kliknięcie przycisku podczas trwającej generacji pokazuje tooltip **"Generowanie już trwa..."** — podwójne kliknięcie jest ignorowane
+- Gdy na tej samej notatce trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest ignorowana z krótkim komunikatem. Inne okno edytora może pracować równolegle.
 - Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej
 
 ### Workflowy
@@ -24,7 +24,7 @@ Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Ka�
 - Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / zablokowane / konkretne)
 - Zmieniaj kolejność ▲▼, usuwaj kroki
 
-W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
+Przed startem workflow sprawdza, czy wszystkie wymagane moduły są włączone; brakujący moduł zatrzymuje cały przebieg zamiast wykonywać tylko część kroków. W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
 
 Dwa dawne wbudowane pipeline'y — **„Generuj wszystko: puste → TTS → rozdziel → zablokowane”** i **„Rozdziel + generuj naukę (p1–p3)”** — są teraz zwykłymi, edytowalnymi workflowami (seedowane automatycznie przy migracji).
 

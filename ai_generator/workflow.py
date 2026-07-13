@@ -14,10 +14,23 @@ from aqt.utils import tooltip
 from aqt.editor import Editor
 
 from ..common import ADDON_NAME, plural_pl
+from ..common.editor_operation import (
+    active_editor_operation,
+    begin_editor_operation,
+    finish_editor_operation,
+)
 
 logger = logging.getLogger(__name__)
 
-_RUNNING: set[int] = set()
+_STEP_MODULES = {
+    "ai": ("ai_generator", "AI"),
+    "dictionary": ("dictionary", "Słownik"),
+    "tts": ("tts", "TTS"),
+    "field_splitter": ("field_splitter", "Rozdzielanie pól"),
+}
+_STARTUP_MODULES = dict(
+    (mw.addonManager.getConfig(ADDON_NAME) or {}).get("modules", {})
+)
 
 
 # Which built-in (auto-generated) right-click sections are shown. Workflows are
@@ -78,6 +91,17 @@ def get_context_menu() -> dict:
     if not isinstance(cm, dict):
         return dict(DEFAULT_CONTEXT_MENU)
     return {**DEFAULT_CONTEXT_MENU, **cm}
+
+
+def disabled_step_modules(steps: list[dict], cfg: Optional[dict] = None) -> list[str]:
+    """Return unique labels of disabled modules required by workflow steps."""
+    modules = cfg.get("modules", {}) if cfg is not None else _STARTUP_MODULES
+    disabled: list[str] = []
+    for step in steps:
+        key, label = _STEP_MODULES.get(step.get("module"), (None, None))
+        if key and not modules.get(key, True) and label not in disabled:
+            disabled.append(label)
+    return disabled
 
 
 def migrate_workflows() -> None:
@@ -176,29 +200,49 @@ def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[st
 
 def run_workflow_editor(editor: Editor, workflow: dict):
     """Run one workflow's steps sequentially on the current editor note."""
-    editor_id = id(editor)
-    if editor_id in _RUNNING:
-        tooltip("Workflow już trwa...", period=2000)
-        return
-
     steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
     if not steps:
         tooltip("Brak kroków w tym workflow. Sprawdź ustawienia.")
         return
 
-    _RUNNING.add(editor_id)
+    disabled = disabled_step_modules(steps)
+    if disabled:
+        tooltip(
+            "Workflow wymaga wyłączonych modułów: " + ", ".join(disabled)
+            + ". Włącz je w ustawieniach i uruchom ponownie Anki.",
+            period=6000,
+        )
+        return
+
+    token = begin_editor_operation(
+        editor, f"workflow „{workflow.get('name', 'Workflow')}”"
+    )
+    if token is None:
+        tooltip(
+            f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
+            period=2500,
+        )
+        return
 
     def start():
-        note = editor.note
-        if note is None:
-            _RUNNING.discard(editor_id)
-            return
-        _execute_steps(editor, note, steps, editor_id)
+        try:
+            note = editor.note
+            if note is None:
+                finish_editor_operation(editor, token)
+                return
+            _execute_steps(editor, note, steps, token)
+        except Exception as e:
+            finish_editor_operation(editor, token)
+            tooltip(f"Błąd workflow: {e}", period=5000)
 
-    editor.saveNow(start)
+    try:
+        editor.saveNow(start)
+    except Exception:
+        finish_editor_operation(editor, token)
+        raise
 
 
-def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
+def _execute_steps(editor: Editor, note, steps: list, token):
     """Run workflow steps one by one in background. Each step waits for previous.
 
     All steps operate on the note captured when the workflow started, so
@@ -215,12 +259,13 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
 
     def run_step(i: int):
         if i >= total:
-            _RUNNING.discard(editor_id)
             try:
                 if editor.note is note:
                     editor.loadNote()
             except Exception:
                 pass  # editor may have been closed mid-run
+            finally:
+                finish_editor_operation(editor, token)
             tooltip(
                 f"Workflow zakończony. Wykonano {total} "
                 f"{plural_pl(total, 'krok', 'kroki', 'kroków')}.",
@@ -251,6 +296,10 @@ def _execute_steps(editor: Editor, note, steps: list, editor_id: int):
                 tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
             run_step(i + 1)
 
-        mw.taskman.run_in_background(bg_task, on_done)
+        try:
+            mw.taskman.run_in_background(bg_task, on_done)
+        except Exception as e:
+            finish_editor_operation(editor, token)
+            tooltip(f"Błąd workflow: {e}", period=5000)
 
     run_step(0)

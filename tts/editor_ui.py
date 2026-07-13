@@ -11,12 +11,13 @@ from aqt import gui_hooks
 from .config import get_tts_config, get_tasks, validate_config
 from .processor import build_note_work_items, generate_for_items, apply_results_to_note, process_single_note
 from ..common import unique
+from ..common.editor_operation import (
+    active_editor_operation,
+    begin_editor_operation,
+    finish_editor_operation,
+)
 
 logger = logging.getLogger(__name__)
-
-# Tracks editor instances currently generating TTS — prevents double-click races.
-_GENERATING: set[int] = set()
-
 
 def on_editor_buttons_init(buttons: list, editor: Editor):
     config = get_tts_config()
@@ -37,44 +38,54 @@ def on_editor_buttons_init(buttons: list, editor: Editor):
 
 
 def _on_tts_editor(editor: Editor):
-    editor_id = id(editor)
-    if editor_id in _GENERATING:
-        tooltip("TTS: generowanie już trwa...", period=2000)
+    token = begin_editor_operation(editor, "generowanie TTS")
+    if token is None:
+        tooltip(
+            f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
+            period=2500,
+        )
         return
-    _GENERATING.add(editor_id)
 
     def start():
-        _start_tts_editor(editor, editor_id)
+        try:
+            _start_tts_editor(editor, token)
+        except Exception:
+            finish_editor_operation(editor, token)
+            raise
 
-    editor.saveNow(start)
+    try:
+        editor.saveNow(start)
+    except Exception:
+        finish_editor_operation(editor, token)
+        raise
 
 
-def _start_tts_editor(editor: Editor, editor_id: int):
+def _start_tts_editor(editor: Editor, token):
     note = editor.note
     if not note:
-        _GENERATING.discard(editor_id)
+        finish_editor_operation(editor, token)
         tooltip("Brak notatki w edytorze.")
         return
 
     config = get_tts_config()
     if not validate_config(config):
-        _GENERATING.discard(editor_id)
+        finish_editor_operation(editor, token)
         return
 
     voices = unique(config.get("voices", []))
     if not voices:
-        _GENERATING.discard(editor_id)
+        finish_editor_operation(editor, token)
         tooltip("Brak skonfigurowanych głosów TTS.")
         return
 
     tasks = get_tasks(config)
     if not tasks:
-        _GENERATING.discard(editor_id)
+        finish_editor_operation(editor, token)
         return
 
     work_items, split_contexts = build_note_work_items(note, tasks, voices)
     if not work_items:
-        _GENERATING.discard(editor_id)
+        finish_editor_operation(editor, token)
         tooltip("TTS: brak pól do wygenerowania.", period=5000)
         return
 
@@ -86,14 +97,15 @@ def _start_tts_editor(editor: Editor, editor_id: int):
         return results, errors, first_error
 
     def on_done(future):
-        _GENERATING.discard(editor_id)
         try:
             results, errors, first_error = future.result()
         except Exception as e:
+            finish_editor_operation(editor, token)
             tooltip(f"TTS: błąd generowania — {e}", period=8000)
             return
 
         if not results:
+            finish_editor_operation(editor, token)
             msg = f"TTS: nie udało się wygenerować audio ({errors} błędów)."
             if first_error:
                 msg += f" {first_error}"
@@ -101,27 +113,38 @@ def _start_tts_editor(editor: Editor, editor_id: int):
             return
 
         def apply():
-            changed = apply_results_to_note(note, work_items, split_contexts, results)
+            try:
+                changed = apply_results_to_note(note, work_items, split_contexts, results)
 
-            # User may have switched notes while audio was generating — only
-            # refresh the editor if it still shows the processed note,
-            # otherwise persist directly so the audio isn't lost.
+                # User may have switched notes while audio was generating — only
+                # refresh the editor if it still shows the processed note,
+                # otherwise persist directly so the audio isn't lost.
+                if editor.note is note:
+                    editor.loadNote()
+                elif changed and note.id:
+                    mw.col.update_note(note)
+
+                msg = f"TTS: wygenerowano {len(results)} plików audio."
+                if errors:
+                    msg += f" Błędy: {errors}."
+                tooltip(msg, period=8000)
+            finally:
+                finish_editor_operation(editor, token)
+
+        try:
             if editor.note is note:
-                editor.loadNote()
-            elif changed and note.id:
-                mw.col.update_note(note)
+                editor.saveNow(apply)
+            else:
+                apply()
+        except Exception:
+            finish_editor_operation(editor, token)
+            raise
 
-            msg = f"TTS: wygenerowano {len(results)} plików audio."
-            if errors:
-                msg += f" Błędy: {errors}."
-            tooltip(msg, period=8000)
-
-        if editor.note is note:
-            editor.saveNow(apply)
-        else:
-            apply()
-
-    mw.taskman.run_in_background(bg_task, on_done)
+    try:
+        mw.taskman.run_in_background(bg_task, on_done)
+    except Exception:
+        finish_editor_operation(editor, token)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -138,29 +161,30 @@ def _tasks_for_field(field_name: str, config: dict) -> list[dict]:
 
 def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
     """Generate TTS for a single task on the current editor note."""
-    editor_id = id(editor)
-    if editor_id in _GENERATING:
-        tooltip("TTS: generowanie już trwa...", period=2000)
-        return
-    _GENERATING.add(editor_id)
-
     label = task.get("label", "TTS")
+    token = begin_editor_operation(editor, f"generowanie TTS „{label}”")
+    if token is None:
+        tooltip(
+            f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
+            period=2500,
+        )
+        return
 
-    def start():
+    def start_inner():
         note = editor.note
         if not note:
-            _GENERATING.discard(editor_id)
+            finish_editor_operation(editor, token)
             tooltip("Brak notatki w edytorze.")
             return
 
         config = get_tts_config()
         if not validate_config(config):
-            _GENERATING.discard(editor_id)
+            finish_editor_operation(editor, token)
             return
 
         voices = unique(config.get("voices", []))
         if not voices:
-            _GENERATING.discard(editor_id)
+            finish_editor_operation(editor, token)
             tooltip("Brak skonfigurowanych głosów TTS.")
             return
 
@@ -168,14 +192,15 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
             return process_single_note(note, config, tasks=[task], overwrite=overwrite)
 
         def on_done(future):
-            _GENERATING.discard(editor_id)
             try:
                 changed, err = future.result()
             except Exception as e:
+                finish_editor_operation(editor, token)
                 tooltip(f"TTS ({label}): błąd — {e}", period=8000)
                 return
 
             if not changed:
+                finish_editor_operation(editor, token)
                 if err:
                     tooltip(f"TTS ({label}): {err}", period=8000)
                 else:
@@ -187,24 +212,42 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
                 return
 
             def apply():
+                try:
+                    if editor.note is note:
+                        editor.loadNote()
+                    elif note.id:
+                        mw.col.update_note(note)
+
+                    msg = f"TTS ({label}): wygenerowano audio."
+                    if err:
+                        msg += f" {err}"
+                    tooltip(msg, period=8000)
+                finally:
+                    finish_editor_operation(editor, token)
+
+            try:
                 if editor.note is note:
-                    editor.loadNote()
-                elif note.id:
-                    mw.col.update_note(note)
-
-                msg = f"TTS ({label}): wygenerowano audio."
-                if err:
-                    msg += f" {err}"
-                tooltip(msg, period=8000)
-
-            if editor.note is note:
-                editor.saveNow(apply)
-            else:
-                apply()
+                    editor.saveNow(apply)
+                else:
+                    apply()
+            except Exception:
+                finish_editor_operation(editor, token)
+                raise
 
         mw.taskman.run_in_background(bg_task, on_done)
 
-    editor.saveNow(start)
+    def start():
+        try:
+            start_inner()
+        except Exception:
+            finish_editor_operation(editor, token)
+            raise
+
+    try:
+        editor.saveNow(start)
+    except Exception:
+        finish_editor_operation(editor, token)
+        raise
 
 
 def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:

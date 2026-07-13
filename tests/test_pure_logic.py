@@ -743,8 +743,13 @@ def load_workflow_module(initial_cfg: dict):
     ai_pkg = types.ModuleType("_twf.ai_generator")
     ai_pkg.__path__ = []
     common_mod = types.ModuleType("_twf.common")
+    common_mod.__path__ = []
     common_mod.ADDON_NAME = "_twf"
     common_mod.plural_pl = lambda n, a, b, c: a
+    editor_operation = types.ModuleType("_twf.common.editor_operation")
+    editor_operation.active_editor_operation = lambda editor: "test"
+    editor_operation.begin_editor_operation = lambda editor, label: object()
+    editor_operation.finish_editor_operation = lambda editor, token: None
 
     class FakeAM:
         def __init__(self, cfg):
@@ -773,6 +778,7 @@ def load_workflow_module(initial_cfg: dict):
         "_twf.ai_generator": ai_pkg,
         "_twf.ai_generator.browser_ui": browser_ui,
         "_twf.common": common_mod,
+        "_twf.common.editor_operation": editor_operation,
         "aqt": aqt_mod,
         "aqt.utils": aqt_utils,
         "aqt.editor": aqt_editor,
