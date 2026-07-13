@@ -5,7 +5,6 @@ from aqt.qt import (
     QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy, QLineEdit,
     QPushButton, QScrollArea, QFrame, Qt,
     QListWidget, QListWidgetItem, QFormLayout, QLabel, QComboBox, QCompleter,
-    QLayout, QRect, QSize, QPoint,
 )
 
 from .html import clean_html_normalized
@@ -100,68 +99,6 @@ def _api_key_widget(text: str = "") -> tuple:
     row.addWidget(field)
     row.addWidget(btn)
     return container, field
-
-
-class FlowLayout(QLayout):
-    """Left-to-right layout that wraps items to the next row when they don't fit
-    — for rows of chips/badges whose count varies (e.g. workflow steps)."""
-
-    def __init__(self, parent=None, spacing: int = 6):
-        super().__init__(parent)
-        self._items: list = []
-        self.setSpacing(spacing)
-        self.setContentsMargins(0, 0, 0, 0)
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, i):
-        return self._items[i] if 0 <= i < len(self._items) else None
-
-    def takeAt(self, i):
-        return self._items.pop(i) if 0 <= i < len(self._items) else None
-
-    def expandingDirections(self):
-        return Qt.Orientation(0)
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width):
-        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._do_layout(rect, test_only=False)
-
-    def sizeHint(self):
-        return self.minimumSize()
-
-    def minimumSize(self):
-        size = QSize()
-        for item in self._items:
-            size = size.expandedTo(item.minimumSize())
-        return size
-
-    def _do_layout(self, rect: QRect, test_only: bool) -> int:
-        x, y, line_height = rect.x(), rect.y(), 0
-        spacing = self.spacing()
-        for item in self._items:
-            hint = item.sizeHint()
-            next_x = x + hint.width() + spacing
-            if next_x - spacing > rect.right() and line_height > 0:
-                x = rect.x()
-                y = y + line_height + spacing
-                next_x = x + hint.width() + spacing
-                line_height = 0
-            if not test_only:
-                item.setGeometry(QRect(QPoint(x, y), hint))
-            x = next_x
-            line_height = max(line_height, hint.height())
-        return y + line_height - rect.y()
 
 
 def collapsible_section(title: str, expanded: bool = False) -> tuple[QWidget, QVBoxLayout]:
