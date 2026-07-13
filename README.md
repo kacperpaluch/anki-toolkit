@@ -140,6 +140,8 @@ python3 tests/test_sentence_unlocker.py
 
 ## Dla deweloperów i modeli AI
 
-Zacznij od [llm-context.md](llm-context.md). Jest to krótka mapa architektury i
-router do kontekstu właściwego obszaru. Nie ma potrzeby czytania wszystkich
-plików modułowych przed każdą zmianą.
+Codex automatycznie zaczyna od [AGENTS.md](AGENTS.md), który definiuje zasady
+pracy i wymagane testy. Pozostałe narzędzia powinny następnie przeczytać
+[llm-context.md](llm-context.md) — krótką mapę architektury i router do kontekstu
+właściwego obszaru. Nie ma potrzeby czytania wszystkich plików modułowych przed
+każdą zmianą.
