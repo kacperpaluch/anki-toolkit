@@ -22,7 +22,7 @@ Wiele typów notatek ma pola pomocnicze wypełniane później automatycznie (np.
 
 ## Konfiguracja
 
-**Ustawienia → Ukrywanie pól:**
+**Ustawienia → Konserwacja → Ukrywanie pól:**
 
 1. Wybierz **typ notatki** z listy.
 2. Zaznacz pola, które mają być **ukryte** w oknie „Dodaj”.

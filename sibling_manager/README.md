@@ -34,14 +34,14 @@ Po synchronizacji desktopa automatycznie uruchamia się **batch scan** (`sync_di
 
 ## Powiadomienia i logi
 
-- **Po odpowiedzi (reviewer hook):** log z licznikami w buforze logów wtyczki (widoczny w **Ustawienia → Logi**), np. `nid=123 — zawieszono 2, odwieszono 0`. Bez tooltipa — odpowiadasz na setki kart, tooltip byłby uciążliwy.
+- **Po odpowiedzi (reviewer hook):** log z licznikami w buforze logów wtyczki (widoczny w **Ustawienia → Diagnostyka → Logi**), np. `nid=123 — zawieszono 2, odwieszono 0`. Bez tooltipa — odpowiadasz na setki kart, tooltip byłby uciążliwy.
 - **Po sync catch-up:** log z podsumowaniem + tooltip `"Sibling Manager: zawieszono X, odwieszono Y"` (gdy coś zrobiono). Tooltip można wyłączyć w konfiguracji (`show_tooltip`).
 - **Po ręcznym "Uwolnij wszystkie":** tooltip `"Sibling Manager: uwolniono wszystkie karty"`.
 - Bufor logów jest w pamięci (2000 linii) — znika po restarcie Anki. Brak trwałej historii.
 
 ## Konfiguracja
 
-W **Ustawienia → Narzędzia → Sibling Manager**:
+W **Ustawienia → Reguły kart → Odblokowywanie**:
 
 | Pole | Default | Opis |
 |---|---|---|

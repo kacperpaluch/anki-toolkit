@@ -80,7 +80,7 @@ Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw za
 - `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
 - `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `fetch_text(timeout=page_timeout)`
 - `mp3_timeout` — timeout GET pliku MP3; przekazywany do `fetch_url(timeout=mp3_timeout)`
-- `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne przez zakładkę Słownik w ustawieniach
+- `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne w **Wymowa → Słownik**
 - `diki_ipa_fallback` — gdy `true`, przy pobieraniu z Diki moduł próbuje uzupełnić IPA z `diki_ipa_fallback_source`
 - `diki_ipa_fallback_source` — źródło IPA dla Diki (`wiktionary`, `oxford`, `cambridge`); jeśli źródło inne niż Wiktionary zwróci `None`, może zadziałać `wiktionary_ipa_fallback`
 - Każdy przycisk może mieć listę słowników — pobiera UK i US naraz, zapisuje oba `[sound:...]` w jednym polu

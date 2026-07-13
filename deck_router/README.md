@@ -27,7 +27,7 @@ Tag jest własnością **notatki**, więc wszystkie jej karty dzielą ten sam ta
 
 ## Konfiguracja
 
-**Ustawienia → Deck Router** — tabela reguł (Dodaj/Usuń wiersz):
+**Ustawienia → Reguły kart → Kierowanie do talii** — tabela reguł (Dodaj/Usuń wiersz):
 
 | Kolumna | Opis |
 |---|---|
@@ -53,7 +53,7 @@ Reguły z pustym tagiem lub pustą talią są przy zapisie pomijane.
 ## Menu
 
 - **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** — retroaktywne uporządkowanie: znajduje notatki z tagami z reguł i przenosi ich karty (w tle, jeden krok undo).
-- Ta sama akcja jest dostępna przyciskiem **„Uporządkuj istniejące karty…”** w zakładce **Ustawienia → Deck Router** — używa reguł aktualnie widocznych w tabeli (także jeszcze niezapisanych), więc można od razu przetestować nową regułę.
+- Ta sama akcja jest dostępna przyciskiem **„Uporządkuj istniejące karty…”** w zakładce **Ustawienia → Reguły kart → Kierowanie do talii** — używa reguł aktualnie widocznych w tabeli (także jeszcze niezapisanych), więc można od razu przetestować nową regułę.
 
 ## Włączanie / wyłączanie
 

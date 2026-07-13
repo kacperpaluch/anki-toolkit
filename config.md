@@ -61,7 +61,7 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
 
 ## Sekcja `tts` — generowanie audio przez TTS
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka TTS** lub edycję `config.json`. Akcje TTS dostępne przez **prawy klik w przeglądarce → Anki Toolkit → TTS** oraz **PPM na polu docelowym w edytorze**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Wymowa → TTS** lub edycję `config.json`. Akcje TTS dostępne przez **prawy klik w przeglądarce → Anki Toolkit → TTS** oraz **PPM na polu docelowym w edytorze**.
 
 **`tts_provider`** — `"kokoro"` (domyślnie) lub `"openrouter"`. Wybiera silnik TTS.
 
@@ -166,7 +166,7 @@ Klucz to nazwa typu notatki (dokładnie jak w Anki). Każde pole to obiekt z:
 - `"prompt"` — treść prompta
 - `"fallback_provider"` (opcjonalne) — dostawca zapasowy uruchamiany gdy główny model zawiedzie; puste/brak = użyj tego samego dostawcy co główny model
 - `"fallback_model"` (opcjonalne) — model zapasowy uruchamiany gdy główny model zawiedzie (błąd API, rate limit, brak środków, brak treści); puste/brak = brak fallbacku per-prompt (wtedy używany jest `fallback_model` z konfiguracji dostawcy, jeśli ustawiony)
-- `"temperature"` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak klucza = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji i faktów, wyższa (0.7–1.0) dla przykładowych zdań. Fallback tego promptu również jej używa. W UI: Ustawienia → AI Generator → Prompty → pole „Temperatura" („— domyślna dostawcy" = brak nadpisania)
+- `"temperature"` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak klucza = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji i faktów, wyższa (0.7–1.0) dla przykładowych zdań. Fallback tego promptu również jej używa. W UI: Ustawienia → Generowanie AI → Prompty → pole „Temperatura" („— domyślna dostawcy" = brak nadpisania)
 - `"manual_only"` (opcjonalne, `true`/`false`, domyślnie `false`) — pole wykluczone z batcha "Wszystkie puste", workflow oraz głównego przycisku AI w edytorze. Dostępne tylko przez jawne wskazanie: submenu "Generuj zablokowane ▸" w przeglądarce lub PPM na polu w edytorze.
 
 W promptach dostępne są:
@@ -181,7 +181,7 @@ Pola które już mają zawartość są automatycznie pomijane.
 
 ## Sekcja `audio_normalizer` — normalizacja audio
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Normalizacja**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Normalizacja audio**.
 
 **`ffmpeg_path`** — ścieżka do pliku wykonywalnego ffmpeg. Puste `""` = automatyczne wykrycie (PATH, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`).
 
@@ -207,7 +207,7 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 
 ## Sekcja `filtered_deck` — talia filtrowana
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Presety powtórek**.
 
 **`deck_name`** — nazwa **bazowa** talii filtrowanej; wybrany preset dokleja do niej swoją etykietę (np. `... — Uczone w ostatnich 7 dniach`). Domyślnie `"Angielski - Powtórka z wyprzedzeniem"`.
 
@@ -223,7 +223,7 @@ Akcja: **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...*
 
 ## Sekcja `nbsp_remover` — czyszczenie HTML w kolekcji
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja NBSP Remover).
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Czyszczenie HTML**.
 
 **`show_tooltip`** — `true` (domyślnie) = pokazuje tooltip z licznikiem oczyszczonych pól przy automatycznym czyszczeniu.
 
@@ -247,7 +247,7 @@ Akcje:
 
 ## Sekcja `field_splitter` — rozdzielanie pól
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Rozdzielanie pól).
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Workflowy → Rozdzielanie pól**.
 
 **`source_field`** — nazwa pola zawierającego dane do rozdzielenia (np. `"przyklad"`). Pole to nie jest modyfikowane — operacja jest kopią, nie przeniesieniem.
 
@@ -274,7 +274,7 @@ Akcje:
 
 ## Sekcja `sibling_manager` — dynamiczne zawieszanie siblingów
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Sibling Manager).
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie**.
 
 **`interval`** — próg dojrzałości w dniach (domyślnie `30`). Karta z interval poniżej progu jest uznawana za immature — jej NEW siblingi są zawieszone. Gdy interval osiągnie próg, wszystkie zawieszone siblingi są uwalniane na raz.
 
@@ -282,7 +282,7 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka
 
 **`ignore_tag`** — notatki z tym tagiem są pomijane przez moduł (domyślnie `"tk-sib-ignored"`). Przydatne gdy masz notatki których siblingi chcesz widzieć wszystkie naraz (np. karty z minimalnymi różnicami).
 
-**`show_tooltip`** — `true` (domyślnie) = po sync catch-up pokazuje tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono). `false` = wyłącza tooltip, ale logi z licznikami nadal trafiają do bufora (**Ustawienia → Logi**).
+**`show_tooltip`** — `true` (domyślnie) = po sync catch-up pokazuje tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono). `false` = wyłącza tooltip, ale logi z licznikami nadal trafiają do bufora (**Ustawienia → Diagnostyka → Logi**).
 
 ```json
 "sibling_manager": {
@@ -301,7 +301,7 @@ Akcje:
 
 ## Sekcja `sentence_unlocker` — stopniowe odblokowywanie zdań
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Narzędzia** (sekcja Sentence Unlocker) — całość edytowalna z UI, w tym `main_templates` (przecinkami) i `chain` (pary `pole-nauka:pole-tak`).
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie** — całość edytowalna z UI, w tym `main_templates` (przecinkami) i `chain` (pary `pole-nauka:pole-tak`).
 
 Gdy karty główne notatki dojrzeją, moduł wpisuje znacznik do pola `pX-tak`, co powoduje wygenerowanie karty-ćwiczenia „Uzupełnij" (szablon `pX-nauka` renderuje się tylko przy `{{#pX-tak}}{{#pX-nauka}}`). Odblokowywanie jest **stopniowe**: kolejne zdanie czeka, aż karta poprzedniego dojrzeje.
 
@@ -346,7 +346,7 @@ Akcja: **Narzędzia → Anki Toolkit → Sentence Unlocker: przeskanuj kolekcję
 
 ## Sekcja `deck_router` — kierowanie kart do talii wg tagu
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Deck Router** — reguły dodajesz/usuwasz w tabeli (szablon i talia z list rozwijanych), bez ręcznej edycji JSON.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Kierowanie do talii** — reguły dodajesz/usuwasz w tabeli (szablon i talia z list rozwijanych), bez ręcznej edycji JSON.
 
 Natywny Deck Override w Anki działa tylko per-szablon karty — nie da się nim rozdzielić kart z tego samego szablonu na różne talie w zależności od tagu. Ten moduł dokłada kierowanie **per-tag**: gdy notatka ma skonfigurowany tag, jej pasujące karty są przenoszone do talii z reguły (nadpisując natywny override dla tych kart). Notatki bez pasującej reguły nie są ruszane.
 
@@ -446,7 +446,7 @@ Odczytywane świeżo przy każdym kliknięciu PPM — zmiana działa bez restart
 
 ## Sekcja `word_queue` — kolejka słówek z n8n DataTable
 
-Konfiguracja przez **Ustawienia → zakładka Kolejka słówek**. Klucz API zapisywany jest w `meta.json` w profilu Anki — `config.json` w repo trzyma puste wartości domyślne.
+Konfiguracja przez **Ustawienia → Integracje → Kolejka słówek**. Klucz API zapisywany jest w `meta.json` w profilu Anki — `config.json` w repo trzyma puste wartości domyślne.
 
 ```json
 "word_queue": {
@@ -480,7 +480,7 @@ Konfiguracja przez **Ustawienia → zakładka Kolejka słówek**. Klucz API zapi
 
 ## Sekcja `debug` — logowanie wtyczki
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → zakładka Logi**.
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Diagnostyka → Logi**.
 
 **`enabled`** — `true` = włącza logowanie na poziomie DEBUG (szczegółowe logi HTTP, parsery, statystyki); `false` (domyślnie) = tylko WARNING i wyżej. Może być przełączane live w UI bez restartu Anki (`common.debug_log.set_debug()`).
 

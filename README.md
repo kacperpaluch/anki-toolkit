@@ -1,669 +1,145 @@
 # Anki Toolkit
 
-Scalona wtyczka łącząca dziesięć narzędzi do zarządzania kartami Anki.
+Anki Toolkit to zestaw narzędzi wspierających przygotowanie i organizację
+materiałów w Anki. Łączy generowanie treści przez AI, wymowę, workflowy,
+reguły udostępniania kart oraz prywatne integracje w jednym dodatku.
 
-## Struktura
+Każdy moduł można włączyć lub wyłączyć. Interfejs ustawień grupuje funkcje według
+zadań użytkownika, niezależnie od technicznego podziału kodu.
 
-```
-anki-toolkit/
-├── __init__.py                      # entry point — rejestruje wszystkie hooki
-├── config.json                      # szablon domyślny (nie nadpisywany)
-├── config.md                        # dokumentacja konfiguracji
-├── manifest.json                    # metadane Anki
-│
-├── common/                          # współdzielone narzędzia
-│   ├── __init__.py
-│   ├── consts.py                    # ADDON_NAME (wyliczane z nazwy folderu wtyczki)
-│   ├── html.py                      # clean_html(), clean_html_normalized()
-│   ├── text.py                      # unique(), safe_str(), unique_filename(), normalize_float(), split_separator_regex(), plural_pl(), apply_word_replacements()
-│   ├── http.py                      # fetch_url(), fetch_text(), post_json() (retry dla POST), extract_http_error(), RETRYABLE_STATUS_CODES
-│   ├── config.py                    # get_full_config(), save_full_config(), get_module_config(), save_module_config()
-│   ├── progress.py                  # start_progress()/update_progress()/finish_progress() — natywny pasek mw.progress dla batchy (backup/sync się nie wcina)
-│   ├── debug_log.py                 # setup_logging(), konfiguracja logowania wtyczki (plik + konsola)
-│   └── ui.py                        # widgety Qt: palette (kolory zależne od motywu), hint_label, _expanding_line_edit, _api_key_widget, _scrollable, get_note_type_names, get_fields_for_note_type, get_sample_notes
-│
-├── user_files/                      # dane użytkownika (statystyki, historia) — przeżywają aktualizację wtyczki
-│
-├── settings/                        # Dialog ustawień dla wszystkich modułów
-│   ├── __init__.py                  # SettingsDialog, open_settings()
-│   ├── status_tab.py                # Zakładka: Start — dashboard pipeline'u workflow
-│   ├── modules_tab.py               # Zakładka: Moduły
-│   ├── dictionary_tab.py            # Zakładka: Słownik
-│   ├── ai_generator_tab.py          # Zakładka: AI Generator
-│   ├── workflows_tab.py             # Zakładka: Workflowy — lista nazwanych workflowów + widoczność sekcji PPM
-│   ├── prompts_tab.py               # Zakładka: Prompty (edytor + podgląd + kolorowanie składni)
-│   ├── prompt_wizard.py             # Dialog „Nowe zadanie AI” (opcjonalny szablon startowy)
-│   ├── prompt_templates.py          # Startowe szablony promptów
-│   ├── tts_tab.py                   # Zakładka: TTS
-│   ├── audio_normalizer_tab.py      # Zakładka: Normalizacja
-│   ├── narzedzia_tab.py             # Zakładka: Narzędzia
-│   ├── deck_router_tab.py           # Zakładka: Deck Router — tabela reguł tag → talia
-│   ├── field_hider_tab.py           # Zakładka: Ukrywanie pól — checkboxy pól chowanych w oknie „Dodaj”
-│   ├── stats_tab.py                 # Zakładka: Statystyki — dashboard użycia AI + koszty
-│   └── logs_tab.py                  # Zakładka: Logi — tryb debugowania + podgląd logów
-│
-├── dictionary/                      # Moduł 1: pobieranie audio + IPA
-│   ├── __init__.py                  # re-eksport hooków
-│   ├── service.py                   # logika biznesowa (ProcessNoteResult, process_note_group)
-│   ├── editor_ui.py                 # przyciski edytora
-│   ├── browser_ui.py                # submenu przeglądarki + batch
-│   ├── dictionary_service.py        # fetching MP3 z Oxford/Cambridge/Diki/Longman
-│   └── ipa_service.py               # fetching IPA z Oxford/Cambridge/Wiktionary
-│
-├── ai_generator/                    # Moduł 2: generowanie pól przez AI + workflow
-│   ├── __init__.py                  # re-eksport hooków
-│   ├── _generator.py                # zarządzanie stanem generatora (config-aware cache)
-│   ├── editor_ui.py                 # przycisk AI + przyciski workflowów (per editor_button)
-│   ├── browser_ui.py                # menu przeglądarki + batch
-│   ├── field_generator.py           # logika generowania, niezależna od dostawcy
-│   ├── batch_backfill.py            # Batch API Anthropic + OpenAI (async, ~50% taniej) — masowy backfill
-│   ├── template_engine.py           # silnik szablonów {{pole}} / {% if %}
-│   ├── stats.py                     # lokalne statystyki użycia (tokeny, requesty) + dopasowanie cen
-│   ├── workflow.py                  # workflowy (lista nazwanych): get_workflows/migrate_workflows/execute_step (AI/Dict/TTS/Rozdziel)
-│   └── providers/
-│       ├── __init__.py              # rejestr dostawców + fabryka get_provider() + klasy OpenAI-compatible (OpenAI, OpenRouter, CometAPI, Mistral, NVIDIA NIM)
-│       ├── base.py                  # BaseProvider (ABC) + OpenAICompatProvider + wspólne parsery odpowiedzi
-│       ├── openai_compat.py         # helpery OpenAI-compatible
-│       ├── anthropic.py             # Anthropic Messages API
-│       ├── google.py                # Google Gemini generateContent
-│       ├── opencode_go.py           # OpenCode Go (Chat Completions / Anthropic Messages)
-│       └── model_discovery.py       # pobieranie listy modeli z API dostawców
-│
-├── tts/                             # Moduł 3: generowanie audio przez Kokoro TTS lub OpenRouter
-│   ├── __init__.py                  # submenu TTS w menu kontekstowym przeglądarki + przycisk edytora
-│   ├── config.py                    # _DEFAULTS, get_tts_config(), validate_config(), get_tasks()
-│   ├── api.py                       # generate_audio(), _generate_kokoro(), _generate_openrouter(), fetch_openrouter_tts_models()
-│   ├── processor.py                 # wspólne build_note_work_items()/generate_for_items()/apply_results_to_note() + batch + process_single_note()
-│   └── editor_ui.py                 # przycisk TTS w toolbarze edytora (async, używa wspólnych funkcji procesora)
-│
-├── filtered_deck/                   # Moduł 4: tworzenie talii filtrowanej
-│   └── __init__.py                  # dialog ustawień + tworzenie talii
-│
-├── audio_normalizer/                # Moduł 5: normalizacja audio przez ffmpeg
-│   ├── __init__.py
-│   ├── config.py                    # konfiguracja ffmpeg, parametry EBU R128
-│   ├── gui.py                       # uruchomienie z menu — natywny pasek mw.progress + praca w tle
-│   ├── logic.py                     # skanowanie plików, historia, przetwarzanie równoległe
-│   └── watcher.py                   # auto-normalizacja: watcher katalogu mediów (debounce 3 s)
-│
-├── nbsp_remover/                    # Moduł 6: czyszczenie &nbsp; i tagów <div>
-│   ├── __init__.py
-│   ├── cleaning.py                  # czysta logika czyszczenia pól + liczniki
-│   ├── addcards.py                  # hook na dodawanie kart — czyszczenie w locie
-│   ├── collection.py                # akcja czyszczenia HTML w całej kolekcji
-│   └── utils.py
-│
-├── field_splitter/                  # Moduł 7: rozdzielanie pola na p1, p2, p3...
-│   ├── __init__.py                  # UI (browser context menu + Tools menu) + batch
-│   └── splitting.py                 # czysta logika split + parse_target_fields
-│
-├── sibling_manager/                 # Moduł 8: dynamiczne zawieszanie siblingów
-│   ├── __init__.py                  # hook reviewer'a + akcja menu Narzędzia
-│   ├── logic.py                     # process_note() — czysta logika suspend/unsuspend
-│   ├── README.md
-│   └── llm-context.md
-│
-├── deck_router/                     # Moduł 9: kierowanie kart do talii wg tagu
-│   ├── __init__.py                  # hook add-cards + route_after_edit() + menu retro
-│   ├── logic.py                     # match_deck() — czysta logika dopasowania reguły
-│   ├── README.md
-│   └── llm-context.md
-│
-├── field_hider/                     # Moduł 10: chowanie pól w oknie „Dodaj”
-│   ├── __init__.py                  # indices_to_hide() + hooki edytora + przycisk 👁
-│   ├── README.md
-│   └── llm-context.md
-│
-├── web_bridge/                      # Moduł 11: mostek HTTP strona WWW → okno „Dodaj”
-│   ├── __init__.py                  # serwer HTTP 127.0.0.1:8766 + wpis pól do edytora
-│   ├── dictionaries-to-anki.user.js # userscript: diki / Oxford / Longman / Cambridge → Anki
-│   ├── README.md
-│   └── llm-context.md
-│
-├── word_queue/                      # Moduł 12: kolejka słówek z n8n + słowniki w Anki
-│   ├── __init__.py                  # klient n8n (failover, PATCH), hook, przycisk 📚, menu
-│   ├── panel.py                     # dok przy oknie „Dodaj”: lista + QWebEngineView ze słownikami
-│   ├── README.md
-│   └── llm-context.md
-│
-├── sentence_unlocker/               # Moduł 13: stopniowe odblokowywanie zdań (pX-tak)
-│   ├── __init__.py                  # hooki reviewer+sync + batch (CollectionOp) + menu
-│   ├── logic.py                     # process_note() — czysta logika staggered gating
-│   ├── README.md
-│   └── llm-context.md
-│
-└── tests/                           # testy czystej logiki bez uruchamiania Anki
+## Główny przepływ
+
+Typowy proces przygotowania materiału wygląda tak:
+
+```text
+słowo lub notatka
+      ↓
+generowanie treści AI
+      ↓
+wymowa ze słownika lub TTS
+      ↓
+rozdzielenie przykładów na pola
+      ↓
+reguły stopniowego udostępniania kart
 ```
 
-> Każdy moduł można niezależnie włączyć lub wyłączyć — patrz sekcja **Ustawienia**.
-
----
+Kroki można połączyć w nazwany workflow i uruchamiać z edytora albo menu
+kontekstowego przeglądarki Anki.
 
 ## Instalacja
 
-1. Skopiuj folder `anki-toolkit/` do katalogu addons Anki:
-   - macOS: `~/Library/Application Support/Anki2/addons21/`
-   - Windows: `%APPDATA%\Anki2\addons21\`
-2. Uruchom Anki.
-3. Otwórz **Narzędzia → Anki Toolkit → Ustawienia...** i uzupełnij klucze API.
-4. Upewnij się, że `ffmpeg` jest zainstalowany i dostępny w PATH (wymagane przez `audio_normalizer`).
+1. Skopiuj katalog dodatku do `addons21/anki-toolkit/`.
+2. Uruchom ponownie Anki.
+3. Otwórz **Narzędzia → Anki Toolkit → Ustawienia…**.
+4. W zakładce **Generowanie AI** skonfiguruj przynajmniej jednego dostawcę.
+5. W **Wymowa** skonfiguruj TTS lub przyciski słowników.
+6. W **Workflowy** wybierz kroki głównego procesu.
 
----
+Normalizacja audio wymaga programu `ffmpeg` dostępnego w `PATH` albo wskazanego
+w ustawieniach.
 
 ## Ustawienia
 
-Wszystkie moduły można skonfigurować przez jeden centralny dialog:
+Nawigacja odpowiada zadaniom, a nie katalogom kodu:
 
-**Narzędzia → Anki Toolkit → Ustawienia...**
-
-### Zakładki
-
-Nawigacja jest pionowa (pasek po lewej, z ikonami), pogrupowana: **Treść** (AI Generator, Workflowy, TTS, Słownik), **System** (Moduły, Narzędzia, Normalizacja), **Wgląd** (Statystyki, Logi).
-
-| Zakładka | Zawartość |
+| Obszar | Zawartość |
 |---|---|
-| **Start** | Dashboard: wiersz „Szybki dostęp" (skróty do najczęstszych zakładek), kafelki kroków reprezentatywnego workflow (✓/⚠/○, zawijane), jeden globalny status (Gotowe / N rzeczy do zrobienia), sekcja „Do zrobienia" z przyciskami Napraw, wiersz pozostałych modułów. Odświeża się przy każdym wejściu na zakładkę i uwzględnia niezapisane zmiany z innych zakładek |
-| **Moduły** | Włącz/wyłącz każdy moduł (zmiana wymaga restartu Anki) |
-| **Słownik** | Pola źródłowe/docelowe, format IPA, przyciski słowników, limity sieci |
-| **AI Generator** | Prompty oraz dostawcy AI w osobnych podzakładkach; każdy prompt wybiera dostawcę i model (lista modeli filtruje po fragmencie nazwy); dostawcy jako lista z detalem (✓ = klucz API ustawiony); prompty z dialogiem nowego zadania, podglądem na przykładowej notatce i kolorowaniem składni; w Zaawansowanych m.in. liczba równoległych żądań batcha |
-| **Workflowy** | Lista nazwanych workflowów (Dodaj/Edytuj/Usuń, kolejność ▲▼ = kolejność w menu PPM); edytor kroków (AI/Słownik/TTS/Rozdziel) z parametrami; checkbox „Pokaż jako przycisk w edytorze" per workflow; checkboxy widoczności wbudowanych sekcji PPM (Pobierz wymowę / TTS / Generuj pola / Generuj zablokowane / Rozdziel pole) |
-| **TTS** | Dostawca (Kokoro/OpenRouter), klucz API, model, wybór głosów z przyciskami **▶** (podgląd każdego głosu bez zaznaczania), zadania TTS, szybkość, liczba wątków |
-| **Normalizacja** | Ścieżka ffmpeg (z przyciskiem "Sprawdź"), opcje loudnorm, liczba wątków |
-| **Narzędzia** | Talia filtrowana · czyszczenie HTML (`&nbsp;`, `<div>`) · rozdzielanie pól · Sibling Manager (dynamiczne zawieszanie siblingów) · Sentence Unlocker (stopniowe odblokowywanie zdań pX-tak) |
-| **Deck Router** | Tabela reguł tag → talia (szablon i talia z list rozwijanych); kieruje karty do talii wg tagu notatki |
-| **Ukrywanie pól** | Wybór typu notatki + checkboxy pól chowanych w oknie „Dodaj" (nie rusza przeglądarki ani edycji istniejących kart) |
-| **Kolejka słówek** | Adres n8n (domowy + zapasowy/Tailscale), klucz API, wybór tabeli z rozwijanki (przycisk „Pobierz listę" = test połączenia), mapowanie pola notatki i kolumn, losowa kolejność na starcie |
-| **Statystyki** | Dashboard użycia AI: requesty, błędy, tokeny wej./wyj., wygenerowane pola i szacowany koszt per model (przycisk **Pobierz ceny (OpenRouter)** dopasowuje cennik do Twoich modeli); osobna tabela **TTS** — requesty, błędy, znaki i pliki audio per model (Kokoro i OpenRouter; koszt OpenRouter liczony per znak); wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / własny zakres dat od–do) i przycisk resetu |
-| **Logi** | Tryb debugowania + podgląd bufora logów wtyczki (auto-odświeżanie, Kopiuj/Wyczyść) |
-
-> **Gdzie są przechowywane ustawienia?** `config.json` w folderze wtyczki to szablon domyślny — nie jest nadpisywany. Twoje zmiany są zapisywane przez Anki w katalogu profilu (`addons21/.../meta.json`). Po ponownym otwarciu dialogu zobaczysz zapisane wartości.
-
----
-
-## Włączanie i wyłączanie modułów
-
-Przez dialog **Ustawienia → zakładka Moduły**, lub ręcznie w `config.json`:
-
-```json
-"modules": {
-    "dictionary":        true,
-    "ai_generator":      true,
-    "tts":               false,
-    "filtered_deck":     true,
-    "audio_normalizer":  true,
-    "nbsp_remover":      true,
-    "field_splitter":    true,
-    "sibling_manager":   true,
-    "sentence_unlocker": true,
-    "deck_router":       true,
-    "field_hider":       true,
-    "web_bridge":        true,
-    "word_queue":        true
-}
-```
-
-Zmiana wymaga restartu Anki. Brakujący klucz jest traktowany jako `true`.
-
----
-
-## Opis modułów
-
-### Słownik (`dictionary`)
-
-Przyciski pojawiają się w toolbarze edytora kart — kliknięcie najpierw zapisuje bieżące pola, a pobieranie działa w tle (Anki nie zamarza). W przeglądarce dostępne jest też submenu **Pobierz wymowę** pod prawym przyciskiem myszy w sekcji **Anki Toolkit**, które pozwala uruchomić batch dla wszystkich włączonych słowników albo tylko dla wybranego, np. Diki lub Oxford. Moduł pobiera audio i IPA z wybranych słowników. Batch działa w tle — Anki nie zamraża się, widoczny pasek postępu z przyciskiem Anuluj.
-
-**PPM na polu źródłowym w edytorze** (np. `ang`) — gdy pole ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty.
-
-**Reużycie pobranych plików:** nazwa pliku audio jest deterministyczna (`dict_{źródło}_{słowo}.mp3`), więc przed pobraniem moduł sprawdza, czy taki plik już jest w kolekcji media — jeśli tak, reużywa go i **pomija zapytanie do słownika**. To samo słowo z danego źródła pobierane jest z sieci tylko raz (kolejne karty — dziś, jutro, z edytora czy batcha — biorą gotowy plik). Pobierane są jedynie brakujące źródła.
-
-Konfiguracja w **Ustawienia → Słownik**:
-
-| Pole | Opis |
-|---|---|
-| `source_field` | Pole z angielskim słowem (np. `"ang"`) |
-| `target_field` | Pole docelowe dla audio (np. `"audio"`) |
-| `ipa_field` | Pole docelowe dla IPA (puste = wyłączone) |
-| `ipa_format` | `"compact"` / `"both"` / `"uk_only"` / `"us_only"` |
-| `wiktionary_ipa_fallback` | `true` — gdy Oxford/Cambridge nie znajdzie IPA, odpyta Wiktionary API (domyślnie `true`) |
-| `diki_ipa_fallback` | `true` — gdy fetchujesz z Diki (brak natywnego IPA), pobierz IPA z osobnego źródła (domyślnie `false`) |
-| `diki_ipa_fallback_source` | Źródło IPA dla Diki: `"wiktionary"` / `"oxford"` / `"cambridge"` (domyślnie `"wiktionary"`) |
-| `max_retries` | Liczba prób przy błędach sieci (domyślnie 3) |
-| `page_timeout` | Timeout pobierania strony słownika w sekundach (domyślnie 10) |
-| `mp3_timeout` | Timeout pobierania pliku MP3 w sekundach (domyślnie 10) |
-| Przyciski | Zaznacz które słowniki mają być widoczne w edytorze |
-
-Dostępne słowniki: `oxford_uk`, `oxford_us`, `cambridge_uk`, `cambridge_us`, `diki_uk`, `diki_us`, `longman_uk`, `longman_us`.
-
-Wpisy `buttons` sterują jednocześnie:
-- przyciskami w edytorze
-- pozycjami w submenu batchowym w przeglądarce
-
----
-
-### Workflowy (własne, nazwane)
-
-Workflow to nazwany łańcuch kroków (AI / Słownik / TTS / Rozdziel pole) uruchamiany jednym kliknięciem. **Tworzysz i nazywasz własne workflowy z poziomu interfejsu**: **Ustawienia → Workflowy**.
-
-- **Dodaj / Edytuj / Usuń** workflow; kolejność na liście = kolejność w menu PPM (▲▼)
-- W edytorze workflow: nazwa, checkbox „Pokaż jako przycisk w edytorze" oraz kroki
-- Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**, **+ Rozdziel**; kolejność ▲▼
-- Krok **AI** ma parametr „które pola": wszystkie puste / zablokowane (`manual_only`) / konkretne pola (dwuklik edytuje); krok **Słownik** pozwala wybrać słowniki
-- Każdy workflow z zaznaczonym „Pokaż jako przycisk" dostaje własny przycisk w toolbarze edytora
-
-Domyślne workflowy (po migracji ze starej konfiguracji): „Generuj fiszkę" (AI → Oxford → TTS), „Generuj wszystko: puste → TTS → rozdziel → zablokowane" oraz „Rozdziel + generuj naukę (p1–p3)".
-
-**Co jest widoczne w PPM:** w **Ustawienia → Workflowy** decydujesz też o widoczności wbudowanych (auto-generowanych) sekcji menu — checkboxy „Pobierz wymowę", „TTS", „Generuj pola", „Generuj zablokowane", „Rozdziel pole". Workflowy są zawsze na górze menu.
-
-**Batch w przeglądarce:** prawy klik → **Anki Toolkit → [nazwa workflow]** uruchamia łańcuch dla wszystkich zaznaczonych notatek — z paskiem postępu, przyciskiem Anuluj i zapisem jako **jedna operacja z undo** (Ctrl+Z cofa cały batch). Notatki są przetwarzane **równolegle** (`parallel_requests`, paczki `batch_limit`), a kroki w obrębie jednej notatki idą po kolei; żądania do dostawców z limitem RPM/jednoczesności są przy tym dławione per dostawca (patrz niżej), więc równoległość przyspiesza kroki bez limitu bez wywoływania lawiny 429.
-
----
-
-### Generator AI (`ai_generator`)
-
-Pomocniczy przycisk **AI** w toolbarze edytora generuje wszystkie skonfigurowane puste pola AI dla pojedynczej karty. Dodatkowo dostępne są dwie ścieżki per-pole:
-
-- **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
-- **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj pola ▸** — submenu: „Wszystkie puste" (obecne zachowanie) oraz osobne pozycje per pole docelowe (np. „AI: def", „AI: cz_mowy"). Pozycje per pole pomijają wypełnione — bezpieczne na wielu notatkach różnych typów (każdy typ dostaje swój prompt).
-- **Przeglądarka** → **prawy klik → Anki Toolkit → Generuj zablokowane ▸** — submenu pojawia się tylko gdy istnieją pola oflagowane „Tylko na żądanie" w ustawieniach promptów. Zawiera „Wszystkie zablokowane" (generuje wszystkie pola zablokowane dla zaznaczonych notatek) oraz osobne pozycje per pole.
-- **Przeglądarka** → **prawy klik → Anki Toolkit → [workflowy]** — domyślne workflowy „Rozdziel + generuj naukę (p1–p3)" (rozdziela `przyklad` na `p1`/`p2`/`p3` i generuje `p1-nauka`/`p2-nauka`/`p3-nauka`) oraz „Generuj wszystko: puste → TTS → rozdziel → zablokowane" (4 kroki: puste pola AI → wszystkie zadania TTS → rozdziel `przyklad` → pola `manual_only`) są teraz **edytowalnymi workflowami** (Ustawienia → Workflowy). Każdy krok startuje po zapisaniu poprzedniego do kolekcji, więc czyta świeże pola; kroki bez konfiguracji są pomijane, a łańcuch leci dalej.
-
-- **Edytor**: działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. Możesz swobodnie edytować inne pola w tym czasie. Pola docelowe AI są zawsze nadpisywane wynikiem; pola których AI nie dotyka są chronione przez `saveNow` przed skasowaniem Twoich edycji. Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do właściwej notatki (zapis do kolekcji), nie do aktualnie wyświetlanej.
-- **Batch**: działa w tle z paskiem postępu i przyciskiem Anuluj; notatki są przetwarzane **równolegle** (liczba wątków: `parallel_requests`, domyślnie 3) w paczkach po `batch_limit` z przerwą `batch_sleep`. Zmiany zapisywane są jedną operacją z undo. Po zakończeniu jeden tooltip z podsumowaniem.
-- Główny przycisk **AI** i batch „Wszystkie puste" pomijają pola z treścią — generator uzupełnia tylko puste pola. PPM w edytorze może nadpisać pojedyncze pole („Regeneruj"). Pola oflagowane „Tylko na żądanie" są pomijane w batchu, workflow i głównym przycisku AI — dostępne tylko przez jawne wskazanie (PPM, submenu „Generuj zablokowane" lub pozycje „…zablokowane" w submenu „Batch API").
-- Zmiana kluczy API i promptów **nie wymaga restartu Anki**.
-- **Statystyki użycia** (requesty, tokeny, pola per model, szacowany koszt) są zliczane lokalnie (`user_files/usage_stats.json`) i widoczne w **Ustawienia → Statystyki**.
-- Żądania do OpenRouter (zarówno AI, jak i TTS) wysyłają atrybucję aplikacji (`HTTP-Referer`/`X-Title`), więc w statystykach OpenRouter pojawiają się jako „Anki Toolkit" (automatyczne, bez konfiguracji).
-
-Konfiguracja w **Ustawienia → AI Generator**:
-
-| Pole | Opis |
-|---|---|
-| `button_label` | Etykieta przycisku w edytorze |
-| `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji) |
-| `batch_limit` | Liczba kart w jednej paczce — po paczce następuje przerwa `batch_sleep` |
-| `batch_sleep` | Pauza (sekundy) między paczkami kart — zapobiega limitom API |
-| `parallel_requests` | Liczba notatek przetwarzanych równolegle w batchu (domyślnie 3) |
-| `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
-| `request_timeout` | Timeout żądania do API w sekundach (domyślnie 30) |
-| `providers.<nazwa>.rpm` | Limit żądań na minutę dla dostawcy — żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje. `0` = bez limitu. OpenRouter `20`, Mistral `40` (≈0.83 req/s free tier z marginesem) |
-| `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (domyślnie 1 dla darmowych tierów). `0` = bez limitu |
-| `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: gdy `true` (domyślnie), limit dotyczy wyłącznie modeli `:free`; gdy `false` — wszystkich żądań |
-| Dostawcy | Klucz API, model domyślny (przycisk **Pobierz** pobiera listę dostępnych modeli z API), model zapasowy (fallback), temperatura domyślna, **limit RPM + maks. równoległych** osobno dla każdego dostawcy (OpenRouter ma dodatkowo „tylko :free"); dla OpenAI, CometAPI i OpenRouter także poziom reasoning |
-| Prompty | Dostawca, model, temperatura, model zapasowy (fallback), dostawca zapasowy (fallback) — per prompt; temperatura i fallback nadpisują wartości z poziomu dostawcy („— domyślna dostawcy" = dziedzicz) |
-
-`reasoning_effort` jest konfigurowalne dla `openai`, `cometapi` i `openrouter` i wysyłane tylko dla modeli obsługujących reasoning. Jeśli model zwróci błąd HTTP 400 z powodu nieobsługiwanego `reasoning_effort`, żądanie jest automatycznie ponawiane bez tego parametru. Modele OpenAI reasoning nie dostają `temperature`. Anthropic również nie dostaje `temperature` — jest deprecated w ich Messages API (modele > Opus 4.6 przyjmują tylko `1.0`, inne wartości zwracają 400). `max_tokens` jest konfigurowalne dla Anthropic (wymagany przez ich API, domyślnie `2048`). Pola notatki zawierające HTML są automatycznie oczyszczane przed wstawieniem do promptu.
-
-#### Dostępni dostawcy
-
-| Dostawca | Endpoint |
-|---|---|
-| `openai` | `https://api.openai.com/v1/chat/completions` |
-| `cometapi` | `https://api.cometapi.com/v1/chat/completions` |
-| `openrouter` | `https://openrouter.ai/api/v1/chat/completions` |
-| `anthropic` | `https://api.anthropic.com/v1/messages` |
-| `google` | `https://generativelanguage.googleapis.com/v1beta/models` |
-| `mistral` | `https://api.mistral.ai/v1/chat/completions` |
-| `nvidia` | `https://integrate.api.nvidia.com/v1/chat/completions` |
-| `opencode_go` | `https://opencode.ai/zen/go/v1/chat/completions` (większość modeli) / `.../messages` (MiniMax, Qwen3.x) |
-
-#### Szablony promptów
-
-- `{{nazwa_pola}}` — wstawia wartość pola karty (oczyszczoną z HTML)
-- `{% if pole %} ... {% else %} ... {% endif %}` — warunek
-
-Edytor promptów (zakładka **Prompty**):
-
-- **Dialog nowego zadania** — przycisk **+ Dodaj…** otwiera kompaktowy dialog: typ notatki, pole docelowe, dostawca, model, opcjonalny szablon startowy (domyślnie pusty prompt; do wyboru definicja, przykładowe zdania, część mowy, IPA) oraz checkbox „Tylko na żądanie" (pomija pole w batchu/workflow, dostępne tylko przez jawne wskazanie). Po wybraniu szablonu pojawiają się comboboxy mapujące pola szablonu na pola notatki; szablon „Przykładowe zdania" ma opcjonalny warunek „użyj definicji, jeśli pole jest wypełnione" — blok `{% if %}…{% else %}…{% endif %}` generuje się automatycznie.
-- **Model per prompt** — edytowalna lista z przyciskiem **Pobierz**; wpisanie np. `5.5` pokazuje tylko modele zawierające `5.5`. Starsze prompty bez pola `model` używają modelu domyślnego dostawcy.
-- **Podgląd na przykładowej notatce** — przycisk **Podgląd…** otwiera okno, które renderuje finalny prompt na wybranej notatce z kolekcji (pola podstawione, HTML oczyszczony) i pokazuje, która gałąź każdego `{% if %}` zostanie użyta.
-- **Kolorowanie składni** — `{{pola}}` i bloki `{% if %}` są wyróżnione kolorem; pola nieistniejące w typie notatki dostają czerwone faliste podkreślenie.
-- Przyciski **Wstaw pole ▾** (wstawia `{{pole}}` w pozycji kursora) i **Wstaw warunek ▾** (wstawia szkielet warunku; zaznaczony tekst trafia do gałęzi „if").
-- Walidacja na żywo: nieznane pola, błędy struktury bloków `{% if %}` (niedomknięty, osierocony `{% else %}`/`{% endif %}`, zagnieżdżony) oraz użycie pola generowanego przez późniejsze zadanie.
-- **Kolejność zadań** — lista po lewej odpowiada kolejności generowania; przyciski **▲▼** zmieniają kolejność (w obrębie jednego typu notatki), a wpisy używające wyników innych zadań mają dopisek „zależy od: …".
-- **Grupowanie i filtr** — zadania są pogrupowane nagłówkami per typ notatki, a combobox nad listą filtruje widok do jednego typu (wygodne, gdy masz wiele typów notatek).
-
-Każde pole notatki może używać innego dostawcy, modelu i temperatury (np. niska dla definicji, wyższa dla przykładowych zdań). Pola generowane są w kolejności kluczy w `note_types` — wynik wcześniejszego pola można użyć w prompcie następnego.
-
-#### Batch API (masowy backfill, ~50% taniej — Anthropic i OpenAI)
-
-Do jednorazowego lub okresowego wypełniania dużej liczby notatek dostępny jest **osobny, tańszy tryb** oparty na Batch API — [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch). Jest asynchroniczny (wynik zwykle < 1h, do 24h) i **~50% tańszy** od zwykłego generowania. W przeglądarce: PPM → **Anki Toolkit ▸ Batch API (Anthropic/OpenAI, tańszy)**:
-
-- **Wyślij zaznaczone — wszystkie pola** lub **Batch: `<pole>`** — możesz wysłać wszystkie puste pola, albo wybrać konkretne pole (przydatne, gdy różne pola mają różnych dostawców). **Pola już wypełnione są pomijane na etapie wysyłki** (nie tylko przy zapisie), więc ponowne uruchomienie na tym samym zaznaczeniu dobierze tylko wciąż puste pola. Pola z dostawcą `anthropic` i `openai` trafiają każde do swojego Batch API; pozostałe (OpenRouter/CometAPI/Mistral/NVIDIA — brak zgodnego endpointu) są pomijane z informacją. Dialog pokazuje podsumowanie (zapytania per dostawca/model) do potwierdzenia. Trafienie wyniku w pole jest deterministyczne — mapa `custom_id → (notatka, pole)` jest zapisywana w `user_files/ai_batches.json` (przeżywa restart Anki).
-- **Wyślij zaznaczone — wszystkie zablokowane** lub **Batch (zablokowane): `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje widoczne tylko gdy takie pola istnieją w konfiguracji promptów.
-- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki. To samo dzieje się automatycznie i cicho przy otwarciu profilu **oraz co minutę** (timer w tle; poll to darmowy odczyt statusu, a batche kończą się w 20 s – 6 min). Wysyłka, zakończenie batcha i podsumowanie zapisu są logowane na INFO — historia w **Ustawienia → Logi**.
-
-**Duże wysyłki są hands-off.** OpenAI liczy tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach) i asynchronicznie oznacza nadmiarowe batche jako `failed`. Dlatego wysyłka OpenAI dzieli zapytania na paczki i wysyła tyle, ile mieści się w budżecie tokenów (`openai_batch_token_budget`, dom. 1,5M — uwzględniając batche już w locie; ustawisz go w **Ustawienia → AI Generator → Zaawansowane**, dopasuj do limitu „enqueued tokens" swojego modelu), a resztę **zapamiętuje jako zadanie** w `ai_batches.json`. Timer co minutę pobiera wyniki, sprząta pliki wejściowe/wynikowe ze storage OpenAI i **sam dosyła kolejne plastry** pustych pól, aż zaznaczenie się wypełni — bez klikania. Zadanie kończy się, gdy wszystkie pola są pełne albo po 24h. Gdy OpenAI odrzuci wysyłkę limitem kolejki, dosyłanie jest wstrzymywane na 30 min z komunikatem w tooltipie. **Postęp śledzisz w Ustawienia → Start → „Batch API — postęp"** — paski „wysłane/wszystkie zapytania" per zadanie, batche w toku oraz przyciski „Sprawdź batche teraz" i „Odśwież"; skrócony postęp pokazuje też tooltip auto-dosyłki.
-
-Wspólny rdzeń (wybór pól, mapa pól, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: Anthropic wysyła zapytania inline i pobiera wynik z `results_url`, OpenAI uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a ponieważ jego batch wymaga jednego modelu — zapytania OpenAI są grupowane po modelu (osobny batch na model).
-
-Ograniczenia: dostawcy `anthropic`/`openai`, bez fallbacku, wynik wpisywany **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania). Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
-
-#### Dodanie nowego dostawcy AI
-
-1. Jeśli API jest zgodne z OpenAI Chat Completions — dodaj cienką klasę dziedziczącą po `OpenAICompatProvider` w `ai_generator/providers/__init__.py` (wystarczy `API_URL` i `LABEL`). W przeciwnym razie utwórz `ai_generator/providers/moj_provider.py` dziedzicząc po `BaseProvider` i zaimplementuj `call_api(self, prompt) -> Optional[str]` (możesz użyć gotowych `_parse_chat_completion()` / `_parse_messages()` z bazy)
-2. Zarejestruj klasę w `ai_generator/providers/__init__.py` w słownikach `PROVIDERS` i `PROVIDER_LABELS` (UI ustawień buduje listy dostawców z tego rejestru)
-3. Dodaj sekcję `providers.moj_provider` w `config.json`
-
-#### OpenCode Go — szczegóły
-
-Dostawca `opencode_go` obsługuje niskokosztową subskrypcję [OpenCode Go](https://opencode.ai/zen). Automatycznie wybiera format API na podstawie nazwy modelu:
-- **Chat Completions** — GLM-5/5.1, Kimi K2.5/K2.6, DeepSeek V4 Pro/Flash, MiMo-V2.5/V2.5-Pro
-- **Anthropic Messages** — MiniMax M2.5/M2.7, Qwen3.5/3.6 Plus
-
-Pole `reasoning_effort` to wolny tekst (nie dropdown jak przy OpenAI) — wartości różnią się per model, np. `max` dla DeepSeek V4 Pro. Puste = nie wysyłane. Klucz API uzyskasz na [opencode.ai/auth](https://opencode.ai/auth).
-
-#### Fallback modeli
-
-Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, brak treści w odpowiedzi), wtyczka automatycznie uruchamia model zapasowy z tym samym promptem. Fallback jest konfigurowalny na dwóch poziomach:
-
-| Poziom | Pole | Priorytet |
-|---|---|---|
-| **Per prompt** | `fallback_provider` + `fallback_model` | Wyższy — jeśli ustawiony, nadpisuje fallback dostawcy |
-| **Per dostawca** | `fallback_model` w sekcji providera | Niższy — używany gdy prompt nie ma własnego fallbacku |
-
-- Per-prompt `fallback_provider` pusty = użyj tego samego dostawcy co główny model
-- Per-prompt `fallback_model` pusty = brak fallbacku per-prompt → sprawdź `fallback_model` dostawcy
-- Obie puste = brak fallbacku (zachowanie jak wcześniej — błąd jest logowany)
-- Fallback używa tego samego promptu i tej samej temperatury co zadanie (per-prompt, a gdy brak — domyślnej dostawcy fallbackowego) oraz klucza API dostawcy zapasowego (jeśli inny niż główny)
-- Statystyki użycia zliczają fallback osobno (per `provider/model`)
-- Log zawiera ostrzeżenie z info który model → który fallback został użyty
-
-Konfiguracja w **Ustawienia → AI Generator**:
-- **Dostawcy** — pole „Model zapasowy" przy każdym dostawcy
-- **Prompty** — pola „Dostawca zapasowy" i „Model zapasowy" przy każdym prompcie
-
-#### Limity API per dostawca — rate limiter
-
-Darmowe tiery API mają limity, które łatwo przekroczyć w batchu (np. Mistral free: **0.83 żądania/s** i 25 000 tokenów/min; OpenRouter `:free`: **20 RPM** + odrzucanie żądań przychodzących jednocześnie). Każdy dostawca ma własne ustawienia limitu na swojej karcie (**Ustawienia → AI Generator → Dostawcy**):
-
-- **Limit RPM** — maks. żądań na minutę. Żądania są **rozkładane równomiernie** (`60/RPM` sekund odstępu między startami), więc batch nie wystrzeliwuje serii naraz. `0` = bez limitu. Jeśli dostawca podaje limit jako RPS, pomnóż ×60 (np. Mistral 0.83 RPS → `50`; domyślnie `40` zostawia margines).
-- **Maks. równoległych** — bramka (semafor) ogranicza liczbę żądań lecących jednocześnie do tego dostawcy (domyślnie **1** dla darmowych tierów). Eliminuje 429 z burstów, nawet gdy batch przetwarza wiele notatek równolegle (`parallel_requests`).
-- **Limit tylko dla modeli `:free`** (checkbox, tylko OpenRouter) — zaznaczone: limit dotyczy wyłącznie modeli z `:free` w nazwie, płatne modele OpenRoutera lecą bez dławienia. U innych dostawców limit zawsze obejmuje wszystkie żądania (darmowy klucz API dławi cały klucz).
-
-Limity dotyczą zarówno modelu głównego, jak i fallbackowego. Limit tokenów na minutę (TPM) nie jest egzekwowany wprost — sporadyczne przekroczenia łapie automatyczny retry przy HTTP 429.
-
----
-
-### TTS
-
-Dostępny przez **prawy klik → Anki Toolkit → TTS** w przeglądarce (batch z natywnym paskiem postępu Anki i Anuluj) oraz **przycisk TTS w edytorze** (pojedyncza karta, wszystkie zadania). Przycisk edytora najpierw zapisuje bieżące pola, więc synteza używa aktualnego tekstu. Obsługuje dwa źródła:
-
-**PPM na polu docelowym w edytorze** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — strip `[sound:...]` i generuj nowe). Działa też w oknie dodawania nowej karty.
-- **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
-- **OpenRouter** — API TTS przez chmurę (płatne per znak, nie wymaga lokalnego serwera)
-
-Konfiguracja w **Ustawienia → TTS**:
-
-| Pole | Opis |
-|---|---|
-| `tts_provider` | Dostawca: `kokoro` (lokalny) lub `openrouter` (API) |
-| `button_label` | Etykieta przycisku w edytorze (domyślnie `"TTS"`) |
-| `api_url` | Adres serwera Kokoro (tylko dla Kokoro) |
-| `model` | Nazwa modelu Kokoro (tylko dla Kokoro) |
-| `openrouter_api_key` | Klucz API OpenRouter (lub zaznacz "Użyj klucza z AI Generatora") |
-| `use_ai_openrouter_key` | `false` — użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
-| `openrouter_model` | Model TTS OpenRouter — kliknij **Pobierz** aby zobaczyć dostępne modele z cenami |
-| `voices` | Lista głosów do losowania. Dla OpenRouter: po wybraniu modelu pojawia się lista z checkboxami |
-| `tasks` | Lista zadań TTS (konfigurowalna przez UI: Dodaj/Edytuj/Usuń) |
-| `speed` | Tempo mowy (0.1–3.0, domyślnie 0.9) |
-| `max_workers` | Liczba równoległych wątków generowania audio (domyślnie 12) |
-| `max_retries` | Liczba prób przy błędach API 429/5xx (domyślnie 3) |
-| `timeout` | Timeout żądania TTS w sekundach (domyślnie 60) |
-
-Dla OpenRouter: po kliknięciu **Pobierz** wtyczka pobiera listę dostępnych modeli TTS z OpenRouter (wraz z cenami w `$/1k zn`). Po wybraniu modelu pojawia się lista głosów z checkboxami — zaznacz które chcesz używać.
-
-**Zadania TTS**: zamiast sztywnych pól `ang`/`przyklad`, moduł używa konfigurowalnej listy zadań. Każde zadanie definiuje etykietę menu, pola źródłowe/docelowe oraz tryb (`single` — jedno audio, `split` — dzielone separatorem). Menu TTS jest budowane dynamicznie. Opcja **Uruchom wszystkie** wykonuje zadania jako jedną operację z jednym paskiem postępu i jednym podsumowaniem. Backward compat: stare pola `ang_source_field`/`przyklad_target_field` są czytane z zapisanego configu tylko gdy klucz `tasks` w ogóle nie istnieje — wystarczy raz zapisać ustawienia, by `tasks` stało się jedynym źródłem.
-
-Batch zapisuje zmiany jako **jedną operację z undo**. Przycisk **Anuluj** faktycznie przerywa kolejkę — żądania, które jeszcze nie wystartowały, są odwoływane (już wygenerowane audio zostaje zapisane).
-
-Każde wygenerowane audio (Kokoro i OpenRouter) jest zliczane w **Ustawienia → Statystyki**: requesty, błędy, liczba znaków i plików per model; dla OpenRouter dostępny jest szacowany koszt (cennik per znak).
-
----
-
-### Talia filtrowana (`filtered_deck`)
-
-Dostępny przez **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...**. Karty pobierane są z **dowolnego decka** (cała kolekcja), a oceny **nie zmieniają harmonogramu** (`reschedule = false`).
-
-Dialog pozwala wybrać jeden z predefiniowanych presetów (wszystkie z kolejnością losową):
-
-| Preset | Search Anki | Domyślny limit |
-|---|---|---|
-| Uczone w ostatnich 7 dniach | `rated:7` | 99999 |
-| Uczone w ostatnich 30 dniach | `rated:30` | 99999 |
-| Wszystkie uczone karty (bez limitu) | `-is:new` | Bez limitu |
-| Trudne karty (pomyłki z 30 dni) | `rated:30:1` | 99999 |
-| Losowe karty (uczone lub nie) | `deck:*` | 100 |
-
-Pole **Limit kart** podpowiada domyślny limit presetu i można go nadpisać (`0` = „Bez limitu", pobiera wszystkie pasujące karty). Każdy preset tworzy osobną talię `{deck_name} — {nazwa presetu}`. Konfiguracja w **Ustawienia → Narzędzia** (sekcja Talia filtrowana):
-
-| Pole | Opis |
-|---|---|
-| `deck_name` | Nazwa bazowa talii — preset dokleja swoją etykietę (domyślnie `"Angielski - Powtórka z wyprzedzeniem"`) |
-
-Jeśli talia danego presetu już istnieje, jest **aktualizowana i przebudowywana** zamiast tworzenia kolejnych kopii z sufiksem `(1)`, `(2)`…
-
----
-
-### Normalizacja audio (`audio_normalizer`)
-
-Dostępny przez **Narzędzia → Anki Toolkit → Normalizuj Audio (ffmpeg)**.
-
-Normalizuje wszystkie pliki audio w katalogu media Anki do głośności EBU R128 (`I=-14 LUFS, TP=-1.5, LRA=8`).
-Przetworzone pliki są zapamiętywane w `user_files/audio_normalizer_history.json` (katalog `user_files/` przeżywa aktualizacje wtyczki) — ponowne uruchomienie pomija już znormalizowane pliki.
-Błędy są logowane przez standardowy logger Pythona i są widoczne w konsoli/debug logach Anki.
-
-**Synchronizacja z Anki Media DB:** Po normalizacji wtyczka automatycznie re-readuje zmodyfikowane pliki przez `mw.col.media.write_data()`, co aktualizuje hashe w bazie mediów Anki.
-
-**Auto-normalizacja:** Włącz **Auto-normalizuj nowe pliki audio** w ustawieniach, aby watcher obserwował katalog mediów i automatycznie normalizował nowe pliki ~3s po dodaniu (debounce zbiera serie zapisów). Obejmuje wszystkie źródła: TTS, słownik, AI workflow, ręczne dodanie, AnkiWeb sync. Po normalizacji pojawia się krótki tooltip w prawym dolnym rogu. Wymaga restartu Anki po zmianie ustawienia.
-
-Konfiguracja w **Ustawienia → Normalizacja**:
-
-| Pole | Opis |
-|---|---|
-| `ffmpeg_path` | Ścieżka do ffmpeg — puste = wykryj automatycznie; przycisk **Sprawdź** testuje ścieżkę i pokazuje wersję |
-| `loudnorm_opts` | Parametry filtra loudnorm (standard EBU R128) |
-| `max_workers` | Liczba równoległych wątków ffmpeg (domyślnie 4) |
-| `auto_normalize` | Włącz auto-normalizację nowych plików (watcher na katalogu mediów; domyślnie `false`; wymaga restartu) |
-
----
-
-### Czyszczenie HTML (`nbsp_remover`)
-
-Działa automatycznie przy dodawaniu kart. Ręczne czyszczenie całej kolekcji przez **Narzędzia → Anki Toolkit → Wyczyść HTML w kolekcji...**
-
-| Akcja | Opis |
-|---|---|
-| Dodawanie karty | Usuwa `&nbsp;` i czyści `<div>` z każdego pola w locie |
-| Wyczyść HTML w kolekcji | Jednorazowe czyszczenie całej kolekcji — działa w tle, z możliwością cofnięcia (jeden krok undo) |
-
-Zagnieżdżone `<div>` są rozwijane od środka (bez pozostawiania niesparowanych tagów). Opcja „Czyść przy starcie" uruchamia się po załadowaniu profilu (hook `profile_did_open`).
-
-Dla pola konfigurowalnego (domyślnie `ang`): tagi `<div>` są usuwane całkowicie.
-Dla pozostałych pól: `<div>tekst</div>` zastępowane przez `tekst<br>`.
-
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja Czyszczenie HTML):
-
-| Opcja | Domyślnie | Opis |
-|---|---|---|
-| Pokazuj tooltip | `true` | Wyświetlaj powiadomienie po wyczyszczeniu |
-| Czyść przy starcie | `false` | Automatycznie uruchamiaj czyszczenie kolekcji przy starcie Anki |
-| Pole pomijane | `"ang"` | Pole z którego tagi `<div>` są usuwane całkowicie (zamiast zamiany na `<br>`) |
-
----
-
-### Rozdzielanie pól (`field_splitter`)
-
-Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kopiuje** części do kolejnych pól docelowych (`p1`, `p2`, `p3`…). Pole źródłowe nie jest modyfikowane.
-
-Dostępne przez:
-- **PPM w przeglądarce → Anki Toolkit → Rozdziel pole przyklad → p1, p2, p3...** — batch na zaznaczonych notatkach
-- **Narzędzia → Anki Toolkit → Rozdziel pola w kolekcji...** — wszystkie notatki (z potwierdzeniem)
-
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja Rozdzielanie pól):
-
-| Pole | Opis |
-|---|---|
-| `source_field` | Pole źródłowe z danymi do rozdzielenia (domyślnie `"przyklad"`) |
-| `separator` | Separator części (domyślnie `"<br><br>"`; whitespace-tolerant) |
-| `target_fields` | Pola docelowe oddzielone przecinkami (domyślnie `"p1, p2, p3, p4, p5"`) |
-| `overwrite` | `true` (domyślnie) = nadpisuj zawsze; `false` = wypełniaj tylko puste pola docelowe |
-
-Zasady:
-- Pierwsza część → `p1`, druga → `p2`, trzecia → `p3` itd.
-- Więcej części niż pól docelowych: nadmiarowe części są pomijane
-- Mniej części niż pól docelowych: pozostałe pola nietknięte
-- Pole źródłowe zawsze zachowane (kopia, nie przeniesienie)
-- Batch zapisywany jako **jedna operacja z undo** (Ctrl+Z cofa cały batch)
-- Tylko notatki posiadające pole źródłowe są przetwarzane; pola docelowe nieistniejące w typie notatki są pomijane
-- `overwrite: false` jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpisania ręcznych poprawek
-
----
-
-### Sibling Manager (`sibling_manager`)
-
-Dynamiczne zawieszanie kart-siblingów. Po odpowiedzi na kartę, moduł zawiesza pozostałe NEW siblingi dopóki aktywna karta nie dojrzeje. Gdy dojrzeje — uwalnia wszystkie zawieszone na raz, a Anki pokazuje następną (losowo).
-
-W przeciwieństwie do [SibPush](https://github.com/DerDemystifier/SibPush_Delay-New-Sibs), który pre-suspenduje z góry wg kolejności szablonów, ten moduł jest **reaktywny** — działa dopiero po odpowiedzi na kartę. Większa losowość: to Anki decyduje którą kartę pokazać, a nie z góry ustalona kolejność.
-
-**Zasada działania:**
-1. Anki pokazuje kartę → odpowiadasz → hook `reviewer_did_answer_card`
-2. Interval < próg (30 dni) → **zawiesza wszystkie inne NEW siblingi**
-3. Interval ≥ próg → **uwolnić wszystkie zawieszone siblingi** na raz
-4. Anki pokazuje kolejną → cykl się powtarza
-
-**Zapomnienie karty:** Jeśli dojrzała karta zostanie zapomniana (interval spadnie poniżej progu), przy kolejnej odpowiedzi hook znów zawiesi NEW siblingi. Karty w nauce/review (nie `CARD_TYPE_NEW`) nie są dotykane.
-
-**Uczenie na telefonie + synchronizacja:** Hook reviewer'a odpala się tylko na desktopie. Po synchronizacji z AnkiMobile/AnkiWeb automatycznie uruchamia się batch scan (hook `sync_did_finish`) — przetwarza wszystkie notatki z NEW siblingami w tle (CollectionOp, jeden krok undo). Ręczny catch-up: **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...**.
-
-**Reset:** **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — uwalnia wszystkie zawieszone karty i usuwa tagi (jeden krok undo).
-
-**Powiadomienia i logi:** Po każdej odpowiedzi log z licznikami ("zawieszono 2, odwieszono 0") trafia do bufora logów (**Ustawienia → Logi**). Po sync catch-up dodatkowo tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono, można wyłączyć). Brak tooltipa po pojedynczej odpowiedzi — nie spamuje przy setkach kart. Bufor logów: 2000 linii w pamięci, znika po restarcie.
-
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sibling Manager):
-
-| Pole | Default | Opis |
-|---|---|---|
-| `interval` | `30` | Po ilu dniach interval karta uznana za dojrzałą → uwolnienie siblingów |
-| `tag` | `tk-sib-suspended` | Tag dodawany do notatki gdy ma zawieszone siblingi |
-| `ignore_tag` | `tk-sib-ignored` | Notatki z tym tagiem są pomijane przez moduł |
-| `show_tooltip` | `true` | Tooltip po sync catch-up ("zawieszono X, odwieszono Y") |
-
-**Współistnienie z SibPush:** Jeśli używałeś wcześniej SibPush, **wyłącz go** przed włączeniem tego modułu — oba zarządzają zawieszaniem i mogłyby konfliktować.
-
----
-
-### Sentence Unlocker (`sentence_unlocker`)
-
-Stopniowe odblokowywanie kart-ćwiczeń „Uzupełnij". Model `angielski` ma szablony zdań generujące kartę tylko przy niepustym `pX-tak` (`{{#p1-tak}}{{#p1-nauka}}…`). Moduł wpisuje ten znacznik automatycznie, gdy karty dojrzeją — nie dokładasz trudniejszych ćwiczeń, dopóki wcześniejszy materiał nie siedzi. Koncepcyjne przeciwieństwo Sibling Managera (tam zawieszanie, tu tworzenie kart).
-
-**Zasada działania (stopniowo):**
-1. karty główne `ang-pol` **i** `pol-ang` dojrzeją (interval ≥ próg, domyślnie 21 dni) → odblokuj zdanie 1 (`p1-tak` = `tak`)
-2. karta zdania 1 (`p1-nauka`) dojrzeje → odblokuj zdanie 2
-3. karta zdania 2 dojrzeje → odblokuj zdanie 3
-
-**Jednokierunkowość ⚠️:** Znacznik **nigdy nie jest usuwany** — wyczyszczenie `pX-tak` skasowałoby już wygenerowaną kartę razem z jej historią powtórek. Raz odblokowane zostaje odblokowane.
-
-**Uczenie na telefonie + synchronizacja:** Hook reviewer'a działa tylko na desktopie. Po synchronizacji uruchamia się batch scan (hook `sync_did_finish`, CollectionOp) przetwarzający notatki modelu bez tagu ukończonych/ignorowanych. Ręczny catch-up: **Narzędzia → Anki Toolkit → Sentence Unlocker: przeskanuj kolekcję (odblokuj zdania)...**.
-
-Konfiguracja w **Ustawienia → Narzędzia** (sekcja Sentence Unlocker) — w tym `main_templates` (przecinkami) i kolejność zdań `chain` (pary `pole-nauka:pole-tak`):
-
-| Pole | Default | Opis |
-|---|---|---|
-| `model` | `angielski` | Typ notatki, którego dotyczy moduł (inne pomijane) |
-| `threshold` | `21` | Próg dojrzałości karty w dniach (`ivl ≥ threshold`) |
-| `marker` | `tak` | Wartość wpisywana do pola `-tak` |
-| `main_templates` | `ang-pol, pol-ang` | Karty główne bramkujące pierwsze zdanie |
-| `chain` | `p1-nauka:p1-tak, p2-nauka:p2-tak, p3-nauka:p3-tak` | Zdania w kolejności odblokowywania |
-| `ignore_tag` | `tk-unlock-ignored` | Notatki z tym tagiem są pomijane |
-| `done_tag` | `tk-unlock-done` | Tag notatek w pełni odblokowanych (pomijane w batchu) |
-| `show_tooltip` | `true` | Tooltip z podsumowaniem po skanowaniu |
-
-Szczegóły: [`sentence_unlocker/README.md`](sentence_unlocker/README.md).
-
----
-
-### Deck Router (`deck_router`)
-
-Kieruje karty do talii na podstawie **tagu notatki** (opcjonalnie zawężone do konkretnego szablonu karty). Uzupełnia natywny **Deck Override**, który działa tylko per-szablon — nie da się nim rozdzielić kart tego samego szablonu na różne talie w zależności od tego, co to za karta.
-
-**Zasada działania:**
-1. Reguła = `{tag, (opcjonalnie) szablon, talia}`.
-2. Dla każdej karty reguły są sprawdzane po kolei — **pierwsza pasująca wygrywa** (tag na notatce **oraz** szablon zgodny, albo szablon pusty = wszystkie karty notatki).
-3. Pasująca karta → przeniesiona do talii z reguły (talia tworzona automatycznie). Karta już we właściwej talii jest pomijana.
-4. **Notatka bez pasującej reguły nie jest ruszana** — zostaje wg natywnego Deck Override. Pusta lista reguł = moduł nic nie robi.
-
-Tag jest własnością notatki, więc reguła bez szablonu przenosi cały komplet kart notatki do jednej talii; reguła ze szablonem pozwala rozbić karty jednej notatki na różne talie.
-
-**Kiedy się odpala:** przy dodawaniu w oknie **Dodaj** (`add_cards_did_add_note`), po AI-workflow/batchu w przeglądarce (dla zmienionych notatek), oraz ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty…** albo przyciskiem **Uporządkuj istniejące karty…** w zakładce ustawień (działa na regułach z tabeli, także niezapisanych) — retroaktywne uporządkowanie po tagach z reguł, w tle, jeden krok undo.
-
-Konfiguracja w **Ustawienia → Deck Router** — tabela reguł. Szablon i talia z list rozwijanych (pobieranych z kolekcji, więc bez literówek); talia jest edytowalna, więc można wpisać nową (zostanie utworzona; zagnieżdżanie przez `::`).
-
-```json
-"deck_router": {
-    "rules": [
-        {"tag": "abc123", "template": "pol-ang", "deck": "Angielski::Osobne::pol-ang"},
-        {"tag": "abc123", "deck": "Angielski::Osobne"}
-    ]
-}
-```
-
-### Ukrywanie pól (`field_hider`)
-
-Chowa wybrane pola w edytorze **tylko w oknie „Dodaj”** — w przeglądarce i przy edycji istniejących kart pola pozostają widoczne. Przydatne dla pól pomocniczych wypełnianych później automatycznie (np. `p1`, `p1-nauka` uzupełniane przez AI/TTS/rozdzielanie pól): przy ręcznym dodawaniu karty tylko rozpraszają.
-
-**Zasada działania:**
-1. Konfiguracja = mapa `{typ notatki: [nazwy pól do ukrycia]}`.
-2. Chowanie działa **wyłącznie w trybie „Dodaj”** (`editor.addMode`). W przeglądarce/edycji istniejącej karty hook kończy się od razu.
-3. Ukrycie jest **czysto wizualne** (wstrzyknięty CSS `display: none`) — nic nie jest kasowane w notatce; pole nadal istnieje i może zostać wypełnione później.
-4. Przycisk **👁** w pasku edytora „Dodaj” tymczasowo pokazuje schowane pola bez zmiany konfiguracji.
-
-Konfiguracja w **Ustawienia → Ukrywanie pól** — wybierasz typ notatki, zaznaczasz pola do ukrycia (pobierane z kolekcji, bez literówek).
-
-```json
-"field_hider": {
-    "hidden_fields": {
-        "angielski": ["p1", "p2", "p3", "p1-nauka", "p2-nauka", "p3-nauka"]
-    }
-}
-```
-
-### Web Bridge (`web_bridge`)
-
-Mostek HTTP **strona WWW → otwarte okno „Dodaj"**. Klikasz przycisk na słowniku w przeglądarce, a tekst wpisuje się do pola aktualnie otwartej karty — nic nie zapisuje się samo (zatwierdzasz Enterem). W odróżnieniu od AnkiConnect `guiAddCards` (zamyka i otwiera okno na nowo, podmieniając całą notatkę) **rusza tylko wskazane pola w oknie, które już masz otwarte**.
-
-**Zasada działania:**
-1. Moduł wystawia serwer HTTP na `127.0.0.1:8766` (osobny wątek). `POST {"fields": {"nazwa_pola": "wartość"}}` wpisuje te pola do edytora otwartego okna „Dodaj”.
-2. Okno „Dodaj” musi być otwarte — inaczej endpoint zwraca błąd. Które pole dostaje jaką wartość decyduje **strona wysyłająca**, więc moduł jest uniwersalny.
-3. Dołączony userscript [`web_bridge/dictionaries-to-anki.user.js`](web_bridge/dictionaries-to-anki.user.js) dodaje przyciski na **diki.pl** (hasło → `ang`, tłumaczenie → `pol`, „oba”), **Oxford Learner's**, **Longman/LDOCE** i **Cambridge** (hasło → `ang`, definicja → `def`, przykłady → `przyklad` **doklejane** przez `<br><br>`; Cambridge EN-PL dodatkowo tłumaczenie → `pol`). Nazwy pól zmienisz w bloku `FIELDS` na górze skryptu.
-4. Userscript strzela przez `GM_xmlhttpRequest`/`GM.xmlHttpRequest` (omija *mixed content* https→http://127.0.0.1 i CORS), więc **AnkiConnect nie jest potrzebny**.
-5. Żądania z nagłówkiem `Origin` spoza allowlisty domen słownikowych dostają `403` — obca strona WWW nie wstrzyknie pól do okna „Dodaj". Żądania bez `Origin` (userscript przez GM, lokalne skrypty) przechodzą.
-
-Bez własnej zakładki — port i mapowanie pól są w kodzie/userscripcie. Włączanie: **Ustawienia → Moduły** (`modules.web_bridge`). Szczegóły: [`web_bridge/README.md`](web_bridge/README.md).
-
----
-
-### Kolejka słówek (`word_queue`)
-
-Lista haseł z **n8n DataTable** wewnątrz Anki, obok okna „Dodaj", ze słownikami w zakładkach. Dodajesz kartę — wiersz w n8n odhacza się sam. Otwierasz przyciskiem **📚** w oknie „Dodaj" albo z menu Narzędzia.
-
-**Zasada działania:**
-1. Panel (`QDockWidget`) dokleja się do okna „Dodaj" i pobiera **całą tabelę** z n8n (n8n tnie `limit` na 250, więc ~1000 wierszy = 4 żądania, ok. 0,3 s). Zrobione są chowane checkboxem „Ukryj zrobione", nie usuwane — dzięki temu pomyłkę zawsze da się cofnąć.
-2. Zakładki to `QWebEngineView` z wstrzykniętym **tym samym** userscriptem, co w przeglądarce ([`web_bridge`](web_bridge/README.md)) — przyciski `→ hasło` / `→ def` / `+ przykład` działają identycznie. Ładują się leniwie (Chromium ≈ 100 MB na zakładkę).
-3. Wybór słówka wpisuje je w pole `ang` i ładuje URL-e z kolumn wiersza. Wiersz bez URL-a → zakładka wyszarzona i wyczyszczona, żeby nie zostawała strona poprzedniego hasła.
-4. Enter w Anki odhacza wiersz (`Anki = true`, PATCH po `id`), ale **zostajesz na słówku** — jedno hasło bywa kilkoma kartami. Pole `ang` jest wpisywane z powrotem, gotowe na kolejne znaczenie.
-5. Ptaszek przy słówku to **stan**, nie akcja: zaznaczenie ustawia `true`, odznaczenie `false`. Nieudany PATCH cofa ptaszek.
-6. **Adres zapasowy** (np. Tailscale MagicDNS) używany, gdy domowy nie odpowiada — kolejność: ostatni działający → domowy → zapasowy.
-
-Przyciski: **Zrobione →** (odhacz + następne), **Następne** (pominięcie), **Ukryj zrobione**, **Losowo** (tasuje natychmiast), **Odśwież**.
-
-Bez otwartego panelu hook nadal odhacza, dopasowując kolumnę `Slowko` do zawartości pola `ang` — zawodzi, gdy wpiszesz formę inną niż w tabeli. Panel patchuje po `id` i trafia zawsze.
-
-Wymaga włączonego [`web_bridge`](web_bridge/README.md). Konfiguracja: **Ustawienia → Kolejka słówek**. Szczegóły: [`word_queue/README.md`](word_queue/README.md).
-
----
+| **Start** | Gotowość głównego workflow, trwające batche i problemy blokujące |
+| **Workflowy** | Nazwane procesy oraz ustawienia rozdzielania pól |
+| **Generowanie AI** | Prompty, dostawcy, modele i opcje zaawansowane |
+| **Wymowa** | TTS oraz nagrania i IPA ze słowników |
+| **Reguły kart** | Sentence Unlocker, Sibling Manager, Deck Router i presety powtórek |
+| **Integracje** | Kolejka słówek n8n oraz lokalny Web Bridge |
+| **Moduły** | Włączanie i wyłączanie funkcji |
+| **Konserwacja** | Normalizacja audio, czyszczenie HTML i ukrywanie pól |
+| **Diagnostyka** | Statystyki użycia oraz logi |
+
+Zmiana stanu modułu wymaga restartu Anki. Pozostałe ustawienia zwykle zaczynają
+działać po zapisaniu dialogu.
+
+## Funkcje
+
+### Treść
+
+- **Workflowy** wykonują kroki AI, słownika, TTS i rozdzielania pól w ustalonej
+  kolejności.
+- **AI Generator** wypełnia pola notatki pojedynczo lub wsadowo. Obsługuje
+  dostawców OpenAI, Anthropic, Google, OpenRouter, CometAPI, Mistral, NVIDIA NIM
+  i OpenCode Go.
+- **Batch API** umożliwia asynchroniczny backfill przez OpenAI lub Anthropic.
+- **Słownik** pobiera nagrania i IPA z Diki, Oxford, Cambridge, Longman oraz
+  Wiktionary.
+- **TTS** generuje dźwięk przez lokalny serwer Kokoro albo OpenRouter.
+- **Field Splitter** dzieli jedno pole, np. `przyklad`, na `p1`, `p2`, `p3`.
+
+Szczegóły: [AI Generator](ai_generator/README.md),
+[TTS](tts/README.md), [Słownik](dictionary/README.md) i
+[Field Splitter](field_splitter/README.md).
+
+### Nauka
+
+- **Sentence Unlocker** stopniowo tworzy karty kolejnych zdań, gdy wcześniejsze
+  karty osiągną ustalony interwał.
+- **Sibling Manager** tymczasowo zawiesza nowe siblingi niedojrzałej karty.
+- **Deck Router** kieruje karty do talii według tagu i opcjonalnie szablonu.
+- **Filtered Deck** udostępnia presety szybkich powtórek.
+
+Szczegóły: [kontekst reguł nauki](learning-context.md),
+[Sentence Unlocker](sentence_unlocker/README.md),
+[Sibling Manager](sibling_manager/README.md) i [Deck Router](deck_router/README.md).
+
+### Integracje i konserwacja
+
+- **Word Queue** pobiera słowa z tabeli n8n, wyświetla słowniki w Anki i oznacza
+  rekord po dodaniu notatki.
+- **Web Bridge** przyjmuje dane z userscriptu słownikowego na lokalnym adresie
+  `127.0.0.1:8766`.
+- **Audio Normalizer** normalizuje nagrania przez `ffmpeg` zgodnie z EBU R128.
+- **HTML Cleanup** usuwa `&nbsp;` i normalizuje bloki `<div>`.
+- **Field Hider** chowa wybrane pola wyłącznie w oknie dodawania notatki.
+
+Szczegóły: [Word Queue](word_queue/README.md), [Web Bridge](web_bridge/README.md)
+i [normalizacja audio](audio_normalizer/README.md).
+
+## Konfiguracja i dane
+
+`config.json` jest domyślnym szablonem. Anki zapisuje konfigurację użytkownika w
+`meta.json`. Pełna referencja kluczy znajduje się w [config.md](config.md).
+
+Dane, które mają przetrwać aktualizację dodatku, są zapisywane w `user_files/`:
+
+- `usage_stats.json` — statystyki AI i TTS,
+- `ai_batches.json` — stan Batch API,
+- `audio_normalizer_history.json` — historia normalizacji.
+
+Nie publikuj `meta.json` ani zawartości `user_files/`; mogą zawierać prywatną
+konfigurację lub historię pracy.
 
 ## Bezpieczeństwo
 
-Klucze API są przechowywane w profilu Anki w czystym tekście. Nie udostępniaj katalogu profilu publicznie.
+- Klucze API pozostają w konfiguracji profilu Anki.
+- Web Bridge nasłuchuje wyłącznie na `127.0.0.1` i sprawdza dozwolone źródła.
+- Operacje sieciowe i audio wykonują się poza wątkiem interfejsu.
+- Zmiany kolekcji Anki są zatwierdzane na jej głównym wątku.
 
-Dotyczy to również klucza API n8n (`word_queue`). `config.json` w repo trzyma wyłącznie puste wartości domyślne — Twoje adresy i klucz Anki zapisuje w `meta.json` w katalogu profilu, który jest w `.gitignore`.
+## Rozwiązywanie problemów
+
+1. Otwórz **Ustawienia → Diagnostyka → Logi**.
+2. Włącz tryb debugowania i powtórz operację.
+3. Sprawdź ekran Start — pokazuje wyłącznie problemy blokujące główny workflow.
+4. W przypadku modułu włączonego lub wyłączonego uruchom ponownie Anki.
+5. Dla normalizacji audio sprawdź `ffmpeg` w **Konserwacja**.
+
+Testy czystej logiki można uruchomić bez Anki:
+
+```bash
+python3 tests/test_pure_logic.py
+python3 tests/test_batch_backfill.py
+python3 tests/test_sentence_unlocker.py
+```
+
+## Dla deweloperów i modeli AI
+
+Zacznij od [llm-context.md](llm-context.md). Jest to krótka mapa architektury i
+router do kontekstu właściwego obszaru. Nie ma potrzeby czytania wszystkich
+plików modułowych przed każdą zmianą.

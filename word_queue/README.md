@@ -75,7 +75,7 @@ Dzięki temu poza domem panel łączy się przez Tailscale bez zmiany ustawień.
 
 ## Konfiguracja
 
-**Ustawienia → Kolejka słówek.** Przycisk „Pobierz listę" ciągnie tabele z `GET /api/v1/data-tables` i wypełnia rozwijankę; działa też jako test połączenia (sprawdza wartości **z pól**, nie zapisane).
+**Ustawienia → Integracje → Kolejka słówek.** Przycisk „Pobierz listę" ciągnie tabele z `GET /api/v1/data-tables` i wypełnia rozwijankę; działa też jako test połączenia (sprawdza wartości **z pól**, nie zapisane).
 
 | Klucz | Domyślnie | Znaczenie |
 |---|---|---|

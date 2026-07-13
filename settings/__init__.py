@@ -13,17 +13,11 @@ from ..common.ui import hint_label
 
 from .status_tab import StatusTab
 from .modules_tab import ModulesTab
-from .dictionary_tab import DictionaryTab
 from .ai_generator_tab import AIGeneratorTab
-from .workflows_tab import WorkflowsTab
-from .tts_tab import TTSTab
-from .audio_normalizer_tab import AudioNormalizerTab
-from .narzedzia_tab import NarzedziaTab
-from .deck_router_tab import DeckRouterTab
-from .field_hider_tab import FieldHiderTab
-from .word_queue_tab import WordQueueTab
-from .stats_tab import StatsTab
-from .logs_tab import LogsTab
+from .domain_tabs import (
+    workflows_page, pronunciation_page, learning_page, integrations_page,
+    maintenance_page, diagnostics_page,
+)
 
 
 class SettingsDialog(QDialog):
@@ -43,23 +37,18 @@ class SettingsDialog(QDialog):
 
         self._status_tab = StatusTab(cfg, open_tab=self._open_tab)
 
-        # (base_title, icon, widget, group) — order = by task: daily → content →
-        # system → insight. base_title is what status_tab navigates by; the icon
-        # is only for display. group=None starts a new group with no header.
+        # The navigation follows user tasks. Technical modules remain separate
+        # in code, while related configuration panels share one domain page.
         tabs = [
             ("Start",        "🏠", self._status_tab,        None),
-            ("AI Generator", "✨", AIGeneratorTab(cfg),     "Treść"),
-            ("Workflowy",    "🔀", WorkflowsTab(cfg),       "Treść"),
-            ("TTS",          "🔊", TTSTab(cfg),             "Treść"),
-            ("Słownik",      "📖", DictionaryTab(cfg),      "Treść"),
+            ("Workflowy",    "🔀", workflows_page(cfg),     "Treść"),
+            ("Generowanie AI","✨", AIGeneratorTab(cfg),     "Treść"),
+            ("Wymowa",       "🔊", pronunciation_page(cfg), "Treść"),
+            ("Reguły kart",  "🧠", learning_page(cfg),      "Nauka"),
+            ("Integracje",   "🔗", integrations_page(cfg),  "Integracje"),
             ("Moduły",       "🧩", ModulesTab(cfg),         "System"),
-            ("Narzędzia",    "🛠", NarzedziaTab(cfg),       "System"),
-            ("Deck Router",  "🎯", DeckRouterTab(cfg),      "System"),
-            ("Ukrywanie pól","🙈", FieldHiderTab(cfg),      "System"),
-            ("Kolejka słówek","📚", WordQueueTab(cfg),      "System"),
-            ("Normalizacja", "🎚", AudioNormalizerTab(cfg), "System"),
-            ("Statystyki",   "📊", StatsTab(cfg),           "Wgląd"),
-            ("Logi",         "📜", LogsTab(cfg),            "Wgląd"),
+            ("Konserwacja",  "🛠", maintenance_page(cfg),   "System"),
+            ("Diagnostyka",  "📊", diagnostics_page(cfg),   "System"),
         ]
 
         self._nav = QListWidget()

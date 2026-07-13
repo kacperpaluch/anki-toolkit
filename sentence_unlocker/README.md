@@ -30,7 +30,7 @@ Batch przetwarza notatki modelu docelowego bez tagu „ukończonych" i „ignoro
 
 **Talie i subtalie nie mają znaczenia.** Moduł patrzy na model notatki i nazwy **szablonów kart**, nie na talię. Jeśli rozdzielasz karty do subtalii (`ang::ang-pol`, `ang::pol-ang`), config zostaje bez zmian — `main_templates` to `ang-pol`/`pol-ang` (nazwy szablonów).
 
-**Komunikaty:** ręczny skan **zawsze** pokazuje tooltip z wynikiem — również „brak zdań do odblokowania", gdy żadna karta nie osiągnęła progu (dlatego cisza = nic nie było jeszcze dojrzałe). Automatyczny skan po syncu pokazuje tooltip tylko gdy coś odblokował. Po każdej odpowiedzi log trafia do bufora (**Ustawienia → Logi**), bez tooltipa (żeby nie spamować).
+**Komunikaty:** ręczny skan **zawsze** pokazuje tooltip z wynikiem — również „brak zdań do odblokowania", gdy żadna karta nie osiągnęła progu (dlatego cisza = nic nie było jeszcze dojrzałe). Automatyczny skan po syncu pokazuje tooltip tylko gdy coś odblokował. Po każdej odpowiedzi log trafia do bufora (**Ustawienia → Diagnostyka → Logi**), bez tooltipa (żeby nie spamować).
 
 ## Konfiguracja
 

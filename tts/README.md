@@ -41,7 +41,7 @@ Każde zadanie definiuje:
   - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`)
 - **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
 
-Zadania konfiguruje się w **Ustawienia → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
+Zadania konfiguruje się w **Ustawienia → Wymowa → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
 
 W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopiero po zakończeniu generowania danej operacji. Przy anulowaniu zapisują już wygenerowane pliki i pokazują jedno podsumowanie.
 
@@ -79,7 +79,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
 | `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania. Dla OpenRouter: po wybraniu modelu i kliknięciu **Pobierz**, lista głosów wypełnia się automatycznie |
-| `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
+| `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → Wymowa → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
 | `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`/`split`), opcjonalnie `split_separator`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań (usunięte zadania nie wracają). Przycisk **Dodaj/Edytuj/Usuń** w ustawieniach. Backward compat: jeśli klucz `tasks` w ogóle nie istnieje w zapisanym configu, generowane są domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field` (te pola nie są już w domyślnym configu ani w UI — wystarczy raz zapisać ustawienia) |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
@@ -88,7 +88,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 
 ## Zamiana wyrazów
 
-Słownikowe skróty (`sb`, `sth`, `sb/sth`…) brzmią źle czytane przez TTS. Sekcja **Ustawienia → TTS → Zamiana wyrazów** pozwala zdefiniować własne pary skrót→pełne słowo (tabela z przyciskami Dodaj/Usuń). Zamiana działa **tylko na tekście wysyłanym do silnika** — to, co widzisz na karcie, zostaje nietknięte.
+Słownikowe skróty (`sb`, `sth`, `sb/sth`…) brzmią źle czytane przez TTS. Sekcja **Ustawienia → Wymowa → TTS → Zamiana wyrazów** pozwala zdefiniować własne pary skrót→pełne słowo (tabela z przyciskami Dodaj/Usuń). Zamiana działa **tylko na tekście wysyłanym do silnika** — to, co widzisz na karcie, zostaje nietknięte.
 
 - Zamieniane są **całe słowa** (`sth` w „absinthe" nie ruszy).
 - Bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`).

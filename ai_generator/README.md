@@ -48,12 +48,12 @@ Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny
 
 - **Wyślij zaznaczone — wszystkie pola** / **Batch: `<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), więc ponowne uruchomienie na tym samym zaznaczeniu jest bezpieczne — dobierze tylko to, co nadal puste. Pola `anthropic` i `openai` trafiają każde do swojego batcha; pozostali dostawcy (OpenRouter/CometAPI/Mistral/NVIDIA — brak zgodnego endpointu) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
 - **Wyślij zaznaczone — wszystkie zablokowane** / **Batch (zablokowane): `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje pojawiają się tylko gdy takie pola istnieją w konfiguracji promptów.
-- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy każdym otwarciu profilu Anki. Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Logi**, nawet gdy tooltip zdąży zniknąć.
+- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy każdym otwarciu profilu Anki. Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka → Logi**, nawet gdy tooltip zdąży zniknąć.
 
 Szczegóły:
 - Trafienie wyniku w pole jest **deterministyczne** — mapa `custom_id → (notatka, pole)` zapisywana jest w `user_files/ai_batches.json` (przeżywa restart). Wynik wpisywany jest **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania); usunięta notatka / zmienione pole → wynik pomijany.
 - Wspólny rdzeń (wybór pól, mapa, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: **Anthropic** wysyła zapytania inline i pobiera wynik z `results_url`; **OpenAI** uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a jego batch wymaga jednego modelu, więc zapytania OpenAI są grupowane po modelu (osobny batch na model).
-- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → AI Generator → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"** — dopasuj do limitu „enqueued tokens" swojego modelu, np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a **timer co minutę** (plus auto-poll przy starcie Anki i przycisk „Sprawdź batche") pobiera wyniki gotowych batchy, sprząta po nich pliki wejściowe/wynikowe ze storage OpenAI i **automatycznie dosyła kolejny plaster pustych pól**, aż całe zaznaczenie się wypełni — bez klikania; tooltip dosyłki pokazuje postęp zadania (np. „2 874/19 140 zapytań (15%)"). Zadanie kończy się, gdy wszystkie pola są pełne albo po 24h (okno batcha); pojedyncze pola, które nadal się nie wypełniły, dobierzesz ręcznym ponowieniem akcji. Gdy OpenAI odrzuci wysyłkę limitem kolejki (ich licznik potrafi „wisieć" długo po nieudanych batchach), wtyczka wstrzymuje dosyłanie na 30 min i pokazuje błąd w tooltipie, zamiast bezskutecznie ponawiać co minutę. Postęp zadań (paski „wysłane/wszystkie zapytania") i batche w toku zobaczysz w **Ustawienia → Start → „Batch API — postęp"**, razem z przyciskami „Sprawdź batche teraz" i „Odśwież".
+- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → Generowanie AI → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"** — dopasuj do limitu „enqueued tokens" swojego modelu, np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a **timer co minutę** (plus auto-poll przy starcie Anki i przycisk „Sprawdź batche") pobiera wyniki gotowych batchy, sprząta po nich pliki wejściowe/wynikowe ze storage OpenAI i **automatycznie dosyła kolejny plaster pustych pól**, aż całe zaznaczenie się wypełni — bez klikania; tooltip dosyłki pokazuje postęp zadania (np. „2 874/19 140 zapytań (15%)"). Zadanie kończy się, gdy wszystkie pola są pełne albo po 24h (okno batcha); pojedyncze pola, które nadal się nie wypełniły, dobierzesz ręcznym ponowieniem akcji. Gdy OpenAI odrzuci wysyłkę limitem kolejki (ich licznik potrafi „wisieć" długo po nieudanych batchach), wtyczka wstrzymuje dosyłanie na 30 min i pokazuje błąd w tooltipie, zamiast bezskutecznie ponawiać co minutę. Postęp zadań (paski „wysłane/wszystkie zapytania") i batche w toku zobaczysz w **Ustawienia → Start → „Batch API — postęp"**, razem z przyciskami „Sprawdź batche teraz" i „Odśwież".
 - Ograniczenia: dostawcy `anthropic`/`openai`, bez fallbacku. Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
 
 ## Konfiguracja (`config.json` → sekcja `ai_generator`)
@@ -88,7 +88,7 @@ Szczegóły:
 
 ### Konfiguracja dostawców
 
-W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma własną podzakładkę z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
+W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dostawca ma własną podzakładkę z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
 
 ```json
 "providers": {
@@ -223,8 +223,8 @@ Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, 
 
 | Poziom | Pola | Gdzie w UI |
 |---|---|---|
-| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → AI Generator → Prompty |
-| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → AI Generator → Dostawcy |
+| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → Generowanie AI → Prompty |
+| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → Generowanie AI → Dostawcy |
 
 Priorytetyzacja:
 1. Jeśli prompt ma `fallback_model` → użyj go (z `fallback_provider` lub tym samym dostawcą)
@@ -263,7 +263,7 @@ Właściwości:
 
 ## Rate limiter per dostawca
 
-Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0.83 req/s + 25k tokenów/min; OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → AI Generator → Dostawcy**:
+Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0.83 req/s + 25k tokenów/min; OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → Generowanie AI → Dostawcy**:
 
 - **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (Mistral 0.83 RPS → ~50; domyślnie `40` z marginesem, OpenRouter `20`)
 - **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
@@ -289,7 +289,7 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0
 
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
-Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć literówek:
+Edytor promptów (**Ustawienia → Generowanie AI → Prompty**) pomaga uniknąć literówek:
 - **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
@@ -306,7 +306,7 @@ Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć 
 
 Każde wywołanie AI jest zliczane lokalnie (per dzień, per `provider/model`): requesty, błędy, tokeny wejściowe/wyjściowe (z pola `usage` odpowiedzi API), wygenerowane pola oraz liczba zaktualizowanych notatek.
 
-Dashboard: **Ustawienia → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / **własny zakres dat** od–do z kalendarzykiem), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
+Dashboard: **Ustawienia → Diagnostyka → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / **własny zakres dat** od–do z kalendarzykiem), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
 
 - Dane są zapisywane w `user_files/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer; stara ścieżka `ai_generator/usage_stats.json` jest migrowana automatycznie przy pierwszym uruchomieniu
 - Szacowany koszt USD per model — przycisk **Pobierz ceny** pobiera cennik z katalogu OpenRouter (jeśli model jest tam dostępny) i przelicza tokeny × cena/1k
