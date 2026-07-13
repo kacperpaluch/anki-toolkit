@@ -6,7 +6,10 @@ from aqt.qt import (
     QSizePolicy, Qt, QVBoxLayout, QWidget,
 )
 
-from ..common.ui import _api_key_widget, _expanding_line_edit, hint_label
+from ..common.ui import (
+    _api_key_widget, _expanding_line_edit, _filterable_combo, get_all_field_names,
+    hint_label,
+)
 
 _PLACEHOLDER = "(kliknij „Pobierz listę”)"
 
@@ -58,7 +61,7 @@ class WordQueueTab(QWidget):
         self._status = QLabel("")
         form.addRow("", self._status)
 
-        self._word_field = _expanding_line_edit(wq.get("word_field", "ang"))
+        self._word_field = _filterable_combo(get_all_field_names(), wq.get("word_field", "ang"))
         self._word_field.setToolTip("Pole notatki, do którego wpisywane jest hasło")
         form.addRow("Pole notatki", self._word_field)
 
@@ -128,7 +131,7 @@ class WordQueueTab(QWidget):
         # Placeholder trzyma table_id z konfiguracji, więc brak kliknięcia
         # „Pobierz listę” nie kasuje wybranej wcześniej tabeli.
         wq["table_id"] = self._table.currentData() or ""
-        wq["word_field"] = self._word_field.text().strip()
+        wq["word_field"] = self._word_field.currentText().strip()
         wq["word_column"] = self._word_column.text().strip()
         wq["flag_column"] = self._flag_column.text().strip()
         wq["random_order"] = self._random.isChecked()

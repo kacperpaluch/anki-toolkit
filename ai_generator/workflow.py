@@ -43,8 +43,9 @@ DEFAULT_CONTEXT_MENU = {
     "field_splitter": True,  # "Rozdziel pole"
 }
 
-# The two pipelines that used to be hardcoded in Python — re-seeded as editable
-# workflows during migration so the menu loses nothing.
+# Re-seeded as an editable workflow during migration so the menu loses nothing.
+# Only generic, field-name-agnostic steps here — a personal p1–p3 pipeline is
+# something the user builds in the UI, not something a fresh install inherits.
 _DEFAULT_PIPELINES = [
     {
         "name": "Generuj wszystko: puste → TTS → rozdziel → zablokowane",
@@ -54,15 +55,6 @@ _DEFAULT_PIPELINES = [
             {"module": "tts", "action": "generate"},
             {"module": "field_splitter", "action": "split"},
             {"module": "ai", "action": "generate", "fields": "manual"},
-        ],
-    },
-    {
-        "name": "Rozdziel + generuj naukę (p1–p3)",
-        "editor_button": False,
-        "steps": [
-            {"module": "field_splitter", "action": "split"},
-            {"module": "ai", "action": "generate",
-             "fields": ["p1-nauka", "p2-nauka", "p3-nauka"]},
         ],
     },
 ]

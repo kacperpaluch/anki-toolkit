@@ -803,10 +803,10 @@ class WorkflowMigrationTests(unittest.TestCase):
         wf, am, _mods = load_workflow_module(legacy)
         wf.migrate_workflows()
         out = am.cfg["workflows"]
-        # legacy first, then the two re-seeded pipelines
+        # legacy first, then the generic re-seeded pipeline
         self.assertEqual(out[0]["name"], "Generuj fiszkę")
         self.assertTrue(out[0]["editor_button"])
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), 2)
         self.assertIn("context_menu", am.cfg)
         self.assertTrue(am.cfg["context_menu"]["dictionary"])
 

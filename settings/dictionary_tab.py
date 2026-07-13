@@ -5,7 +5,7 @@ from aqt.qt import (
     QLineEdit, QComboBox, QCheckBox, QSpinBox, QGroupBox,
 )
 
-from ..common.ui import _expanding_line_edit, _scrollable
+from ..common.ui import _filterable_combo, _scrollable, get_all_field_names
 
 
 class DictionaryTab(QWidget):
@@ -21,9 +21,10 @@ class DictionaryTab(QWidget):
 
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._source = _expanding_line_edit(d.get("source_field", "ang"))
-        self._target = _expanding_line_edit(d.get("target_field", "audio"))
-        self._ipa_field = _expanding_line_edit(d.get("ipa_field", "IPA"))
+        fields = get_all_field_names()
+        self._source = _filterable_combo(fields, d.get("source_field", "ang"))
+        self._target = _filterable_combo(fields, d.get("target_field", "audio"))
+        self._ipa_field = _filterable_combo(fields, d.get("ipa_field", "IPA"))
         self._ipa_format = QComboBox()
         self._ipa_format.addItems(self._IPA_FORMATS)
         fmt = d.get("ipa_format", "compact")
@@ -134,9 +135,9 @@ class DictionaryTab(QWidget):
     def apply(self, cfg: dict) -> None:
         cfg.setdefault("dictionary", {})
         d = cfg["dictionary"]
-        d["source_field"] = self._source.text().strip()
-        d["target_field"] = self._target.text().strip()
-        d["ipa_field"] = self._ipa_field.text().strip()
+        d["source_field"] = self._source.currentText().strip()
+        d["target_field"] = self._target.currentText().strip()
+        d["ipa_field"] = self._ipa_field.currentText().strip()
         d["ipa_format"] = self._ipa_format.currentText()
         d["wiktionary_ipa_fallback"] = self._wiktionary_fallback.isChecked()
         d["diki_ipa_fallback"] = self._diki_ipa_fallback.isChecked()

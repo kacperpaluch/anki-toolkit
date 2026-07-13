@@ -13,7 +13,7 @@ from aqt.sound import av_player
 
 from ..common.ui import (
     _expanding_line_edit, _api_key_widget, _scrollable, hint_label,
-    collapsible_section,
+    collapsible_section, _filterable_combo, get_all_field_names,
 )
 
 _PROVIDERS = {"kokoro": "Kokoro (lokalny Docker)", "openrouter": "OpenRouter (API)"}
@@ -33,9 +33,10 @@ class TaskEditDialog(QDialog):
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
+        fields = get_all_field_names()
         self._label = QLineEdit(task.get("label", "") if task else "")
-        self._source = QLineEdit(task.get("source_field", "") if task else "")
-        self._target = QLineEdit(task.get("target_field", "") if task else "")
+        self._source = _filterable_combo(fields, task.get("source_field", "") if task else "")
+        self._target = _filterable_combo(fields, task.get("target_field", "") if task else "")
         self._mode = QComboBox()
         self._mode.addItem("Pojedyncze audio", "single")
         self._mode.addItem("Dzielone (split)", "split")
@@ -73,8 +74,8 @@ class TaskEditDialog(QDialog):
     def get_task(self) -> dict:
         task = {
             "label": self._label.text().strip(),
-            "source_field": self._source.text().strip(),
-            "target_field": self._target.text().strip(),
+            "source_field": self._source.currentText().strip(),
+            "target_field": self._target.currentText().strip(),
             "mode": self._mode.currentData(),
         }
         if task["mode"] in ("split", "split_audio"):

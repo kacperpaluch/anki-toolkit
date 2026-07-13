@@ -162,6 +162,16 @@ def get_fields_for_note_type(note_type_name: str) -> list[str]:
     return [fld["name"] for fld in model["flds"]]
 
 
+def get_all_field_names() -> list[str]:
+    """Sorted unique field names across all note types — for field pickers not
+    tied to a single note type. [] if collection unavailable."""
+    try:
+        names = {f["name"] for m in mw.col.models.all() for f in m["flds"]}
+    except Exception:
+        return []
+    return sorted(names)
+
+
 def get_sample_notes(note_type_name: str, limit: int = 20) -> list[tuple[int, str]]:
     """Return up to `limit` (note_id, label) pairs for notes of the given type.
 
