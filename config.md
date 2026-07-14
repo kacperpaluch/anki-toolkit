@@ -13,7 +13,9 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "audio_normalizer":  true,
     "nbsp_remover":      true,
     "field_splitter":    true,
+    "audio_embed":       true,
     "sibling_manager":   true,
+    "homograph_manager": true,
     "sentence_unlocker": true,
     "deck_router":       true,
     "field_hider":       true,
@@ -299,6 +301,72 @@ Akcje:
 
 ---
 
+## Sekcja `homograph_manager` — rozdzielanie słów o wielu znaczeniach
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie**.
+
+Grupuje **osobne notatki** o tej samej wartości pola kluczowego (np. kilka notatek `assault` o różnych znaczeniach) i utrzymuje aktywne tylko jedno znaczenie naraz — NEW karty pozostałych są zawieszone, aż aktywne dojrzeje; wtedy uwalnia się dokładnie jedno następne. Rozłączny z `sibling_manager` (ten drugi rozkłada strony jednej notatki).
+
+**`interval`** — próg dojrzałości w dniach (domyślnie `30`). Znaczenie uznane za dojrzałe, gdy dowolna jego karta ma interval ≥ próg → uwalnia następne.
+
+**`field`** — pole, po którego wartości (trim + lowercase) grupowane są homografy (domyślnie `"ang"`). Notatki bez tego pola są pomijane; zdania nie zderzą się z pojedynczym słowem (dopasowanie dokładne).
+
+**`tag`** — tag notatek z zawieszonymi homografami (domyślnie `"tk-homograph-suspended"`), rozłączny z tagiem `sibling_manager`.
+
+**`ignore_tag`** — notatki z tym tagiem są pomijane (domyślnie `"tk-homograph-ignored"`).
+
+**`show_tooltip`** — `true` (domyślnie) = tooltip po batch scan po synchronizacji.
+
+```json
+"homograph_manager": {
+    "interval": 30,
+    "field": "ang",
+    "tag": "tk-homograph-suspended",
+    "ignore_tag": "tk-homograph-ignored",
+    "show_tooltip": true
+}
+```
+
+Akcje:
+- **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Homograph Manager...** — reset wszystkich zawieszeń + usuwa tagi
+- **Narzędzia → Anki Toolkit → Homograph Manager: przeskanuj całą kolekcję...** — ręczny batch scan
+
+---
+
+## Sekcja `audio_embed` — [sound:...] → osadzony `<audio>`
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Osadzanie audio**.
+
+Zamienia `[sound:plik.mp3]` na `<audio class="ex-audio" src="plik.mp3" preload="none"></audio>` w wybranych polach. Uniwersalny — niezależny od źródła audio (TTS, słownik, ręcznie). Idempotentny (regex łapie tylko `[sound:...]`).
+
+**`note_types`** — typy notatek, w których działa (domyślnie `["angielski"]`). Pusta lista = wszystkie typy.
+
+**`fields`** — pola do konwersji (domyślnie `["przyklad", "p1"…"p5"]`). Pola pomijane jeśli nie istnieją. **Nie dodawaj pola `audio`** — zostaw je poza listą, by zachowało klasyczne `[sound:...]` (natywny odtwarzacz Anki).
+
+**`css_class`** — klasa CSS wstawianego `<audio>` (domyślnie `"ex-audio"`). Wygląd stylujesz w CSS szablonu karty.
+
+**`preload`** — atrybut `preload` elementu `<audio>` (domyślnie `"none"`; dozwolone `none` / `metadata` / `auto`).
+
+**`scan_on_sync`** — `true` (domyślnie) = po synchronizacji skanuje kolekcję (zawężoną do `note_types`) i konwertuje. Łapie audio dodane z dowolnego źródła, także z telefonu.
+
+```json
+"audio_embed": {
+    "note_types": ["angielski"],
+    "fields": ["przyklad", "p1", "p2", "p3", "p4", "p5"],
+    "css_class": "ex-audio",
+    "preload": "none",
+    "scan_on_sync": true
+}
+```
+
+Akcje:
+- **PPM w przeglądarce → Anki Toolkit → Osadź audio (sound → <audio>)** — batch na zaznaczonych notatkach
+- **Narzędzia → Anki Toolkit → Osadź audio w kolekcji...** — wszystkie notatki skonfigurowanych typów (z potwierdzeniem)
+
+Widoczność pozycji PPM: `context_menu.audio_embed`.
+
+---
+
 ## Sekcja `sentence_unlocker` — stopniowe odblokowywanie zdań
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie** — całość edytowalna z UI, w tym `main_templates` (przecinkami) i `chain` (pary `pole-nauka:pole-tak`).
@@ -429,6 +497,7 @@ Konfiguracja przez **Ustawienia → zakładka Workflowy** (checkboxy na dole). S
 - `"ai_fields"` — submenu „Generuj pola"
 - `"ai_blocked"` — submenu „Generuj zablokowane"
 - `"field_splitter"` — pozycja „Rozdziel pole"
+- `"audio_embed"` — pozycja „Osadź audio (sound → <audio>)"
 
 ```json
 "context_menu": {
@@ -436,7 +505,8 @@ Konfiguracja przez **Ustawienia → zakładka Workflowy** (checkboxy na dole). S
     "tts": true,
     "ai_fields": true,
     "ai_blocked": true,
-    "field_splitter": true
+    "field_splitter": true,
+    "audio_embed": true
 }
 ```
 

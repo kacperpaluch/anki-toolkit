@@ -82,6 +82,21 @@ if _enabled("sibling_manager"):
     gui_hooks.sync_did_finish.append(sibling_manager.on_sync_did_finish)
 
 # ---------------------------------------------------------------------------
+# homograph_manager — stagger same-word notes with different meanings
+# ---------------------------------------------------------------------------
+if _enabled("homograph_manager"):
+    from . import homograph_manager
+    gui_hooks.reviewer_did_answer_card.append(homograph_manager.on_reviewer_did_answer_card)
+    gui_hooks.sync_did_finish.append(homograph_manager.on_sync_did_finish)
+
+# ---------------------------------------------------------------------------
+# audio_embed — [sound:...] -> inline <audio> in chosen note types/fields
+# ---------------------------------------------------------------------------
+if _enabled("audio_embed"):
+    from . import audio_embed
+    gui_hooks.sync_did_finish.append(audio_embed.on_sync_did_finish)
+
+# ---------------------------------------------------------------------------
 # sentence_unlocker — progressive gap-fill card gating (reviewer + sync hook)
 # ---------------------------------------------------------------------------
 if _enabled("sentence_unlocker"):
@@ -129,8 +144,11 @@ if _enabled("word_queue"):
 if _enabled("field_splitter"):
     from . import field_splitter
 
+if _enabled("audio_embed"):
+    from . import audio_embed
+
 _has_context = any(
-    _enabled(m) for m in ("dictionary", "ai_generator", "tts", "field_splitter")
+    _enabled(m) for m in ("dictionary", "ai_generator", "tts", "field_splitter", "audio_embed")
 )
 
 if _has_context:
@@ -146,6 +164,8 @@ if _has_context:
             tts.add_to_context_menu(browser, toolkit_menu)
         if _enabled("field_splitter") and cm.get("field_splitter", True):
             field_splitter.add_to_context_menu(browser, toolkit_menu)
+        if _enabled("audio_embed") and cm.get("audio_embed", True):
+            audio_embed.add_to_context_menu(browser, toolkit_menu)
 
     addHook("browser.onContextMenu", _on_browser_context_menu)
 
@@ -173,9 +193,17 @@ if _enabled("field_splitter"):
     from . import field_splitter
     _menu_modules.append(field_splitter)
 
+if _enabled("audio_embed"):
+    from . import audio_embed
+    _menu_modules.append(audio_embed)
+
 if _enabled("sibling_manager"):
     from . import sibling_manager
     _menu_modules.append(sibling_manager)
+
+if _enabled("homograph_manager"):
+    from . import homograph_manager
+    _menu_modules.append(homograph_manager)
 
 if _enabled("sentence_unlocker"):
     from . import sentence_unlocker

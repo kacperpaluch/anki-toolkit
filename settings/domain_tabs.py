@@ -10,8 +10,8 @@ from .dictionary_tab import DictionaryTab
 from .field_hider_tab import FieldHiderTab
 from .logs_tab import LogsTab
 from .narzedzia_tab import (
-    FieldSplitterSettings, FilteredDeckSettings, HtmlCleanupSettings,
-    LearningRulesSettings,
+    AudioEmbedSettings, FieldSplitterSettings, FilteredDeckSettings,
+    HtmlCleanupSettings, LearningRulesSettings,
 )
 from .stats_tab import StatsTab
 from .tts_tab import TTSTab
@@ -88,6 +88,7 @@ def integrations_page(cfg: dict) -> DomainTabs:
 def maintenance_page(cfg: dict) -> DomainTabs:
     return DomainTabs([
         ("Normalizacja audio", AudioNormalizerTab(cfg)),
+        ("Osadzanie audio", AudioEmbedSettings(cfg)),
         ("Czyszczenie HTML", HtmlCleanupSettings(cfg)),
         ("Ukrywanie pól", FieldHiderTab(cfg)),
     ])

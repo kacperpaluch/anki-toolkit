@@ -48,7 +48,7 @@ Nawigacja odpowiada zadaniom, a nie katalogom kodu:
 | **Workflowy** | Nazwane procesy oraz ustawienia rozdzielania pól |
 | **Generowanie AI** | Prompty, dostawcy, modele i opcje zaawansowane |
 | **Wymowa** | TTS oraz nagrania i IPA ze słowników |
-| **Reguły kart** | Sentence Unlocker, Sibling Manager, Deck Router i presety powtórek |
+| **Reguły kart** | Sentence Unlocker, Sibling Manager, Homograph Manager, Deck Router i presety powtórek |
 | **Integracje** | Kolejka słówek n8n oraz lokalny Web Bridge |
 | **Moduły** | Włączanie i wyłączanie funkcji |
 | **Konserwacja** | Normalizacja audio, czyszczenie HTML i ukrywanie pól |
@@ -81,12 +81,16 @@ Szczegóły: [AI Generator](ai_generator/README.md),
 - **Sentence Unlocker** stopniowo tworzy karty kolejnych zdań, gdy wcześniejsze
   karty osiągną ustalony interwał.
 - **Sibling Manager** tymczasowo zawiesza nowe siblingi niedojrzałej karty.
+- **Homograph Manager** rozdziela osobne notatki z tym samym słowem (np. kilka
+  znaczeń „assault") — kolejne znaczenie odblokowuje się dopiero, gdy poprzednie
+  dojrzeje.
 - **Deck Router** kieruje karty do talii według tagu i opcjonalnie szablonu.
 - **Filtered Deck** udostępnia presety szybkich powtórek.
 
 Szczegóły: [kontekst reguł nauki](learning-context.md),
 [Sentence Unlocker](sentence_unlocker/README.md),
-[Sibling Manager](sibling_manager/README.md) i [Deck Router](deck_router/README.md).
+[Sibling Manager](sibling_manager/README.md),
+[Homograph Manager](homograph_manager/README.md) i [Deck Router](deck_router/README.md).
 
 ### Integracje i konserwacja
 
@@ -95,11 +99,13 @@ Szczegóły: [kontekst reguł nauki](learning-context.md),
 - **Web Bridge** przyjmuje dane z userscriptu słownikowego na lokalnym adresie
   `127.0.0.1:8766`.
 - **Audio Normalizer** normalizuje nagrania przez `ffmpeg` zgodnie z EBU R128.
+- **Audio Embed** zamienia `[sound:...]` na osadzony `<audio class="ex-audio">`
+  w wybranych typach notatek i polach (niezależnie od źródła audio).
 - **HTML Cleanup** usuwa `&nbsp;` i normalizuje bloki `<div>`.
 - **Field Hider** chowa wybrane pola wyłącznie w oknie dodawania notatki.
 
-Szczegóły: [Word Queue](word_queue/README.md), [Web Bridge](web_bridge/README.md)
-i [normalizacja audio](audio_normalizer/README.md).
+Szczegóły: [Word Queue](word_queue/README.md), [Web Bridge](web_bridge/README.md),
+[normalizacja audio](audio_normalizer/README.md) i [Audio Embed](audio_embed/README.md).
 
 ## Konfiguracja i dane
 

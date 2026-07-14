@@ -78,6 +78,49 @@ class FieldSplitterSettings(QWidget):
         fs["overwrite"] = self._overwrite.isChecked()
 
 
+class AudioEmbedSettings(QWidget):
+    """Rewrite [sound:...] into inline <audio> players in chosen note types/fields."""
+
+    def __init__(self, cfg: dict):
+        super().__init__()
+        _scroll_panel(self)
+        ae = cfg.get("audio_embed", {})
+        group = QGroupBox("Osadzanie audio — [sound:...] → <audio>")
+        form = QFormLayout(group)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._note_types = _expanding_line_edit(
+            ", ".join(ae.get("note_types", ["angielski"]))
+        )
+        self._fields = _expanding_line_edit(
+            ", ".join(ae.get("fields", ["przyklad", "p1", "p2", "p3", "p4", "p5"]))
+        )
+        self._css_class = _expanding_line_edit(ae.get("css_class", "ex-audio"))
+        self._preload = _expanding_line_edit(ae.get("preload", "none"))
+        self._scan_on_sync = QCheckBox("Skanuj kolekcję po synchronizacji")
+        self._scan_on_sync.setChecked(ae.get("scan_on_sync", True))
+        form.addRow("Typy notatek:", self._note_types)
+        form.addRow("Pola:", self._fields)
+        form.addRow("Klasa CSS:", self._css_class)
+        form.addRow("preload:", self._preload)
+        form.addRow("", self._scan_on_sync)
+        form.addRow("", hint_label(
+            "Zamienia [sound:plik.mp3] na <audio class=\"…\" src=\"plik.mp3\" "
+            "preload=\"…\"></audio> w wybranych polach. Pole audio (główne) zostaw "
+            "poza listą — zachowa klasyczne [sound:...]. Typy notatek puste = "
+            "wszystkie. Operacja jest idempotentna.", small=True,
+        ))
+        self._panel_layout.addWidget(group)
+        self._panel_layout.addStretch()
+
+    def apply(self, cfg: dict) -> None:
+        ae = cfg.setdefault("audio_embed", {})
+        ae["note_types"] = _csv(self._note_types.text())
+        ae["fields"] = _csv(self._fields.text())
+        ae["css_class"] = self._css_class.text().strip()
+        ae["preload"] = self._preload.text().strip()
+        ae["scan_on_sync"] = self._scan_on_sync.isChecked()
+
+
 class LearningRulesSettings(QWidget):
     """Rules controlling when cards become available during learning."""
 
@@ -110,6 +153,33 @@ class LearningRulesSettings(QWidget):
             "oznaczone przez Anki Toolkit.", small=True,
         ))
         self._panel_layout.addWidget(sm_group)
+
+        hm = cfg.get("homograph_manager", {})
+        hm_group = QGroupBox("Homograph Manager — rozdzielanie słów o wielu znaczeniach")
+        hm_form = QFormLayout(hm_group)
+        hm_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._hm_interval = QSpinBox()
+        self._hm_interval.setRange(1, 365)
+        self._hm_interval.setSuffix(" dni")
+        self._hm_interval.setValue(hm.get("interval", 30))
+        self._hm_field = _expanding_line_edit(hm.get("field", "ang"))
+        self._hm_tag = _expanding_line_edit(hm.get("tag", "tk-homograph-suspended"))
+        self._hm_ignore_tag = _expanding_line_edit(
+            hm.get("ignore_tag", "tk-homograph-ignored")
+        )
+        self._hm_show_tooltip = QCheckBox("Pokazuj podsumowanie po synchronizacji")
+        self._hm_show_tooltip.setChecked(hm.get("show_tooltip", True))
+        hm_form.addRow("Próg dojrzałości:", self._hm_interval)
+        hm_form.addRow("Pole grupujące:", self._hm_field)
+        hm_form.addRow("Tag zawieszonych:", self._hm_tag)
+        hm_form.addRow("Tag ignorowanych:", self._hm_ignore_tag)
+        hm_form.addRow("", self._hm_show_tooltip)
+        hm_form.addRow("", hint_label(
+            "Osobne notatki z tym samym słowem w polu grupującym (np. „assault”) "
+            "uczą się po kolei: kolejne znaczenie odblokowuje się dopiero, gdy "
+            "poprzednie osiągnie próg dojrzałości.", small=True,
+        ))
+        self._panel_layout.addWidget(hm_group)
 
         su = cfg.get("sentence_unlocker", {})
         su_group = QGroupBox("Sentence Unlocker — stopniowe odblokowywanie zdań")
@@ -160,6 +230,13 @@ class LearningRulesSettings(QWidget):
         sm["tag"] = self._sm_tag.text().strip()
         sm["ignore_tag"] = self._sm_ignore_tag.text().strip()
         sm["show_tooltip"] = self._sm_show_tooltip.isChecked()
+
+        hm = cfg.setdefault("homograph_manager", {})
+        hm["interval"] = self._hm_interval.value()
+        hm["field"] = self._hm_field.text().strip()
+        hm["tag"] = self._hm_tag.text().strip()
+        hm["ignore_tag"] = self._hm_ignore_tag.text().strip()
+        hm["show_tooltip"] = self._hm_show_tooltip.isChecked()
 
         su = cfg.setdefault("sentence_unlocker", {})
         su["model"] = self._su_model.text().strip()

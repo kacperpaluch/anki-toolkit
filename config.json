@@ -8,6 +8,8 @@
     "nbsp_remover": true,
     "field_splitter": true,
     "sibling_manager": true,
+    "homograph_manager": true,
+    "audio_embed": true,
     "sentence_unlocker": true,
     "deck_router": true,
     "field_hider": true,
@@ -172,7 +174,8 @@
     "tts": true,
     "ai_fields": true,
     "ai_blocked": true,
-    "field_splitter": true
+    "field_splitter": true,
+    "audio_embed": true
   },
   "audio_normalizer": {
     "max_workers": 4,
@@ -198,6 +201,20 @@
     "interval": 30,
     "tag": "tk-sib-suspended",
     "ignore_tag": "tk-sib-ignored"
+  },
+  "homograph_manager": {
+    "interval": 30,
+    "field": "ang",
+    "tag": "tk-homograph-suspended",
+    "ignore_tag": "tk-homograph-ignored",
+    "show_tooltip": true
+  },
+  "audio_embed": {
+    "note_types": ["angielski"],
+    "fields": ["przyklad", "p1", "p2", "p3", "p4", "p5"],
+    "css_class": "ex-audio",
+    "preload": "none",
+    "scan_on_sync": true
   },
   "sentence_unlocker": {
     "model": "angielski",

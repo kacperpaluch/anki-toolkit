@@ -1,7 +1,7 @@
 # LLM Context — reguły kart i nauki
 
 Przeczytaj ten plik przy zmianach w `sentence_unlocker`, `sibling_manager`,
-`deck_router` albo `filtered_deck`.
+`homograph_manager`, `deck_router` albo `filtered_deck`.
 
 ## Odpowiedzialności
 
@@ -9,6 +9,7 @@ Przeczytaj ten plik przy zmianach w `sentence_unlocker`, `sibling_manager`,
 |---|---|
 | `sentence_unlocker` | Stopniowo wpisuje markery tworzące karty kolejnych zdań |
 | `sibling_manager` | Zawiesza nowe siblingi, dopóki aktywna karta nie dojrzeje |
+| `homograph_manager` | Rozdziela osobne notatki z tym samym słowem — jedno znaczenie naraz |
 | `deck_router` | Przenosi karty do talii według tagu i opcjonalnie szablonu |
 | `filtered_deck` | Tworzy tymczasowe talie powtórkowe z presetów |
 
@@ -53,6 +54,27 @@ Sentence Unlocker i Sibling Manager mogą działać jednocześnie: pierwszy decy
 czy karta istnieje, drugi czy nowo utworzony sibling jest chwilowo zawieszony.
 Przy zmianie jednego mechanizmu sprawdź scenariusz współistnienia z drugim.
 
+## Homograph Manager
+
+`homograph_manager/logic.py:process_reactive` reaguje na odpowiedź, a
+`process_group_sync` odtwarza niezmiennik po synchronizacji. Grupa to osobne
+notatki o tej samej wartości pola kluczowego (domyślnie `ang`) — nie siblingi
+jednej notatki. Szczegóły: `homograph_manager/llm-context.md`.
+
+Najważniejsze niezmienniki:
+
+- W grupie co najwyżej jedno niedojrzałe znaczenie ma odwieszone NEW karty.
+- Po dojrzeniu aktywnego znaczenia uwalnia się dokładnie jedno następne (najniższy
+  nid), nigdy wszystkie naraz — inaczej kilka frontów naraz znów interferuje.
+- Moduł dotyka wyłącznie NEW kart **innych** notatek z grupy, nigdy notatki, na
+  którą odpowiedziano — to rozłącza go od Sibling Managera.
+- Własny tag (`tk-homograph-suspended`), rozłączny z tagiem Sibling Managera;
+  `ignore_tag` wyłącza regułę dla notatki.
+
+Sibling Manager rozkłada dwie strony jednego znaczenia; Homograph Manager rozkłada
+znaczenia. Sync scan homografów startuje 600 ms po syncu (po Sibling Managerze,
+500 ms), by działać na ustabilizowanym stanie.
+
 ## Deck Router
 
 `deck_router/logic.py:match_deck` jest czystą funkcją: pierwsza pasująca reguła
@@ -84,5 +106,6 @@ między wersjami Anki powinny być izolowane w tym module.
 ## Testy
 
 - `tests/test_sentence_unlocker.py` — łańcuch odblokowywania.
+- `tests/test_homograph_manager.py` — grupowanie po słowie, uwalnianie po jednym.
 - `tests/test_pure_logic.py` — dopasowanie Deck Routera i wybrane reguły.
-- Przy zmianie Sibling Managera dodaj test czystej logiki zamiast testować Qt.
+- Przy zmianie Sibling/Homograph Managera dodaj test czystej logiki zamiast testować Qt.

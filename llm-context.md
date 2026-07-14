@@ -11,8 +11,8 @@ moduły są niezależnie przełączane, lecz interfejs grupuje je w trzy domeny:
 | Domena | Moduły |
 |---|---|
 | Treść | `ai_generator`, `dictionary`, `tts`, `field_splitter`, workflowy |
-| Nauka | `sentence_unlocker`, `sibling_manager`, `deck_router`, `filtered_deck` |
-| Integracje i system | `word_queue`, `web_bridge`, `audio_normalizer`, `nbsp_remover`, `field_hider` |
+| Nauka | `sentence_unlocker`, `sibling_manager`, `homograph_manager`, `deck_router`, `filtered_deck` |
+| Integracje i system | `word_queue`, `web_bridge`, `audio_normalizer`, `audio_embed`, `nbsp_remover`, `field_hider` |
 
 Entry point: `__init__.py`. Domyślna konfiguracja: `config.json`. Konfiguracja
 profilu Anki jest obsługiwana przez `mw.addonManager` i zapisywana w `meta.json`.
@@ -26,7 +26,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | AI, prompty, providerzy, workflowy, Batch API | `ai_generator/llm-context.md` |
 | TTS, głosy, generowanie audio | `tts/llm-context.md` |
 | Słowniki, audio słownikowe, IPA | `dictionary/llm-context.md` |
-| Sentence Unlocker, siblingi, routing talii | `learning-context.md` |
+| Sentence Unlocker, siblingi, homografy, routing talii | `learning-context.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |
@@ -58,10 +58,12 @@ dictionary/              pobieranie nagrań i IPA
 tts/                     synteza oraz zapis audio
 sentence_unlocker/       stopniowe tworzenie kart zdań
 sibling_manager/         zawieszanie i uwalnianie siblingów
+homograph_manager/       rozdzielanie osobnych notatek z tym samym słowem
 deck_router/             routing kart według reguł
 filtered_deck/           presety talii filtrowanej
 field_splitter/          czyste dzielenie pola i akcje batch
 audio_normalizer/        ffmpeg, historia i watcher katalogu mediów
+audio_embed/             [sound:...] → <audio> w wybranych typach notatek i polach
 nbsp_remover/            normalizacja HTML
 field_hider/             widoczność pól w Add Cards
 web_bridge/              lokalny serwer HTTP i userscript
@@ -139,8 +141,9 @@ workflow
 
 ai_generator batch ──po zapisie──> deck_router
 
-sentence_unlocker + sibling_manager
+sentence_unlocker + sibling_manager + homograph_manager
   └── niezależne reguły wpływające na dostępność kart
+      (sibling: strony jednej notatki; homograph: znaczenia różnych notatek)
 
 word_queue ──czyta userscript──> web_bridge/dictionaries-to-anki.user.js
 
@@ -178,6 +181,8 @@ python3 tests/test_pure_logic.py
 python3 tests/test_batch_backfill.py
 python3 tests/test_editor_operations.py
 python3 tests/test_sentence_unlocker.py
+python3 tests/test_homograph_manager.py
+python3 tests/test_audio_embed.py
 ```
 
 Zwykłe `pytest` może próbować zaimportować root `__init__.py`; konfiguracja
