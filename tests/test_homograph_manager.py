@@ -204,6 +204,20 @@ class HomographSyncTests(unittest.TestCase):
         self.assertTrue(col.get_note(2).has_tag(TAG))
         self.assertFalse(col.get_note(3).has_tag(TAG))  # matured -> tag cleared
 
+    def test_sync_does_not_touch_active_notes_sibling_suspended_card(self):
+        # Regression: the active learner (nid 1) has one side learning and the
+        # other side suspended by sibling_manager (NOT homograph-tagged).
+        # Homograph must NOT unsuspend it — else it ping-pongs every sync.
+        col = FakeCol()
+        col.add_note(1, "assault", [review(5), new(True)])            # untagged
+        col.add_note(2, "assault", [new(True), new(True)], tags=[TAG])
+        s, u = logic.process_group_sync(col, [1, 2], THRESHOLD, TAG)
+        self.assertEqual(u, 0)   # note 1's sibling-suspended card left alone
+        self.assertEqual(s, 0)
+        n1 = [col.cards[c] for c in col.note_cards[1]]
+        self.assertTrue(any(c.queue == QUEUE_TYPE_SUSPENDED for c in n1))
+        self.assertTrue(col.get_note(2).has_tag(TAG))  # untouched, still suspended
+
     def test_sync_no_learner_picks_smallest_nid(self):
         col = FakeCol()
         col.add_note(3, "assault", [new(True), new(True)], tags=[TAG])

@@ -184,11 +184,16 @@ def process_group_sync(col, nids, threshold, tag, field="ang", ignore_tag=None):
     suspended = unsuspended = 0
     for nid, note, cards in remaining:
         if nid == active_nid:
-            ids = [c.id for c in _new_cards(cards, suspended=True)]
-            if ids:
-                col.sched.unsuspend_cards(ids)
-                unsuspended += len(ids)
-            _set_tag(col, note, tag, False)
+            # Only release a meaning WE suspended (tagged). If the active note
+            # isn't ours, its NEW cards belong to sibling_manager (it keeps one
+            # side suspended until the other matures) — unsuspending them here
+            # causes a suspend/unsuspend ping-pong on every sync.
+            if note.has_tag(tag):
+                ids = [c.id for c in _new_cards(cards, suspended=True)]
+                if ids:
+                    col.sched.unsuspend_cards(ids)
+                    unsuspended += len(ids)
+                _set_tag(col, note, tag, False)
         else:
             ids = [c.id for c in _new_cards(cards, suspended=False)]
             if ids:

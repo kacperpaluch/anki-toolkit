@@ -40,6 +40,7 @@ Sync (po synchronizacji, 600 ms — po Sibling Managerze):
 - **Uwalnianie po jednym.** Po dojrzeniu aktywnego znaczenia uwalnia się dokładnie jedno następne — nie wszystkie (inaczej kilka frontów naraz → znów interferencja). `_release_one` sortuje kandydatów po nid.
 - **Slot zajęty blokuje uwolnienie.** Jeśli jakieś znaczenie już się uczy (non-NEW immature) lub ma dostępne NEW karty, `_release_one` zwraca 0.
 - **Tylko cudze NEW karty.** Moduł nigdy nie tyka kart notatki, na którą odpowiedziano — to domena Sibling Managera. Dojrzałość liczona z `ivl ≥ threshold` (NEW/learning mają `ivl=0`, więc nie dają fałszywej dojrzałości).
+- **Sync odwiesza tylko własne (otagowane) znaczenia.** W `process_group_sync` aktywna notatka jest odwieszana **tylko** gdy ma tag `tk-homograph-suspended`. Bez tego guardu homograph odwieszałby stronę zawieszoną przez Sibling Managera, a ten zawieszałby ją ponownie → ping-pong „odwieszono N" przy każdej synchronizacji.
 - **Własny tag.** Zawieszenia oznaczane `tag` (domyślnie `tk-homograph-suspended`), rozłączny z tagiem Sibling Managera. `ignore_tag` wyłącza regułę dla notatki.
 - **Grupowanie exact-match.** `group_nids` używa `find_notes('"field:value"')` (dokładne pole) i dodatkowo potwierdza równość w Pythonie; wartości escapowane (`\ " * _`). Zdania (inny model, całe zdanie w polu) nie zderzą się z pojedynczym słowem.
 - **Idempotencja.** `process_group_sync` można uruchamiać wielokrotnie — odtwarza ten sam stan.
