@@ -27,7 +27,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | AI, prompty, providerzy, workflowy, Batch API | `ai_generator/llm-context.md` |
 | TTS, głosy, generowanie audio | `tts/llm-context.md` |
 | Słowniki, audio słownikowe, IPA | `dictionary/llm-context.md` |
-| Talie filtrowane i presety powtórek | `learning-context.md` |
+| Talie filtrowane i presety powtórek | `filtered_deck/README.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |

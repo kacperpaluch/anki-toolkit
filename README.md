@@ -78,7 +78,7 @@ Szczegóły: [AI Generator](ai_generator/README.md),
 
 - **Filtered Deck** udostępnia presety szybkich powtórek.
 
-Szczegóły: [kontekst reguł nauki](learning-context.md).
+Szczegóły: [Filtered Deck](filtered_deck/README.md).
 
 ### Integracje i konserwacja
 

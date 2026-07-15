@@ -112,9 +112,7 @@ if _enabled("word_queue"):
 # fresh on each right-click so settings changes apply without restart.
 if _enabled("field_splitter"):
     from . import field_splitter
-
-if _enabled("audio_embed"):
-    from . import audio_embed
+# audio_embed already imported above (sync hook) when enabled
 
 _has_context = any(
     _enabled(m) for m in ("dictionary", "ai_generator", "tts", "field_splitter", "audio_embed")
