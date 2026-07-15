@@ -190,7 +190,6 @@ def poll_batch(record: dict, config: dict) -> tuple:
                 continue
             response = entry.get("response") or {}
             body = response.get("body") or {}
-            usage = body.get("usage") or {}
             text = None
             if response.get("status_code") == 200:
                 choices = body.get("choices") or []
@@ -200,8 +199,6 @@ def poll_batch(record: dict, config: dict) -> tuple:
                 "custom_id": entry.get("custom_id"),
                 "ok": bool(text),
                 "text": text,
-                "in_tok": int(usage.get("prompt_tokens") or 0),
-                "out_tok": int(usage.get("completion_tokens") or 0),
             })
     return "ended", results
 

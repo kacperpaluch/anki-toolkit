@@ -26,7 +26,6 @@ class GoogleProvider(BaseProvider):
             if raw is None:
                 return None
             res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
             candidates = res_data.get("candidates")
             if not candidates or not isinstance(candidates, list):
                 self.last_error = f"Google Gemini: unexpected response structure: {list(res_data.keys())}"

@@ -9,15 +9,14 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | Plik | Rola |
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui`, `browser_ui`, `workflow` (`migrate_workflows`) |
-| `_generator.py` | Tylko `get_config()` — czyta sekcję `ai_generator` z configu wtyczki. Bez singletona: każde uruchomienie (przycisk, PPM, workflow, batch) tworzy własny `FieldGenerator(get_config())`, więc równoległe generowania nie współdzielą stanu providerów (`last_error`/`last_usage`), a zmiany ustawień działają od razu |
+| `_generator.py` | Tylko `get_config()` — czyta sekcję `ai_generator` z configu wtyczki. Bez singletona: każde uruchomienie (przycisk, PPM, workflow, batch) tworzy własny `FieldGenerator(get_config())`, więc równoległe generowania nie współdzielą stanu błędów providerów, a zmiany ustawień działają od razu |
 | `editor_ui.py` | UI edytora — przyciski workflow (per workflow z `editor_button`), potem przycisk AI (wszystkie puste pola); wspólny `common.editor_operation` blokuje równoległe AI/TTS/słownik/workflow na tej samej instancji edytora; świeży `FieldGenerator(get_config())` per uruchomienie; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — najpierw pozycje workflowów (po jednej na workflow z `config["workflows"]` → `_on_workflow_browser`), potem submenu `Generuj pola ▸` („Wszystkie puste" + per-pole „AI: def" spłaszczone po nazwie pola docelowego) i `Generuj zablokowane ▸` (pola `manual_only`); batch z natywnym paskiem `mw.progress` przez wspólny helper `common.progress` (`start_progress`/`update_progress`/`finish_progress`, `want_cancel()`) zamiast własnego QProgressDialog — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj; po zapisie `_save_changed_notes(browser, changed_notes, summary)` woła `deck_router.route_after_edit` (soft-import); cancel_flag; `_run_batch(only_fields=...)` i `_on_workflow_browser` — notatki wczytywane na głównym wątku (kolekcja Anki jest jednowątkowa), workery (`ThreadPoolExecutor(parallel_requests)`, chunki po `batch_limit`) tylko mutują je w pamięci, per-notatka własny `FieldGenerator`; batch pól zawsze `overwrite=False` (pomija wypełnione); dawne hardcodowane pipeline'y („Generuj wszystko…", „Rozdziel + generuj naukę…") są teraz zwykłymi workflowami seedowanymi przez `migrate_workflows()`. Submenu `Batch API ▸` — `_on_batch_submit(only_fields=...)` (pola auto + `manual_only`) tworzy zadanie (`add_job`); `check_pending_batches(silent)` (poll → `apply_results` → `mark_applied` **dopiero po commicie** `CollectionOp` → `_advance_jobs` dosyła kolejny plaster) wołane z `profile_did_open`, timera co minutę i zakładki Start ustawień (sekcja „Batch API — postęp" w `settings/status_tab.py:_add_batch_progress` — paski postępu zadań z `active_jobs()`, batche w toku z `pending_batches()`, przyciski „Sprawdź batche teraz"/„Odśwież"); `_advance_jobs` buduje itemy notatka-po-notatce i **przerywa na `openai_budget_left()`** (nie renderuje promptów całej reszty joba co tick), wychodzi od razu gdy budżet = 0 (kolejka pełna / backoff), guard `_advance_running` chroni przed równoległymi przebiegami (timer + ręczny klik), błędy z `submit` logowane i pokazywane w tooltipie, tooltip sukcesu z postępem zadania (`record_job_progress`), wynik apply („Batch: dopisano…") logowany INFO obok tooltipa (tooltip znika, log zostaje), po `mark_applied` w tle `cleanup_openai_files` |
+| `browser_ui.py` | UI przeglądarki — workflowy, generowanie wybranych pól i Batch API. Notatki są wczytywane na głównym wątku, workery mutują je wyłącznie w pamięci, a wynik jest zapisywany jednym `CollectionOp`. |
 | `batch_backfill.py` | Orkiestracja Batch API bez szczegółów HTTP: budowanie pustych pól, grupowanie modeli, budżet tokenów i `_openai_blocked_until`, persistence `user_files/ai_batches.json`, joby, dispatch przez modułowe seamy `_submit_*`/`_poll_*`, polling oraz idempotentne `apply_results()`. Seamy są celowo wywoływane niekwalifikowanie, aby testy mogły patchować namespace `batch_backfill`. |
 | `batch_openai.py` | Mechanika sieciowa OpenAI Batch API: JSONL, multipart Files API, create/poll, pobranie wyników i cleanup plików. Budżet, backoff i persistence pozostają w `batch_backfill.py`. |
 | `batch_anthropic.py` | Mechanika sieciowa Anthropic Batch API: inline requests, submit/poll i normalizacja odpowiedzi. |
 | `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; selekcja pól wydzielona do modułowego `iter_note_fields(note, config, only_fields, overwrite)` (współdzielona z `batch_backfill`); niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model, temperature)`; per-prompt `temperature` nadpisuje domyślną dostawcy (przekazywana też do fallbacku); **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
-| `stats.py` | Lokalne statystyki użycia — liczniki per dzień (requesty, błędy, tokeny wej./wyj., pola, notatki) w `user_files/usage_stats.json` (legacy `ai_generator/usage_stats.json` migrowany przy pierwszym uruchomieniu); `get_stats(days=None, start=None, end=None)` agreguje zakres (`start`/`end` inclusive "YYYY-MM-DD"); thread-safe |
 | `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS` + fabryka `get_provider()`; definiuje też 5 cienkich klas zgodnych z OpenAI (`OpenAIProvider`, `OpenRouterProvider`, `CometAPIProvider`, `MistralProvider`, `NvidiaProvider`) dziedziczących po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL`, (Mistral, NVIDIA) `SUPPORTS_REASONING_EFFORT = False` i (OpenRouter) `EXTRA_HEADERS` z atrybucją aplikacji (`HTTP-Referer`/`X-Title`) |
 | `providers/base.py` | ABC `BaseProvider` — interfejs + `_post(url, data, headers)` (POST z retry, deleguje do `common.http.post_json`) + `_post_with_reasoning_fallback()` (ponowna próba bez `reasoning_effort` gdy API zwróci błąd wspominający ten parametr) + wspólne parsery odpowiedzi `_parse_chat_completion()` (format OpenAI choices→message→content) i `_parse_messages()` (format Anthropic, pierwszy blok `type=="text"`); klasa `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
 | `providers/openai_compat.py` | Helpery dla providerów zgodnych z Chat Completions: wykrywanie modeli OpenAI reasoning, pomijanie `temperature`, parsowanie `message.content` string/list, `is_reasoning_effort_unsupported_error()` |
@@ -41,7 +40,7 @@ Kliknięcie przycisku (edytor)
               → FieldGenerator.process_note(note) → dict[str, str]   # only_fields=None, overwrite=False
                   → dla każdego pola w config note_types:
                       → pomiń jeśli pole niepuste (overwrite=False)
-                      → _resolve_provider(provider_name, model)   # cache per (provider, model); brak modelu używa domyślnego dostawcy
+                      → _resolve_provider(provider_name, model, temperature)   # cache per (provider, model, temperature)
                       → render_template(prompt, fields_map) # podstawia {{pola}}, max depth=50; pola są oczyszczone z HTML przez common.clean_html_normalized
                       → provider.call_api(prompt)           # HTTP do API, timeout=self.timeout, retry self.max_retries z backoff
                       → note[field] = wynik; changed[field] = wynik
@@ -74,7 +73,7 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → ThreadPoolExecutor(max_workers=parallel_requests)
       → chunk po batch_limit notatek (sleep batch_sleep między chunkami)
       → dla każdej (wczytanej wcześniej) notatki w chunku (równolegle w puli):
-          → gen = FieldGenerator(config)                # NOWA instancja per notatka — provider trzyma last_error/last_usage
+          → gen = FieldGenerator(config)                # NOWA instancja per notatka — provider trzyma last_error
           → gen.process_note(note, only_fields=..., overwrite=False)   # mutuje notatkę tylko w pamięci, BEZ dostępu do mw.col; batch zawsze pomija wypełnione
           → changed_notes.append(note) jeśli gen zmienił pola
       → zbiera changed_notes w liście (pod lockiem)
@@ -82,7 +81,6 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → mw.progress.finish()                     # zamknąć nasz pasek PRZED CollectionOp (inaczej "already busy")
       → _save_changed_notes(browser, changed_notes, summary)
           → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
-          → po zapisie: deck_router.route_after_edit(browser, [n.id for n in changed_notes]) (soft-import, no-op gdy moduł wyłączony/brak reguł)
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
 Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
@@ -110,7 +108,7 @@ Przyciski workflowów w edytorze:
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia...**:
 - Zakładka **Workflowy** (osobna, top-level) — lista nazwanych workflowów (nazwa, flaga przycisku edytora, kroki z parametrami) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
 - Zakładka **Generowanie AI → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, temperatura, prompt) po prawej; temperatura per prompt z wartością specjalną „— domyślna dostawcy" (dziedziczenie z karty dostawcy); model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
-- Zakładka **Generowanie AI → Dostawcy** — karty dostawców AI, klucze API, modele (combo z cache `cached_models` zapisywanym w configu — przeżywa restart), model zapasowy (fallback_model), temperatura domyślna (nadpisywalna per prompt), reasoning/max tokens, **limit RPM + maks. równoległych per dostawca** (OpenRouter dodatkowo checkbox „tylko :free"); sekcja **Zaawansowane** zawiera batch/retry/request timeout/skip tags
+- Zakładka **Generowanie AI → Dostawcy** — sekcja Podstawowe zawiera etykietę przycisku i `skip_tags`; karty dostawców zawierają klucze API, modele, fallback, temperaturę, reasoning/max tokens oraz limity RPM/równoległości. Sekcja Zaawansowane zawiera limity batcha, równoległość, retry, timeout i budżet OpenAI Batch.
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomienie generowania tworzy świeży `FieldGenerator(get_config())`, więc kolejne użycie czyta aktualną konfigurację.
 
@@ -122,8 +120,10 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
   "skip_tags": ["skip-ai"],
   "batch_limit": 3,
   "batch_sleep": 1.0,
+  "parallel_requests": 3,
   "max_retries": 3,
   "request_timeout": 30,
+  "openai_batch_token_budget": 1500000,
   "providers": {
     "openai":     {"api_key": "...", "model": "gpt-4o", "temperature": 0.2, "reasoning_effort": "medium", "fallback_model": "", "cached_models": []},
     "google":     {"api_key": "...", "model": "gemini-2.0-flash", "temperature": 0.2, "fallback_model": "", "cached_models": []},
@@ -153,8 +153,10 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
 - `skip_tags` — lista tagów wykluczających (tablica stringów); notatka z dowolnym z tych tagów jest pomijana w całości przez `process_note` (zwraca `{}`), bez żadnych wywołań API ani aktualizacji; obsługuje też stary format string `"skip_tag"` (backward compat); konfigurowalny przez UI jako pole tekstowe z tagami oddzielonymi przecinkami
 - `batch_limit` — liczba kart w jednej grupie; po każdej grupie następuje przerwa `batch_sleep` sekund; przetwarzane są **wszystkie** zaznaczone karty
 - `batch_sleep` — pauza między grupami kart (unikanie rate limitów API)
+- `parallel_requests` — liczba notatek przetwarzanych równolegle w batchu przeglądarki; domyślnie `3`
 - `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana do `BaseProvider` przez `get_provider()` i `field_generator._resolve_provider()`; domyślnie `3`
 - `request_timeout` — timeout urlopen w `common.http.post_json()` (delegowane z `BaseProvider._post()`); domyślnie `30` sekund
+- `openai_batch_token_budget` — maksymalny szacowany budżet tokenów batcha OpenAI i własnych batchy w locie; domyślnie `1_500_000`
 - `providers.<name>.rpm` — limit żądań na minutę dla dostawcy; żądania rozkładane równomiernie (`60/rpm` s odstępu), więc batch nie burstuje; `0`/brak = bez limitu. OpenRouter domyślnie `20`, Mistral `40` (≈0.83 req/s free tier z marginesem)
 - `providers.<name>.max_concurrent` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe API zwykle wymagają `1`
 - `providers.openrouter.rate_limit_free_only` — gdy `true` (domyślnie dla OpenRoutera), limit dotyczy tylko modeli z `:free` w nazwie; gdy `false`, wszystkich żądań. Pole istnieje tylko dla OpenRoutera; inni dostawcy zawsze dławią wszystko. Stare globalne `free_model_rate_limit`/`free_model_max_concurrent` (usunięte z szablonu config.json) są nadal czytane jako back-compat dla OpenRoutera, gdy w zapisanej konfiguracji brak per-provider `rpm`
@@ -202,10 +204,9 @@ else:
     # uruchom fallback
     fb_provider = self._resolve_provider(fb_name, fallback_model)
     result = fb_provider.call_api(prompt)
-    # statystyki fallbacku zliczane osobno per (fb_name, fb_model)
 ```
 
-Fallback używa tego samego promptu (już wyrenderowanego), ale nowa instancja providera z innym modelem/kluczem. `stats.record_request()` jest wołane osobno dla głównego i fallbackowego wywołania.
+Fallback używa tego samego promptu (już wyrenderowanego), ale nowa instancja providera z innym modelem/kluczem.
 
 ## Rate limiter per dostawca (`RateLimiter`)
 
@@ -272,4 +273,3 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - `opencode_go` auto-wykrywa format API: modele w `_MESSAGES_FORMAT_MODELS` (minimax-m2.5, minimax-m2.7, qwen3.5-plus, qwen3.6-plus) używają endpointu `/messages`; pozostałe `/chat/completions`; auth zawsze `Bearer`; `User-Agent` header wymagany przez Cloudflare
 - Pola konfiguracyjne note-type (`target`, `provider`, `prompt`) są normalizowane przez `safe_str()` z `common.text` przed użyciem; wartości liczbowe (`batch_sleep`, `temperature`) pochodzą z widgetów Qt (zakresy wymuszone w UI) lub z `.get()` z wartością domyślną
 - Throttling: paczki na poziomie przeglądarki (sleep co `batch_limit` notatek) + per-dostawca tempo/jednoczesność przez `RateLimiter.slot()` w `field_generator` (patrz „Rate limiter per dostawca")
-- **Statystyki użycia**: każdy `call_api()` wywołuje `self._capture_usage(res_data)` (BaseProvider) — wyciąga tokeny z `usage.prompt/completion_tokens` (OpenAI-compat), `usage.input/output_tokens` (Anthropic) lub `usageMetadata` (Gemini) do `provider.last_usage`; `field_generator.process_note()` rejestruje przez `stats.record_request()` (per provider/model) i `stats.record_note()`; dashboard w **Ustawienia → Diagnostyka → Statystyki** z wyborem zakresu (dziś/7/30/365 dni/wszystko/własny zakres dat od–do — `get_stats(start=..., end=...)`, granice inclusive)

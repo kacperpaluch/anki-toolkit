@@ -52,7 +52,7 @@ to wait for something<br>with excitement
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Czyszczenie HTML**
+**Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Czyszczenie HTML**
 
 | Opcja | Domyślnie | Opis |
 |---|---|---|

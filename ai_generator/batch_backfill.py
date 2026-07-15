@@ -29,7 +29,6 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from ..common import clean_html_normalized, safe_str
-from . import stats
 # Keep these orchestration seams module-level and call them unqualified below:
 # tests patch batch_backfill._submit_* / _poll_* without reaching into backends.
 from .batch_anthropic import first_text as _first_text
@@ -431,7 +430,7 @@ def poll_results(config: dict) -> tuple:
       ended  = {batch_id: {"record": rec, "results": [normalized, ...]}}
       still  = count of batches still in progress
       errors = ids whose status/results couldn't be fetched
-    A normalized result: {custom_id, ok: bool, text, in_tok, out_tok}.
+    A normalized result: {custom_id, ok: bool, text}.
     """
     ended: dict = {}
     still = 0
@@ -495,7 +494,7 @@ def mark_applied(batch_ids) -> None:
     """Persist 'applied' status. Call AFTER the note changes are committed —
     marking earlier would lose the results if Anki dies before the commit
     (the batch would never be polled again). Re-applying after a crash is
-    idempotent (only still-empty fields are written); stats may double-count."""
+    idempotent because only still-empty fields are written."""
     _set_status(batch_ids, "applied")
 
 
@@ -523,7 +522,6 @@ def apply_results(col, ended: dict) -> dict:
 
     for bid, payload in ended.items():
         rec = payload["record"]
-        provider = rec.get("provider", "anthropic")
         imap = rec.get("map", {})
         seen: set = set()
         for r in payload["results"]:
@@ -532,33 +530,22 @@ def apply_results(col, ended: dict) -> dict:
             if not meta:
                 continue
             seen.add(cid)
-            model = meta.get("model", "")
-            in_tok = int(r.get("in_tok") or 0)
-            out_tok = int(r.get("out_tok") or 0)
             text = r.get("text")
             if not r.get("ok") or not text:
                 failed += 1
-                stats.record_request(provider, model, in_tok, out_tok,
-                                     error=True, field_generated=False)
                 continue
             note = get_note(meta.get("nid"))
             field = meta.get("field", "")
             if note is None or field not in note or note[field].strip():
                 skipped += 1
-                stats.record_request(provider, model, in_tok, out_tok,
-                                     error=False, field_generated=False)
                 continue
             note[field] = text.strip()
             changed_nids.add(note.id)
             filled += 1
-            stats.record_request(provider, model, in_tok, out_tok,
-                                 error=False, field_generated=True)
         # leftover map entries with no result → failures
         for cid, meta in imap.items():
             if cid not in seen:
                 failed += 1
-                stats.record_request(provider, meta.get("model", ""), 0, 0,
-                                     error=True, field_generated=False)
 
     changed_notes = [note_cache[nid] for nid in changed_nids if note_cache.get(nid)]
     return {"changed_notes": changed_notes,

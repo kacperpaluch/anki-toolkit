@@ -7,11 +7,7 @@
     "audio_normalizer": true,
     "nbsp_remover": true,
     "field_splitter": true,
-    "sibling_manager": true,
-    "homograph_manager": true,
     "audio_embed": true,
-    "sentence_unlocker": true,
-    "deck_router": true,
     "field_hider": true,
     "web_bridge": true,
     "word_queue": true
@@ -75,6 +71,7 @@
       "af_heart",
       "bm_lewis"
     ],
+    "replacements": {},
     "speed": 0.9,
     "ang_source_field": "ang",
     "ang_target_field": "audio",
@@ -181,7 +178,8 @@
     "max_workers": 4,
     "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
     "ffmpeg_path": "",
-    "auto_normalize": false
+    "auto_normalize": false,
+    "show_tooltip": true
   },
   "filtered_deck": {
     "deck_name": "Angielski - Powtórka z wyprzedzeniem"
@@ -197,41 +195,12 @@
     "target_fields": "p1, p2, p3, p4, p5",
     "overwrite": true
   },
-  "sibling_manager": {
-    "interval": 30,
-    "tag": "tk-sib-suspended",
-    "ignore_tag": "tk-sib-ignored"
-  },
-  "homograph_manager": {
-    "interval": 30,
-    "field": "ang",
-    "tag": "tk-homograph-suspended",
-    "ignore_tag": "tk-homograph-ignored",
-    "show_tooltip": true
-  },
   "audio_embed": {
     "note_types": ["angielski"],
     "fields": ["przyklad", "p1", "p2", "p3", "p4", "p5"],
     "css_class": "ex-audio",
     "preload": "none",
     "scan_on_sync": true
-  },
-  "sentence_unlocker": {
-    "model": "angielski",
-    "threshold": 21,
-    "marker": "tak",
-    "main_templates": ["ang-pol", "pol-ang"],
-    "chain": [
-      {"nauka_field": "p1-nauka", "tak_field": "p1-tak"},
-      {"nauka_field": "p2-nauka", "tak_field": "p2-tak"},
-      {"nauka_field": "p3-nauka", "tak_field": "p3-tak"}
-    ],
-    "ignore_tag": "tk-unlock-ignored",
-    "done_tag": "tk-unlock-done",
-    "show_tooltip": true
-  },
-  "deck_router": {
-    "rules": []
   },
   "field_hider": {
     "hidden_fields": {}
@@ -246,6 +215,8 @@
     "parallel_requests": 3,
     "max_retries": 3,
     "request_timeout": 30,
+    "openai_batch_token_budget": 1500000,
+    "openai_batch_output_reserve": 1000,
     "providers": {
       "google": {
         "api_key": "YOUR_GOOGLE_API_KEY",

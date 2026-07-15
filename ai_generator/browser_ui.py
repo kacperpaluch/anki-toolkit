@@ -25,18 +25,10 @@ def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
         tooltip(summary, period=8000)
         return
 
-    def _saved(_changes):
-        try:
-            from ..deck_router import route_after_edit
-            route_after_edit(browser, [n.id for n in changed_notes])
-        except Exception:
-            logger.exception("deck_router: routing po edycji nie powiódł się")
-        tooltip(summary, period=8000)
-
     CollectionOp(
         parent=browser,
         op=lambda col: col.update_notes(changed_notes),
-    ).success(_saved).run_in_background()
+    ).success(lambda _changes: tooltip(summary, period=8000)).run_in_background()
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +92,8 @@ def _run_batch(browser: Browser, nids, config: dict,
 
     def process_one(note):
         # Each call gets its own FieldGenerator — provider instances keep
-        # per-request state (last_error, last_usage), so sharing one across
-        # worker threads would cross-attribute errors and token usage.
+        # last_error, so sharing one across worker threads would cross-attribute
+        # failures.
         gen = FieldGenerator(config)
         try:
             changed = gen.process_note(note, only_fields=only_fields)
@@ -442,7 +434,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     def process_one(note):
         # Each note gets its own FieldGenerator — steps within one note stay
         # sequential, but notes run in parallel, so providers must not share
-        # last_error/last_usage across threads.
+        # last_error across threads.
         gen = FieldGenerator(config)
         note_modified = False
         for step in steps:

@@ -5,15 +5,13 @@ from pathlib import Path
 from aqt.qt import QWidget, QVBoxLayout, QTabWidget, QLabel
 
 from .audio_normalizer_tab import AudioNormalizerTab
-from .deck_router_tab import DeckRouterTab
 from .dictionary_tab import DictionaryTab
 from .field_hider_tab import FieldHiderTab
 from .logs_tab import LogsTab
 from .narzedzia_tab import (
     AudioEmbedSettings, FieldSplitterSettings, FilteredDeckSettings,
-    HtmlCleanupSettings, LearningRulesSettings,
+    HtmlCleanupSettings,
 )
-from .stats_tab import StatsTab
 from .tts_tab import TTSTab
 from .word_queue_tab import WordQueueTab
 from .workflows_tab import WorkflowsTab
@@ -55,8 +53,6 @@ def pronunciation_page(cfg: dict) -> DomainTabs:
 
 def learning_page(cfg: dict) -> DomainTabs:
     return DomainTabs([
-        ("Odblokowywanie", LearningRulesSettings(cfg)),
-        ("Kierowanie do talii", DeckRouterTab(cfg)),
         ("Presety powtórek", FilteredDeckSettings(cfg)),
     ])
 
@@ -96,6 +92,5 @@ def maintenance_page(cfg: dict) -> DomainTabs:
 
 def diagnostics_page(cfg: dict) -> DomainTabs:
     return DomainTabs([
-        ("Statystyki", StatsTab(cfg)),
         ("Logi", LogsTab(cfg)),
     ])

@@ -14,7 +14,7 @@ from aqt.qt import (
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
     QPushButton, Qt, QComboBox, QMenu, QPlainTextEdit,
     QSyntaxHighlighter, QTextCharFormat, QColor, QFont,
-    QDialog, QDialogButtonBox, QCheckBox, QDoubleSpinBox,
+    QDialog, QDialogButtonBox, QCheckBox, QDoubleSpinBox, QInputDialog,
 )
 
 from ..common import clean_html_normalized
@@ -26,7 +26,6 @@ from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
 )
 from ..ai_generator.providers import PROVIDER_LABELS
-from .prompt_wizard import NewPromptDialog
 
 _VAR_RE = re.compile(r'{{(.*?)}}')
 _IF_RE = re.compile(r'{%\s*if\s+([^%]+)%}')
@@ -193,7 +192,7 @@ class PromptsTab(QWidget):
                     "temperature":       field_cfg.get("temperature"),
                 }
 
-        # Default provider for the wizard: first one with a real API key.
+        # Default provider for a new prompt: first one with a real API key.
         self._default_provider = "openai"
         for name, p in ai.get("providers", {}).items():
             if isinstance(p, dict) and _has_real_key(p.get("api_key", "")):
@@ -242,8 +241,7 @@ class PromptsTab(QWidget):
         btn_row = QHBoxLayout()
         self._btn_add = QPushButton("+ Dodaj…")
         self._btn_add.setToolTip(
-            "Dodaje nowe zadanie AI — typ notatki, pole docelowe, dostawca,\n"
-            "opcjonalnie gotowy szablon startowy."
+            "Dodaje puste zadanie AI dla wybranego typu notatki i pola."
         )
         self._btn_del = QPushButton("Usuń")
         btn_row.addWidget(self._btn_add)
@@ -829,23 +827,35 @@ class PromptsTab(QWidget):
         self._load_key_to_editor(key)
 
     def _on_add(self) -> None:
-        default_nt = self._ed_note_type.currentText().strip()
-        dlg = NewPromptDialog(
-            self,
-            note_type_names=self._note_type_names,
-            default_note_type=default_nt,
-            default_provider=self._default_provider,
-            provider_settings=self._provider_settings,
+        default_note_type = (
+            self._current_key[0] if self._current_key
+            else self._filter_combo.currentData()
+            or (self._note_type_names[0] if self._note_type_names else "")
         )
-        if dlg.exec() != NewPromptDialog.DialogCode.Accepted:
+        if not self._note_type_names:
+            showWarning("Brak typów notatek w kolekcji.")
             return
-        entry = dlg.entry()
-
-        base_name = entry["task_name"] or "nowe_pole"
-        key = (entry["note_type"], base_name)
+        if len(self._note_type_names) == 1:
+            note_type = self._note_type_names[0]
+        else:
+            note_type, ok = QInputDialog.getItem(
+                self,
+                "Nowy prompt",
+                "Typ notatki:",
+                self._note_type_names,
+                (
+                    self._note_type_names.index(default_note_type)
+                    if default_note_type in self._note_type_names else 0
+                ),
+                False,
+            )
+            if not ok:
+                return
+        base_name = "nowy_prompt"
+        key = (note_type, base_name)
         i = 1
         while key in self._data:
-            key = (entry["note_type"], f"{base_name}_{i}")
+            key = (note_type, f"{base_name}_{i}")
             i += 1
 
         # Wstaw zaraz za ostatnim zadaniem tego samego typu, żeby lista
@@ -856,12 +866,14 @@ class PromptsTab(QWidget):
             if k[0] == key[0]:
                 insert_at = idx + 1
         keys.insert(insert_at, key)
+        provider = self._default_provider
+        provider_cfg = self._provider_settings(provider) or {}
         self._data[key] = {
-            "target":      entry["target"] or key[1],
-            "provider":    entry["provider"],
-            "model":       entry["model"],
-            "prompt":      entry["prompt"],
-            "manual_only": bool(entry.get("manual_only", False)),
+            "target": "",
+            "provider": provider,
+            "model": provider_cfg.get("model", ""),
+            "prompt": "",
+            "manual_only": False,
         }
         self._data = {k: self._data[k] for k in keys}
         self._populate_filter()

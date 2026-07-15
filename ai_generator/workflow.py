@@ -97,8 +97,7 @@ def disabled_step_modules(steps: list[dict], cfg: Optional[dict] = None) -> list
 
 
 def migrate_workflows() -> None:
-    """One-time: legacy single `workflow` → `workflows` list. Re-seeds the two
-    formerly-hardcoded pipelines and default `context_menu` so nothing is lost."""
+    """Migrate the legacy workflow and seed the former built-in pipeline."""
     full = mw.addonManager.getConfig(ADDON_NAME) or {}
     changed = False
 
@@ -152,8 +151,8 @@ def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[st
     ai_generator: optional FieldGenerator for the AI step. Callers running
     multiple steps/notes pass their own instance (per note in the parallel
     browser batch, per run in the editor workflow) — providers keep
-    per-request state (last_error, last_usage), so sharing one across worker
-    threads would cross-attribute errors and token usage. None = a fresh
+    per-request error state, so sharing one across worker threads would
+    cross-attribute errors. None = a fresh
     instance for this one step.
     """
     module = step.get("module", "")

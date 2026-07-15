@@ -14,10 +14,6 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "nbsp_remover":      true,
     "field_splitter":    true,
     "audio_embed":       true,
-    "sibling_manager":   true,
-    "homograph_manager": true,
-    "sentence_unlocker": true,
-    "deck_router":       true,
     "field_hider":       true,
     "web_bridge":        true,
     "word_queue":        true
@@ -81,18 +77,20 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Wymowa �
 
 **`voices`** — lista głosów biorących udział w losowaniu. Każda notatka/zdanie dostaje losowo wybrany głos z tej listy.
 
+**`replacements`** — mapa zamian całych słów wykonywanych wyłącznie na tekście wysyłanym do TTS, np. `{"sb": "somebody", "sth": "something"}`. Treść karty pozostaje bez zmian.
+
 **`speed`** — tempo mowy (0.1–3.0, domyślnie 0.9). Walidowane w UI; backend nie wymusza zakresu.
 
 **`tasks`** — lista zadań TTS. Każde zadanie to obiekt:
 - `"label"` — etykieta w menu i na tooltipie
 - `"source_field"` — pole czytane (tekst do syntezy)
 - `"target_field"` — pole zapisywane (`[sound:...mp3]`)
-- `"mode"` — `"single"` (jedno audio na notatkę) lub `"split"` (osobne audio na segment)
-- `"split_separator"` — separator trybu split (domyślnie `"<br><br>"`; tylko dla `mode: "split"`)
+- `"mode"` — `"single"` (jedno audio na notatkę), `"split"` (segmenty tekstu z audio) lub `"split_audio"` (same połączone tagi audio w polu docelowym)
+- `"split_separator"` — separator trybów `split` i `split_audio` (domyślnie `"<br><br>"`)
 
 Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (legacy pola poniżej).
 
-**`ang_source_field`** / **`ang_target_field`** / **`przyklad_target_field`** — *legacy.* Czytane z zapisanego configu **tylko** gdy klucz `tasks` w ogóle nie istnieje — służą do zbudowania domyślnej listy zadań dla starych instalacji. Nie są już w `_DEFAULTS` ani w UI; nowe instalacje używają wyłącznie listy `tasks`. Wystarczy raz zapisać ustawienia w UI, by `tasks` stało się jedynym źródłem.
+**`ang_source_field`** / **`ang_target_field`** / **`przyklad_target_field`** — *legacy.* Pozostają w szablonie `config.json`, ale są czytane tylko wtedy, gdy klucz `tasks` nie istnieje. Gdy `tasks` jest zapisane, legacy pola są ignorowane.
 
 **`max_workers`** — liczba równoległych wątków generowania audio. Domyślnie `12`. Zmniejsz przy problemach z wydajnością lub przy słabszym serwerze Kokoro.
 
@@ -106,6 +104,8 @@ Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (le
 
 **`button_label`** — etykieta przycisku AI w edytorze kart.
 
+**`skip_tags`** — lista tagów wykluczających. Notatka z dowolnym z tych tagów jest pomijana bez wywołania API. Domyślnie `["skip-ai"]`; pusta lista wyłącza filtrowanie.
+
 **`batch_limit`** — liczba kart w jednej grupie w trybie batch. Co `batch_limit` kart następuje przerwa `batch_sleep` sekund. Wszystkie zaznaczone karty są zawsze przetwarzane — ten parametr kontroluje tylko rytm pauz.
 
 **`batch_sleep`** — pauza w sekundach między grupami kart w trybie batch (zapobiega limitom API).
@@ -115,6 +115,10 @@ Jawnie zapisana **pusta lista** = brak zadań. Brak klucza = backward compat (le
 **`max_retries`** — liczba prób przy błędach API (429, 5xx). Domyślnie `3`. Dotyczy wszystkich providerów.
 
 **`request_timeout`** — timeout pojedynczego żądania do API AI w sekundach. Domyślnie `30`.
+
+**`openai_batch_token_budget`** — maksymalny szacowany budżet tokenów pojedynczego batcha OpenAI i własnych batchy w locie. Domyślnie `1_500_000`; ustaw poniżej limitu `enqueued tokens` organizacji.
+
+**`openai_batch_output_reserve`** — szacowana rezerwa tokenów odpowiedzi na jedno zapytanie używana przy dzieleniu batchy. Domyślnie `1000`; opcja zaawansowana, bez pola w UI.
 
 Limity tempa (RPM) i jednoczesności są ustawiane **per provider** — patrz `providers.<nazwa>.rpm` / `max_concurrent` / `rate_limit_free_only` poniżej.
 
@@ -139,8 +143,8 @@ OpenAI obsługuje dodatkowe pole:
 
 Providerzy zgodni z OpenAI Chat Completions (`cometapi`, `openrouter`, `mistral`, `nvidia`) również pomijają `"temperature"`, jeśli nazwa modelu wskazuje na OpenAI reasoning (`gpt-5...`, `o3...`, także z prefiksem typu `openai/gpt-5.4`). Dla natywnych modeli, np. `mistral-small-latest`, temperatura nadal jest wysyłana.
 
-Tylko Anthropic obsługuje dodatkowe pole:
-- `"max_tokens"` — maksymalna długość odpowiedzi (wymagane przez Anthropic API, domyślnie `2048`). Zwiększ przy generowaniu długich tekstów.
+Anthropic oraz modele OpenCode Go korzystające z formatu Messages obsługują dodatkowe pole:
+- `"max_tokens"` — maksymalna długość odpowiedzi (domyślnie `2048`). Zwiększ przy generowaniu długich tekstów.
 
 Dostępni providerzy i przykładowe modele:
 
@@ -179,8 +183,6 @@ Pola które już mają zawartość są automatycznie pomijane.
 
 ---
 
----
-
 ## Sekcja `audio_normalizer` — normalizacja audio
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Normalizacja audio**.
@@ -196,12 +198,15 @@ Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwac
 
 **`auto_normalize`** — `true` = włącza watcher na katalogu mediów Anki; nowe/zmienione pliki audio są automatycznie normalizowane ~3s po dodaniu (debounce). Obejmuje wszystkie źródła: TTS, słownik, AI workflow, ręczne dodanie, AnkiWeb sync. Pomija pliki już przetworzone (historia `mtime`). Domyślnie `false` (opt-in). **Wymaga restartu Anki po zmianie.**
 
+**`show_tooltip`** — `true` (domyślnie) pokazuje podsumowanie automatycznej normalizacji. Opcja jest dostępna przez konfigurację profilu, nie przez UI.
+
 ```json
 "audio_normalizer": {
     "ffmpeg_path": "",
     "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
     "max_workers": 4,
-    "auto_normalize": false
+    "auto_normalize": false,
+    "show_tooltip": true
 }
 ```
 
@@ -274,65 +279,6 @@ Akcje:
 
 ---
 
-## Sekcja `sibling_manager` — dynamiczne zawieszanie siblingów
-
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie**.
-
-**`interval`** — próg dojrzałości w dniach (domyślnie `30`). Karta z interval poniżej progu jest uznawana za immature — jej NEW siblingi są zawieszone. Gdy interval osiągnie próg, wszystkie zawieszone siblingi są uwalniane na raz.
-
-**`tag`** — tag dodawany do notatki gdy ma zawieszone siblingi (domyślnie `"tk-sib-suspended"`). Używany do szybkiego wyszukiwania notatek z zawieszonymi siblingami i do batch scan po syncu. Tag jest usuwany gdy wszystkie siblingi zostaną uwolnione.
-
-**`ignore_tag`** — notatki z tym tagiem są pomijane przez moduł (domyślnie `"tk-sib-ignored"`). Przydatne gdy masz notatki których siblingi chcesz widzieć wszystkie naraz (np. karty z minimalnymi różnicami).
-
-**`show_tooltip`** — `true` (domyślnie) = po sync catch-up pokazuje tooltip "Sibling Manager: zawieszono X, odwieszono Y" (gdy coś zrobiono). `false` = wyłącza tooltip, ale logi z licznikami nadal trafiają do bufora (**Ustawienia → Diagnostyka → Logi**).
-
-```json
-"sibling_manager": {
-    "interval": 30,
-    "tag": "tk-sib-suspended",
-    "ignore_tag": "tk-sib-ignored",
-    "show_tooltip": true
-}
-```
-
-Akcje:
-- **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Sibling Manager...** — reset wszystkich zawieszeń + usuwa tagi (jeden krok undo)
-- **Narzędzia → Anki Toolkit → Sibling Manager: przeskanuj całą kolekcję (zawieś/uwolnij siblingi)...** — ręczny batch scan (ten sam co auto po syncu)
-
----
-
-## Sekcja `homograph_manager` — rozdzielanie słów o wielu znaczeniach
-
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie**.
-
-Grupuje **osobne notatki** o tej samej wartości pola kluczowego (np. kilka notatek `assault` o różnych znaczeniach) i utrzymuje aktywne tylko jedno znaczenie naraz — NEW karty pozostałych są zawieszone, aż aktywne dojrzeje; wtedy uwalnia się dokładnie jedno następne. Rozłączny z `sibling_manager` (ten drugi rozkłada strony jednej notatki).
-
-**`interval`** — próg dojrzałości w dniach (domyślnie `30`). Znaczenie uznane za dojrzałe, gdy dowolna jego karta ma interval ≥ próg → uwalnia następne.
-
-**`field`** — pole, po którego wartości (trim + lowercase) grupowane są homografy (domyślnie `"ang"`). Notatki bez tego pola są pomijane; zdania nie zderzą się z pojedynczym słowem (dopasowanie dokładne).
-
-**`tag`** — tag notatek z zawieszonymi homografami (domyślnie `"tk-homograph-suspended"`), rozłączny z tagiem `sibling_manager`.
-
-**`ignore_tag`** — notatki z tym tagiem są pomijane (domyślnie `"tk-homograph-ignored"`).
-
-**`show_tooltip`** — `true` (domyślnie) = tooltip po batch scan po synchronizacji.
-
-```json
-"homograph_manager": {
-    "interval": 30,
-    "field": "ang",
-    "tag": "tk-homograph-suspended",
-    "ignore_tag": "tk-homograph-ignored",
-    "show_tooltip": true
-}
-```
-
-Akcje:
-- **Narzędzia → Anki Toolkit → Uwolnij karty zawieszone przez Homograph Manager...** — reset wszystkich zawieszeń + usuwa tagi
-- **Narzędzia → Anki Toolkit → Homograph Manager: przeskanuj całą kolekcję...** — ręczny batch scan
-
----
-
 ## Sekcja `audio_embed` — [sound:...] → osadzony `<audio>`
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Osadzanie audio**.
@@ -367,78 +313,17 @@ Widoczność pozycji PPM: `context_menu.audio_embed`.
 
 ---
 
-## Sekcja `sentence_unlocker` — stopniowe odblokowywanie zdań
+## Sekcja `field_hider` — ukrywanie pól w oknie Dodaj
 
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie** — całość edytowalna z UI, w tym `main_templates` (przecinkami) i `chain` (pary `pole-nauka:pole-tak`).
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Konserwacja → Ukrywanie pól**.
 
-Gdy karty główne notatki dojrzeją, moduł wpisuje znacznik do pola `pX-tak`, co powoduje wygenerowanie karty-ćwiczenia „Uzupełnij" (szablon `pX-nauka` renderuje się tylko przy `{{#pX-tak}}{{#pX-nauka}}`). Odblokowywanie jest **stopniowe**: kolejne zdanie czeka, aż karta poprzedniego dojrzeje.
-
-**`model`** — typ notatki, którego dotyczy moduł (domyślnie `"angielski"`). Karty innych modeli są ignorowane.
-
-**`threshold`** — próg dojrzałości karty w dniach (domyślnie `21`, `ivl ≥ threshold`).
-
-**`marker`** — wartość wpisywana do pola `-tak` (domyślnie `"tak"`; wystarczy cokolwiek niepustego).
-
-**`main_templates`** — nazwy kart głównych, których dojrzałość odblokowuje pierwsze zdanie (domyślnie `["ang-pol", "pol-ang"]` — muszą dojrzeć **oba**).
-
-**`chain`** — lista zdań w kolejności odblokowywania; każde to `{"nauka_field", "tak_field"}`. `nauka_field` musi być jednocześnie nazwą szablonu karty tego zdania (w modelu `angielski` się pokrywają) — po niej moduł sprawdza dojrzałość karty bramkującej następne zdanie.
-
-**`ignore_tag`** — notatki z tym tagiem są pomijane (domyślnie `"tk-unlock-ignored"`).
-
-**`done_tag`** — tag dodawany do notatek w pełni odblokowanych (i tych bez żadnego zdania), aby batch scan je pomijał (domyślnie `"tk-unlock-done"`).
-
-**`show_tooltip`** — `true` (domyślnie) = tooltip z liczbą odblokowanych zdań po skanowaniu.
-
-> ⚠️ Jednokierunkowo: znacznik **nigdy nie jest usuwany**. Wyczyszczenie `pX-tak` skasowałoby już wygenerowaną kartę razem z jej historią powtórek.
+**`hidden_fields`** — mapa typu notatki na listę pól ukrywanych wyłącznie w oknie dodawania, np. `{"angielski": ["Pole3", "Pole7"]}`. Pusta mapa wyłącza ukrywanie.
 
 ```json
-"sentence_unlocker": {
-    "model": "angielski",
-    "threshold": 21,
-    "marker": "tak",
-    "main_templates": ["ang-pol", "pol-ang"],
-    "chain": [
-        {"nauka_field": "p1-nauka", "tak_field": "p1-tak"},
-        {"nauka_field": "p2-nauka", "tak_field": "p2-tak"},
-        {"nauka_field": "p3-nauka", "tak_field": "p3-tak"}
-    ],
-    "ignore_tag": "tk-unlock-ignored",
-    "done_tag": "tk-unlock-done",
-    "show_tooltip": true
+"field_hider": {
+    "hidden_fields": {}
 }
 ```
-
-Akcja: **Narzędzia → Anki Toolkit → Sentence Unlocker: przeskanuj kolekcję (odblokuj zdania)...** — ręczny batch scan (ten sam co auto po syncu). Reactive po każdej odpowiedzi na desktopie + auto po `sync_did_finish`.
-
----
-
-## Sekcja `deck_router` — kierowanie kart do talii wg tagu
-
-Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Kierowanie do talii** — reguły dodajesz/usuwasz w tabeli (szablon i talia z list rozwijanych), bez ręcznej edycji JSON.
-
-Natywny Deck Override w Anki działa tylko per-szablon karty — nie da się nim rozdzielić kart z tego samego szablonu na różne talie w zależności od tagu. Ten moduł dokłada kierowanie **per-tag**: gdy notatka ma skonfigurowany tag, jej pasujące karty są przenoszone do talii z reguły (nadpisując natywny override dla tych kart). Notatki bez pasującej reguły nie są ruszane.
-
-**`rules`** — lista reguł. Każda reguła:
-
-- **`tag`** — tag, który musi być na notatce, żeby reguła zadziałała.
-- **`deck`** — nazwa talii docelowej (tworzona automatycznie, jeśli nie istnieje). Zagnieżdżenie przez `::`, np. `"Angielski::Osobne"`.
-- **`template`** *(opcjonalne)* — nazwa szablonu karty (np. `"pol-ang"`). Pominięty, pusty lub `"*"` = wszystkie karty notatki. Podany = tylko karty z tego szablonu — reszta kart notatki zostaje wg natywnego override.
-
-Reguły są sprawdzane po kolei — **pierwsza pasująca wygrywa** dla danej karty. Reguły węższe (z `template`) umieszczaj przed szerszymi (bez `template`).
-
-```json
-"deck_router": {
-    "rules": [
-        {"tag": "abc123", "template": "pol-ang", "deck": "Angielski::Osobne::pol-ang"},
-        {"tag": "abc123", "deck": "Angielski::Osobne"}
-    ]
-}
-```
-
-Kiedy się odpala:
-- przy dodawaniu karty w oknie **Dodaj**,
-- po AI-batchu/workflow w przeglądarce (dla zmienionych notatek),
-- ręcznie: **Narzędzia → Anki Toolkit → Deck Router: uporządkuj istniejące karty...** albo przycisk **Uporządkuj istniejące karty…** w zakładce Deck Router (działa na regułach z tabeli, także niezapisanych) — przechodzi po wszystkich notatkach z tagami z reguł i przenosi ich karty.
 
 ---
 
@@ -484,7 +369,7 @@ Lista nazwanych workflowów. Każdy:
 
 Kroki wykonują się w tle; notatka jest łapana raz na starcie (przełączenie karty w edytorze w trakcie nie miesza danych). W kroku TTS pliki audio są generowane równolegle przez `ThreadPoolExecutor`.
 
-**Migracja:** stara, pojedyncza sekcja `workflow` jest automatycznie konwertowana na `workflows` przy starcie (`migrate_workflows()`) — z dosadzeniem dwóch domyślnych pipeline'ów, więc menu nic nie traci.
+**Migracja:** stara, pojedyncza sekcja `workflow` jest automatycznie konwertowana na `workflows` przy starcie (`migrate_workflows()`) wraz z jednym domyślnym pipeline'em.
 
 ---
 
@@ -552,7 +437,7 @@ Konfiguracja przez **Ustawienia → Integracje → Kolejka słówek**. Klucz API
 
 Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Diagnostyka → Logi**.
 
-**`enabled`** — `true` = włącza logowanie na poziomie DEBUG (szczegółowe logi HTTP, parsery, statystyki); `false` (domyślnie) = tylko WARNING i wyżej. Może być przełączane live w UI bez restartu Anki (`common.debug_log.set_debug()`).
+**`enabled`** — `true` = włącza logowanie na poziomie DEBUG (szczegółowe logi HTTP i parserów); `false` (domyślnie) = tylko WARNING i wyżej. Może być przełączane live w UI bez restartu Anki (`common.debug_log.set_debug()`).
 
 ```json
 "debug": {

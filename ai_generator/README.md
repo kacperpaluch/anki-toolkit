@@ -26,7 +26,7 @@ Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Ka�
 
 Przed startem workflow sprawdza, czy wszystkie wymagane moduły są włączone; brakujący moduł zatrzymuje cały przebieg zamiast wykonywać tylko część kroków. W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
 
-Dwa dawne wbudowane pipeline'y — **„Generuj wszystko: puste → TTS → rozdziel → zablokowane”** i **„Rozdziel + generuj naukę (p1–p3)”** — są teraz zwykłymi, edytowalnymi workflowami (seedowane automatycznie przy migracji).
+Dawny wbudowany pipeline **„Generuj wszystko: puste → TTS → rozdziel → zablokowane”** jest teraz zwykłym, edytowalnym workflowem seedowanym przy migracji starszej konfiguracji.
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
@@ -53,7 +53,7 @@ Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny
 Szczegóły:
 - Trafienie wyniku w pole jest **deterministyczne** — mapa `custom_id → (notatka, pole)` zapisywana jest w `user_files/ai_batches.json` (przeżywa restart). Wynik wpisywany jest **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania); usunięta notatka / zmienione pole → wynik pomijany.
 - Wspólny rdzeń (wybór pól, mapa, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: **Anthropic** wysyła zapytania inline i pobiera wynik z `results_url`; **OpenAI** uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a jego batch wymaga jednego modelu, więc zapytania OpenAI są grupowane po modelu (osobny batch na model).
-- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → Generowanie AI → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"** — dopasuj do limitu „enqueued tokens" swojego modelu, np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a **timer co minutę** (plus auto-poll przy starcie Anki i przycisk „Sprawdź batche") pobiera wyniki gotowych batchy, sprząta po nich pliki wejściowe/wynikowe ze storage OpenAI i **automatycznie dosyła kolejny plaster pustych pól**, aż całe zaznaczenie się wypełni — bez klikania; tooltip dosyłki pokazuje postęp zadania (np. „2 874/19 140 zapytań (15%)"). Zadanie kończy się, gdy wszystkie pola są pełne albo po 24h (okno batcha); pojedyncze pola, które nadal się nie wypełniły, dobierzesz ręcznym ponowieniem akcji. Gdy OpenAI odrzuci wysyłkę limitem kolejki (ich licznik potrafi „wisieć" długo po nieudanych batchach), wtyczka wstrzymuje dosyłanie na 30 min i pokazuje błąd w tooltipie, zamiast bezskutecznie ponawiać co minutę. Postęp zadań (paski „wysłane/wszystkie zapytania") i batche w toku zobaczysz w **Ustawienia → Start → „Batch API — postęp"**, razem z przyciskami „Sprawdź batche teraz" i „Odśwież".
+- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → Generowanie AI → Dostawcy → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"**) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a timer co minutę pobiera wyniki i automatycznie dosyła kolejny plaster pustych pól. Postęp zobaczysz w **Ustawienia → Start → Aktywność**, z przyciskami **Sprawdź batche** i **Odśwież**.
 - Ograniczenia: dostawcy `anthropic`/`openai`, bez fallbacku. Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
 
 ## Konfiguracja (`config.json` → sekcja `ai_generator`)
@@ -66,8 +66,10 @@ Szczegóły:
     "skip_tags": ["skip-ai"],
     "batch_limit": 3,
     "batch_sleep": 1.0,
+    "parallel_requests": 3,
     "max_retries": 3,
     "request_timeout": 30,
+    "openai_batch_token_budget": 1500000,
     "providers": { ... },
     "note_types": { ... }
 }
@@ -82,6 +84,7 @@ Szczegóły:
 | `parallel_requests` | Liczba równoległych żądań API w batchu (1–16, domyślnie `3`) — `ThreadPoolExecutor` w `browser_ui._run_batch` |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
+| `openai_batch_token_budget` | Budżet tokenów kolejki OpenAI Batch (domyślnie `1_500_000`) |
 | `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter `20`, Mistral `40` |
 | `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (semafor); `0` = bez limitu; darmowe API zwykle `1` |
 | `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: `true` = limit dotyczy tylko modeli `:free`, `false` = wszystkich żądań |
@@ -133,7 +136,7 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
 - **mistral / nvidia** — nie obsługują `reasoning_effort`.
 - **anthropic / google** — nie mają pola `reasoning_effort` w UI.
 
-`max_tokens` jest wymagany przez Anthropic API (inni dostawcy go ignorują). Domyślnie `2048`. Zwiększ jeśli generujesz długie odpowiedzi (np. rozbudowane przykłady zdań).
+`max_tokens` jest używany przez Anthropic oraz modele OpenCode Go korzystające z formatu Messages. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
 ### Dostępni dostawcy
 
@@ -257,7 +260,6 @@ Przykład per-dostawca (ten sam provider, tańszy model):
 Właściwości:
 - Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); reasoning_effort pochodzi z konfiguracji dostawcy fallbackowego
 - Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
-- Statystyki użycia zliczają fallback osobno (per `provider/model`)
 - Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
 - Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"
 
@@ -278,7 +280,7 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0
 }
 ```
 
-## Szablony promptów
+## Składnia promptów
 
 | Składnia | Działanie |
 |---|---|
@@ -290,6 +292,7 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
 Edytor promptów (**Ustawienia → Generowanie AI → Prompty**) pomaga uniknąć literówek:
+- **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
 - **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
@@ -301,16 +304,6 @@ Edytor promptów (**Ustawienia → Generowanie AI → Prompty**) pomaga unikną�
 > **Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane.
 
 > **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.
-
-## Statystyki użycia
-
-Każde wywołanie AI jest zliczane lokalnie (per dzień, per `provider/model`): requesty, błędy, tokeny wejściowe/wyjściowe (z pola `usage` odpowiedzi API), wygenerowane pola oraz liczba zaktualizowanych notatek.
-
-Dashboard: **Ustawienia → Diagnostyka → Statystyki** — wybór zakresu (dziś / 7 / 30 / 365 dni / wszystko / **własny zakres dat** od–do z kalendarzykiem), tabela per model, przyciski **Odśwież** i **Resetuj statystyki**.
-
-- Dane są zapisywane w `user_files/usage_stats.json` (lokalnie, gitignored) — nie wychodzą poza Twój komputer; stara ścieżka `ai_generator/usage_stats.json` jest migrowana automatycznie przy pierwszym uruchomieniu
-- Szacowany koszt USD per model — przycisk **Pobierz ceny** pobiera cennik z katalogu OpenRouter (jeśli model jest tam dostępny) i przelicza tokeny × cena/1k
-- Niektóre modele/proxy nie zwracają pola `usage` — wtedy zliczane są tylko requesty (tokeny = 0)
 
 ## Dodanie nowego dostawcy
 
@@ -353,4 +346,4 @@ class MojProvider(BaseProvider):
 }
 ```
 
-`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne (tylko Anthropic go używa). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).
+`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne i używane przez API w formacie Messages (Anthropic oraz wybrane modele OpenCode Go). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).

@@ -2,7 +2,7 @@
 
 Anki Toolkit to zestaw narzędzi wspierających przygotowanie i organizację
 materiałów w Anki. Łączy generowanie treści przez AI, wymowę, workflowy,
-reguły udostępniania kart oraz prywatne integracje w jednym dodatku.
+presety powtórek oraz prywatne integracje w jednym dodatku.
 
 Każdy moduł można włączyć lub wyłączyć. Interfejs ustawień grupuje funkcje według
 zadań użytkownika, niezależnie od technicznego podziału kodu.
@@ -19,8 +19,6 @@ generowanie treści AI
 wymowa ze słownika lub TTS
       ↓
 rozdzielenie przykładów na pola
-      ↓
-reguły stopniowego udostępniania kart
 ```
 
 Kroki można połączyć w nazwany workflow i uruchamiać z edytora albo menu
@@ -48,11 +46,11 @@ Nawigacja odpowiada zadaniom, a nie katalogom kodu:
 | **Workflowy** | Nazwane procesy oraz ustawienia rozdzielania pól |
 | **Generowanie AI** | Prompty, dostawcy, modele i opcje zaawansowane |
 | **Wymowa** | TTS oraz nagrania i IPA ze słowników |
-| **Reguły kart** | Sentence Unlocker, Sibling Manager, Homograph Manager, Deck Router i presety powtórek |
+| **Reguły kart** | Presety szybkich powtórek |
 | **Integracje** | Kolejka słówek n8n oraz lokalny Web Bridge |
 | **Moduły** | Włączanie i wyłączanie funkcji |
 | **Konserwacja** | Normalizacja audio, czyszczenie HTML i ukrywanie pól |
-| **Diagnostyka** | Statystyki użycia oraz logi |
+| **Diagnostyka** | Logi działania dodatku |
 
 Zmiana stanu modułu wymaga restartu Anki. Pozostałe ustawienia zwykle zaczynają
 działać po zapisaniu dialogu.
@@ -67,8 +65,8 @@ działać po zapisaniu dialogu.
   dostawców OpenAI, Anthropic, Google, OpenRouter, CometAPI, Mistral, NVIDIA NIM
   i OpenCode Go.
 - **Batch API** umożliwia asynchroniczny backfill przez OpenAI lub Anthropic.
-- **Słownik** pobiera nagrania i IPA z Diki, Oxford, Cambridge, Longman oraz
-  Wiktionary.
+- **Słownik** pobiera nagrania z Diki, Oxford, Cambridge i Longman; Wiktionary
+  służy jako fallback IPA.
 - **TTS** generuje dźwięk przez lokalny serwer Kokoro albo OpenRouter.
 - **Field Splitter** dzieli jedno pole, np. `przyklad`, na `p1`, `p2`, `p3`.
 
@@ -78,19 +76,9 @@ Szczegóły: [AI Generator](ai_generator/README.md),
 
 ### Nauka
 
-- **Sentence Unlocker** stopniowo tworzy karty kolejnych zdań, gdy wcześniejsze
-  karty osiągną ustalony interwał.
-- **Sibling Manager** tymczasowo zawiesza nowe siblingi niedojrzałej karty.
-- **Homograph Manager** rozdziela osobne notatki z tym samym słowem (np. kilka
-  znaczeń „assault") — kolejne znaczenie odblokowuje się dopiero, gdy poprzednie
-  dojrzeje.
-- **Deck Router** kieruje karty do talii według tagu i opcjonalnie szablonu.
 - **Filtered Deck** udostępnia presety szybkich powtórek.
 
-Szczegóły: [kontekst reguł nauki](learning-context.md),
-[Sentence Unlocker](sentence_unlocker/README.md),
-[Sibling Manager](sibling_manager/README.md),
-[Homograph Manager](homograph_manager/README.md) i [Deck Router](deck_router/README.md).
+Szczegóły: [kontekst reguł nauki](learning-context.md).
 
 ### Integracje i konserwacja
 
@@ -114,7 +102,6 @@ Szczegóły: [Word Queue](word_queue/README.md), [Web Bridge](web_bridge/README.
 
 Dane, które mają przetrwać aktualizację dodatku, są zapisywane w `user_files/`:
 
-- `usage_stats.json` — statystyki AI i TTS,
 - `ai_batches.json` — stan Batch API,
 - `audio_normalizer_history.json` — historia normalizacji.
 
@@ -139,10 +126,7 @@ konfigurację lub historię pracy.
 Testy czystej logiki można uruchomić bez Anki:
 
 ```bash
-python3 tests/test_pure_logic.py
-python3 tests/test_batch_backfill.py
-python3 tests/test_editor_operations.py
-python3 tests/test_sentence_unlocker.py
+python3 -m unittest discover -s tests
 ```
 
 ## Dla deweloperów i modeli AI

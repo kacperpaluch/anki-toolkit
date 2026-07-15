@@ -28,7 +28,7 @@ Obejmuje **wszystkie źródła**:
 - Ręczne dodanie pliku do karty
 - AnkiWeb sync pobierający nowe media
 
-Po normalizacji pojawia się krótki tooltip w prawym dolnym rogu ("Znormalizowano N plik(ów) audio.") — wyłącz `show_tooltip`, jeśli ma być ciche. Pomija pliki już przetworzone (historia `mtime` w `audio_normalizer_history.json`). Wymaga restartu Anki po zmianie ustawienia.
+Po normalizacji pojawia się krótki tooltip w prawym dolnym rogu ("Znormalizowano N plik(ów) audio."). Aby go wyłączyć, ustaw `audio_normalizer.show_tooltip: false` w konfiguracji profilu. Pomija pliki już przetworzone (historia `mtime` w `audio_normalizer_history.json`). Wymaga restartu Anki po zmianie ustawienia.
 
 ## Co się dzieje z plikami
 

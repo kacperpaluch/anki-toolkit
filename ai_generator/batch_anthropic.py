@@ -109,13 +109,10 @@ def poll_batch(record: dict, config: dict) -> tuple:
             continue
         result = entry.get("result", {}) or {}
         message = result.get("message", {}) or {}
-        usage = message.get("usage", {}) or {}
         text = first_text(message.get("content")) if result.get("type") == "succeeded" else None
         results.append({
             "custom_id": entry.get("custom_id"),
             "ok": result.get("type") == "succeeded" and bool(text),
             "text": text,
-            "in_tok": int(usage.get("input_tokens") or 0),
-            "out_tok": int(usage.get("output_tokens") or 0),
         })
     return "ended", results

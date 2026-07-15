@@ -6,13 +6,14 @@ do szczegółowego kontekstu tylko tego obszaru, którego dotyczy zadanie.
 ## Projekt w skrócie
 
 Anki Toolkit jest dodatkiem do Anki napisanym w Pythonie i PyQt. Techniczne
-moduły są niezależnie przełączane, lecz interfejs grupuje je w trzy domeny:
+moduły są niezależnie przełączane, lecz interfejs grupuje je w cztery domeny:
 
 | Domena | Moduły |
 |---|---|
 | Treść | `ai_generator`, `dictionary`, `tts`, `field_splitter`, workflowy |
-| Nauka | `sentence_unlocker`, `sibling_manager`, `homograph_manager`, `deck_router`, `filtered_deck` |
-| Integracje i system | `word_queue`, `web_bridge`, `audio_normalizer`, `audio_embed`, `nbsp_remover`, `field_hider` |
+| Nauka | `filtered_deck` |
+| Integracje | `word_queue`, `web_bridge` |
+| System | `audio_normalizer`, `audio_embed`, `nbsp_remover`, `field_hider` |
 
 Entry point: `__init__.py`. Domyślna konfiguracja: `config.json`. Konfiguracja
 profilu Anki jest obsługiwana przez `mw.addonManager` i zapisywana w `meta.json`.
@@ -26,7 +27,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | AI, prompty, providerzy, workflowy, Batch API | `ai_generator/llm-context.md` |
 | TTS, głosy, generowanie audio | `tts/llm-context.md` |
 | Słowniki, audio słownikowe, IPA | `dictionary/llm-context.md` |
-| Sentence Unlocker, siblingi, homografy, routing talii | `learning-context.md` |
+| Talie filtrowane i presety powtórek | `learning-context.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |
@@ -39,7 +40,7 @@ Anki importuje główny `__init__.py` podczas startu. Loader:
 
 1. Czyta `config["modules"]`.
 2. Importuje włączone moduły.
-3. Rejestruje hooki edytora, reviewera, synchronizacji i Add Cards.
+3. Rejestruje hooki edytora, synchronizacji i Add Cards.
 4. Rejestruje jedno wspólne menu kontekstowe Browsera.
 5. Po inicjalizacji okna tworzy menu **Narzędzia → Anki Toolkit**.
 
@@ -56,10 +57,6 @@ settings/                domenowy dialog ustawień
 ai_generator/            generowanie pól, workflowy, providerzy, Batch API
 dictionary/              pobieranie nagrań i IPA
 tts/                     synteza oraz zapis audio
-sentence_unlocker/       stopniowe tworzenie kart zdań
-sibling_manager/         zawieszanie i uwalnianie siblingów
-homograph_manager/       rozdzielanie osobnych notatek z tym samym słowem
-deck_router/             routing kart według reguł
 filtered_deck/           presety talii filtrowanej
 field_splitter/          czyste dzielenie pola i akcje batch
 audio_normalizer/        ffmpeg, historia i watcher katalogu mediów
@@ -139,12 +136,6 @@ workflow
   ├── tts
   └── field_splitter
 
-ai_generator batch ──po zapisie──> deck_router
-
-sentence_unlocker + sibling_manager + homograph_manager
-  └── niezależne reguły wpływające na dostępność kart
-      (sibling: strony jednej notatki; homograph: znaczenia różnych notatek)
-
 word_queue ──czyta userscript──> web_bridge/dictionaries-to-anki.user.js
 
 dictionary + tts + audio_normalizer
@@ -169,7 +160,7 @@ preferuj lokalny soft-import w miejscu wywołania.
 1. Dodaj katalog z `__init__.py`.
 2. Dodaj klucz w `config.json`, `settings/modules_tab.py` i root loaderze.
 3. Zarejestruj hook w root `__init__.py`.
-4. Przypisz moduł do jednej z trzech domen UI.
+4. Przypisz moduł do jednej z czterech domen UI.
 5. Nie twórz osobnego `llm-context.md`, jeśli kod jest mały i lokalny.
 
 ## Testy
@@ -180,8 +171,6 @@ Testy używają `unittest` i stubów Anki. Działają bez instalacji `anki`:
 python3 tests/test_pure_logic.py
 python3 tests/test_batch_backfill.py
 python3 tests/test_editor_operations.py
-python3 tests/test_sentence_unlocker.py
-python3 tests/test_homograph_manager.py
 python3 tests/test_audio_embed.py
 ```
 

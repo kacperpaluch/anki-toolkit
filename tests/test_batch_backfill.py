@@ -13,7 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_batch_backfill(iter_impl):
-    """Load batch_backfill with common/stats/template/field_generator/openai_compat
+    """Load batch_backfill with common/template/field_generator/openai_compat
     stubbed. iter_impl(note, config, only_fields=None, overwrite=False) controls
     which (field_cfg, target) pairs each note contributes.
     """
@@ -27,9 +27,6 @@ def load_batch_backfill(iter_impl):
     common_mod.safe_str = lambda v: str(v or "").strip()
     common_mod.post_json = lambda *a, **k: (None, "stub")
     common_mod.fetch_url = lambda *a, **k: None
-    stats_mod = types.ModuleType("_bb.ai_generator.stats")
-    stats_mod.record_request = lambda *a, **k: None
-    stats_mod.record_note = lambda *a, **k: None
     template_mod = types.ModuleType("_bb.ai_generator.template_engine")
     template_mod.render_template = lambda t, _f: t
     fg_mod = types.ModuleType("_bb.ai_generator.field_generator")
@@ -43,7 +40,6 @@ def load_batch_backfill(iter_impl):
         "_bb.ai_generator": ai_pkg,
         "_bb.ai_generator.providers": providers_pkg,
         "_bb.common": common_mod,
-        "_bb.ai_generator.stats": stats_mod,
         "_bb.ai_generator.template_engine": template_mod,
         "_bb.ai_generator.field_generator": fg_mod,
         "_bb.ai_generator.providers.openai_compat": oc_mod,
@@ -160,10 +156,10 @@ class ApplyResultsTests(unittest.TestCase):
                 "i3": {"nid": 99, "field": "Def", "model": "m"},  # note gone
             }},
             "results": [
-                {"custom_id": "i0", "ok": True, "text": "A", "in_tok": 3, "out_tok": 1},
-                {"custom_id": "i1", "ok": True, "text": "B", "in_tok": 0, "out_tok": 0},
-                {"custom_id": "i2", "ok": True, "text": "C", "in_tok": 0, "out_tok": 0},
-                {"custom_id": "i3", "ok": True, "text": "D", "in_tok": 0, "out_tok": 0},
+                {"custom_id": "i0", "ok": True, "text": "A"},
+                {"custom_id": "i1", "ok": True, "text": "B"},
+                {"custom_id": "i2", "ok": True, "text": "C"},
+                {"custom_id": "i3", "ok": True, "text": "D"},
             ],
         }}
         summary = module.apply_results(Col(), ended)
@@ -189,7 +185,7 @@ class ApplyResultsTests(unittest.TestCase):
                 "i1": {"nid": 1, "field": "Def", "model": "m"},  # no result at all (expired)
             }},
             "results": [
-                {"custom_id": "i0", "ok": False, "text": None, "in_tok": 0, "out_tok": 0},
+                {"custom_id": "i0", "ok": False, "text": None},
             ],
         }}
         summary = module.apply_results(Col(), ended)

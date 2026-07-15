@@ -101,11 +101,7 @@ def fetch_google_models(api_key: str, force: bool = False) -> list[str]:
 _OR_CHAT_CACHE = None
 
 def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
-    """Returns [{id, name, pricing, prompt_price, completion_price, context_length}, ...].
-
-    prompt_price / completion_price are raw USD-per-token floats (or None) —
-    used by the stats tab to estimate costs.
-    """
+    """Return OpenRouter chat models for the provider/model selectors."""
     global _OR_CHAT_CACHE
     if _OR_CHAT_CACHE is not None and not force:
         return _OR_CHAT_CACHE

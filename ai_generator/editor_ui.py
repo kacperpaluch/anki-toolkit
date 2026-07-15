@@ -24,7 +24,7 @@ def _on_generate_editor(editor: Editor):
 
     # Świeża instancja per uruchomienie (config czytany na głównym wątku) —
     # dwa równoległe generowania (np. dwa okna edytora) nie współdzielą
-    # last_error/last_usage providera.
+    # last_error providera.
     try:
         gen = FieldGenerator(get_config())
     except Exception:

@@ -1,8 +1,6 @@
 import importlib.util
-import os
 import pathlib
 import sys
-import tempfile
 import threading
 import time
 import types
@@ -22,14 +20,11 @@ def load_module(name: str, relative_path: str):
 
 
 template_engine = load_module("template_engine", "ai_generator/template_engine.py")
-prompt_templates = load_module("prompt_templates", "settings/prompt_templates.py")
 html_helpers = load_module("html_helpers", "common/html.py")
 text_helpers = load_module("text_helpers", "common/text.py")
 cleaning = load_module("nbsp_cleaning", "nbsp_remover/cleaning.py")
-ai_stats = load_module("ai_stats", "ai_generator/stats.py")
 http_helpers = load_module("http_helpers", "common/http.py")
 field_splitter = load_module("field_splitter_logic", "field_splitter/splitting.py")
-deck_router = load_module("deck_router_logic", "deck_router/logic.py")
 
 
 def load_field_generator_with_stubs(provider_responses=None):
@@ -50,9 +45,6 @@ def load_field_generator_with_stubs(provider_responses=None):
     common_mod = types.ModuleType("_test_addon.common")
     common_mod.clean_html_normalized = lambda value: value
     common_mod.safe_str = lambda value: str(value or "").strip()
-    stats_mod = types.ModuleType("_test_addon.ai_generator.stats")
-    stats_mod.record_request = lambda *a, **k: None
-    stats_mod.record_note = lambda *a, **k: None
     template_mod = types.ModuleType("_test_addon.ai_generator.template_engine")
     template_mod.render_template = lambda template, _fields: template
     providers_mod = types.ModuleType("_test_addon.ai_generator.providers")
@@ -65,7 +57,6 @@ def load_field_generator_with_stubs(provider_responses=None):
         # fails, fallback succeeds" with a single config.
         def __init__(self, model, responses=None):
             self.model = model
-            self.last_usage = (0, 0)
             self.last_error = None
             self._responses = list(responses) if responses else []
             self.calls = 0
@@ -87,7 +78,6 @@ def load_field_generator_with_stubs(provider_responses=None):
     modules = {
         "_test_addon": root_pkg,
         "_test_addon.ai_generator": ai_pkg,
-        "_test_addon.ai_generator.stats": stats_mod,
         "_test_addon.ai_generator.template_engine": template_mod,
         "_test_addon.ai_generator.providers": providers_mod,
         "_test_addon.common": common_mod,
@@ -485,55 +475,6 @@ class TextHelperTests(unittest.TestCase):
         self.assertEqual(plural(22), "kroki")
 
 
-class PricingMatchTests(unittest.TestCase):
-    _CATALOG = [
-        {"id": "openai/gpt-4o", "prompt_price": 2.5e-06, "completion_price": 1e-05},
-        {"id": "anthropic/claude-3.5-haiku", "prompt_price": 8e-07, "completion_price": 4e-06},
-        {"id": "google/gemini-2.0-flash-001", "prompt_price": 1e-07, "completion_price": 4e-07},
-        {"id": "x-ai/grok-3", "prompt_price": None, "completion_price": None},
-    ]
-
-    def test_exact_provider_model_match(self):
-        result = ai_stats.match_pricing(["openai/gpt-4o"], self._CATALOG)
-        self.assertEqual(result["openai/gpt-4o"], (2.5e-06, 1e-05))
-
-    def test_normalized_match_with_date_suffix(self):
-        result = ai_stats.match_pricing(
-            ["anthropic/claude-3-5-haiku-20241022"], self._CATALOG
-        )
-        self.assertEqual(result["anthropic/claude-3-5-haiku-20241022"], (8e-07, 4e-06))
-
-    def test_prefix_match_for_versioned_ids(self):
-        result = ai_stats.match_pricing(["google/gemini-2.0-flash"], self._CATALOG)
-        self.assertEqual(result["google/gemini-2.0-flash"], (1e-07, 4e-07))
-
-    def test_openrouter_key_uses_full_id(self):
-        result = ai_stats.match_pricing(
-            ["openrouter/anthropic/claude-3.5-haiku"], self._CATALOG
-        )
-        self.assertEqual(result["openrouter/anthropic/claude-3.5-haiku"], (8e-07, 4e-06))
-
-    def test_unmatched_and_priceless_models_are_absent(self):
-        result = ai_stats.match_pricing(
-            ["cometapi/grok-3", "mistral/unknown-model"], self._CATALOG
-        )
-        self.assertNotIn("mistral/unknown-model", result)
-        self.assertNotIn("cometapi/grok-3", result)  # catalog entry has no prices
-
-    def test_tts_model_matches_per_char_price(self):
-        tts_catalog = [
-            {"id": "openai/gpt-4o-mini-tts", "prompt_price": 1.2e-05},
-        ]
-        result = ai_stats.match_pricing(
-            ["openrouter/openai/gpt-4o-mini-tts-2025-12-15", "kokoro/kokoro"],
-            tts_catalog,
-        )
-        self.assertEqual(
-            result["openrouter/openai/gpt-4o-mini-tts-2025-12-15"], (1.2e-05, 0.0)
-        )
-        self.assertNotIn("kokoro/kokoro", result)  # lokalny — brak ceny
-
-
 class NbspCleaningTests(unittest.TestCase):
     def test_skip_field_removes_div_tags(self):
         cleaned, nbsp_count, div_count, div_br_count = cleaning.clean_field(
@@ -556,95 +497,6 @@ class NbspCleaningTests(unittest.TestCase):
         self.assertNotIn("<div", cleaned)
         self.assertNotIn("</div>", cleaned)
         self.assertEqual(div_br_count, 2)
-
-
-class AiStatsTests(unittest.TestCase):
-    def test_record_and_reset(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
-            ai_stats.reset_stats()
-
-            ai_stats.record_request("openai", "gpt-4o", 100, 50, error=False, field_generated=True)
-            ai_stats.record_request("openai", "gpt-4o", 10, 5, error=True, field_generated=False)
-            ai_stats.record_note()
-
-            data = ai_stats.get_stats()
-            m = data["models"]["openai/gpt-4o"]
-            self.assertEqual(m["requests"], 2)
-            self.assertEqual(m["errors"], 1)
-            self.assertEqual(m["input_tokens"], 110)
-            self.assertEqual(m["output_tokens"], 55)
-            self.assertEqual(m["fields"], 1)
-            self.assertEqual(data["notes_processed"], 1)
-
-            ai_stats.reset_stats()
-            data = ai_stats.get_stats()
-            self.assertEqual(data["models"], {})
-            self.assertEqual(data["notes_processed"], 0)
-
-    def test_record_tts(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
-            ai_stats.reset_stats()
-
-            ai_stats.record_tts("kokoro", "kokoro", 120, error=False)
-            ai_stats.record_tts("kokoro", "kokoro", 80, error=True)
-            ai_stats.record_tts("openrouter", "openai/gpt-4o-mini-tts", 50, error=False)
-
-            data = ai_stats.get_stats()
-            kokoro = data["tts"]["kokoro/kokoro"]
-            self.assertEqual(kokoro["requests"], 2)
-            self.assertEqual(kokoro["errors"], 1)
-            self.assertEqual(kokoro["files"], 1)
-            self.assertEqual(kokoro["chars"], 200)
-            openrouter = data["tts"]["openrouter/openai/gpt-4o-mini-tts"]
-            self.assertEqual(openrouter["files"], 1)
-            self.assertEqual(openrouter["chars"], 50)
-
-            # zakres bez danych → pusto
-            empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
-            self.assertEqual(empty["tts"], {})
-
-    def test_day_range_aggregation(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ai_stats._PATH = os.path.join(tmp, "usage_stats.json")
-            ai_stats.reset_stats()
-
-            # dzisiejszy wpis przez normalne API
-            ai_stats.record_request("openai", "gpt-4o", 100, 50, error=False, field_generated=True)
-
-            # sztuczny wpis sprzed 10 dni — poza zakresem "7 dni"
-            from datetime import datetime, timedelta
-            old_day = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-            data = ai_stats._load()
-            data["days"][old_day] = {
-                "notes_processed": 5,
-                "models": {"openai/gpt-4o": {
-                    "requests": 9, "errors": 0,
-                    "input_tokens": 900, "output_tokens": 450, "fields": 9,
-                }},
-            }
-            ai_stats._save(data)
-
-            all_time = ai_stats.get_stats()
-            self.assertEqual(all_time["models"]["openai/gpt-4o"]["requests"], 10)
-            self.assertEqual(all_time["notes_processed"], 5)
-
-            last_week = ai_stats.get_stats(days=7)
-            self.assertEqual(last_week["models"]["openai/gpt-4o"]["requests"], 1)
-            self.assertEqual(last_week["notes_processed"], 0)
-
-            today = ai_stats.get_stats(days=1)
-            self.assertEqual(today["models"]["openai/gpt-4o"]["input_tokens"], 100)
-
-            # własny zakres dat (inclusive) obejmujący tylko stary wpis
-            custom = ai_stats.get_stats(start=old_day, end=old_day)
-            self.assertEqual(custom["models"]["openai/gpt-4o"]["requests"], 9)
-            self.assertEqual(custom["notes_processed"], 5)
-
-            # zakres poza danymi → pusto
-            empty = ai_stats.get_stats(start="2000-01-01", end="2000-12-31")
-            self.assertEqual(empty["models"], {})
 
 
 class FieldSplitterTests(unittest.TestCase):
@@ -691,48 +543,6 @@ class FieldSplitterTests(unittest.TestCase):
         self.assertEqual(field_splitter.parse_target_fields("p1, p2, p3"), ["p1", "p2", "p3"])
         self.assertEqual(field_splitter.parse_target_fields(""), [])
         self.assertEqual(field_splitter.parse_target_fields(" p1 ,, p2 "), ["p1", "p2"])
-
-
-class PromptTemplatesTests(unittest.TestCase):
-    def _mapping_for(self, template):
-        mapping = {key: f"pole_{key}" for key, _label, _hints in template["params"]}
-        cond = template.get("conditional")
-        if cond:
-            mapping[cond["param"][0]] = "pole_" + cond["param"][0]
-        return mapping
-
-    def test_all_templates_build_valid_prompts(self):
-        for template in prompt_templates.TEMPLATES:
-            for use_cond in (False, True):
-                mapping = self._mapping_for(template)
-                prompt = prompt_templates.build_prompt(template, mapping, use_cond)
-                self.assertNotIn("«", prompt, f"leftover placeholder in {template['id']}")
-                self.assertEqual(
-                    template_engine.template_structure_problems(prompt), [],
-                    f"invalid block structure in {template['id']} (cond={use_cond})",
-                )
-
-    def test_conditional_template_renders_both_branches(self):
-        examples = next(t for t in prompt_templates.TEMPLATES if t["id"] == "examples")
-        mapping = {"word": "ang", "translation": "pol", "definition": "def"}
-        prompt = prompt_templates.build_prompt(examples, mapping, use_conditional=True)
-
-        with_def = template_engine.render_template(
-            prompt, {"ang": "book", "pol": "rezerwować", "def": "to arrange"}
-        )
-        self.assertIn("DEF: to arrange", with_def)
-
-        without_def = template_engine.render_template(
-            prompt, {"ang": "book", "pol": "rezerwować", "def": ""}
-        )
-        self.assertNotIn("DEF:", without_def)
-        self.assertIn("book", without_def)
-
-    def test_guess_field(self):
-        fields = ["Ang", "pol", "Definicja", "IPA"]
-        self.assertEqual(prompt_templates.guess_field(["ang"], fields), "Ang")
-        self.assertEqual(prompt_templates.guess_field(["def", "definicja"], fields), "Definicja")
-        self.assertEqual(prompt_templates.guess_field(["brak"], fields), "")
 
 
 def load_workflow_module(initial_cfg: dict):
@@ -874,34 +684,6 @@ class FreeModelConcurrencyTests(unittest.TestCase):
     def test_free_model_respects_higher_concurrency(self):
         rl = self._limiter(2)
         self.assertEqual(self._peak_in_flight(rl, "openai/gpt-oss-120b:free", 6), 2)
-
-
-class DeckRouterMatchTest(unittest.TestCase):
-    def test_tag_only_rule_matches_any_template(self):
-        rules = [{"tag": "abc123", "deck": "Osobne"}]
-        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "Osobne")
-        self.assertEqual(deck_router.match_deck({"abc123"}, "p1-nauka", rules), "Osobne")
-
-    def test_no_tag_no_match(self):
-        rules = [{"tag": "abc123", "deck": "Osobne"}]
-        self.assertIsNone(deck_router.match_deck({"inne"}, "pol-ang", rules))
-
-    def test_template_scoped_rule(self):
-        rules = [{"tag": "abc123", "template": "pol-ang", "deck": "A"}]
-        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "A")
-        self.assertIsNone(deck_router.match_deck({"abc123"}, "ang-pol", rules))
-
-    def test_first_matching_rule_wins(self):
-        rules = [
-            {"tag": "abc123", "template": "pol-ang", "deck": "A"},
-            {"tag": "abc123", "deck": "B"},
-        ]
-        self.assertEqual(deck_router.match_deck({"abc123"}, "pol-ang", rules), "A")
-        self.assertEqual(deck_router.match_deck({"abc123"}, "ang-pol", rules), "B")
-
-    def test_incomplete_rules_ignored(self):
-        self.assertIsNone(deck_router.match_deck({"abc123"}, "x", [{"tag": "abc123"}]))
-        self.assertIsNone(deck_router.match_deck({"abc123"}, "x", [{"deck": "A"}]))
 
 
 if __name__ == "__main__":

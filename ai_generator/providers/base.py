@@ -27,26 +27,7 @@ class BaseProvider(ABC):
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
         self.last_error: Optional[str] = None
-        self.last_usage: tuple[int, int] = (0, 0)  # (input_tokens, output_tokens)
         self.logger = logging.getLogger(self.__class__.__module__)
-
-    def _capture_usage(self, res_data: dict) -> None:
-        """Best-effort token usage extraction from a parsed API response.
-
-        Handles OpenAI-compatible ("usage.prompt/completion_tokens"),
-        Anthropic ("usage.input/output_tokens") and Gemini ("usageMetadata").
-        """
-        try:
-            usage = res_data.get("usage") or {}
-            inp = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-            out = usage.get("completion_tokens") or usage.get("output_tokens") or 0
-            if not inp and not out:
-                meta = res_data.get("usageMetadata") or {}
-                inp = meta.get("promptTokenCount") or 0
-                out = meta.get("candidatesTokenCount") or 0
-            self.last_usage = (int(inp), int(out))
-        except Exception:
-            self.last_usage = (0, 0)
 
     def _post(self, url: str, data: dict, headers: dict) -> Optional[bytes]:
         """POST data dict as JSON with retry. Sets self.last_error on failure."""
@@ -79,7 +60,6 @@ class BaseProvider(ABC):
         """Parse an OpenAI-compatible chat-completions response into text."""
         try:
             res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
             choices = res_data.get("choices")
             if not choices or not isinstance(choices, list):
                 self.last_error = f"{label}: unexpected response structure: {list(res_data.keys())}"
@@ -117,7 +97,6 @@ class BaseProvider(ABC):
         """
         try:
             res_data = json.loads(raw.decode("utf-8"))
-            self._capture_usage(res_data)
             content = res_data.get("content")
             if not content or not isinstance(content, list):
                 self.last_error = f"{label}: unexpected response structure: {list(res_data.keys())}"

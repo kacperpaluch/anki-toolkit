@@ -74,42 +74,11 @@ if _enabled("tts"):
     gui_hooks.editor_did_init_buttons.append(tts.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
-# sibling_manager — dynamic sibling suspension (reviewer hook)
-# ---------------------------------------------------------------------------
-if _enabled("sibling_manager"):
-    from . import sibling_manager
-    gui_hooks.reviewer_did_answer_card.append(sibling_manager.on_reviewer_did_answer_card)
-    gui_hooks.sync_did_finish.append(sibling_manager.on_sync_did_finish)
-
-# ---------------------------------------------------------------------------
-# homograph_manager — stagger same-word notes with different meanings
-# ---------------------------------------------------------------------------
-if _enabled("homograph_manager"):
-    from . import homograph_manager
-    gui_hooks.reviewer_did_answer_card.append(homograph_manager.on_reviewer_did_answer_card)
-    gui_hooks.sync_did_finish.append(homograph_manager.on_sync_did_finish)
-
-# ---------------------------------------------------------------------------
 # audio_embed — [sound:...] -> inline <audio> in chosen note types/fields
 # ---------------------------------------------------------------------------
 if _enabled("audio_embed"):
     from . import audio_embed
     gui_hooks.sync_did_finish.append(audio_embed.on_sync_did_finish)
-
-# ---------------------------------------------------------------------------
-# sentence_unlocker — progressive gap-fill card gating (reviewer + sync hook)
-# ---------------------------------------------------------------------------
-if _enabled("sentence_unlocker"):
-    from . import sentence_unlocker
-    gui_hooks.reviewer_did_answer_card.append(sentence_unlocker.on_reviewer_did_answer_card)
-    gui_hooks.sync_did_finish.append(sentence_unlocker.on_sync_did_finish)
-
-# ---------------------------------------------------------------------------
-# deck_router — route cards to decks by tag (+ optional card template)
-# ---------------------------------------------------------------------------
-if _enabled("deck_router"):
-    from . import deck_router
-    gui_hooks.add_cards_did_add_note.append(deck_router.on_add_note)
 
 # ---------------------------------------------------------------------------
 # field_hider — chowa wybrane pola TYLKO w oknie „Dodaj” (nie w przeglądarce)
@@ -196,22 +165,6 @@ if _enabled("field_splitter"):
 if _enabled("audio_embed"):
     from . import audio_embed
     _menu_modules.append(audio_embed)
-
-if _enabled("sibling_manager"):
-    from . import sibling_manager
-    _menu_modules.append(sibling_manager)
-
-if _enabled("homograph_manager"):
-    from . import homograph_manager
-    _menu_modules.append(homograph_manager)
-
-if _enabled("sentence_unlocker"):
-    from . import sentence_unlocker
-    _menu_modules.append(sentence_unlocker)
-
-if _enabled("deck_router"):
-    from . import deck_router
-    _menu_modules.append(deck_router)
 
 if _enabled("word_queue"):
     from . import word_queue

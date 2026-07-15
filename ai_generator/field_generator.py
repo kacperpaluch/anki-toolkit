@@ -10,7 +10,6 @@ from anki.notes import Note
 
 from ..common import clean_html_normalized, safe_str
 
-from . import stats
 from .template_engine import render_template
 from .providers import get_provider, BaseProvider
 
@@ -302,21 +301,15 @@ class FieldGenerator:
             prompt = render_template(prompt_template, fields_map)
 
             _rate_limiter = RateLimiter()
-            provider.last_usage = (0, 0)
             with _rate_limiter.slot(provider_name, provider.model):
                 result = provider.call_api(prompt)
-            in_tokens, out_tokens = provider.last_usage
-            stats.record_request(
-                provider_name, provider.model, in_tokens, out_tokens,
-                error=result is None, field_generated=bool(result),
-            )
             if result:
                 note[target_field] = result
                 fields_map[target_field] = clean_html_normalized(result)  # update map for dependent fields
                 changed[target_field] = result
                 logger.info(
                     f"AI: pole '{target_field}' wygenerowane "
-                    f"({provider_name}/{provider.model}, tokeny {in_tokens}→{out_tokens})"
+                    f"({provider_name}/{provider.model})"
                 )
             else:
                 # Fallback: per-prompt (fallback_provider + fallback_model) overrides
@@ -352,21 +345,15 @@ class FieldGenerator:
                     f"AI: fallback dla pola '{target_field}': "
                     f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
                 )
-                fb_provider.last_usage = (0, 0)
                 with _rate_limiter.slot(fb_name, fb_provider.model):
                     result = fb_provider.call_api(prompt)
-                fb_in, fb_out = fb_provider.last_usage
-                stats.record_request(
-                    fb_name, fb_provider.model, fb_in, fb_out,
-                    error=result is None, field_generated=bool(result),
-                )
                 if result:
                     note[target_field] = result
                     fields_map[target_field] = clean_html_normalized(result)
                     changed[target_field] = result
                     logger.info(
                         f"AI: pole '{target_field}' wygenerowane przez fallback "
-                        f"({fb_name}/{fb_provider.model}, tokeny {fb_in}→{fb_out})"
+                        f"({fb_name}/{fb_provider.model})"
                     )
                 else:
                     provider_error = getattr(fb_provider, "last_error", None)
@@ -381,8 +368,5 @@ class FieldGenerator:
                             f"pole '{target_field}' nie zwrócił treści."
                         )
                     logger.error(f"AI: {self.last_error}")
-
-        if changed:
-            stats.record_note()
 
         return changed

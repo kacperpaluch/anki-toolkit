@@ -60,7 +60,7 @@ Tryb OFF jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpi
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Rozdzielanie pól**
+**Narzędzia → Anki Toolkit → Ustawienia... → Workflowy → Rozdzielanie pól**
 
 | Pole | Domyślnie | Opis |
 |---|---|---|

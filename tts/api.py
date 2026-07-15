@@ -15,31 +15,10 @@ def generate_audio(text: str, config: dict, voice: str) -> bytes:
     text = apply_word_replacements(text, config.get("replacements") or {})
     provider = config.get("tts_provider", "kokoro")
     if provider == "openrouter":
-        model = config.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")
         generate = _generate_openrouter
     else:
-        model = config.get("model", "kokoro")
         generate = _generate_kokoro
-    try:
-        data = generate(text, config, voice)
-    except Exception:
-        _record_tts_stats(provider, model, len(text), error=True)
-        raise
-    _record_tts_stats(provider, model, len(text), error=False)
-    return data
-
-
-def _record_tts_stats(provider: str, model: str, chars: int, error: bool) -> None:
-    """Best-effort usage counting — must never break audio generation.
-
-    Counts the final outcome of one generate_audio() call (retries inside
-    the provider functions are not counted separately).
-    """
-    try:
-        from ..ai_generator.stats import record_tts
-        record_tts(provider, model, chars, error)
-    except Exception:
-        logger.debug("TTS stats: pominięto zapis statystyk", exc_info=True)
+    return generate(text, config, voice)
 
 
 def _ensure_audio(raw: bytes, label: str) -> bytes:

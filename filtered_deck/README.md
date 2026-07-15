@@ -24,7 +24,7 @@ Każdy preset tworzy osobną talię o nazwie `{deck_name} — {nazwa presetu}`.
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → Narzędzia → Talia filtrowana**
+**Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Presety powtórek**
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
