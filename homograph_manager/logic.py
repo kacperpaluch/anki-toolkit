@@ -107,17 +107,20 @@ def process_reactive(col, note_id, answered_card_id, threshold, tag,
 
     answered = col.get_card(answered_card_id)
     if answered.ivl < threshold:
-        return _suspend_others(col, others, tag, ignore_tag), 0
+        return _suspend_others(col, others, threshold, tag, ignore_tag), 0
     return 0, _release_one(col, others, threshold, tag, ignore_tag)
 
 
-def _suspend_others(col, nids, tag, ignore_tag):
+def _suspend_others(col, nids, threshold, tag, ignore_tag):
     to_suspend = []
     for nid in nids:
         note = col.get_note(nid)
         if ignore_tag and note.has_tag(ignore_tag):
             continue
-        available = _new_cards(_cards(col, nid), suspended=False)
+        cards = _cards(col, nid)
+        if _is_matured(cards, threshold):
+            continue
+        available = _new_cards(cards, suspended=False)
         if available:
             to_suspend += [c.id for c in available]
             _set_tag(col, note, tag, True)

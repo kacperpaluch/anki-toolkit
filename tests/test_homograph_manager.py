@@ -157,6 +157,19 @@ class HomographReactiveTests(unittest.TestCase):
         self.assertTrue(col.get_note(2).has_tag(TAG))
         self.assertTrue(col.get_note(3).has_tag(TAG))
 
+    def test_immature_does_not_resuspend_a_mature_meaning(self):
+        col = FakeCol()
+        mature_sibling = new()
+        col.add_note(1, "assault", [review(THRESHOLD), mature_sibling])
+        active = review(5)
+        col.add_note(2, "assault", [active, new(True)])
+
+        s, u = logic.process_reactive(col, 2, active.id, THRESHOLD, TAG)
+
+        self.assertEqual((s, u), (0, 0))
+        self.assertNotEqual(mature_sibling.queue, QUEUE_TYPE_SUSPENDED)
+        self.assertFalse(col.get_note(1).has_tag(TAG))
+
     def test_mature_releases_exactly_one(self):
         col = FakeCol()
         a = review(THRESHOLD)                          # answered meaning matured
