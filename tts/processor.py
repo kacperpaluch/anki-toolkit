@@ -10,6 +10,7 @@ workflow):
 import concurrent.futures
 import logging
 import random
+import re
 from typing import Callable, Optional
 
 from aqt import mw
@@ -25,6 +26,14 @@ from .api import generate_audio
 from .config import get_tts_config, validate_config, get_tasks
 
 logger = logging.getLogger(__name__)
+
+# Audio in a field is either the raw Anki tag or an <audio> player left by
+# audio_embed — both mean "already generated".
+_AUDIO_RE = re.compile(r"\[sound:[^\]]*\]|<audio\b[^>]*>.*?</audio>", re.I | re.S)
+
+
+def has_audio(text: str) -> bool:
+    return bool(_AUDIO_RE.search(text or ""))
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +69,7 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
             # split_audio writes to a separate field — skip if it already has
             # audio (regen strips it first via overwrite).
             if mode == "split_audio" and (
-                target_field not in note or "[sound:" in note[target_field]
+                target_field not in note or has_audio(note[target_field])
             ):
                 continue
             raw_segments = split_separator_regex(split_sep).split(note[source_field])
@@ -68,7 +77,7 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
             random.shuffle(note_voices)
             task_has_items = False
             for seg_i, seg in enumerate(raw_segments):
-                if "[sound:" in seg:
+                if has_audio(seg):
                     continue
                 text = clean_html(seg)
                 if not text:
@@ -86,7 +95,7 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
         else:
             if source_field not in note or target_field not in note:
                 continue
-            if "[sound:" in note[target_field]:
+            if has_audio(note[target_field]):
                 continue
             text = clean_html(note[source_field])
             if not text:
@@ -319,14 +328,9 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 # Single-note processing (used by the workflow and the editor button)
 # ---------------------------------------------------------------------------
 
-import re
-
-_SOUND_TAG_RE = re.compile(r"\[sound:[^\]]*\]")
-
-
 def _strip_sound_tags(text: str) -> str:
-    """Remove [sound:...] tags so TTS regeneration can replace existing audio."""
-    return _SOUND_TAG_RE.sub("", text).strip()
+    """Remove audio ([sound:...] or <audio>) so regeneration can replace it."""
+    return _AUDIO_RE.sub("", text).strip()
 
 
 def process_single_note(note, config: dict = None,

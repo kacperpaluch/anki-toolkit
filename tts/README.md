@@ -25,9 +25,9 @@ W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki T
 ### Edytor kart (pojedyncza notatka)
 Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, TTS albo workflow, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
 
-**PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stary `[sound:...]` jest usuwany i generowane jest nowe audio). Działa też w oknie dodawania nowej karty (AddCards).
+**PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio jest usuwane i generowane jest nowe). Działa też w oknie dodawania nowej karty (AddCards).
 
-Notatki które już mają `[sound:...]` w polu docelowym są pomijane. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
+Notatki które już mają audio w polu docelowym są pomijane — liczy się zarówno `[sound:...]`, jak i osadzony `<audio>` po konwersji przez Audio Embed. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
 
 ### Zadania TTS
 

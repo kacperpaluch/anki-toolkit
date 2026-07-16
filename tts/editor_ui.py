@@ -9,7 +9,7 @@ from aqt.qt import QAction, QMenu
 from aqt import gui_hooks
 
 from .config import get_tts_config, get_tasks, validate_config
-from .processor import build_note_work_items, generate_for_items, apply_results_to_note, process_single_note
+from .processor import build_note_work_items, generate_for_items, apply_results_to_note, process_single_note, has_audio
 from ..common import unique
 from ..common.editor_operation import (
     active_editor_operation,
@@ -276,7 +276,7 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
     if not matching_tasks:
         return
 
-    has_sound = "[sound:" in note[field_name]
+    has_sound = has_audio(note[field_name])
     menu.addSeparator()
     for task in matching_tasks:
         label = task.get("label", "TTS")

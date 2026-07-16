@@ -2,7 +2,10 @@
 
 import importlib.util
 import pathlib
+import sys
+import types
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -17,6 +20,44 @@ def load_logic():
 
 
 logic = load_logic()
+
+
+def load_tts_processor():
+    """Load tts/processor.py without Anki — only its pure helpers are tested."""
+    def stub(name, **attrs):
+        m = types.ModuleType(name)
+        m.__path__ = []
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        return m
+
+    modules = {
+        "_tts_addon": stub("_tts_addon"),
+        "_tts_addon.tts": stub("_tts_addon.tts"),
+        "_tts_addon.common": stub(
+            "_tts_addon.common",
+            unique_filename=None, clean_html=None, split_separator_regex=None,
+            unique=None, start_progress=None, update_progress=None,
+            finish_progress=None,
+        ),
+        "_tts_addon.tts.api": stub("_tts_addon.tts.api", generate_audio=None),
+        "_tts_addon.tts.config": stub(
+            "_tts_addon.tts.config",
+            get_tts_config=None, validate_config=None, get_tasks=None,
+        ),
+        "aqt": stub("aqt", mw=None),
+        "aqt.operations": stub("aqt.operations", CollectionOp=object),
+        "aqt.utils": stub("aqt.utils", tooltip=None),
+    }
+    name = "_tts_addon.tts.processor"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "tts" / "processor.py")
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, modules):
+        spec.loader.exec_module(module)
+    return module
+
+
+processor = load_tts_processor()
 
 
 class FakeNote:
@@ -82,6 +123,24 @@ class ConvertNoteTests(unittest.TestCase):
     def test_no_change_returns_false(self):
         note = FakeNote({"p1": "already <audio class=\"ex-audio\" src=\"x.mp3\"></audio>"})
         self.assertFalse(logic.convert_note(note, ["p1"]))
+
+
+class TtsSeesEmbeddedAudioTests(unittest.TestCase):
+    """TTS must treat an embedded <audio> as "already generated" — otherwise
+    every rerun after audio_embed pays for duplicate audio."""
+
+    def test_has_audio_detects_both_forms(self):
+        embedded = logic.convert_text("Ex.[sound:tts_1.mp3]")
+        self.assertTrue(processor.has_audio(embedded))
+        self.assertTrue(processor.has_audio("Ex.[sound:tts_1.mp3]"))
+        self.assertFalse(processor.has_audio("Ex."))
+        self.assertFalse(processor.has_audio(""))
+
+    def test_strip_removes_both_forms(self):
+        embedded = logic.convert_text("Ex.[sound:a.mp3]<br><br>Two.[sound:b.mp3]")
+        out = processor._strip_sound_tags(embedded + "[sound:c.mp3]")
+        self.assertNotIn("<audio", out)
+        self.assertNotIn("[sound:", out)
 
 
 if __name__ == "__main__":
