@@ -45,7 +45,7 @@ W **Ustawienia → Reguły kart → Odblokowywanie** albo w `config.json`:
 | `note_types` | `["angielski"]` | Modele, w których moduł grupuje. Pusta lista = wszystkie typy notatek |
 | `tag` | `tk-homograph-suspended` | Tag notatek z zawieszonymi homografami |
 | `ignore_tag` | `tk-homograph-ignored` | Notatki z tym tagiem są pomijane |
-| `show_tooltip` | `true` | Tooltip po batch scan po synchronizacji |
+| `show_tooltip` | `true` | Tooltip po **ręcznym** skanie z menu. Auto-skan po syncu jest cichy (nie koliduje z dymkiem „Sync complete" Anki) |
 
 Ograniczenie `note_types` chroni np. talię zdań (Prestonly), gdzie to samo zdanie powtórzone w różnych lekcjach ma identyczne pole `ang` — bez filtra moduł uznałby je za grupę i zawiesił. Notatki spoza `note_types` są pomijane; jeśli wcześniej dostały tag/zawieszenie, najbliższy skan je uwalnia.
 

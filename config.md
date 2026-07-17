@@ -245,7 +245,7 @@ Rozkłada w czasie osobne notatki z tym samym słowem (np. kilka znaczeń `beam`
 
 **`ignore_tag`** — notatki z tym tagiem są pomijane. Domyślnie `"tk-homograph-ignored"`.
 
-**`show_tooltip`** — `true` (domyślnie) = tooltip z podsumowaniem po skanie po synchronizacji.
+**`show_tooltip`** — `true` (domyślnie) = tooltip z podsumowaniem po **ręcznym** skanie z menu. Auto-skan po synchronizacji jest zawsze cichy (Anki pokazuje wtedy własny dymek „Sync complete" w tym samym miejscu — drugi tooltip by z nim kolidował).
 
 Akcje: **Homograph Manager: przeskanuj całą kolekcję...** (ręczne odtworzenie stanu; ten sam skan co po syncu, samonaprawiający) oraz **Uwolnij karty zawieszone przez Homograph Manager...** (reset — odwiesza i zdejmuje tagi).
 

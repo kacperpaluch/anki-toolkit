@@ -16,7 +16,7 @@ Cel: nie **wprowadzać** nowego znaczenia, gdy inne jest jeszcze w nauce. Znacze
 
 ## Konfiguracja
 
-`interval` (próg dojrzałości, dni), `field` (pole grupujące), `note_types` (lista modeli; **pusta = wszystkie**), `tag`, `ignore_tag`, `show_tooltip`.
+`interval` (próg dojrzałości, dni), `field` (pole grupujące), `note_types` (lista modeli; **pusta = wszystkie**), `tag`, `ignore_tag`, `show_tooltip` (tylko ręczny skan — auto-skan po syncu jest cichy, bo Anki pokazuje wtedy własny tooltip „Sync complete" tą samą funkcją `tooltip()`, która zamyka poprzedni → kolizja).
 
 ## Przepływ danych
 
@@ -30,7 +30,7 @@ Reviewer (desktop), po odpowiedzi na kartę notatki N:
         answered.ivl ≥ threshold → _release_one()        # uwolnij JEDNO znaczenie (najniższy nid), o ile slot wolny
 
 Sync (po synchronizacji):
-  on_sync_did_finish → QTimer(600 ms) → _run_sync_scan (CollectionOp)
+  on_sync_did_finish → QTimer(600 ms) → _run_sync_scan(silent=True) (CollectionOp; brak tooltipa)
     → kandydaci = is:new ∪ tag:<tag>
     → dla każdego: key = note_key(note, field, note_types)
         key is None + ma tag → self-heal: odwieś NEW zawieszone tej notatki, zdejmij tag (poza zakresem)

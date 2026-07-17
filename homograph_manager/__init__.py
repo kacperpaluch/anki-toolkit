@@ -82,10 +82,12 @@ def on_reviewer_did_answer_card(reviewer, card, ease):
 
 def on_sync_did_finish(*_args):
     from aqt.qt import QTimer
-    QTimer.singleShot(_SYNC_SCAN_DELAY_MS, _run_sync_scan)
+    # Silent: Anki shows its own "Sync complete" tooltip in the same spot right
+    # now — a second tooltip here would clash/flicker with it.
+    QTimer.singleShot(_SYNC_SCAN_DELAY_MS, lambda: _run_sync_scan(silent=True))
 
 
-def _run_sync_scan():
+def _run_sync_scan(silent=False):
     cfg = _get_config()
     threshold = cfg.get("interval", _DEFAULTS["interval"])
     field = cfg.get("field", _DEFAULTS["field"])
@@ -141,7 +143,7 @@ def _run_sync_scan():
             "homograph_manager: sync scan complete — zawieszono %d, odwieszono %d (grup: %d)",
             s, u, counters["groups"],
         )
-        if show_tooltip and (s or u):
+        if not silent and show_tooltip and (s or u):
             parts = []
             if s:
                 parts.append(f"zawieszono {s}")

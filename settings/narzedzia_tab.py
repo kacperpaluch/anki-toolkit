@@ -124,7 +124,7 @@ class HomographManagerSettings(QWidget):
         self._ignore_tag = _expanding_line_edit(
             hm.get("ignore_tag", "tk-homograph-ignored")
         )
-        self._show_tooltip = QCheckBox("Pokazuj podsumowanie po synchronizacji")
+        self._show_tooltip = QCheckBox("Pokazuj podsumowanie po ręcznym skanie")
         self._show_tooltip.setChecked(hm.get("show_tooltip", True))
         form.addRow("Próg dojrzałości:", self._interval)
         form.addRow("Pole grupujące:", self._field)
