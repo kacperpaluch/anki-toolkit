@@ -143,13 +143,15 @@ def _run_sync_scan(silent=False):
             "homograph_manager: sync scan complete — zawieszono %d, odwieszono %d (grup: %d)",
             s, u, counters["groups"],
         )
-        if not silent and show_tooltip and (s or u):
+        if not silent and show_tooltip:
+            # Manual scan: always confirm it ran, even with nothing to change.
             parts = []
             if s:
                 parts.append(f"zawieszono {s}")
             if u:
                 parts.append(f"odwieszono {u}")
-            tooltip("Homograph Manager: " + ", ".join(parts), parent=mw, period=4000)
+            summary = ", ".join(parts) if parts else "brak zmian"
+            tooltip("Homograph Manager: " + summary, parent=mw, period=4000)
 
     CollectionOp(parent=mw, op=op).success(on_success).run_in_background()
 
