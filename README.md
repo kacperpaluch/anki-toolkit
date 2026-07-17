@@ -77,8 +77,12 @@ Szczegóły: [AI Generator](ai_generator/README.md),
 ### Nauka
 
 - **Filtered Deck** udostępnia presety szybkich powtórek.
+- **Homograph Manager** rozkłada w czasie osobne notatki z tym samym słowem
+  (np. kilka znaczeń `beam`): wprowadza jedno nowe znaczenie naraz, a te już
+  w nauce zostawia w spokoju. Ograniczony do wybranych typów notatek (`note_types`).
 
-Szczegóły: [Filtered Deck](filtered_deck/README.md).
+Szczegóły: [Filtered Deck](filtered_deck/README.md),
+[Homograph Manager](homograph_manager/README.md).
 
 ### Integracje i konserwacja
 

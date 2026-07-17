@@ -81,6 +81,14 @@ if _enabled("audio_embed"):
     gui_hooks.sync_did_finish.append(audio_embed.on_sync_did_finish)
 
 # ---------------------------------------------------------------------------
+# homograph_manager — stagger same-word notes with different meanings
+# ---------------------------------------------------------------------------
+if _enabled("homograph_manager"):
+    from . import homograph_manager
+    gui_hooks.reviewer_did_answer_card.append(homograph_manager.on_reviewer_did_answer_card)
+    gui_hooks.sync_did_finish.append(homograph_manager.on_sync_did_finish)
+
+# ---------------------------------------------------------------------------
 # field_hider — chowa wybrane pola TYLKO w oknie „Dodaj” (nie w przeglądarce)
 # ---------------------------------------------------------------------------
 if _enabled("field_hider"):
@@ -163,6 +171,10 @@ if _enabled("field_splitter"):
 if _enabled("audio_embed"):
     from . import audio_embed
     _menu_modules.append(audio_embed)
+
+if _enabled("homograph_manager"):
+    from . import homograph_manager
+    _menu_modules.append(homograph_manager)
 
 if _enabled("word_queue"):
     from . import word_queue

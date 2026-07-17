@@ -10,7 +10,7 @@ from .field_hider_tab import FieldHiderTab
 from .logs_tab import LogsTab
 from .narzedzia_tab import (
     AudioEmbedSettings, FieldSplitterSettings, FilteredDeckSettings,
-    HtmlCleanupSettings,
+    HomographManagerSettings, HtmlCleanupSettings,
 )
 from .tts_tab import TTSTab
 from .word_queue_tab import WordQueueTab
@@ -53,6 +53,7 @@ def pronunciation_page(cfg: dict) -> DomainTabs:
 
 def learning_page(cfg: dict) -> DomainTabs:
     return DomainTabs([
+        ("Odblokowywanie", HomographManagerSettings(cfg)),
         ("Presety powtórek", FilteredDeckSettings(cfg)),
     ])
 

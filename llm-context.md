@@ -11,7 +11,7 @@ moduły są niezależnie przełączane, lecz interfejs grupuje je w cztery domen
 | Domena | Moduły |
 |---|---|
 | Treść | `ai_generator`, `dictionary`, `tts`, `field_splitter`, workflowy |
-| Nauka | `filtered_deck` |
+| Nauka | `filtered_deck`, `homograph_manager` |
 | Integracje | `word_queue`, `web_bridge` |
 | System | `audio_normalizer`, `audio_embed`, `nbsp_remover`, `field_hider` |
 
@@ -28,6 +28,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | TTS, głosy, generowanie audio | `tts/llm-context.md` |
 | Słowniki, audio słownikowe, IPA | `dictionary/llm-context.md` |
 | Talie filtrowane i presety powtórek | `filtered_deck/README.md` |
+| Rozkładanie homografów (osobne notatki, to samo słowo) | `homograph_manager/llm-context.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |
@@ -58,6 +59,7 @@ ai_generator/            generowanie pól, workflowy, providerzy, Batch API
 dictionary/              pobieranie nagrań i IPA
 tts/                     synteza oraz zapis audio
 filtered_deck/           presety talii filtrowanej
+homograph_manager/       rozkłada w czasie osobne notatki z tym samym słowem
 field_splitter/          czyste dzielenie pola i akcje batch
 audio_normalizer/        ffmpeg, historia i watcher katalogu mediów
 audio_embed/             [sound:...] → <audio> w wybranych typach notatek i polach

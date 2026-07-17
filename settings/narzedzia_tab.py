@@ -1,7 +1,7 @@
 """Small configuration panels shared by the domain-oriented settings UI."""
 
 from aqt.qt import (
-    QWidget, QVBoxLayout, QFormLayout, QGroupBox, QCheckBox,
+    QWidget, QVBoxLayout, QFormLayout, QGroupBox, QCheckBox, QSpinBox,
 )
 
 from ..common.ui import _expanding_line_edit, _scrollable, hint_label
@@ -100,6 +100,56 @@ class AudioEmbedSettings(QWidget):
         ae["css_class"] = self._css_class.text().strip()
         ae["preload"] = self._preload.text().strip()
         ae["scan_on_sync"] = self._scan_on_sync.isChecked()
+
+
+class HomographManagerSettings(QWidget):
+    """Stagger separate notes that share the same word in the grouping field."""
+
+    def __init__(self, cfg: dict):
+        super().__init__()
+        _scroll_panel(self)
+        hm = cfg.get("homograph_manager", {})
+        group = QGroupBox("Homograph Manager — rozdzielanie słów o wielu znaczeniach")
+        form = QFormLayout(group)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._interval = QSpinBox()
+        self._interval.setRange(1, 365)
+        self._interval.setSuffix(" dni")
+        self._interval.setValue(hm.get("interval", 30))
+        self._field = _expanding_line_edit(hm.get("field", "ang"))
+        self._note_types = _expanding_line_edit(
+            ", ".join(hm.get("note_types", ["angielski"]))
+        )
+        self._tag = _expanding_line_edit(hm.get("tag", "tk-homograph-suspended"))
+        self._ignore_tag = _expanding_line_edit(
+            hm.get("ignore_tag", "tk-homograph-ignored")
+        )
+        self._show_tooltip = QCheckBox("Pokazuj podsumowanie po synchronizacji")
+        self._show_tooltip.setChecked(hm.get("show_tooltip", True))
+        form.addRow("Próg dojrzałości:", self._interval)
+        form.addRow("Pole grupujące:", self._field)
+        form.addRow("Typy notatek:", self._note_types)
+        form.addRow("Tag zawieszonych:", self._tag)
+        form.addRow("Tag ignorowanych:", self._ignore_tag)
+        form.addRow("", self._show_tooltip)
+        form.addRow("", hint_label(
+            "Osobne notatki z tym samym słowem w polu grupującym (np. „assault”) "
+            "uczą się po kolei: kolejne znaczenie odblokowuje się dopiero, gdy "
+            "poprzednie osiągnie próg dojrzałości. Typy notatek ograniczają "
+            "grupowanie do wybranych modeli (pusto = wszystkie). Ręczny scan i "
+            "reset są w menu Narzędzia → Anki Toolkit.", small=True,
+        ))
+        self._panel_layout.addWidget(group)
+        self._panel_layout.addStretch()
+
+    def apply(self, cfg: dict) -> None:
+        hm = cfg.setdefault("homograph_manager", {})
+        hm["interval"] = self._interval.value()
+        hm["field"] = self._field.text().strip()
+        hm["note_types"] = _csv(self._note_types.text())
+        hm["tag"] = self._tag.text().strip()
+        hm["ignore_tag"] = self._ignore_tag.text().strip()
+        hm["show_tooltip"] = self._show_tooltip.isChecked()
 
 
 class FilteredDeckSettings(QWidget):

@@ -8,6 +8,7 @@
     "nbsp_remover": true,
     "field_splitter": true,
     "audio_embed": true,
+    "homograph_manager": true,
     "field_hider": true,
     "web_bridge": true,
     "word_queue": true
@@ -201,6 +202,14 @@
     "css_class": "ex-audio",
     "preload": "none",
     "scan_on_sync": true
+  },
+  "homograph_manager": {
+    "interval": 30,
+    "field": "ang",
+    "note_types": ["angielski"],
+    "tag": "tk-homograph-suspended",
+    "ignore_tag": "tk-homograph-ignored",
+    "show_tooltip": true
   },
   "field_hider": {
     "hidden_fields": {}

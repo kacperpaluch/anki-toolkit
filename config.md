@@ -14,6 +14,7 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "nbsp_remover":      true,
     "field_splitter":    true,
     "audio_embed":       true,
+    "homograph_manager": true,
     "field_hider":       true,
     "web_bridge":        true,
     "word_queue":        true
@@ -223,6 +224,39 @@ Akcja: **Narzędzia → Anki Toolkit → Utwórz talię filtrowaną (preset)...*
 ```json
 "filtered_deck": {
     "deck_name": "Angielski - Powtórka z wyprzedzeniem"
+}
+```
+
+---
+
+## Sekcja `homograph_manager` — rozkładanie homografów
+
+Konfiguracja przez **Narzędzia → Anki Toolkit → Ustawienia... → Reguły kart → Odblokowywanie**.
+
+Rozkłada w czasie osobne notatki z tym samym słowem (np. kilka znaczeń `beam`): wprowadza **jedno nowe znaczenie naraz**, a znaczenia już w nauce (karta non-NEW, `ivl < interval`) zostawia w spokoju. Zawiesza wyłącznie karty NEW.
+
+**`interval`** — próg dojrzałości w dniach. Znaczenie z kartą `ivl ≥ interval` jest dojrzałe → zwalnia miejsce dla następnego. Domyślnie `30`.
+
+**`field`** — pole, po którego wartości (trim + lowercase) grupowane są notatki. Domyślnie `"ang"`.
+
+**`note_types`** — lista modeli, w których moduł grupuje. **Pusta lista = wszystkie typy.** Domyślnie `["angielski"]` — chroni np. talię zdań, gdzie to samo zdanie w różnych lekcjach ma identyczne `ang`.
+
+**`tag`** — tag notatek z zawieszonymi przez moduł kartami. Domyślnie `"tk-homograph-suspended"`.
+
+**`ignore_tag`** — notatki z tym tagiem są pomijane. Domyślnie `"tk-homograph-ignored"`.
+
+**`show_tooltip`** — `true` (domyślnie) = tooltip z podsumowaniem po skanie po synchronizacji.
+
+Akcje: **Homograph Manager: przeskanuj całą kolekcję...** (ręczne odtworzenie stanu; ten sam skan co po syncu, samonaprawiający) oraz **Uwolnij karty zawieszone przez Homograph Manager...** (reset — odwiesza i zdejmuje tagi).
+
+```json
+"homograph_manager": {
+    "interval": 30,
+    "field": "ang",
+    "note_types": ["angielski"],
+    "tag": "tk-homograph-suspended",
+    "ignore_tag": "tk-homograph-ignored",
+    "show_tooltip": true
 }
 ```
 
