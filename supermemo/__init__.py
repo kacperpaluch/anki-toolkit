@@ -1,15 +1,19 @@
 """SuperMemo → talia docelowa: wypełnia proste pola nowej karty gotowymi
-danymi z zaimportowanych baz SuperMemo, zamiast tworzyć je od zera.
+danymi z bazy SuperMemo, zamiast tworzyć je od zera.
 
 Przycisk **SM** w edytorze bierze słowo z pola `match_field` (np. `ang`),
-znajduje notatkę SuperMemo w tej samej kolekcji i kopiuje zmapowane pola
-(`field_map`). Audio (`Sound`) reużywa plików już obecnych w mediach — zero
-zapytań do sieci. Przykłady i IPA są celowo pomijane (generujesz je osobno).
+znajduje wpis w `user_files/supermemo.json` i kopiuje zmapowane pola
+(`field_map`). Baza to zrzut zaimportowanych talii SuperMemo — trzymana poza
+kolekcją, żeby nie obciążała synchronizacji. Audio, obrazki i przykłady są
+celowo pomijane (audio dogrywasz modułem TTS).
 
-Znaczenia: gdy słowo ma w SM wiele wpisów (homonimy / różne poziomy),
+Znaczenia: gdy słowo ma w bazie wiele wpisów (homonimy / różne poziomy),
 pokazuje menu wyboru — nie zgaduje. Wypełniane są tylko puste pola docelowe,
 więc to co już wpisałeś/wygenerowałeś nie jest nadpisywane.
 """
+
+import json
+import os
 
 from aqt import mw
 from aqt.utils import tooltip
@@ -17,7 +21,10 @@ from aqt.qt import QMenu, QAction, QCursor
 from aqt.editor import Editor
 
 from ..common import ADDON_NAME, clean_html_normalized
-from .logic import build_query, fields_to_fill, truncate
+from .logic import fields_to_fill, truncate
+
+_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "user_files", "supermemo.json")
+_db_cache = None
 
 
 def _get_config() -> dict:
@@ -25,12 +32,23 @@ def _get_config() -> dict:
     return full.get("supermemo", {})
 
 
-def _fill_from(editor: Editor, sm_note, cfg: dict) -> None:
+def _load_db() -> dict:
+    """Wczytuje bazę raz i trzyma w pamięci (~5 MB JSON, ~17 tys. haseł)."""
+    global _db_cache
+    if _db_cache is None:
+        try:
+            with open(_DB_PATH, encoding="utf-8") as fh:
+                _db_cache = json.load(fh)
+        except (OSError, ValueError):
+            _db_cache = {}
+    return _db_cache
+
+
+def _fill_from(editor: Editor, sm_fields: dict, cfg: dict) -> None:
     note = editor.note
     if note is None:
         return
     existing = {k: note[k] for k in note.keys()}
-    sm_fields = {k: sm_note[k] for k in sm_note.keys()}
     updates = fields_to_fill(
         sm_fields, existing,
         cfg.get("field_map", {}), cfg.get("match_field", "ang"),
@@ -44,9 +62,9 @@ def _fill_from(editor: Editor, sm_note, cfg: dict) -> None:
     tooltip(f"SuperMemo: uzupełniono {len(updates)} pól.", parent=mw, period=2000)
 
 
-def _meaning_label(sm_note) -> str:
-    pol = clean_html_normalized(sm_note["Translation"]) if "Translation" in sm_note else ""
-    definition = clean_html_normalized(sm_note["Definition"]) if "Definition" in sm_note else ""
+def _meaning_label(entry: dict) -> str:
+    pol = clean_html_normalized(entry.get("Translation", ""))
+    definition = clean_html_normalized(entry.get("Definition", ""))
     parts = [p for p in (pol, truncate(definition)) if p]
     return " · ".join(parts) or "(bez tłumaczenia)"
 
@@ -64,26 +82,20 @@ def _on_fetch(editor: Editor) -> None:
             tooltip("SuperMemo: puste pole źródłowe.", parent=mw, period=2000)
             return
 
-        query = build_query(
-            cfg.get("source_note_type", "SuperMemo Extreme"),
-            cfg.get("source_match_field", "English"),
-            word,
-        )
-        nids = list(mw.col.find_notes(query))
-        if not nids:
+        entries = _load_db().get(word.strip().lower(), [])
+        if not entries:
             tooltip(f"SuperMemo: brak „{word}”.", parent=mw, period=2500)
             return
-        if len(nids) == 1:
-            _fill_from(editor, mw.col.get_note(nids[0]), cfg)
+        if len(entries) == 1:
+            _fill_from(editor, entries[0], cfg)
             return
 
         # >1 znaczenie — nie zgaduj, pokaż wybór.
         menu = QMenu(editor.widget)
-        for nid in nids:
-            sm_note = mw.col.get_note(nid)
-            action = QAction(_meaning_label(sm_note), menu)
+        for entry in entries:
+            action = QAction(_meaning_label(entry), menu)
             action.triggered.connect(
-                lambda _checked=False, n=sm_note: _fill_from(editor, n, cfg)
+                lambda _checked=False, e=entry: _fill_from(editor, e, cfg)
             )
             menu.addAction(action)
         menu.exec(QCursor.pos())

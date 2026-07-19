@@ -10,13 +10,6 @@ def clean_pos(value: str) -> str:
     return value.strip().rstrip(")").strip()
 
 
-def build_query(note_type: str, src_field: str, word: str) -> str:
-    """Zapytanie Anki dopasowujące dokładnie pole SM. Escapuje cudzysłów/backslash,
-    żeby słowo z apostrofem/spacją nie rozbiło składni ani nie wstrzyknęło filtra."""
-    safe = word.replace("\\", "\\\\").replace('"', '\\"')
-    return f'note:"{note_type}" "{src_field}:{safe}"'
-
-
 def truncate(text: str, limit: int = 60) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 

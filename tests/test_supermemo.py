@@ -20,7 +20,7 @@ logic = load_logic()
 
 FIELD_MAP = {
     "English": "ang", "Translation": "pol", "Definition": "def",
-    "Synonyms": "synonim", "PartOfSpeech": "cz_mowy", "Sound": "audio",
+    "Synonyms": "synonim", "PartOfSpeech": "cz_mowy",
 }
 
 
@@ -33,50 +33,39 @@ class CleanPosTests(unittest.TestCase):
         self.assertEqual(logic.clean_pos("adverb"), "adverb")
 
 
-class BuildQueryTests(unittest.TestCase):
-    def test_basic(self):
-        q = logic.build_query("SuperMemo Extreme", "English", "animal")
-        self.assertEqual(q, 'note:"SuperMemo Extreme" "English:animal"')
-
-    def test_escapes_quote_and_backslash(self):
-        # Apostrof/cudzysłów w słowie nie może rozbić zapytania.
-        q = logic.build_query("SM", "English", 'a"b\\c')
-        self.assertEqual(q, 'note:"SM" "English:a\\"b\\\\c"')
-
-
 class FieldsToFillTests(unittest.TestCase):
     def _sm(self):
         return {
             "English": "animal", "Translation": "zwierzę",
             "Definition": "a living organism", "Synonyms": "beast",
-            "PartOfSpeech": "n)", "Sound": "[sound:x.mp3]",
+            "PartOfSpeech": "n)",
         }
 
     def test_maps_and_cleans(self):
-        existing = {k: "" for k in ["ang", "pol", "def", "synonim", "cz_mowy", "audio", "IPA"]}
+        existing = {k: "" for k in ["ang", "pol", "def", "synonim", "cz_mowy", "IPA"]}
         out = logic.fields_to_fill(self._sm(), existing, FIELD_MAP, "ang")
         self.assertEqual(out["pol"], "zwierzę")
         self.assertEqual(out["cz_mowy"], "n")           # nawias obcięty
-        self.assertEqual(out["audio"], "[sound:x.mp3]")
+        self.assertEqual(out["synonim"], "beast")
         self.assertNotIn("ang", out)                    # pole dopasowania pominięte
 
     def test_skips_nonempty_targets(self):
         existing = {"ang": "", "pol": "już mam", "def": "", "synonim": "",
-                    "cz_mowy": "", "audio": ""}
+                    "cz_mowy": ""}
         out = logic.fields_to_fill(self._sm(), existing, FIELD_MAP, "ang")
         self.assertNotIn("pol", out)                    # nie nadpisuj
         self.assertIn("def", out)
 
     def test_skips_missing_target_fields(self):
         # Model docelowy nie ma pola 'synonim' → pomiń, bez błędu.
-        existing = {"ang": "", "pol": "", "def": "", "cz_mowy": "", "audio": ""}
+        existing = {"ang": "", "pol": "", "def": "", "cz_mowy": ""}
         out = logic.fields_to_fill(self._sm(), existing, FIELD_MAP, "ang")
         self.assertNotIn("synonim", out)
 
     def test_skips_empty_source(self):
         sm = self._sm()
         sm["Synonyms"] = ""
-        existing = {"ang": "", "pol": "", "def": "", "synonim": "", "cz_mowy": "", "audio": ""}
+        existing = {"ang": "", "pol": "", "def": "", "synonim": "", "cz_mowy": ""}
         out = logic.fields_to_fill(sm, existing, FIELD_MAP, "ang")
         self.assertNotIn("synonim", out)
 
