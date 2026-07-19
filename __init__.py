@@ -113,6 +113,14 @@ if _enabled("word_queue"):
     gui_hooks.editor_did_init_buttons.append(word_queue.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
+# supermemo — przycisk „SM” w edytorze: wypełnia proste pola gotowymi danymi
+# z zaimportowanych baz SuperMemo (bez tworzenia karty od zera)
+# ---------------------------------------------------------------------------
+if _enabled("supermemo"):
+    from . import supermemo
+    gui_hooks.editor_did_init_buttons.append(supermemo.on_editor_buttons_init)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.

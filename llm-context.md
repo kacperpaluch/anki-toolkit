@@ -30,6 +30,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | Talie filtrowane i presety powtórek | `filtered_deck/README.md` |
 | Rozkładanie homografów (osobne notatki, to samo słowo) | `homograph_manager/llm-context.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
+| Reużycie baz SuperMemo (przycisk „SM", mapowanie pól) | `supermemo/llm-context.md` |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |
 
@@ -67,6 +68,7 @@ nbsp_remover/            normalizacja HTML
 field_hider/             widoczność pól w Add Cards
 web_bridge/              lokalny serwer HTTP i userscript
 word_queue/              n8n DataTable i dock ze słownikami
+supermemo/               przycisk „SM": wypełnia pola z zaimportowanych baz SuperMemo
 tests/                   testy logiki bez działającej instancji Anki
 user_files/              trwałe dane robocze
 ```

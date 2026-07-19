@@ -19,6 +19,7 @@ class ModulesTab(QWidget):
         "field_hider":       "Ukrywanie pól — chowa pola w oknie „Dodaj”",
         "web_bridge":        "Słowniki → Anki — mostek HTTP do okna „Dodaj” (diki/Oxford/Longman, port 8766)",
         "word_queue":        "Kolejka słówek — po dodaniu karty odhacza słówko w n8n DataTable",
+        "supermemo":         "SuperMemo — przycisk „SM” wypełnia pola z zaimportowanej bazy SM",
     }
 
     def __init__(self, cfg: dict):

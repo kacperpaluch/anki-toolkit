@@ -11,7 +11,21 @@
     "homograph_manager": true,
     "field_hider": true,
     "web_bridge": true,
-    "word_queue": true
+    "word_queue": true,
+    "supermemo": true
+  },
+  "supermemo": {
+    "source_note_type": "SuperMemo Extreme",
+    "match_field": "ang",
+    "source_match_field": "English",
+    "field_map": {
+      "English": "ang",
+      "Translation": "pol",
+      "Definition": "def",
+      "Synonyms": "synonim",
+      "PartOfSpeech": "cz_mowy",
+      "Sound": "audio"
+    }
   },
   "dictionary": {
     "source_field": "ang",

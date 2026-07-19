@@ -88,6 +88,9 @@ Szczegóły: [Filtered Deck](filtered_deck/README.md),
 
 - **Word Queue** pobiera słowa z tabeli n8n, wyświetla słowniki w Anki i oznacza
   rekord po dodaniu notatki.
+- **SuperMemo** — przycisk „SM" wypełnia pola nowej karty gotowymi danymi
+  z zaimportowanych baz SuperMemo (tłumaczenie, definicja, synonimy, część mowy,
+  wymowa); przy wielu znaczeniach pokazuje wybór. Bez sieci — czyta lokalną kolekcję.
 - **Web Bridge** przyjmuje dane z userscriptu słownikowego na lokalnym adresie
   `127.0.0.1:8766`.
 - **Audio Normalizer** normalizuje nagrania przez `ffmpeg` zgodnie z EBU R128.
@@ -96,8 +99,9 @@ Szczegóły: [Filtered Deck](filtered_deck/README.md),
 - **HTML Cleanup** usuwa `&nbsp;` i normalizuje bloki `<div>`.
 - **Field Hider** chowa wybrane pola wyłącznie w oknie dodawania notatki.
 
-Szczegóły: [Word Queue](word_queue/README.md), [Web Bridge](web_bridge/README.md),
-[normalizacja audio](audio_normalizer/README.md) i [Audio Embed](audio_embed/README.md).
+Szczegóły: [Word Queue](word_queue/README.md), [SuperMemo](supermemo/README.md),
+[Web Bridge](web_bridge/README.md), [normalizacja audio](audio_normalizer/README.md)
+i [Audio Embed](audio_embed/README.md).
 
 ## Konfiguracja i dane
 

@@ -12,6 +12,7 @@ from .narzedzia_tab import (
     AudioEmbedSettings, FieldSplitterSettings, FilteredDeckSettings,
     HomographManagerSettings, HtmlCleanupSettings,
 )
+from .supermemo_tab import SuperMemoTab
 from .tts_tab import TTSTab
 from .word_queue_tab import WordQueueTab
 from .workflows_tab import WorkflowsTab
@@ -78,6 +79,7 @@ class WebBridgeInfo(QWidget):
 def integrations_page(cfg: dict) -> DomainTabs:
     return DomainTabs([
         ("Kolejka słówek", WordQueueTab(cfg)),
+        ("SuperMemo", SuperMemoTab(cfg)),
         ("Web Bridge", WebBridgeInfo()),
     ])
 
