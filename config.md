@@ -17,9 +17,30 @@ Każdy moduł można wyłączyć ustawiając `false`. Wyłączony moduł nie jes
     "homograph_manager": true,
     "field_hider":       true,
     "web_bridge":        true,
-    "word_queue":        true
+    "word_queue":        true,
+    "supermemo":         true,
+    "oxford":            true
 }
 ```
+
+---
+
+## Sekcja `oxford` — baza Oxford 5000 (przycisk „OX”)
+
+```json
+"oxford": {
+    "match_field": "ang"
+}
+```
+
+| Klucz | Znaczenie |
+|---|---|
+| `match_field` | pole notatki, z którego brane jest szukane słowo |
+
+Dane: `user_files/oxford.json` (`{ słowo_lower: [ {pola}, ... ] }`). Nazwy pól w
+JSON są identyczne z nazwami pól talii, więc mapowania nie ma. Klucze techniczne
+zaczynają się od `_` (`_level` — poziom CEFR pokazywany w menu wyboru znaczeń) i
+nigdy nie trafiają do notatki. Szczegóły: [oxford/README.md](oxford/README.md).
 
 ---
 

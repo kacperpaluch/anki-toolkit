@@ -92,6 +92,10 @@ Szczegóły: [Filtered Deck](filtered_deck/README.md),
   z baz SuperMemo (tłumaczenie, definicja, synonimy, część mowy); przy wielu
   znaczeniach pokazuje wybór. Bez sieci — czyta lokalny zrzut w `user_files/`,
   nieobciążający synchronizacji.
+- **Oxford 5000** — przycisk „OX" wypełnia pola z eksportu talii Oxford 5000
+  (tłumaczenie, definicja, IPA, część mowy, przykłady i wersje do nauki);
+  przy wielu znaczeniach pokazuje wybór z poziomem CEFR. Też lokalnie,
+  z `user_files/oxford.json`.
 - **Web Bridge** przyjmuje dane z userscriptu słownikowego na lokalnym adresie
   `127.0.0.1:8766`.
 - **Audio Normalizer** normalizuje nagrania przez `ffmpeg` zgodnie z EBU R128.
@@ -101,6 +105,7 @@ Szczegóły: [Filtered Deck](filtered_deck/README.md),
 - **Field Hider** chowa wybrane pola wyłącznie w oknie dodawania notatki.
 
 Szczegóły: [Word Queue](word_queue/README.md), [SuperMemo](supermemo/README.md),
+[Oxford 5000](oxford/README.md),
 [Web Bridge](web_bridge/README.md), [normalizacja audio](audio_normalizer/README.md)
 i [Audio Embed](audio_embed/README.md).
 

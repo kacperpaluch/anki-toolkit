@@ -12,7 +12,8 @@
     "field_hider": true,
     "web_bridge": true,
     "word_queue": true,
-    "supermemo": true
+    "supermemo": true,
+    "oxford": true
   },
   "supermemo": {
     "source_note_type": "SuperMemo Extreme",
@@ -25,6 +26,9 @@
       "Synonyms": "synonim",
       "PartOfSpeech": "cz_mowy"
     }
+  },
+  "oxford": {
+    "match_field": "ang"
   },
   "dictionary": {
     "source_field": "ang",

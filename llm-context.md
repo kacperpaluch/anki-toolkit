@@ -31,6 +31,7 @@ Przed zmianą przeczytaj tylko odpowiedni plik:
 | Rozkładanie homografów (osobne notatki, to samo słowo) | `homograph_manager/llm-context.md` |
 | Kolejka n8n, panel słowników, Web Bridge | `word_queue/llm-context.md` oraz README Web Bridge |
 | Reużycie baz SuperMemo (przycisk „SM", mapowanie pól) | `supermemo/llm-context.md` |
+| Baza Oxford 5000 (przycisk „OX", `user_files/oxford.json`) | `oxford/README.md` |
 | Prosty moduł narzędziowy | README modułu i jego kod |
 | Klucze konfiguracyjne | `config.md` i `config.json` |
 
@@ -69,6 +70,7 @@ field_hider/             widoczność pól w Add Cards
 web_bridge/              lokalny serwer HTTP i userscript
 word_queue/              n8n DataTable i dock ze słownikami
 supermemo/               przycisk „SM": wypełnia pola z zaimportowanych baz SuperMemo
+oxford/                  przycisk „OX": wypełnia pola z bazy Oxford 5000 (mapowanie 1:1)
 tests/                   testy logiki bez działającej instancji Anki
 user_files/              trwałe dane robocze
 ```

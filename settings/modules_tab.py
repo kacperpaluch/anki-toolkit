@@ -20,6 +20,7 @@ class ModulesTab(QWidget):
         "web_bridge":        "Słowniki → Anki — mostek HTTP do okna „Dodaj” (diki/Oxford/Longman, port 8766)",
         "word_queue":        "Kolejka słówek — po dodaniu karty odhacza słówko w n8n DataTable",
         "supermemo":         "SuperMemo — przycisk „SM” wypełnia pola z zaimportowanej bazy SM",
+        "oxford":            "Oxford 5000 — przycisk „OX” wypełnia pola z bazy Oxford (user_files/oxford.json)",
     }
 
     def __init__(self, cfg: dict):

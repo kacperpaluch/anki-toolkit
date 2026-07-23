@@ -121,6 +121,14 @@ if _enabled("supermemo"):
     gui_hooks.editor_did_init_buttons.append(supermemo.on_editor_buttons_init)
 
 # ---------------------------------------------------------------------------
+# oxford — przycisk „OX” w edytorze: wypełnia pola gotowymi danymi z eksportu
+# talii Oxford 5000 (user_files/oxford.json)
+# ---------------------------------------------------------------------------
+if _enabled("oxford"):
+    from . import oxford
+    gui_hooks.editor_did_init_buttons.append(oxford.on_editor_buttons_init)
+
+# ---------------------------------------------------------------------------
 # Browser context menu — single "Anki Toolkit" submenu
 # ---------------------------------------------------------------------------
 # ai_generator builds the workflows + its own (toggleable) field submenus.
