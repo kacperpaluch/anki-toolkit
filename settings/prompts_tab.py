@@ -824,6 +824,8 @@ class PromptsTab(QWidget):
             self._current_key = None
             return
         key = current.data(Qt.ItemDataRole.UserRole)
+        if key is None:
+            return  # header — visible but not a real entry
         self._load_key_to_editor(key)
 
     def _on_add(self) -> None:
