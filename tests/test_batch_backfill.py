@@ -1,6 +1,7 @@
 """Pure-logic tests for the batch backfill (no Anki, no network)."""
 
 import importlib.util
+import json
 import os
 import pathlib
 import sys
@@ -410,6 +411,193 @@ class JobStoreTests(unittest.TestCase):
         self.m._append_record({"id": "b2", "provider": "openai",
                                "status": "applied", "enq_tokens": 5000, "map": {}})
         self.assertEqual(self.m._pending_openai_tokens(), 1000)
+
+
+class OpenRouterSubmitTests(unittest.TestCase):
+    def test_build_items_includes_openrouter(self):
+        module = load_batch_backfill(_iter)
+        config = {"providers": {"openrouter": {"model": "m"}}}
+        note = FakeNote(3, {"A": ""},
+                        [({"provider": "openrouter", "prompt": "p"}, "A")])
+        items, skipped = module.build_items([note], config)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["provider"], "openrouter")
+        self.assertEqual(items[0]["model"], "m")
+
+    def test_summarize_includes_openrouter(self):
+        module = load_batch_backfill(_iter)
+        items = [{"provider": "openrouter", "model": "m"}]
+        self.assertEqual(module.summarize(items), "openrouter/m: 1")
+
+    def test_submit_one_batch_per_model(self):
+        module = load_batch_backfill(_iter)
+        config = {"providers": {"openrouter": {"api_key": "k", "model": "m"}}}
+        items = [
+            {"provider": "openrouter", "model": "m-a", "custom_id": "i0",
+             "prompt": "x", "nid": 1, "field": "A", "temperature": None},
+            {"provider": "openrouter", "model": "m-a", "custom_id": "i1",
+             "prompt": "x", "nid": 2, "field": "B", "temperature": None},
+            {"provider": "openrouter", "model": "m-b", "custom_id": "i2",
+             "prompt": "x", "nid": 3, "field": "C", "temperature": None},
+        ]
+        calls = []
+        def fake_submit(group, cfg):
+            calls.append([i["custom_id"] for i in group])
+            record = {"id": f"b{len(calls)}", "provider": "openrouter",
+                      "count": len(group), "status": "in_progress",
+                      "map": {i["custom_id"]: {"nid": i["nid"], "field": i["field"],
+                                               "model": i["model"]} for i in group}}
+            return record, None
+        with patch.object(module, "_submit_openrouter", side_effect=fake_submit), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(items, config)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(calls), 2)  # one batch per model
+        self.assertEqual([len(g) for g in calls], [2, 1])
+        self.assertEqual([r["provider"] for r in records], ["openrouter", "openrouter"])
+        self.assertEqual(records[0]["map"]["i1"]["nid"], 2)
+
+    def test_submit_error_surfaces_in_errors(self):
+        module = load_batch_backfill(_iter)
+        config = {"providers": {"openrouter": {"api_key": "k", "model": "m"}}}
+        items = [{"provider": "openrouter", "model": "m", "custom_id": "i0",
+                  "prompt": "x", "nid": 1, "field": "A", "temperature": None}]
+        with patch.object(module, "_submit_openrouter", return_value=(None, "boom")), \
+             patch.object(module, "_append_record"):
+            records, errors = module.submit(items, config)
+        self.assertEqual(records, [])
+        self.assertTrue(any("boom" in e for e in errors))
+
+
+def load_batch_openrouter():
+    """Load batch_openrouter.py with common/openai_compat stubbed."""
+    root_pkg = types.ModuleType("_bo"); root_pkg.__path__ = [str(ROOT)]
+    ai_pkg = types.ModuleType("_bo.ai_generator")
+    ai_pkg.__path__ = [str(ROOT / "ai_generator")]
+    providers_pkg = types.ModuleType("_bo.ai_generator.providers")
+    providers_pkg.__path__ = [str(ROOT / "ai_generator/providers")]
+    common_mod = types.ModuleType("_bo.common")
+    common_mod.post_json = lambda *a, **k: (b"{}", None)
+    common_mod.fetch_url = lambda *a, **k: None
+    oc_mod = types.ModuleType("_bo.ai_generator.providers.openai_compat")
+    oc_mod.add_temperature_if_supported = lambda data, model, temp: data.__setitem__("temperature", temp)
+    oc_mod.add_reasoning_effort_if_supported = lambda data, model, eff: None
+    modules = {
+        "_bo": root_pkg,
+        "_bo.ai_generator": ai_pkg,
+        "_bo.ai_generator.providers": providers_pkg,
+        "_bo.common": common_mod,
+        "_bo.ai_generator.providers.openai_compat": oc_mod,
+    }
+    name = "_bo.ai_generator.batch_openrouter"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "ai_generator/batch_openrouter.py")
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, modules):
+        spec.loader.exec_module(module)
+    return module
+
+
+class OpenRouterWireTests(unittest.TestCase):
+    def _module(self):
+        return load_batch_openrouter()
+
+    def test_submit_endpoint_and_model_before_requests(self):
+        """Order matters for OpenRouter's stream-parser: endpoint+model first."""
+        module = self._module()
+        captured = {}
+
+        def fake_post_json(url, payload, headers, **kw):
+            captured["body"] = json.loads(payload.decode("utf-8"))
+            return b'{"id": "batch_1"}', None
+
+        # Inject a fake post_json into the module namespace.
+        real_post = module.post_json
+        module.post_json = fake_post_json
+        try:
+            batch_id, err = module.submit_batch(
+                [{"provider": "openrouter", "model": "openai/gpt-4o",
+                  "custom_id": "i0", "prompt": "hello",
+                  "nid": 1, "field": "A", "temperature": 0.3}],
+                {"providers": {"openrouter": {"api_key": "k", "model": "m"}}},
+            )
+        finally:
+            module.post_json = real_post
+        self.assertIsNone(err)
+        self.assertEqual(batch_id, "batch_1")
+        body = captured["body"]
+        self.assertEqual(list(body.keys()), ["endpoint", "model", "requests"])
+        self.assertEqual(body["endpoint"], "/v1/chat/completions")
+        self.assertEqual(body["model"], "openai/gpt-4o:batch")
+        self.assertEqual(body["requests"][0]["custom_id"], "i0")
+        self.assertEqual(body["requests"][0]["body"]["temperature"], 0.3)
+        self.assertEqual(body["requests"][0]["body"]["messages"][0]["content"], "hello")
+
+    def test_batch_model_appends_suffix_once(self):
+        module = self._module()
+        self.assertEqual(module._batch_model("openai/gpt-4o"),
+                         "openai/gpt-4o:batch")
+        self.assertEqual(module._batch_model("google/gemini-3.7-flash"),
+                         "google/gemini-3.7-flash:batch")
+        self.assertEqual(module._batch_model("openai/gpt-4o:batch"),
+                         "openai/gpt-4o:batch")  # już ma sufiks — nie podwaja
+        self.assertEqual(module._batch_model(""), "")
+
+    def test_submit_missing_key(self):
+        module = self._module()
+        module.post_json = lambda *a, **k: (None, "stub")
+        batch_id, err = module.submit_batch(
+            [{"model": "m"}], {"providers": {"openrouter": {"api_key": ""}}})
+        self.assertIsNone(batch_id)
+        self.assertIn("klucza API OpenRouter", err)
+
+    def test_poll_pending_until_terminal(self):
+        module = self._module()
+        state = {"status": "validating"}
+
+        def fake_fetch_url(url, **kw):
+            return json.dumps(state).encode("utf-8")
+
+        real_fetch = module.fetch_url
+        module.fetch_url = fake_fetch_url
+        try:
+            status, results = module.poll_batch(
+                {"id": "b1"}, {"providers": {"openrouter": {"api_key": "k"}}})
+            self.assertEqual(status, "pending")
+            state["status"] = "finalizing"
+            status, _ = module.poll_batch(
+                {"id": "b1"}, {"providers": {"openrouter": {"api_key": "k"}}})
+            self.assertEqual(status, "pending")  # only terminal statuses end
+        finally:
+            module.fetch_url = real_fetch
+
+    def test_poll_completed_parses_inline_results(self):
+        module = self._module()
+        payload = {
+            "status": "completed",
+            "results": [
+                {"custom_id": "i0", "response": {"status_code": 200, "body": {
+                    "choices": [{"message": {"content": "answer A"}}]}}},
+                {"custom_id": "i1", "response": {"status_code": 200, "body": {
+                    "choices": [{"message": {"content": None}}]}}},
+            ],
+        }
+
+        def fake_fetch_url(url, **kw):
+            return json.dumps(payload).encode("utf-8")
+
+        real_fetch = module.fetch_url
+        module.fetch_url = fake_fetch_url
+        try:
+            status, results = module.poll_batch(
+                {"id": "b1"}, {"providers": {"openrouter": {"api_key": "k"}}})
+        finally:
+            module.fetch_url = real_fetch
+        self.assertEqual(status, "ended")
+        self.assertEqual(results, [
+            {"custom_id": "i0", "ok": True, "text": "answer A"},
+            {"custom_id": "i1", "ok": False, "text": None},
+        ])
 
 
 if __name__ == "__main__":

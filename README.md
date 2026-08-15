@@ -64,7 +64,8 @@ działać po zapisaniu dialogu.
 - **AI Generator** wypełnia pola notatki pojedynczo lub wsadowo. Obsługuje
   dostawców OpenAI, Anthropic, Google, OpenRouter, CometAPI, Mistral, NVIDIA NIM
   i OpenCode Go.
-- **Batch API** umożliwia asynchroniczny backfill przez OpenAI lub Anthropic.
+- **Batch API** umożliwia asynchroniczny backfill przez OpenAI, Anthropic lub
+  OpenRouter.
 - **Słownik** pobiera nagrania z Diki, Oxford, Cambridge i Longman; Wiktionary
   służy jako fallback IPA.
 - **TTS** generuje dźwięk przez lokalny serwer Kokoro albo OpenRouter.

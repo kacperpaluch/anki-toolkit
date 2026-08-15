@@ -1,17 +1,19 @@
-"""Batch backfill — async, ~50% cheaper bulk generation (Anthropic + OpenAI).
+"""Batch backfill — async, ~50% cheaper bulk generation (Anthropic + OpenAI + OpenRouter).
 
 Separate from the synchronous field_generator path. A provider-agnostic core
 (field selection, custom_id→field map, persistence, apply) sits over thin
 per-provider backends that hide the very different wire protocols:
 
-  * Anthropic — requests inline in the create body; results via results_url.
-  * OpenAI    — upload a JSONL input file (Files API), create a batch by
-                file id; results downloaded from an output file. One model
-                per batch, so OpenAI items are grouped by model.
+  * Anthropic    — requests inline in the create body; results via results_url.
+  * OpenAI       — upload a JSONL input file (Files API), create a batch by
+                   file id; results downloaded from an output file. One model
+                   per batch, so OpenAI items are grouped by model.
+  * OpenRouter   — inline requests (JSON body, no file upload), one model per
+                   batch; results come back inline in the batch object.
 
 Both give ~50% off and a 24h window. Other providers don't expose a
-compatible batch endpoint, so only anthropic/openai fields are eligible.
-This module is pure logic (no aqt); UI actions live in browser_ui.py.
+compatible batch endpoint, so only anthropic/openai/openrouter fields are
+eligible. This module is pure logic (no aqt); UI actions live in browser_ui.py.
 
 Limitations (v1): no fallback; dependent fields use the note's state at submit
 time (batch parents first, apply, then children); results are written only
@@ -37,12 +39,14 @@ from .batch_anthropic import submit_batch as _anthropic_submit_batch
 from .batch_openai import cleanup_files as _cleanup_openai_files
 from .batch_openai import poll_batch as _openai_poll_batch
 from .batch_openai import submit_batch as _openai_submit_batch
+from .batch_openrouter import poll_batch as _openrouter_poll_batch
+from .batch_openrouter import submit_batch as _openrouter_submit_batch
 from .field_generator import iter_note_fields
 from .template_engine import render_template
 
 logger = logging.getLogger(__name__)
 
-_ELIGIBLE_PROVIDERS = ("anthropic", "openai")
+_ELIGIBLE_PROVIDERS = ("anthropic", "openai", "openrouter")
 
 # OpenAI enqueues (input + reserved output) tokens from every pending batch
 # against an org-wide cap (2M on lower tiers). One giant batch blows that cap and
@@ -247,8 +251,8 @@ def build_items(notes, config: dict, only_fields=None) -> tuple:
 
     items: [{custom_id, provider, model, prompt, nid, field, temperature}] —
     one per empty, eligible field. custom_id is unique across the whole submit.
-    skipped: eligible fields whose provider isn't anthropic/openai, or that
-    have no resolvable model.
+    skipped: eligible fields whose provider isn't anthropic/openai/openrouter,
+    or that have no resolvable model.
 
     only_fields: restrict to those target field names; None = all empty
     non-manual fields (same selection as the sync auto batch).
@@ -334,6 +338,20 @@ def submit(items, config: dict) -> tuple:
         else:
             errors.append(f"Anthropic: {err}")
 
+    # OpenRouter: one batch per model, inline JSON (no file upload, no token
+    # budget / enqueued-cap logic — the API accepts any volume directly).
+    openrouter_by_model = defaultdict(list)
+    for i in items:
+        if i["provider"] == "openrouter":
+            openrouter_by_model[i["model"]].append(i)
+    for model, group in openrouter_by_model.items():
+        rec, err = _submit_openrouter(group, config)
+        if rec:
+            _append_record(rec)
+            records.append(rec)
+        else:
+            errors.append(f"OpenRouter ({model}): {err}")
+
     budget = int(config.get("openai_batch_token_budget") or _OPENAI_TOKEN_BUDGET)
     reserve = int(config.get("openai_batch_output_reserve") or _OPENAI_OUTPUT_RESERVE)
     by_model = defaultdict(list)
@@ -417,7 +435,19 @@ def _poll_openai(record: dict, config: dict) -> tuple:
     return _openai_poll_batch(record, config)
 
 
-_POLLERS = {"anthropic": _poll_anthropic, "openai": _poll_openai}
+def _submit_openrouter(items, config: dict) -> tuple:
+    batch_id, err = _openrouter_submit_batch(items, config)
+    if not batch_id:
+        return None, err
+    return _new_record(batch_id, "openrouter", items), None
+
+
+def _poll_openrouter(record: dict, config: dict) -> tuple:
+    return _openrouter_poll_batch(record, config)
+
+
+_POLLERS = {"anthropic": _poll_anthropic, "openai": _poll_openai,
+            "openrouter": _poll_openrouter}
 
 
 # --------------------------------------------------------------------------

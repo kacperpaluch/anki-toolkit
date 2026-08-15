@@ -150,7 +150,8 @@ def _run_batch(browser: Browser, nids, config: dict,
 
 
 # ---------------------------------------------------------------------------
-# Anthropic Batch API backfill — async, ~50% cheaper (separate from sync path)
+# Batch API backfill — async, ~50% cheaper (Anthropic + OpenAI + OpenRouter;
+# separate from the sync path)
 # ---------------------------------------------------------------------------
 
 def _on_batch_submit(browser: Browser, only_fields=None):
@@ -171,7 +172,7 @@ def _on_batch_submit(browser: Browser, only_fields=None):
 
     items, skipped = batch_backfill.build_items(notes, config, only_fields=only_fields)
     if not items:
-        msg = "Brak pustych pól z dostawcą Anthropic/OpenAI w zaznaczeniu."
+        msg = "Brak pustych pól z dostawcą Anthropic/OpenAI/OpenRouter w zaznaczeniu."
         if skipped:
             msg += f" (pominięto {skipped} pól z innym dostawcą lub bez modelu)"
         tooltip(msg, period=6000)
@@ -185,7 +186,7 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         f"pól przy starcie Anki lub po kliknięciu „Sprawdź batche”."
     )
     if skipped:
-        text += f"\n\nPominięto {skipped} pól (dostawca inny niż Anthropic/OpenAI lub brak modelu)."
+        text += f"\n\nPominięto {skipped} pól (dostawca inny niż Anthropic/OpenAI/OpenRouter lub brak modelu)."
     text += "\n\nWysłać?"
     if not askUser(text, title="Batch API — potwierdzenie", parent=browser):
         return
@@ -322,8 +323,8 @@ def _advance_jobs(config: dict):
         # Build note-by-note and stop at the token budget — rendering prompts
         # for the WHOLE remainder (tens of thousands of fields) every poll
         # tick just to defer them again froze the UI for no gain.
-        # ponytail: anthropic items also count toward the (OpenAI) cap; they'd
-        # merely wait one extra tick.
+        # ponytail: anthropic/openrouter items also count toward the (OpenAI)
+        # cap; they'd merely wait one extra tick — no budget of their own.
         for nid in job.get("nids", []):
             if tok >= cap:
                 capped = True
@@ -556,7 +557,7 @@ def add_to_context_menu(browser: Browser, menu):
                 gen_menu.addAction(action)
 
     if cm.get("ai_fields", True):
-        batch_menu = menu.addMenu("Batch API (Anthropic/OpenAI, tańszy)")
+        batch_menu = menu.addMenu("Batch API (Anthropic/OpenAI/OpenRouter, tańszy)")
         submit_all = QAction("Wyślij zaznaczone — wszystkie pola", browser)
         qconnect(submit_all.triggered, lambda: _on_batch_submit(browser))
         batch_menu.addAction(submit_all)
