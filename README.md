@@ -18,6 +18,61 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 | [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources — Ustawienia…** |
 | [Integrations](anki_toolkit_integrations/README.md) | Kolejka słówek n8n, fallback Tailscale, panel słowników i Web Bridge. | **Narzędzia → Anki Toolkit: Integrations** |
 
+## Opis dodatków
+
+### Content
+
+Główne narzędzie do budowania treści kart. Pozwala generować wybrane pola przez
+modele AI, pobierać nagrania i IPA ze słowników, tworzyć audio przez TTS oraz
+dzielić dłuższe pole z przykładami na kolejne pola notatki. Konfigurujesz tu
+prompty, dostawców AI, zadania TTS i akcje dostępne w edytorze albo Browserze.
+
+### Learning
+
+Tworzy lub odświeża talie filtrowane z gotowych presetów: karty uczone ostatnio,
+trudne, wszystkie nie-nowe albo losowe. Wybierasz preset i limit kart, a oceny
+w takiej talii nie zmieniają zwykłego harmonogramu powtórek.
+
+### Audio Normalizer
+
+Wyrównuje głośność plików w katalogu mediów Anki przez `ffmpeg`. Można uruchomić
+normalizację ręcznie dla całej kolekcji albo włączyć watcher, który po krótkim
+opóźnieniu normalizuje nowe pliki z TTS, słowników, synchronizacji lub ręcznego
+dodania.
+
+### Audio Embed
+
+Przepisuje znaczniki `[sound:plik.mp3]` w wybranych polach na elementy `<audio>`.
+To przydaje się zwłaszcza dla przykładów i pól pomocniczych, gdzie chcesz własny
+wygląd odtwarzacza CSS. Dodatek nie pobiera audio i nie zależy od jego źródła.
+
+### HTML Cleanup
+
+Czyści artefakty z wklejanego HTML: zamienia `&nbsp;` na zwykłe spacje i
+normalizuje tagi `<div>`. Działa automatycznie przy dodawaniu notatek, a na
+żądanie może przeskanować całą kolekcję jednym krokiem cofania.
+
+### Field Hider
+
+Pozwala ukryć pola pomocnicze tylko w oknie Dodaj, bez zmiany modelu notatki i
+bez ukrywania ich w Browserze. Jest przydatny, gdy część pól ma być później
+wypełniana przez inne dodatki, ale nie powinna rozpraszać przy ręcznym wpisie.
+
+### Local Sources
+
+Wykorzystuje lokalne eksporty Oxford 5000 i SuperMemo przechowywane poza
+kolekcją. Przyciski **OX** i **SM** znajdują hasło, pozwalają wybrać znaczenie
+i uzupełniają wyłącznie puste pola; nie wymagają sieci ani nie nadpisują Twojej
+treści.
+
+### Integrations
+
+Łączy Anki z kolejką słówek w n8n DataTable. Panel 📚 pobiera wiersze, wpisuje
+hasło do notatki, pokazuje strony słowników w zakładkach i odhaczą wiersz po
+dodaniu karty. Obsługuje adres domowy n8n oraz adres zapasowy przez Tailscale.
+Web Bridge przyjmuje dane z userscriptu słownika i wpisuje je do otwartego okna
+Dodaj.
+
 ## Instalacja w wersji deweloperskiej
 
 Każdy katalog `anki_toolkit_*` jest samodzielnym dodatkiem Anki. W środowisku
@@ -33,23 +88,6 @@ ln -s "/ścieżka/do/anki-toolkit/anki_toolkit_content" \
 Po dodaniu, usunięciu lub przełączeniu dodatku uruchom Anki ponownie. Nie
 instaluj równocześnie starego, scalonego Anki Toolkit ani dwóch dodatków,
 które realizują tę samą funkcję.
-
-## Typowy przepływ tworzenia kart
-
-```text
-n8n / słownik / ręczne hasło
-          ↓
-Content: AI, definicje i przykłady
-          ↓
-Content: słownik lub TTS
-          ↓
-Content: rozdzielenie przykładów na pola
-          ↓
-Audio Embed / Audio Normalizer
-```
-
-Możesz używać tylko wybranych kroków. Workflowy w Content łączą AI, słownik,
-TTS i Field Splitter w kolejności dostosowanej do Twojego typu notatki.
 
 ## Konfiguracja i dane prywatne
 
