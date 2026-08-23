@@ -1,0 +1,7 @@
+{
+  "note_types": ["angielski"],
+  "fields": ["przyklad", "p1", "p2", "p3", "p4", "p5"],
+  "css_class": "ex-audio",
+  "preload": "none",
+  "scan_on_sync": true
+}

@@ -1,0 +1,1 @@
+{"word_queue":{"n8n_url":"","fallback_url":"","api_key":"","table_id":"","word_field":"ang","word_column":"Slowko","flag_column":"Anki","link_columns":{"diki":"URL","Longman":"Longman","Oxford":"Oxford"},"page_size":250,"max_rows":5000,"random_order":false},"web_bridge":{"port":8766}}

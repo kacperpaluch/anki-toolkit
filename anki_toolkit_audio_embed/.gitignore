@@ -1,0 +1,9 @@
+# Runtime configuration and data written by Anki. Never commit user settings.
+meta.json
+user_files/
+*.log
+
+# Python and OS artefacts.
+__pycache__/
+*.py[cod]
+.DS_Store

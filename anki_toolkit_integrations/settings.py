@@ -1,0 +1,9 @@
+from aqt import mw
+from aqt.qt import QDialog,QDialogButtonBox,QFormLayout,QLabel,QLineEdit,QVBoxLayout
+from aqt.utils import tooltip
+class Settings(QDialog):
+ def __init__(self):
+  super().__init__(mw);self.setWindowTitle('Anki Toolkit: Integrations — Ustawienia');c=mw.addonManager.getConfig(__package__) or {};q=c.get('word_queue',{});box=QVBoxLayout(self);x=QLabel('Kolejka słówek pobiera DataTable z n8n; adres zapasowy może być domeną Tailscale. Zmiany wymagają ponownego otwarcia panelu.');x.setWordWrap(True);box.addWidget(x);f=QFormLayout();self.url=QLineEdit(q.get('n8n_url',''));self.fallback=QLineEdit(q.get('fallback_url',''));self.key=QLineEdit(q.get('api_key',''));self.key.setEchoMode(QLineEdit.EchoMode.Password);self.table=QLineEdit(q.get('table_id',''));self.field=QLineEdit(q.get('word_field','ang'));self.word=QLineEdit(q.get('word_column','Slowko'));self.flag=QLineEdit(q.get('flag_column','Anki'));f.addRow('Adres n8n:',self.url);f.addRow('Adres zapasowy:',self.fallback);f.addRow('Klucz API:',self.key);f.addRow('ID tabeli:',self.table);f.addRow('Pole notatki:',self.field);f.addRow('Kolumna słowa:',self.word);f.addRow('Kolumna flagi:',self.flag);box.addLayout(f);b=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);b.accepted.connect(self.save);b.rejected.connect(self.reject);box.addWidget(b)
+ def save(self):
+  c=mw.addonManager.getConfig(__package__) or {};q=c.setdefault('word_queue',{});q.update({'n8n_url':self.url.text().strip(),'fallback_url':self.fallback.text().strip(),'api_key':self.key.text().strip(),'table_id':self.table.text().strip(),'word_field':self.field.text().strip(),'word_column':self.word.text().strip(),'flag_column':self.flag.text().strip()});mw.addonManager.writeConfig(__package__,c);tooltip('Ustawienia Integrations zapisane.',parent=mw);self.accept()
+def open_settings():Settings().exec()
