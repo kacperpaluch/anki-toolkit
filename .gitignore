@@ -30,3 +30,9 @@ Thumbs.db
 
 # vexp index (lokalne dane narzędzia)
 .vexp/
+
+# Agentbox — pliki generowane lokalnie
+.codex/
+.opencode/
+.skillbox/
+.mcp.json
