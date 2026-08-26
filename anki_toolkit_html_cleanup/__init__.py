@@ -8,7 +8,7 @@ from aqt.operations import CollectionOp
 from aqt.qt import QAction, QMessageBox, QTimer
 from aqt.utils import tooltip
 
-from .cleaning import clean_field
+from .cleaning import clean_field, default_rules
 
 
 _DEFAULTS = {
@@ -24,7 +24,11 @@ def _addon_name() -> str:
 
 
 def get_config() -> dict:
-    return {**_DEFAULTS, **(mw.addonManager.getConfig(_addon_name()) or {})}
+    config = {**_DEFAULTS, **(mw.addonManager.getConfig(_addon_name()) or {})}
+    # Configs written before rules were editable carry only skip_field.
+    if not config.get("rules"):
+        config["rules"] = default_rules(config.get("skip_field", "ang"))
+    return config
 
 
 def save_config(changes: dict) -> None:
@@ -33,7 +37,7 @@ def save_config(changes: dict) -> None:
     mw.addonManager.writeConfig(_addon_name(), config)
 
 
-def _tooltip(parent, counts: dict) -> None:
+def _tooltip(parent, counts: dict, rules: list) -> None:
     if not get_config().get("show_tooltip", True):
         return
     total = sum(counts.values())
@@ -41,23 +45,19 @@ def _tooltip(parent, counts: dict) -> None:
         tooltip("Nie znaleziono elementów HTML wymagających czyszczenia.", parent=parent)
         return
     parts = [f"Wyczyszczono elementy HTML: {total}"]
-    if counts["nbsp"]:
-        parts.append(f"&nbsp; → spacja: {counts['nbsp']}")
-    if counts["div"]:
-        parts.append(f"Usunięte tagi <div>: {counts['div']}")
-    if counts["div_br"]:
-        parts.append(f"Bloki <div> → <br>: {counts['div_br']}")
+    for index, count in sorted(counts.items()):
+        name = rules[index].get("name") or rules[index].get("find", "")
+        parts.append(f"{name}: {count}")
     tooltip("<br>".join(parts), parent=parent)
 
 
-def _clean_note(note, skip_field: str) -> tuple[bool, dict]:
-    counts = {"nbsp": 0, "div": 0, "div_br": 0}
+def _clean_note(note, rules: list) -> tuple[bool, dict]:
+    counts: dict = {}
     changed = False
     for name, value in note.items():
-        cleaned, nbsp_count, div_count, div_br_count = clean_field(name, value, skip_field)
-        counts["nbsp"] += nbsp_count
-        counts["div"] += div_count
-        counts["div_br"] += div_br_count
+        cleaned, field_counts = clean_field(name, value, rules)
+        for index, count in field_counts.items():
+            counts[index] = counts.get(index, 0) + count
         if cleaned != value:
             note[name] = cleaned
             changed = True
@@ -70,39 +70,40 @@ def _on_add_cards_init(add_cards) -> None:
 
 
 def _on_add_note(note) -> None:
-    config = get_config()
-    changed, counts = _clean_note(note, config.get("skip_field", "ang"))
+    rules = get_config()["rules"]
+    changed, counts = _clean_note(note, rules)
     if not changed:
         return
     mw.col.update_note(note)
     parent = _add_cards_ref() if _add_cards_ref is not None else mw
-    _tooltip(parent, counts)
+    _tooltip(parent, counts, rules)
 
 
 def clean_collection() -> None:
-    config = get_config()
-    counters = {"nbsp": 0, "div": 0, "div_br": 0}
-    skip_field = config.get("skip_field", "ang")
+    rules = get_config()["rules"]
+    counters: dict = {}
 
     def operation(collection: Collection) -> OpChanges:
         changed_notes = []
         for note_id in collection.find_notes(""):
             note = collection.get_note(note_id)
-            changed, counts = _clean_note(note, skip_field)
+            changed, counts = _clean_note(note, rules)
             for key, value in counts.items():
-                counters[key] += value
+                counters[key] = counters.get(key, 0) + value
             if changed:
                 changed_notes.append(note)
         return collection.update_notes(changed_notes) if changed_notes else OpChanges()
 
-    CollectionOp(parent=mw, op=operation).success(lambda _changes: _tooltip(mw, counters)).run_in_background()
+    CollectionOp(parent=mw, op=operation).success(
+        lambda _changes: _tooltip(mw, counters, rules)
+    ).run_in_background()
 
 
 def _confirm_collection_cleanup() -> None:
     result = QMessageBox.question(
         mw,
         "Wyczyść HTML w kolekcji",
-        "Wyczyścić &nbsp; i tagi <div> we wszystkich notatkach?\n\n"
+        "Zastosować wszystkie włączone reguły czyszczenia do wszystkich notatek?\n\n"
         "Operację można cofnąć jednym krokiem w menu Edycja → Cofnij.",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No,

@@ -1,5 +1,42 @@
 {
   "show_tooltip": true,
   "auto_run_startup": false,
-  "skip_field": "ang"
+  "rules": [
+    {
+      "on": true,
+      "name": "&nbsp; → spacja",
+      "find": "&nbsp;",
+      "to": " ",
+      "regex": false,
+      "fields": "",
+      "repeat": false
+    },
+    {
+      "on": true,
+      "name": "Bloki <div> → <br>",
+      "find": "<div[^>]*>((?:(?!</?div\\b).)*?)</div>",
+      "to": "\\1<br>",
+      "regex": true,
+      "fields": "!ang",
+      "repeat": true
+    },
+    {
+      "on": true,
+      "name": "Usuń tagi <div>",
+      "find": "</?div[^>]*>",
+      "to": "",
+      "regex": true,
+      "fields": "ang",
+      "repeat": false
+    },
+    {
+      "on": true,
+      "name": "Obetnij końcowy <br>",
+      "find": "<br>\\s*$",
+      "to": "",
+      "regex": true,
+      "fields": "!ang",
+      "repeat": false
+    }
+  ]
 }
