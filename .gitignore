@@ -36,3 +36,5 @@ Thumbs.db
 .opencode/
 .skillbox/
 .mcp.json
+opencode.json
+opencode.jsonc
