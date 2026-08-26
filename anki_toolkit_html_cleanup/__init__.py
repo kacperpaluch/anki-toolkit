@@ -128,6 +128,7 @@ def _setup_menu(*_args) -> None:
     cleanup = QAction("Wyczyść HTML w kolekcji…", menu)
     cleanup.triggered.connect(_confirm_collection_cleanup)
     menu.addAction(cleanup)
+    mw.addonManager.setConfigAction(_addon_name(), open_settings)
 
 
 gui_hooks.add_cards_did_init.append(_on_add_cards_init)

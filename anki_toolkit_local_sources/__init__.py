@@ -58,6 +58,7 @@ def _buttons(buttons,editor):
 gui_hooks.editor_did_init_buttons.append(_buttons)
 def _menu(*_):
  from .settings import open_settings
- action=QAction('Anki Toolkit: Local Sources — Ustawienia…',mw);action.triggered.connect(open_settings);mw.form.menuTools.addAction(action)
+ action=QAction('Anki Toolkit: Local Sources…',mw);action.triggered.connect(open_settings);mw.form.menuTools.addAction(action)
+ mw.addonManager.setConfigAction(_name(),open_settings)
 if hasattr(gui_hooks,'main_window_did_init'):gui_hooks.main_window_did_init.append(_menu)
 else:QTimer.singleShot(0,_menu)

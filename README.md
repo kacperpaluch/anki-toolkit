@@ -15,7 +15,7 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 | [Audio Embed](anki_toolkit_audio_embed/README.md) | Zamiana `[sound:...]` na odtwarzacze HTML5 w wybranych polach. | **Narzędzia → Anki Toolkit: Audio Embed** |
 | [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
 | [Field Hider](anki_toolkit_field_hider/README.md) | Ukrywanie pomocniczych pól tylko w oknie Dodaj. | **Narzędzia → Anki Toolkit: Field Hider…** |
-| [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources — Ustawienia…** |
+| [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources…** |
 | [Integrations](anki_toolkit_integrations/README.md) | Kolejka słówek n8n, fallback Tailscale, panel słowników i Web Bridge. | **Narzędzia → Anki Toolkit: Integrations** |
 
 ## Opis dodatków
@@ -93,8 +93,10 @@ które realizują tę samą funkcję.
 
 ## Konfiguracja i dane prywatne
 
-Każdy dodatek ma własne ustawienia dostępne z menu **Narzędzia**. `config.json`
-jest bezpiecznym szablonem domyślnym, a rzeczywiste ustawienia profilu Anki są
+Każdy dodatek ma własne ustawienia dostępne z menu **Narzędzia**. Ten sam
+dialog otwiera przycisk **Config** przy dodatku w **Narzędzia → Dodatki** —
+żaden dodatek nie pokazuje już surowego edytora JSON. `config.json` jest
+bezpiecznym szablonem domyślnym, a rzeczywiste ustawienia profilu Anki są
 zapisywane w `meta.json` dodatku.
 
 Pliki trwałe, takie jak lokalne bazy Oxford/SuperMemo, stan Batch API czy

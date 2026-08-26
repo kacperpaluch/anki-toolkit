@@ -72,6 +72,7 @@ def _setup_menu(*_args):
     menu = mw.form.menuTools.addMenu("Anki Toolkit: Audio Normalizer")
     configure = QAction("Ustawienia…", menu); configure.triggered.connect(open_settings); menu.addAction(configure); menu.addSeparator()
     run = QAction("Normalizuj audio (ffmpeg)…", menu); run.triggered.connect(_confirm); menu.addAction(run)
+    mw.addonManager.setConfigAction(_addon_name(), open_settings)
 
 gui_hooks.profile_did_open.append(_start_watcher)
 if hasattr(gui_hooks, "main_window_did_init"): gui_hooks.main_window_did_init.append(_setup_menu)

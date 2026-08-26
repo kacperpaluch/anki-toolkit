@@ -11,5 +11,6 @@ def _menu(*_):
  menu=mw.form.menuTools.addMenu('Anki Toolkit: Integrations')
  a=QAction('Ustawienia…',menu);a.triggered.connect(open_settings);menu.addAction(a)
  a=QAction('Kolejka słówek (n8n)…',menu);a.triggered.connect(word_queue.open_queue);menu.addAction(a)
+ mw.addonManager.setConfigAction(__name__,open_settings)
 if hasattr(gui_hooks,'main_window_did_init'):gui_hooks.main_window_did_init.append(_menu)
 else:QTimer.singleShot(0,_menu)

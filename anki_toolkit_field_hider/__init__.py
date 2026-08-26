@@ -100,6 +100,7 @@ def _setup_menu(*_args) -> None:
     action = QAction("Anki Toolkit: Field Hider…", mw)
     action.triggered.connect(open_settings)
     mw.form.menuTools.addAction(action)
+    mw.addonManager.setConfigAction(_addon_name(), open_settings)
 
 
 if hasattr(gui_hooks, "main_window_did_init"):

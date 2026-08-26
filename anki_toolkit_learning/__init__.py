@@ -39,6 +39,8 @@ def show_presets():
     dialog=PresetDialog()
     if dialog.exec(): create_filtered_deck(*dialog.values())
 def _setup(*_args):
+    from .settings import open_settings
     action=QAction("Anki Toolkit: Learning…", mw); action.triggered.connect(show_presets); mw.form.menuTools.addAction(action)
+    mw.addonManager.setConfigAction(_addon_name(), open_settings)
 if hasattr(gui_hooks,"main_window_did_init"): gui_hooks.main_window_did_init.append(_setup)
 else: QTimer.singleShot(0,_setup)

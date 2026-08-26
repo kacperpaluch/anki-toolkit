@@ -153,6 +153,7 @@ def _setup_menu(*_args) -> None:
     run = QAction("Osadź audio w kolekcji…", menu)
     run.triggered.connect(_run_on_collection)
     menu.addAction(run)
+    mw.addonManager.setConfigAction(_addon_name(), open_settings)
 
 
 gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)
