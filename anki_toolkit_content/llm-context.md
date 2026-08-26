@@ -31,6 +31,8 @@ Workflowy uruchamiają te kroki sekwencyjnie dla jednej notatki.
 
 ## Interfejs
 
-**Narzędzia → Anki Toolkit: Content → Ustawienia…** otwiera workflowy, AI,
-TTS, słownik i Field Splitter. Browser ma jedno submenu Content; przyciski
-edytora rejestrują AI, słownik i TTS.
+**Narzędzia → Anki Toolkit: Content…** otwiera od razu okno ustawień
+(workflowy, AI, TTS, słownik, Field Splitter) — bez pośredniego submenu.
+Ten sam dialog podpięty jest pod przycisk Config w menedżerze dodatków
+(`setConfigAction`). Browser ma jedno submenu Content; przyciski edytora
+rejestrują AI, słownik i TTS.

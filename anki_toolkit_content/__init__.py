@@ -13,6 +13,7 @@ from anki.hooks import addHook
 addHook('browser.onContextMenu',_context)
 def _menu(*_):
  from .content_settings import open_settings
- menu=mw.form.menuTools.addMenu('Anki Toolkit: Content');a=QAction('Ustawienia…',menu);a.triggered.connect(open_settings);menu.addAction(a)
+ a=QAction('Anki Toolkit: Content…',mw);a.triggered.connect(open_settings);mw.form.menuTools.addAction(a)
+ mw.addonManager.setConfigAction(__name__,open_settings)
 if hasattr(gui_hooks,'main_window_did_init'):gui_hooks.main_window_did_init.append(_menu)
 else:QTimer.singleShot(0,_menu)
