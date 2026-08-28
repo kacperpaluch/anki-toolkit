@@ -24,10 +24,12 @@ technicznymi.
 ## Dostawcy AI bez klucza API
 
 Oprócz dostawców na klucz (OpenAI, Anthropic, Google, OpenRouter, CometAPI,
-Mistral, NVIDIA, OpenCode Go) dostępny jest **Codex CLI** — generowanie przez
-lokalnie zainstalowanego, zalogowanego Codeksa, na limitach planu ChatGPT
-zamiast płatnego API. Szczegóły i wymagania: [AI Generator →
-Codex CLI](ai_generator/README.md#codex-cli--dostawca-lokalny-bez-klucza-api).
+Mistral, NVIDIA, OpenCode Go) są dwaj dostawcy lokalni: **Codex CLI** i
+**Claude CLI**. Uruchamiają zainstalowany i zalogowany oficjalny klient
+(`codex` albo `claude`), więc generowanie idzie na limity Twojej subskrypcji —
+ChatGPT albo Claude — zamiast na płatne API. Dodatek nigdy nie widzi tokenu.
+Szczegóły i wymagania: [AI Generator → Dostawcy
+lokalni](ai_generator/README.md#dostawcy-lokalni--generowanie-bez-klucza-api).
 
 ## Konfiguracja i dane
 

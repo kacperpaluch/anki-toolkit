@@ -130,6 +130,14 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
         "reasoning_effort": "low",
         "cli_timeout": 180,
         "fallback_model": ""
+    },
+    "claude_cli": {
+        "api_key": "",
+        "binary_path": "",
+        "system_prompt": "",
+        "model": "haiku",
+        "cli_timeout": 180,
+        "fallback_model": ""
     }
 }
 ```
@@ -160,25 +168,33 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
 | `nvidia` | `integrate.api.nvidia.com` | build.nvidia.com |
 | `opencode_go` | `opencode.ai/zen/go/v1` | opencode.ai/auth |
 | `codex_cli` | lokalna binarka `codex` | **bez klucza** — `codex login` |
+| `claude_cli` | lokalna binarka `claude` | **bez klucza** — `claude auth login` |
 
-### Codex CLI — dostawca lokalny bez klucza API
+### Dostawcy lokalni — generowanie bez klucza API
 
-`codex_cli` nie łączy się z żadnym API bezpośrednio. Uruchamia lokalnie zainstalowaną binarkę `codex` (oficjalny klient OpenAI), która jest już zalogowana subskrypcją ChatGPT. Zużycie idzie na limity Twojego planu, nie na płatne API.
+`codex_cli` i `claude_cli` nie łączą się z żadnym API bezpośrednio. Uruchamiają lokalnie zainstalowaną, zalogowaną binarkę oficjalnego klienta (`codex` albo `claude`). Zużycie idzie na limity Twojej subskrypcji, nie na płatne API — dodatek nigdy nie widzi tokenu.
 
-**Wymagania:** [Codex CLI](https://developers.openai.com/codex) zainstalowany i zalogowany przez `codex login` (tryb ChatGPT). Ustawienia → Generowanie AI → Dostawcy → Codex CLI pokazuje wykrytą ścieżkę i status logowania (przycisk **Odśwież**).
+Obaj dostawcy zachowują się tak samo w tych punktach:
 
-**Konfiguracja:**
+- **Wykrywanie binarki.** Puste `binary_path` = autodetekcja. Przeszukiwany jest `PATH` **rozszerzony** o typowe katalogi instalacji (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/bin`), a potem lokalizacje charakterystyczne dla danego klienta. Rozszerzenie jest konieczne, bo aplikacja GUI na macOS nie dziedziczy `PATH`-u z powłoki: Anki uruchomione z Findera dostaje z launchd tylko `/usr/bin:/bin:/usr/sbin:/sbin` i bez tego nie znalazłoby niczego z Homebrew.
+- **Środowisko procesu.** Wycięte do `PATH`, `HOME`, `USER`/`LOGNAME` i kilku zmiennych regionalnych — pozostałe klucze API z tej wtyczki nie trafiają w zasięg uruchamianego CLI. `USER`/`LOGNAME` muszą zostać, bo bez nich odczyt keychaina na macOS zawodzi i zalogowane CLI raportuje brak logowania.
+- **Status w UI.** Ustawienia → Generowanie AI → Dostawcy pokazują wykrytą ścieżkę i stan logowania (przycisk **Odśwież**); ✓ na liście dostawców oznacza gotowość, nie obecność klucza.
+- **Ograniczenia.** `temperature` jest ignorowana (żaden z klientów jej nie wystawia), Batch API nie działa (wymaga klucza), a prompt idzie przez stdin, nie przez `argv`.
+
+#### Codex CLI (subskrypcja ChatGPT)
+
+**Wymagania:** [Codex CLI](https://developers.openai.com/codex) zainstalowany i zalogowany przez `codex login` (tryb ChatGPT).
 
 | Klucz | Znaczenie |
 |---|---|
-| `binary_path` | Ścieżka do `codex`. Puste = autodetekcja: PATH, potem `/Applications/ChatGPT.app/Contents/Resources/codex` |
+| `binary_path` | Ścieżka do `codex`. Puste = autodetekcja; dodatkowy kandydat: `/Applications/ChatGPT.app/Contents/Resources/codex` |
 | `codex_home` | `CODEX_HOME` z logowaniem. Puste = zmienna środowiskowa albo `~/.codex` |
 | `cli_timeout` | Limit czasu jednego `codex exec` (domyślnie 180 s). Globalny `request_timeout` jest liczony pod HTTP i bywa za krótki dla rozumowania |
 | `reasoning_effort` | `low`/`medium`/`high`/`xhigh`/`max`/`ultra` → `-c model_reasoning_effort=…`. Niższy = mniej zużytego limitu planu |
 
 **Czego ten dostawca nie robi:** nie czyta ani nie kopiuje tokenu z `auth.json` — zagląda tam wyłącznie po `auth_mode`, żeby pokazać status logowania. Nie ma tu żadnego własnego OAuth ani wywołań do `chatgpt.com/backend-api`.
 
-**Utwardzenie.** Treść pól notatki to dane niezaufane (talie bywają pobierane z internetu), a Codex jest agentem z dostępem do powłoki — nie zwykłym endpointem czatowym. Każde uruchomienie dostaje na sztywno:
+**Utwardzenie.** Treść pól notatki to dane niezaufane (talie bywają pobierane z internetu), a Codex jest agentem z dostępem do powłoki. Shella nie da się wyłączyć, więc agent trafia do sandboksa:
 
 ```
 --sandbox read-only     brak zapisu i brak sieci dla agenta
@@ -188,14 +204,40 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
 --ignore-rules          bez plików .rules z dysku
 ```
 
-Środowisko procesu jest wycięte do `PATH`, `HOME` i `CODEX_HOME`, więc pozostałe klucze API z tej wtyczki nie trafiają w zasięg agenta. Prompt idzie przez stdin, nie przez `argv`.
+**Dodatkowe ograniczenia:** każde wywołanie niesie preambułę agentową rzędu kilku tysięcy tokenów, a modele są zawężone do tych, które dopuszcza konto ChatGPT — modele `*-codex-*` zwykle są odrzucane komunikatem *„not supported when using Codex with a ChatGPT account"*.
 
-**Ograniczenia:**
+#### Claude CLI (subskrypcja Claude)
 
-- `temperature` jest ignorowana — Codex jej nie wystawia. Steruj przez `reasoning_effort`.
-- Batch API (`batch_openai.py`, `batch_anthropic.py`) nie działa — wymaga klucza. Ten dostawca obsługuje tylko tryb per-notatka.
-- Każde wywołanie niesie preambułę agentową Codeksa (rząd kilku tysięcy tokenów), więc hurtowe generowanie zjada limit planu znacznie szybciej niż zwykłe API.
-- Modele są ograniczone do tych, które konto ChatGPT dopuszcza — modele `*-codex-*` zwykle są odrzucane z komunikatem *„not supported when using Codex with a ChatGPT account"*.
+**Wymagania:** [Claude Code](https://claude.com/claude-code) zainstalowany i zalogowany przez `claude auth login` na koncie z subskrypcją (Pro/Max). Logowanie samym kluczem API jest odrzucane — do tego służy dostawca `anthropic`.
+
+| Klucz | Znaczenie |
+|---|---|
+| `binary_path` | Ścieżka do `claude`. Puste = autodetekcja; dodatkowy kandydat: `~/.claude/local/claude` |
+| `system_prompt` | Zastępuje systemowy prompt Claude Code. Puste = domyślny prompt generatora fiszek |
+| `cli_timeout` | Limit czasu jednego `claude -p` (domyślnie 180 s) |
+| `model` | Alias (`haiku`, `sonnet`, `opus`, `fable`) albo pełna nazwa (np. `claude-sonnet-5`) |
+
+**Czego ten dostawca nie robi:** nie dotyka poświadczeń. Token siedzi w keychainie systemu, a status logowania pochodzi z `claude auth status --json`, które tokenu nie zwraca.
+
+**Izolacja.** Mocniejsza niż przy Codeksie, bo nie wymaga sandboksa — `--tools ""` **usuwa wszystkie narzędzia**, więc wstrzyknięta treść fiszki nie ma czego wywołać:
+
+```
+--tools ""                  zero narzędzi: brak shella, plików i sieci
+--strict-mcp-config         bez serwerów MCP użytkownika
+--disable-slash-commands    bez skilli z dysku
+--no-session-persistence    bez zapisu treści fiszek na dysk
+<pusty katalog roboczy>     bez wciągania CLAUDE.md z katalogu startowego Anki
+```
+
+Nigdy nie używamy `--bare`: wymusza `ANTHROPIC_API_KEY` i nie czyta OAuth ani keychaina, więc rozwaliłoby uwierzytelnienie subskrypcją.
+
+**Narzut tokenów.** `--system-prompt` **zastępuje** prompt Claude Code, a nie go rozszerza — to główny powód, dla którego ten dostawca nadaje się do generowania hurtowego:
+
+| Wywołanie | Tokeny wejścia na fiszkę |
+|---|---|
+| `codex exec` | ~5300 |
+| `claude -p` domyślnie | ~2500 |
+| `claude -p --system-prompt …` | **~280** |
 
 ### Pobieranie dostępnych modeli
 
@@ -212,6 +254,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `nvidia` | `GET /v1/models` | nie (publiczne) |
 | `opencode_go` | `GET /zen/go/v1/models` | tak |
 | `codex_cli` | `model/list` przez `codex app-server` | nie (lokalne logowanie) |
+| `claude_cli` | aliasy rodzin modeli (CLI nie wystawia listy) | nie (lokalne logowanie) |
 
 Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
 
@@ -236,6 +279,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 | `opencode_go` | `glm-5.1` | Alternatywa |
 | `codex_cli` | `gpt-5.4-mini` | Najtańszy w limicie planu — dobry do fiszek |
 | `codex_cli` | `gpt-5.5` | Silniejszy, szybciej zjada limit |
+| `claude_cli` | `haiku` | Najtańszy w limicie planu — dobry do fiszek |
+| `claude_cli` | `sonnet` | Silniejszy, szybciej zjada limit |
 
 ### Typy notatek
 

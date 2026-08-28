@@ -14,7 +14,6 @@ nie zwykłym endpointem czatowym.
 
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 import time
@@ -22,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from .base import BaseProvider
+from .local_cli import clean_env, find_executable
 
 # Binarka Codeksa spoza PATH-u — ChatGPT.app wozi własną kopię.
 CHATGPT_APP_BINARY = "/Applications/ChatGPT.app/Contents/Resources/codex"
@@ -44,15 +44,7 @@ _RETRYABLE_MARKERS = (
 
 def find_binary(configured: str = "") -> Optional[str]:
     """Ścieżka do `codex`: z konfiguracji, z PATH-u, albo z ChatGPT.app."""
-    configured = (configured or "").strip()
-    if configured:
-        return configured if os.access(configured, os.X_OK) else None
-    found = shutil.which("codex")
-    if found:
-        return found
-    if os.access(CHATGPT_APP_BINARY, os.X_OK):
-        return CHATGPT_APP_BINARY
-    return None
+    return find_executable("codex", configured, (CHATGPT_APP_BINARY,))
 
 
 def codex_home(configured: str = "") -> Path:
@@ -88,21 +80,12 @@ def login_status(home: Optional[Path] = None) -> tuple[bool, str]:
 
 
 def _clean_env(home: Path) -> dict:
-    """Minimalne środowisko dla procesu potomnego.
+    """Środowisko procesu potomnego z przypiętym CODEX_HOME.
 
-    Codex nie dostaje odziedziczonych zmiennych, więc pozostałe klucze API
-    z tej wtyczki nie trafiają w zasięg agenta.
+    Bez jawnego CODEX_HOME binarka potrafi użyć prywatnego home'a, w którym
+    nie ma logowania z aplikacji ChatGPT.
     """
-    env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": os.environ.get("HOME", str(Path.home())),
-        "CODEX_HOME": str(home),
-    }
-    for passthrough in ("TMPDIR", "LANG", "LC_ALL", "USERPROFILE", "SystemRoot"):
-        value = os.environ.get(passthrough)
-        if value:
-            env[passthrough] = value
-    return env
+    return clean_env({"CODEX_HOME": str(home)})
 
 
 def _is_retryable(message: str) -> bool:

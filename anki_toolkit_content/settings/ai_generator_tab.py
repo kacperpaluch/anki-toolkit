@@ -21,20 +21,40 @@ _PROVIDER_NAMES = list(PROVIDERS)
 _OPENAI_REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"]
 # Poziomy rozumowania Codeksa — zwracane przez `model/list` app-servera.
 _CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"]
-# Provider lokalny: uwierzytelnia się przez `codex login`, nie przez klucz.
-_LOCAL_PROVIDERS = ("codex_cli",)
+# Dostawcy lokalni: uwierzytelniają się własnym CLI, nie kluczem API.
+# Wartość to nazwa binarki — używana w etykietach i komunikatach.
+_LOCAL_PROVIDERS = {"codex_cli": "codex", "claude_cli": "claude"}
 
 
-def _codex_status_text() -> tuple[bool, str]:
-    """(gotowy, opis) — instalacja i logowanie Codeksa, bez czytania tokenu."""
-    try:
-        from ..ai_generator.providers.codex_cli import find_binary, login_status
-    except ImportError:
-        from ai_generator.providers.codex_cli import find_binary, login_status
-    binary = find_binary()
+def _local_provider_module(name: str):
+    """Moduł dostawcy lokalnego — import działa i w Anki, i standalone.
+
+    Oba moduły wystawiają ten sam interfejs: `find_binary()`, `login_status()`
+    i `fetch_models()`.
+    """
+    if name == "codex_cli":
+        try:
+            from ..ai_generator.providers import codex_cli as mod
+        except ImportError:
+            from ai_generator.providers import codex_cli as mod
+    else:
+        try:
+            from ..ai_generator.providers import claude_cli as mod
+        except ImportError:
+            from ai_generator.providers import claude_cli as mod
+    return mod
+
+
+def _local_status_text(name: str) -> tuple[bool, str]:
+    """(gotowy, opis) — instalacja i logowanie CLI, bez czytania tokenu."""
+    mod = _local_provider_module(name)
+    binary_name = _LOCAL_PROVIDERS.get(name, name)
+    binary = mod.find_binary()
     if binary is None:
-        return False, "✗ Nie znaleziono binarki `codex` — zainstaluj Codex CLI"
-    ok, detail = login_status()
+        return False, f"✗ Nie znaleziono binarki `{binary_name}`"
+    # Codex czyta `auth_mode` z auth.json, Claude woła `claude auth status`;
+    # żadna z tych dróg nie zwraca tokenu.
+    ok, detail = mod.login_status()
     return ok, f"{'✓' if ok else '✗'} {binary}\n{detail}"
 
 
@@ -197,20 +217,22 @@ class AIGeneratorTab(QWidget):
                 prov_form.addRow("Status:", status_row)
 
                 binary_path = _expanding_line_edit(p.get("binary_path", ""))
+                binary_name = _LOCAL_PROVIDERS[name]
                 binary_path.setPlaceholderText(
-                    "puste = wykryj automatycznie (PATH, potem ChatGPT.app)")
+                    "puste = wykryj automatycznie (najpierw PATH)")
                 binary_path.setToolTip(
-                    "Ścieżka do binarki `codex`. Puste pole = wykrywanie "
-                    "automatyczne: najpierw PATH, potem kopia z ChatGPT.app."
+                    f"Ścieżka do binarki `{binary_name}`. Puste pole = "
+                    "wykrywanie automatyczne: najpierw PATH, potem typowa "
+                    "lokalizacja instalacji."
                 )
-                prov_form.addRow("Ścieżka do codex:", binary_path)
+                prov_form.addRow(f"Ścieżka do {binary_name}:", binary_path)
 
                 cli_timeout = QSpinBox()
                 cli_timeout.setRange(30, 900)
                 cli_timeout.setValue(int(p.get("cli_timeout", 180) or 180))
                 cli_timeout.setSuffix(" s")
                 cli_timeout.setToolTip(
-                    "Limit czasu jednego uruchomienia `codex exec`.\n"
+                    "Limit czasu jednego uruchomienia CLI.\n"
                     "Rozumowanie trwa dłużej niż zwykłe żądanie HTTP, więc "
                     "globalny timeout z sekcji Zaawansowane jest tu za krótki."
                 )
@@ -316,6 +338,22 @@ class AIGeneratorTab(QWidget):
                 prov_form.addRow("Poziom reasoning:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
                 refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
+            elif name == "claude_cli":
+                widgets["binary_path"] = binary_path
+                widgets["cli_timeout"] = cli_timeout
+                widgets["status_label"] = status
+                system_prompt = _expanding_line_edit(p.get("system_prompt", ""))
+                system_prompt.setPlaceholderText(
+                    "puste = domyślny prompt generatora fiszek")
+                system_prompt.setToolTip(
+                    "Zastępuje (nie rozszerza) systemowy prompt Claude Code.\n"
+                    "Dzięki temu wejście spada z ~2500 do ~280 tokenów na "
+                    "wywołanie — przy hurtowym generowaniu to różnica rzędu\n"
+                    "wielkości w zużyciu limitu planu."
+                )
+                prov_form.addRow("System prompt:", system_prompt)
+                widgets["system_prompt"] = system_prompt
+                refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
             elif name == "opencode_go":
                 reasoning_line = _expanding_line_edit(p.get("reasoning_effort", ""))
                 reasoning_line.setPlaceholderText("np. max (DeepSeek V4), high, medium — puste = wyłączone")
@@ -407,7 +445,7 @@ class AIGeneratorTab(QWidget):
         if widgets.get("is_local"):
             # Gotowość providera lokalnego to stan instalacji i logowania
             # Codeksa, nie zawartość pola klucza.
-            ready, text = _codex_status_text()
+            ready, text = _local_status_text(name)
             label = widgets.get("status_label")
             if label is not None:
                 label.setText(text)
@@ -451,12 +489,8 @@ class AIGeneratorTab(QWidget):
 
         try:
             from ..ai_generator.providers.model_discovery import fetch_models
-            from ..ai_generator.providers.codex_cli import (
-                fetch_models as fetch_codex_models)
         except ImportError:
             from ai_generator.providers.model_discovery import fetch_models
-            from ai_generator.providers.codex_cli import (
-                fetch_models as fetch_codex_models)
 
         from aqt import mw
 
@@ -467,10 +501,11 @@ class AIGeneratorTab(QWidget):
 
         def task():
             if is_local:
-                # Lista modeli zależy od zalogowanego konta, nie od klucza —
-                # bierzemy ją z lokalnego app-servera, respektując ścieżkę
-                # wpisaną w tym dialogu (także jeszcze niezapisaną).
-                return fetch_codex_models(w["binary_path"].text().strip())
+                # Lista modeli zależy od lokalnej instalacji, nie od klucza —
+                # pytamy moduł dostawcy, respektując ścieżkę wpisaną w tym
+                # dialogu (także jeszcze niezapisaną).
+                return _local_provider_module(provider_name).fetch_models(
+                    w["binary_path"].text().strip())
             return fetch_models(provider_name, api_key, force=True)
 
         def on_done(fut):
@@ -484,8 +519,8 @@ class AIGeneratorTab(QWidget):
                     btn.setText("Pobierz")
                 if not models:
                     hint = (
-                        "Sprawdź, czy `codex` jest zainstalowany i zalogowany "
-                        "(`codex login`)."
+                        f"Sprawdź, czy `{_LOCAL_PROVIDERS.get(provider_name, '')}` "
+                        "jest zainstalowany i zalogowany."
                         if is_local
                         else "Sprawdź klucz API i połączenie z internetem."
                     )
@@ -545,6 +580,9 @@ class AIGeneratorTab(QWidget):
             if "binary_path" in w:
                 ai["providers"][name]["binary_path"] = w["binary_path"].text().strip()
                 ai["providers"][name]["cli_timeout"] = w["cli_timeout"].value()
+            if "system_prompt" in w:
+                ai["providers"][name]["system_prompt"] = \
+                    w["system_prompt"].text().strip()
             if "reasoning_effort" in w:
                 re_widget = w["reasoning_effort"]
                 if hasattr(re_widget, "currentText"):

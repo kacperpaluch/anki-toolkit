@@ -275,6 +275,11 @@ def fetch_models(provider: str, api_key: str = "", force: bool = False) -> list[
         return fetch_nvidia_models(force)
     elif provider == "opencode_go":
         return fetch_opencode_go_models(api_key, force)
+    elif provider == "claude_cli":
+        # CLI nie wystawia listy modeli — aliasy zawsze wskazują na najnowszą
+        # wersję rodziny, a pełne nazwy można wpisać ręcznie.
+        from .claude_cli import fetch_models as fetch_claude_models
+        return fetch_claude_models()
     elif provider == "codex_cli":
         # Lokalny app-server zna modele dostępne dla zalogowanego konta —
         # nie ma tu klucza API ani endpointu do odpytania.

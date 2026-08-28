@@ -322,6 +322,18 @@
         "cached_models": [],
         "rpm": 0,
         "max_concurrent": 1
+      },
+      "claude_cli": {
+        "api_key": "",
+        "binary_path": "",
+        "system_prompt": "",
+        "model": "haiku",
+        "temperature": 0.2,
+        "cli_timeout": 180,
+        "fallback_model": "",
+        "cached_models": [],
+        "rpm": 0,
+        "max_concurrent": 1
       }
     },
     "note_types": {

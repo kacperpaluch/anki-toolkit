@@ -3,6 +3,7 @@ from .anthropic import AnthropicProvider
 from .google import GoogleProvider
 from .opencode_go import OpenCodeGoProvider
 from .codex_cli import CodexCLIProvider
+from .claude_cli import ClaudeCLIProvider
 
 
 # The Bearer-auth chat-completions providers differ only in endpoint, label
@@ -49,6 +50,7 @@ PROVIDERS = {
     "nvidia": NvidiaProvider,
     "opencode_go": OpenCodeGoProvider,
     "codex_cli": CodexCLIProvider,
+    "claude_cli": ClaudeCLIProvider,
 }
 
 # Display names for the UI — keys stay as config identifiers.
@@ -62,6 +64,7 @@ PROVIDER_LABELS = {
     "nvidia": "NVIDIA NIM",
     "opencode_go": "OpenCode Go",
     "codex_cli": "Codex CLI (ChatGPT)",
+    "claude_cli": "Claude CLI (subskrypcja)",
 }
 
 
