@@ -199,6 +199,7 @@ Obaj dostawcy zachowują się tak samo w tych punktach:
 ```
 --sandbox read-only     brak zapisu i brak sieci dla agenta
 -C <pusty katalog>      katalog tymczasowy, nie repozytorium użytkownika
+--skip-git-repo-check   katalog roboczy nie musi być repozytorium
 --ephemeral             bez zapisu sesji z treścią fiszek na dysk
 --ignore-user-config    bez cudzych hooków i serwerów MCP
 --ignore-rules          bez plików .rules z dysku
