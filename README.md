@@ -26,6 +26,9 @@ Główne narzędzie do budowania treści kart. Pozwala generować wybrane pola p
 modele AI, pobierać nagrania i IPA ze słowników, tworzyć audio przez TTS oraz
 dzielić dłuższe pole z przykładami na kolejne pola notatki. Konfigurujesz tu
 prompty, dostawców AI, zadania TTS i akcje dostępne w edytorze albo Browserze.
+Oprócz dostawców na klucz API dostępny jest **Codex CLI** — generowanie przez
+lokalnie zainstalowanego, zalogowanego Codeksa, na limitach Twojego planu
+ChatGPT zamiast płatnego API.
 
 ### Learning
 

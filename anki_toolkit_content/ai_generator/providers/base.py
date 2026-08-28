@@ -15,10 +15,18 @@ from ...common.http import post_json
 
 
 class BaseProvider(ABC):
+    # Providery lokalne (Codex CLI) uwierzytelniają się poza wtyczką —
+    # field_generator pomija dla nich wymóg klucza.
+    REQUIRES_API_KEY: bool = True
+
     def __init__(self, api_key: str, model: str, temperature: float,
                  max_retries: int = 3, timeout: int = 30,
                  max_tokens: Optional[int] = None,
-                 reasoning_effort: Optional[str] = None):
+                 reasoning_effort: Optional[str] = None,
+                 options: Optional[dict] = None):
+        # Pełna sekcja konfiguracji providera — dla ustawień spoza wspólnego
+        # zestawu (np. ścieżka do binarki Codeksa).
+        self.options = options or {}
         self.api_key = api_key
         self.model = model
         self.temperature = temperature

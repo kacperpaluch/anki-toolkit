@@ -121,6 +121,15 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
         "temperature": 0.6,
         "reasoning_effort": "max",
         "fallback_model": "deepseek-v4-flash"
+    },
+    "codex_cli": {
+        "api_key": "",
+        "binary_path": "",
+        "codex_home": "",
+        "model": "gpt-5.4-mini",
+        "reasoning_effort": "low",
+        "cli_timeout": 180,
+        "fallback_model": ""
     }
 }
 ```
@@ -150,6 +159,43 @@ W UI dostawcy są w **Ustawienia → Generowanie AI → Dostawcy**. Każdy dosta
 | `mistral` | `api.mistral.ai` | console.mistral.ai |
 | `nvidia` | `integrate.api.nvidia.com` | build.nvidia.com |
 | `opencode_go` | `opencode.ai/zen/go/v1` | opencode.ai/auth |
+| `codex_cli` | lokalna binarka `codex` | **bez klucza** — `codex login` |
+
+### Codex CLI — dostawca lokalny bez klucza API
+
+`codex_cli` nie łączy się z żadnym API bezpośrednio. Uruchamia lokalnie zainstalowaną binarkę `codex` (oficjalny klient OpenAI), która jest już zalogowana subskrypcją ChatGPT. Zużycie idzie na limity Twojego planu, nie na płatne API.
+
+**Wymagania:** [Codex CLI](https://developers.openai.com/codex) zainstalowany i zalogowany przez `codex login` (tryb ChatGPT). Ustawienia → Generowanie AI → Dostawcy → Codex CLI pokazuje wykrytą ścieżkę i status logowania (przycisk **Odśwież**).
+
+**Konfiguracja:**
+
+| Klucz | Znaczenie |
+|---|---|
+| `binary_path` | Ścieżka do `codex`. Puste = autodetekcja: PATH, potem `/Applications/ChatGPT.app/Contents/Resources/codex` |
+| `codex_home` | `CODEX_HOME` z logowaniem. Puste = zmienna środowiskowa albo `~/.codex` |
+| `cli_timeout` | Limit czasu jednego `codex exec` (domyślnie 180 s). Globalny `request_timeout` jest liczony pod HTTP i bywa za krótki dla rozumowania |
+| `reasoning_effort` | `low`/`medium`/`high`/`xhigh`/`max`/`ultra` → `-c model_reasoning_effort=…`. Niższy = mniej zużytego limitu planu |
+
+**Czego ten dostawca nie robi:** nie czyta ani nie kopiuje tokenu z `auth.json` — zagląda tam wyłącznie po `auth_mode`, żeby pokazać status logowania. Nie ma tu żadnego własnego OAuth ani wywołań do `chatgpt.com/backend-api`.
+
+**Utwardzenie.** Treść pól notatki to dane niezaufane (talie bywają pobierane z internetu), a Codex jest agentem z dostępem do powłoki — nie zwykłym endpointem czatowym. Każde uruchomienie dostaje na sztywno:
+
+```
+--sandbox read-only     brak zapisu i brak sieci dla agenta
+-C <pusty katalog>      katalog tymczasowy, nie repozytorium użytkownika
+--ephemeral             bez zapisu sesji z treścią fiszek na dysk
+--ignore-user-config    bez cudzych hooków i serwerów MCP
+--ignore-rules          bez plików .rules z dysku
+```
+
+Środowisko procesu jest wycięte do `PATH`, `HOME` i `CODEX_HOME`, więc pozostałe klucze API z tej wtyczki nie trafiają w zasięg agenta. Prompt idzie przez stdin, nie przez `argv`.
+
+**Ograniczenia:**
+
+- `temperature` jest ignorowana — Codex jej nie wystawia. Steruj przez `reasoning_effort`.
+- Batch API (`batch_openai.py`, `batch_anthropic.py`) nie działa — wymaga klucza. Ten dostawca obsługuje tylko tryb per-notatka.
+- Każde wywołanie niesie preambułę agentową Codeksa (rząd kilku tysięcy tokenów), więc hurtowe generowanie zjada limit planu znacznie szybciej niż zwykłe API.
+- Modele są ograniczone do tych, które konto ChatGPT dopuszcza — modele `*-codex-*` zwykle są odrzucane z komunikatem *„not supported when using Codex with a ChatGPT account"*.
 
 ### Pobieranie dostępnych modeli
 
@@ -165,6 +211,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `mistral` | `GET /v1/models` | tak |
 | `nvidia` | `GET /v1/models` | nie (publiczne) |
 | `opencode_go` | `GET /zen/go/v1/models` | tak |
+| `codex_cli` | `model/list` przez `codex app-server` | nie (lokalne logowanie) |
 
 Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
 
@@ -187,6 +234,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 | `opencode_go` | `deepseek-v4-flash` | Bardzo tani, szybki |
 | `opencode_go` | `kimi-k2.6` | Dobry do kodowania |
 | `opencode_go` | `glm-5.1` | Alternatywa |
+| `codex_cli` | `gpt-5.4-mini` | Najtańszy w limicie planu — dobry do fiszek |
+| `codex_cli` | `gpt-5.5` | Silniejszy, szybciej zjada limit |
 
 ### Typy notatek
 

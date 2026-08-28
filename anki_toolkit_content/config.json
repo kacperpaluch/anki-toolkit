@@ -309,6 +309,19 @@
         "reasoning_effort": "max",
         "fallback_model": "",
         "cached_models": []
+      },
+      "codex_cli": {
+        "api_key": "",
+        "binary_path": "",
+        "codex_home": "",
+        "model": "gpt-5.4-mini",
+        "temperature": 0.2,
+        "reasoning_effort": "low",
+        "cli_timeout": 180,
+        "fallback_model": "",
+        "cached_models": [],
+        "rpm": 0,
+        "max_concurrent": 1
       }
     },
     "note_types": {

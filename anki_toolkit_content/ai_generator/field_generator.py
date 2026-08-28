@@ -11,7 +11,7 @@ from anki.notes import Note
 from ..common import clean_html_normalized, safe_str
 
 from .template_engine import render_template
-from .providers import get_provider, BaseProvider
+from .providers import get_provider, BaseProvider, PROVIDERS
 
 logger = logging.getLogger(__name__)
 
@@ -204,8 +204,12 @@ class FieldGenerator:
             self._providers[cache_key] = None
             return None
 
+        # Providery lokalne (Codex CLI) uwierzytelniają się poza wtyczką —
+        # dla nich pusty klucz jest stanem poprawnym, nie brakiem konfiguracji.
+        provider_cls = PROVIDERS.get(provider_name)
+        requires_key = getattr(provider_cls, "REQUIRES_API_KEY", True)
         api_key = provider_cfg.get("api_key", "")
-        if not api_key or api_key.startswith("YOUR_"):
+        if requires_key and (not api_key or api_key.startswith("YOUR_")):
             self.last_error = (f"Brak klucza API dla providera '{provider_name}' — "
                                f"uzupełnij w Ustawienia → AI Generator → Dostawcy.")
             logger.error(self.last_error)

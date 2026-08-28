@@ -275,4 +275,13 @@ def fetch_models(provider: str, api_key: str = "", force: bool = False) -> list[
         return fetch_nvidia_models(force)
     elif provider == "opencode_go":
         return fetch_opencode_go_models(api_key, force)
+    elif provider == "codex_cli":
+        # Lokalny app-server zna modele dostępne dla zalogowanego konta —
+        # nie ma tu klucza API ani endpointu do odpytania.
+        from .codex_cli import fetch_models as fetch_codex_models
+        try:
+            return fetch_codex_models()
+        except Exception as e:
+            logger.error(f"Codex CLI: nie udało się pobrać modeli: {e}")
+            return []
     return []

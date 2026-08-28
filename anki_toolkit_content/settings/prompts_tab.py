@@ -25,7 +25,7 @@ from ..common.ui import (
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
 )
-from ..ai_generator.providers import PROVIDER_LABELS
+from ..ai_generator.providers import PROVIDER_LABELS, PROVIDERS
 
 _VAR_RE = re.compile(r'{{(.*?)}}')
 _IF_RE = re.compile(r'{%\s*if\s+([^%]+)%}')
@@ -192,10 +192,19 @@ class PromptsTab(QWidget):
                     "temperature":       field_cfg.get("temperature"),
                 }
 
-        # Default provider for a new prompt: first one with a real API key.
+        # Default provider for a new prompt: first usable one. "Usable" is a
+        # real API key, or — for local providers like Codex CLI — a model,
+        # since those authenticate outside the add-on.
         self._default_provider = "openai"
         for name, p in ai.get("providers", {}).items():
-            if isinstance(p, dict) and _has_real_key(p.get("api_key", "")):
+            if not isinstance(p, dict):
+                continue
+            cls = PROVIDERS.get(name)
+            if getattr(cls, "REQUIRES_API_KEY", True):
+                usable = _has_real_key(p.get("api_key", ""))
+            else:
+                usable = bool(p.get("model", "").strip())
+            if usable:
                 self._default_provider = name
                 break
 

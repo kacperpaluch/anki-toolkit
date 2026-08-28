@@ -2,6 +2,7 @@ from .base import BaseProvider, OpenAICompatProvider
 from .anthropic import AnthropicProvider
 from .google import GoogleProvider
 from .opencode_go import OpenCodeGoProvider
+from .codex_cli import CodexCLIProvider
 
 
 # The Bearer-auth chat-completions providers differ only in endpoint, label
@@ -47,6 +48,7 @@ PROVIDERS = {
     "mistral": MistralProvider,
     "nvidia": NvidiaProvider,
     "opencode_go": OpenCodeGoProvider,
+    "codex_cli": CodexCLIProvider,
 }
 
 # Display names for the UI — keys stay as config identifiers.
@@ -59,6 +61,7 @@ PROVIDER_LABELS = {
     "mistral": "Mistral",
     "nvidia": "NVIDIA NIM",
     "opencode_go": "OpenCode Go",
+    "codex_cli": "Codex CLI (ChatGPT)",
 }
 
 
@@ -84,4 +87,5 @@ def get_provider(provider_name: str, provider_cfg: dict,
         timeout=timeout,
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
+        options=provider_cfg,
     )

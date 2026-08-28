@@ -6,7 +6,7 @@ from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox, QPushButton, QTabWidget,
     QListWidget, QListWidgetItem,
-    QStackedWidget, QSizePolicy,
+    QStackedWidget, QSizePolicy, Qt,
 )
 from aqt.utils import showWarning
 
@@ -19,6 +19,34 @@ from .prompts_tab import PromptsTab
 
 _PROVIDER_NAMES = list(PROVIDERS)
 _OPENAI_REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"]
+# Poziomy rozumowania Codeksa — zwracane przez `model/list` app-servera.
+_CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"]
+# Provider lokalny: uwierzytelnia się przez `codex login`, nie przez klucz.
+_LOCAL_PROVIDERS = ("codex_cli",)
+
+
+def _codex_status_text() -> tuple[bool, str]:
+    """(gotowy, opis) — instalacja i logowanie Codeksa, bez czytania tokenu."""
+    try:
+        from ..ai_generator.providers.codex_cli import find_binary, login_status
+    except ImportError:
+        from ai_generator.providers.codex_cli import find_binary, login_status
+    binary = find_binary()
+    if binary is None:
+        return False, "✗ Nie znaleziono binarki `codex` — zainstaluj Codex CLI"
+    ok, detail = login_status()
+    return ok, f"{'✓' if ok else '✗'} {binary}\n{detail}"
+
+
+def _keep_alive(parent: QWidget, widget: QWidget) -> None:
+    """Trzyma widget poza layoutem, ale przy życiu.
+
+    Widget niedodany do żadnego layoutu nie ma rodzica C++: zbiera go GC
+    razem z dziećmi, a pozostała referencja w Pythonie wskazuje na usunięty
+    obiekt. Przypisanie rodzica przenosi własność na stronę providera.
+    """
+    widget.setParent(parent)
+    widget.hide()
 
 
 def _has_real_key(value: str) -> bool:
@@ -101,7 +129,8 @@ class AIGeneratorTab(QWidget):
             prov_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             p = providers.get(name, {})
             api_key_container, api_key_field = _api_key_widget(p.get("api_key", ""))
-            if _has_real_key(p.get("api_key", "")):
+            is_local = name in _LOCAL_PROVIDERS
+            if not is_local and _has_real_key(p.get("api_key", "")):
                 current_provider_tab = i
 
             model_row = QWidget()
@@ -145,13 +174,61 @@ class AIGeneratorTab(QWidget):
                 "Prompt może nadpisać ten fallback własnym."
             )
 
-            prov_form.addRow("Klucz API:", api_key_container)
+            if is_local:
+                # Klucza nie ma i nie powinno być — uwierzytelnia `codex login`.
+                # Czytamy wyłącznie `auth_mode`, nigdy samego tokenu.
+                # Pole klucza i tak musi przeżyć: zapis ustawień, znacznik na
+                # liście i edytor promptów czytają z niego tekst. Bez rodzica
+                # kontener poszedłby na GC i zabrał QLineEdit ze sobą
+                # (RuntimeError: wrapped C/C++ object has been deleted).
+                _keep_alive(page, api_key_container)
+                status = QLabel()
+                status.setWordWrap(True)
+                status.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse)
+                refresh_btn = QPushButton("Odśwież")
+                refresh_btn.setFixedWidth(80)
+                status_row = QWidget()
+                sh = QHBoxLayout(status_row)
+                sh.setContentsMargins(0, 0, 0, 0)
+                sh.setSpacing(4)
+                sh.addWidget(status, 1)
+                sh.addWidget(refresh_btn)
+                prov_form.addRow("Status:", status_row)
+
+                binary_path = _expanding_line_edit(p.get("binary_path", ""))
+                binary_path.setPlaceholderText(
+                    "puste = wykryj automatycznie (PATH, potem ChatGPT.app)")
+                binary_path.setToolTip(
+                    "Ścieżka do binarki `codex`. Puste pole = wykrywanie "
+                    "automatyczne: najpierw PATH, potem kopia z ChatGPT.app."
+                )
+                prov_form.addRow("Ścieżka do codex:", binary_path)
+
+                cli_timeout = QSpinBox()
+                cli_timeout.setRange(30, 900)
+                cli_timeout.setValue(int(p.get("cli_timeout", 180) or 180))
+                cli_timeout.setSuffix(" s")
+                cli_timeout.setToolTip(
+                    "Limit czasu jednego uruchomienia `codex exec`.\n"
+                    "Rozumowanie trwa dłużej niż zwykłe żądanie HTTP, więc "
+                    "globalny timeout z sekcji Zaawansowane jest tu za krótki."
+                )
+                prov_form.addRow("Limit czasu:", cli_timeout)
+            else:
+                prov_form.addRow("Klucz API:", api_key_container)
             model_combo.setToolTip(
                 "Model domyślny dla nowych i starszych promptów. Każdy prompt "
                 "może wybrać własny model. Wpisywanie filtruje listę po fragmencie."
             )
             prov_form.addRow("Model domyślny:", model_row)
-            prov_form.addRow("Temperatura domyślna:", temp)
+            if is_local:
+                # Codex CLI nie wystawia temperatury — nie pokazujemy pola,
+                # które i tak nie miałoby wpływu na wynik, ale `apply()`
+                # nadal je odczytuje, więc musi zostać przy życiu.
+                _keep_alive(page, temp)
+            else:
+                prov_form.addRow("Temperatura domyślna:", temp)
             prov_form.addRow("Model zapasowy:", fallback_model)
 
             # --- Rate limit (per provider) -------------------------------
@@ -183,6 +260,7 @@ class AIGeneratorTab(QWidget):
 
             widgets = {
                 "api_key": api_key_field,
+                "is_local": is_local,
                 "model": model_combo,
                 "temperature": temp,
                 "fallback_model": fallback_model,
@@ -218,6 +296,26 @@ class AIGeneratorTab(QWidget):
                 )
                 prov_form.addRow("Poziom reasoning:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
+            elif name == "codex_cli":
+                widgets["binary_path"] = binary_path
+                widgets["cli_timeout"] = cli_timeout
+                widgets["status_label"] = status
+                reasoning_effort = QComboBox()
+                reasoning_effort.addItems([""] + _CODEX_REASONING_EFFORTS)
+                current_effort = p.get("reasoning_effort", "low")
+                if isinstance(current_effort, str):
+                    current_effort = current_effort.strip().lower()
+                if current_effort not in _CODEX_REASONING_EFFORTS:
+                    current_effort = ""
+                reasoning_effort.setCurrentText(current_effort)
+                reasoning_effort.setToolTip(
+                    "Wysyłane jako -c model_reasoning_effort. Niższy poziom "
+                    "zużywa mniej limitu planu.\n"
+                    "Puste = model używa swojej wartości domyślnej."
+                )
+                prov_form.addRow("Poziom reasoning:", reasoning_effort)
+                widgets["reasoning_effort"] = reasoning_effort
+                refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
             elif name == "opencode_go":
                 reasoning_line = _expanding_line_edit(p.get("reasoning_effort", ""))
                 reasoning_line.setPlaceholderText("np. max (DeepSeek V4), high, medium — puste = wyłączone")
@@ -305,11 +403,23 @@ class AIGeneratorTab(QWidget):
         item = self._prov_list.item(row)
         if item is None:
             return
-        has_key = _has_real_key(self._provider_widgets[name]["api_key"].text())
-        icon = "✓" if has_key else "○"
+        widgets = self._provider_widgets[name]
+        if widgets.get("is_local"):
+            # Gotowość providera lokalnego to stan instalacji i logowania
+            # Codeksa, nie zawartość pola klucza.
+            ready, text = _codex_status_text()
+            label = widgets.get("status_label")
+            if label is not None:
+                label.setText(text)
+        else:
+            ready = _has_real_key(widgets["api_key"].text())
+        icon = "✓" if ready else "○"
         item.setText(f"{icon} {PROVIDER_LABELS.get(name, name)}")
 
     def _on_provider_key_changed(self, row: int, name: str, _text: str = "") -> None:
+        self._update_provider_item(row, name)
+
+    def _refresh_local_status(self, row: int, name: str) -> None:
         self._update_provider_item(row, name)
 
     def _current_provider_settings(self, name: str) -> dict:
@@ -337,11 +447,16 @@ class AIGeneratorTab(QWidget):
         if not w:
             return
         api_key = w["api_key"].text().strip()
+        is_local = bool(w.get("is_local"))
 
         try:
             from ..ai_generator.providers.model_discovery import fetch_models
+            from ..ai_generator.providers.codex_cli import (
+                fetch_models as fetch_codex_models)
         except ImportError:
             from ai_generator.providers.model_discovery import fetch_models
+            from ai_generator.providers.codex_cli import (
+                fetch_models as fetch_codex_models)
 
         from aqt import mw
 
@@ -351,6 +466,11 @@ class AIGeneratorTab(QWidget):
             btn.setText("...")
 
         def task():
+            if is_local:
+                # Lista modeli zależy od zalogowanego konta, nie od klucza —
+                # bierzemy ją z lokalnego app-servera, respektując ścieżkę
+                # wpisaną w tym dialogu (także jeszcze niezapisaną).
+                return fetch_codex_models(w["binary_path"].text().strip())
             return fetch_models(provider_name, api_key, force=True)
 
         def on_done(fut):
@@ -363,9 +483,14 @@ class AIGeneratorTab(QWidget):
                     btn.setEnabled(True)
                     btn.setText("Pobierz")
                 if not models:
+                    hint = (
+                        "Sprawdź, czy `codex` jest zainstalowany i zalogowany "
+                        "(`codex login`)."
+                        if is_local
+                        else "Sprawdź klucz API i połączenie z internetem."
+                    )
                     showWarning(
-                        f"Nie udało się pobrać modeli dla {provider_name}.\n"
-                        "Sprawdź klucz API i połączenie z internetem."
+                        f"Nie udało się pobrać modeli dla {provider_name}.\n{hint}"
                     )
                     return
 
@@ -417,6 +542,9 @@ class AIGeneratorTab(QWidget):
             if "rate_limit_free_only" in w:
                 ai["providers"][name]["rate_limit_free_only"] = \
                     w["rate_limit_free_only"].isChecked()
+            if "binary_path" in w:
+                ai["providers"][name]["binary_path"] = w["binary_path"].text().strip()
+                ai["providers"][name]["cli_timeout"] = w["cli_timeout"].value()
             if "reasoning_effort" in w:
                 re_widget = w["reasoning_effort"]
                 if hasattr(re_widget, "currentText"):
