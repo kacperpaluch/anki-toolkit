@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import urllib.request
+import urllib.parse
 
 from ..common import normalize_float, apply_word_replacements
 from ..common.http import post_json
@@ -75,6 +76,16 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     if speed is not None:
         payload["speed"] = normalize_float(speed, 0.9)
 
+    # An empty value keeps OpenRouter's normal price-weighted routing and
+    # provider failover.  A selected provider is intentionally strict: users
+    # choose it to control both the host and its price.
+    selected_provider = str(config.get("openrouter_provider") or "").strip()
+    if selected_provider:
+        payload["provider"] = {
+            "only": [selected_provider],
+            "allow_fallbacks": False,
+        }
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -85,8 +96,9 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
 
     max_retries = int(config.get("max_retries", 3))
     timeout = int(config.get("timeout", 60))
+    routing = f", provider={selected_provider} (bez fallbacku)" if selected_provider else ""
     logger.debug(
-        f"OpenRouter TTS: model={model}, voice={voice}, {len(text)} zn., timeout={timeout}s"
+        f"OpenRouter TTS: model={model}, voice={voice}, {len(text)} zn., timeout={timeout}s{routing}"
     )
     t0 = time.time()
     raw, err = post_json(
@@ -110,6 +122,15 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
 _OR_MODELS_CACHE = None
 
 
+def _format_character_price(price) -> tuple[float | None, str]:
+    """Return OpenRouter's character price in a compact, human-readable form."""
+    try:
+        value = float(price)
+    except (ValueError, TypeError):
+        return None, "?"
+    return value, f"${value * 1_000_000:.3f}/1 mln zn"
+
+
 def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
     global _OR_MODELS_CACHE
     if _OR_MODELS_CACHE is not None and not force:
@@ -128,15 +149,7 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
     for item in data.get("data", []):
         pricing_raw = item.get("pricing", {})
         price_str = pricing_raw.get("prompt") or pricing_raw.get("input") or ""
-        prompt_price = None
-        if price_str:
-            try:
-                prompt_price = float(price_str)  # USD per character
-                pricing_display = f"${prompt_price * 1000:.3f}/1k zn"
-            except (ValueError, TypeError):
-                pricing_display = "?"
-        else:
-            pricing_display = "?"
+        prompt_price, pricing_display = _format_character_price(price_str)
         models.append({
             "id": item.get("id", ""),
             "name": item.get("name", item.get("id", "")),
@@ -147,3 +160,61 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
     models.sort(key=lambda m: m["name"].lower())
     _OR_MODELS_CACHE = models
     return models
+
+
+def fetch_openrouter_tts_providers(model_id: str, api_key: str = "") -> list[dict]:
+    """Fetch provider endpoints and their individual TTS prices for one model.
+
+    The models endpoint only exposes the lowest price.  OpenRouter's endpoint
+    endpoint contains the per-provider records needed to let a user pin one.
+    It requires authentication, hence the optional key for the settings dialog.
+    """
+    model_id = str(model_id or "").strip()
+    if not model_id or "/" not in model_id:
+        return []
+
+    url = "https://openrouter.ai/api/v1/models/{}/endpoints".format(
+        urllib.parse.quote(model_id, safe="/@:-")
+    )
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Failed to fetch OpenRouter TTS providers for {model_id}: {e}")
+        return []
+
+    records = data.get("data", data)
+    endpoints = records.get("endpoints", []) if isinstance(records, dict) else []
+    providers = []
+    seen = set()
+    for endpoint in endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+        # provider_slug is the routing value; provider_name is only for display.
+        slug = str(
+            endpoint.get("provider_slug") or endpoint.get("provider_tag")
+            or endpoint.get("tag") or ""
+        ).strip()
+        name = str(endpoint.get("provider_name") or slug).strip()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        pricing_raw = endpoint.get("pricing") or {}
+        if isinstance(pricing_raw, list):
+            # Some modality endpoint APIs use a list of billing records.
+            price = next(
+                (p.get("cost_usd") for p in pricing_raw if isinstance(p, dict)), None
+            )
+        else:
+            price = pricing_raw.get("prompt") or pricing_raw.get("input")
+        prompt_price, pricing = _format_character_price(price)
+        providers.append({
+            "id": slug,
+            "name": name,
+            "pricing": pricing,
+            "prompt_price": prompt_price,
+        })
+    providers.sort(key=lambda p: (p["prompt_price"] is None, p["prompt_price"] or 0, p["name"].lower()))
+    return providers

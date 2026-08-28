@@ -56,6 +56,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
     "openrouter_api_key": "",
     "use_ai_openrouter_key": false,
     "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
+    "openrouter_provider": "",
     "voices": ["af_bella", "af_heart", "bm_lewis"],
     "replacements": {"sb": "somebody", "sth": "something"},
     "speed": 0.9,
@@ -78,6 +79,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `openrouter_api_key` | `""` | Klucz API OpenRouter (tylko dla `openrouter`) |
 | `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
+| `openrouter_provider` | `""` | Opcjonalny dostawca modelu OpenRouter. Puste pole zachowuje automatyczny routing; wybrany slug (np. `deepinfra`) wymusza tego dostawcę bez fallbacku |
 | `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania. Dla OpenRouter: po wybraniu modelu i kliknięciu **Pobierz**, lista głosów wypełnia się automatycznie |
 | `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → Wymowa → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
@@ -119,10 +121,11 @@ W ustawieniach TTS, po wybraniu OpenRouter:
 1. Wpisz klucz API
 2. Kliknij **Pobierz** obok pola Model — wtyczka pobiera dostępne modele TTS z OpenRouter (wraz z cenami)
 3. Wybierz model z rozwijanej listy
-4. Pod spodem pojawi się tabela głosów z checkboxami — zaznacz które chcesz używać
-5. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
-6. Pole "Głosy" poniżej aktualizuje się automatycznie
-7. **▶** — przycisk obok każdego głosu generuje krótki sample i go odtwarza (nie musisz zaznaczać głosu żeby go posłuchać; koszt jednego krótkiego żądania TTS; dla Kokoro darmowe)
+4. W polu **Dostawca modelu** wybierz „Automatycznie” albo konkretny endpoint z jego ceną. Przy konkretnym wyborze żądanie zawiera `provider.only` i `allow_fallbacks: false`, więc OpenRouter nie przełączy go po cichu na droższego dostawcę
+5. Pod spodem pojawi się tabela głosów z checkboxami — zaznacz które chcesz używać
+6. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
+7. Pole "Głosy" poniżej aktualizuje się automatycznie
+8. **▶** — przycisk obok każdego głosu generuje krótki sample i go odtwarza (nie musisz zaznaczać głosu żeby go posłuchać; koszt jednego krótkiego żądania TTS; dla Kokoro darmowe)
 
 Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova`, `echo`; Voxtral używa `en_paul_happy` itd.)
 

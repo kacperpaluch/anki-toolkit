@@ -172,6 +172,20 @@ class TTSTab(QWidget):
         mh.addWidget(self._or_fetch_btn)
         orf.addRow("Model:", model_row)
 
+        self._or_provider = QComboBox()
+        self._or_provider.addItem("Automatycznie (najtańszy sprawny)", "")
+        saved_or_provider = t.get("openrouter_provider", "")
+        if saved_or_provider:
+            self._or_provider.addItem(saved_or_provider, saved_or_provider)
+            self._or_provider.setCurrentIndex(1)
+        self._or_provider.setEnabled(False)
+        orf.addRow("Dostawca modelu:", self._or_provider)
+
+        self._or_provider_hint = hint_label(
+            'Wybierz model po kliknięciu „Pobierz”, aby zobaczyć dostawców i ich ceny.'
+        )
+        orf.addRow(self._or_provider_hint)
+
         self._or_voice_hint = hint_label(
             'Kliknij "Pobierz" aby załadować listę modeli i głosów.'
         )
@@ -427,6 +441,7 @@ class TTSTab(QWidget):
                 self._or_model.blockSignals(False)
 
                 self._update_voice_checklist()
+                self._fetch_model_providers()
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
@@ -434,6 +449,73 @@ class TTSTab(QWidget):
 
     def _on_or_model_changed(self, _text: str):
         self._update_voice_checklist()
+        self._fetch_model_providers()
+
+    def _current_or_model_id(self) -> str:
+        idx = self._or_model.currentIndex()
+        if (
+            idx >= 0
+            and self._or_model.itemData(idx)
+            and self._or_model.itemText(idx) == self._or_model.currentText()
+        ):
+            return self._or_model.itemData(idx)
+        return self._or_model.currentText().split("  (")[0].strip()
+
+    def _fetch_model_providers(self):
+        """Load per-provider prices after choosing an OpenRouter TTS model."""
+        model_id = self._current_or_model_id()
+        if not model_id or "/" not in model_id:
+            return
+        try:
+            from ..tts.api import fetch_openrouter_tts_providers
+            from ..tts.config import resolve_openrouter_key
+        except ImportError:
+            from tts.api import fetch_openrouter_tts_providers
+            from tts.config import resolve_openrouter_key
+
+        api_key = resolve_openrouter_key(self._build_preview_config())
+        if not api_key:
+            self._or_provider.setEnabled(False)
+            self._or_provider_hint.setText("Podaj klucz API OpenRouter, aby pobrać dostawców i ceny.")
+            return
+
+        self._or_provider.setEnabled(False)
+        self._or_provider_hint.setText("Pobieranie dostawców i cen…")
+
+        def task():
+            return fetch_openrouter_tts_providers(model_id, api_key)
+
+        def on_done(fut):
+            try:
+                providers = fut.result()
+            except Exception:
+                providers = []
+            try:
+                # Ignore a delayed result for a model that is no longer selected.
+                if model_id != self._current_or_model_id():
+                    return
+                saved = self._or_provider.currentData() or ""
+                self._or_provider.blockSignals(True)
+                self._or_provider.clear()
+                self._or_provider.addItem("Automatycznie (najtańszy sprawny)", "")
+                for provider in providers:
+                    self._or_provider.addItem(
+                        f"{provider['name']}  ({provider['pricing']})",
+                        provider["id"],
+                    )
+                index = self._or_provider.findData(saved)
+                self._or_provider.setCurrentIndex(index if index >= 0 else 0)
+                self._or_provider.blockSignals(False)
+                self._or_provider.setEnabled(bool(providers))
+                self._or_provider_hint.setText(
+                    "Wybierz dostawcę, aby wymusić go bez fallbacku."
+                    if providers else
+                    "Nie udało się pobrać dostawców dla tego modelu."
+                )
+            except RuntimeError:
+                pass
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _update_voice_checklist(self):
         model_id = self._or_model.currentData()
@@ -628,6 +710,7 @@ class TTSTab(QWidget):
             "model": self._model.text().strip(),
             "openrouter_api_key": self._or_key.text().strip(),
             "use_ai_openrouter_key": self._or_use_ai_key.isChecked(),
+            "openrouter_provider": self._or_provider.currentData() or "",
             "speed": self._speed.value(),
             "max_retries": 2,
             "timeout": 30,
@@ -692,6 +775,7 @@ class TTSTab(QWidget):
         t["model"] = self._model.text().strip()
         t["openrouter_api_key"] = self._or_key.text().strip()
         t["use_ai_openrouter_key"] = self._or_use_ai_key.isChecked()
+        t["openrouter_provider"] = self._or_provider.currentData() or ""
         # currentData() is only trustworthy when the visible text still matches
         # the selected item — the combo is editable, so the user may have typed
         # a custom model after fetching the list.

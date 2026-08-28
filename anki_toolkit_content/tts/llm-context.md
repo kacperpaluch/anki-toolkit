@@ -112,13 +112,13 @@ Głosy dla segmentów w jednej notatce są przetasowane losowo (`random.shuffle`
 
 ## OpenRouter — pobieranie modeli i głosów
 
-`fetch_openrouter_tts_models(force=False)` (w `api.py`) woła `GET https://openrouter.ai/api/v1/models?output_modalities=speech` (nie wymaga klucza API). Zwraca listę `[{id, name, voices, pricing}]`.
+`fetch_openrouter_tts_models(force=False)` (w `api.py`) woła `GET https://openrouter.ai/api/v1/models?output_modalities=speech` (nie wymaga klucza API). Zwraca listę `[{id, name, voices, pricing}]`. Po zmianie modelu `fetch_openrouter_tts_providers(model_id, api_key)` odczytuje `GET /api/v1/models/{author}/{slug}/endpoints` i zwraca endpointy z cenami per provider (`tag` jest slugiem routingu).
 
 - Wynik jest cachowany globalnie (`_OR_MODELS_CACHE`); `force=True` wymusza ponowne pobranie
-- `pricing` jest parsowane z `pricing.prompt` (dolary/znak), przeliczane i formatowane jako `$X.XXX/1k zn`
+- `pricing` jest parsowane z `pricing.prompt` (dolary/znak), przeliczane i formatowane jako `$X.XXX/1 mln zn`
 - `voices` to `supported_voices` z API — pełna lista głosów dla danego modelu
 
-W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu, QTableWidget z checkboxami i przyciskami ▶ podglądu pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
+W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu asynchronicznie ładowana jest lista dostawców z cenami; „Automatycznie” nie wysyła obiektu `provider`, a wybrany dostawca zapisuje `openrouter_provider` i wysyła `provider: {only: [slug], allow_fallbacks: false}`. QTableWidget z checkboxami i przyciskami ▶ podglądu pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
 
 ## Konfiguracja (sekcja `tts` w config.json)
 
@@ -130,6 +130,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
   "openrouter_api_key": "",
   "use_ai_openrouter_key": false,
   "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
+  "openrouter_provider": "",
   "voices": ["af_bella", "af_heart", "bm_lewis"],
   "replacements": {"sb": "somebody", "sth": "something"},
   "speed": 0.9,
@@ -150,6 +151,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `openrouter_api_key` — klucz API z https://openrouter.ai/keys (tylko dla OpenRouter)
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
+- `openrouter_provider` — pusty string = automatyczny price-weighted routing OpenRouter; slug wybranego endpointu (np. `deepinfra`) = tylko ten provider, bez fallbacku
 - `voices` — lista głosów do losowania
 - `replacements` — dict `{skrót: pełne_słowo}` rozwijany przez `apply_word_replacements()` (`common/text.py`) na tekście wejściowym `generate_audio()`, zanim trafi do payloadu. Whole-word (`\b`), `re.IGNORECASE`, wielka litera trafienia zachowywana, klucze sortowane od najdłuższego (alternacja longest-first). Karta nietknięta — zmienia się tylko tekst wysyłany do silnika. UI: tabela Skrót/Zamiennik w `settings/tts_tab.py` (`_add_repl_row`/`_remove_repl_row`/`_collect_replacements`)
 - `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`/`split_audio`) i opcjonalnie `split_separator`. `split_audio` zapisuje w polu docelowym wyłącznie połączone tagi `[sound:...]`. Jeśli klucz nie istnieje, backward compat czyta legacy pola; pusta lista = brak zadań
@@ -198,6 +200,7 @@ Content-Type: application/json
 ```
 
 `speed` jest wysyłane tylko gdy ustawione w konfiguracji (niektóre providery go nie obsługują).
+Gdy `openrouter_provider` nie jest pusty, payload dostaje dodatkowo `"provider": {"only": ["…"], "allow_fallbacks": false}`.
 
 ## Nazwy plików audio
 

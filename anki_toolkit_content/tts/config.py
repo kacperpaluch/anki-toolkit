@@ -11,6 +11,7 @@ _DEFAULTS = {
     "openrouter_api_key":    "",
     "use_ai_openrouter_key": False,
     "openrouter_model":      "openai/gpt-4o-mini-tts-2025-12-15",
+    "openrouter_provider":   "",
     "voices":                ["af_bella", "af_heart", "bm_lewis"],
     "replacements":          {},
     "speed":                 0.9,
