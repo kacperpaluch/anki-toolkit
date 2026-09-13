@@ -3,7 +3,7 @@
 Bierze wiersz z DataTable (flag_column == false), wpisuje `Slowko` do pola
 notatki i ładuje gotowe URL-e z kolumn (diki / Longman / Oxford) w QWebEngineView.
 Do stron wstrzykiwany jest TEN SAM userscript, którego używasz w przeglądarce —
-jego przyciski gadają z mostkiem web_bridge na 127.0.0.1:8766. Dzięki temu
+jego przyciski gadają z mostkiem web_bridge na 127.0.0.1:8767. Dzięki temu
 istnieje jedna wersja skryptu, a nie dwie.
 
 Po dodaniu notatki (hook w __init__) wiersz jest odhaczany po `id`, ale panel

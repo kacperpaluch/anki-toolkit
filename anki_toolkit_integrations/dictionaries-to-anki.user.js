@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.4
-// @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8766). Nic nie zapisuje się samo.
+// @version      4.5
+// @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
 // @match        https://www.oxfordlearnersdictionaries.com/definition/*
@@ -25,7 +25,7 @@
     definition: 'def',       // angielska definicja (Oxford / LDOCE)
     example:    'przyklad',  // przykładowe zdania (Oxford / LDOCE) — DOKLEJANE przez <br><br>
   };
-  const ENDPOINT = 'http://127.0.0.1:8766';
+  const ENDPOINT = 'http://127.0.0.1:8767';
   // ─────────────────────────────────────────────────────────────────────────────
 
   // normalizacja białych znaków + obcięcie końcowego dwukropka (Cambridge kończy definicje na ":")

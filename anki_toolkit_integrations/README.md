@@ -6,6 +6,12 @@ lokalny Web Bridge wpisujący dane do otwartej notatki.
 
 Ustawienia: **Narzędzia → Anki Toolkit: Integrations → Ustawienia…**.
 
+Mostek słucha na `127.0.0.1:8767` (klucz `web_bridge.port` w konfiguracji).
+Ten sam port musi być w stałej `ENDPOINT` userscriptu — po zmianie przeładuj
+`dictionaries-to-anki.user.js` w menedżerze userscriptów. 8765 i 8766 należą do
+AnkiConnect i jego forków; gdy port jest zajęty, Anki pokazuje ostrzeżenie
+przy starcie profilu.
+
 Mostek zapisuje bufor edytora przed wypełnieniem pól. Żądanie jest związane
 z konkretną notatką i profilem; timeout anuluje oczekującą zmianę.
 Przy zmianie słowa w rozpoczętej notatce panel pyta o zgodę i zachowuje inne pola.
@@ -33,10 +39,11 @@ sprawdzenia, jest kasowane. Model nie ma jak dopisać definicji, której słowni
 nie ma.
 
 **Brak dopasowania 1:1 nie blokuje karty.** Znaczenie bez angielskiej definicji
-dostaje pustą definicję, a nie zmyśloną. Każda karta z AI dostaje tag
-z pola *Tag wszystkich kart* (domyślnie `ai-auto`), a wszystko poza pewnym
-dopasowaniem dodatkowo *Tag niepewnych* (`ai-review`) — w Browserze
-przeglądasz tylko to drugie.
+dostaje pustą definicję, a nie zmyśloną. Każda karta z AI dostaje **dokładnie
+jeden** tag: pewne dopasowanie *Tag pewnych dopasowań* (domyślnie `ai-auto`),
+wszystko pozostałe *Tag do weryfikacji* (`ai-review`). Tagi się nie nakładają,
+więc `tag:ai-review` w Browserze to cała robota do przejrzenia, a `tag:ai-auto`
+to karty, których już nie musisz oglądać.
 
 **Definicje pochodzą ze wszystkich zakładek naraz.** Do promptu idzie tekst
 każdej zakładki, która ma URL w wierszu n8n (`link_columns`); model sam

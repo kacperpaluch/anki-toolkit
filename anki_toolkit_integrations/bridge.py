@@ -1,6 +1,6 @@
 """web_bridge — mostek HTTP: strona WWW → otwarte okno „Dodaj" w Anki.
 
-Wystawia jeden endpoint POST na 127.0.0.1:8766, który wpisuje przysłane pola
+Wystawia jeden endpoint POST na 127.0.0.1 (port z `web_bridge.port`), który wpisuje przysłane pola
 do JUŻ OTWARTEGO okna „Dodaj". Nie tworzy notatek, nie zapisuje — tylko
 wypełnia pola edytora; zapis zatwierdzasz w Anki ręcznie (Enter).
 
@@ -20,12 +20,13 @@ try:
     import aqt
     from aqt import mw
     from aqt.qt import sip
+    from aqt.utils import showWarning
 except ImportError:  # pozwala odpalić self-check (__main__) bez Anki
     aqt = mw = None
 
 logger = logging.getLogger(__name__)
 
-HOST, PORT = "127.0.0.1", 8766
+HOST, DEFAULT_PORT = "127.0.0.1", 8767  # 8765/8766 to AnkiConnect i jego forki
 MAX_BODY = 1_000_000  # 1 MB — pola słownikowe to kilobajty
 
 # Strony z userscripta. GM_xmlhttpRequest nie wysyła nagłówka Origin (brak → OK);
@@ -190,18 +191,31 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _port() -> int:
+    config = (mw.addonManager.getConfig(__package__) or {}).get("web_bridge") or {}
+    try:
+        return int(config.get("port") or DEFAULT_PORT)
+    except (TypeError, ValueError):
+        return DEFAULT_PORT
+
+
 def start_server(*_args, **_kwargs):
     """Idempotentne — profile_did_open odpala się przy każdym przełączeniu profilu."""
     global _server
     if _server is not None:
         return
+    port = _port()
     try:
-        _server = ThreadingHTTPServer((HOST, PORT), _Handler)
-    except OSError as e:  # port zajęty — nie wysadzaj addonu
-        logger.warning("web_bridge: nie mogę zająć %s:%s (%s)", HOST, PORT, e)
+        _server = ThreadingHTTPServer((HOST, port), _Handler)
+    except OSError as e:  # zajęty port to cicha śmierć mostka — powiedz to głośno
+        logger.warning("web_bridge: nie mogę zająć %s:%s (%s)", HOST, port, e)
+        showWarning(
+            f"Anki Toolkit: mostek słownikowy nie wystartował — port {port} jest zajęty "
+            f"przez inny dodatek ({e}).\n\nZmień „web_bridge.port” w konfiguracji "
+            "Integrations i ten sam port w userscripcie.")
         return
     threading.Thread(target=_server.serve_forever, daemon=True).start()
-    logger.info("web_bridge: nasłuchuje na http://%s:%s", HOST, PORT)
+    logger.info("web_bridge: nasłuchuje na http://%s:%s", HOST, port)
 
 
 if __name__ == "__main__":  # self-check logiki doklejania (bez Anki)

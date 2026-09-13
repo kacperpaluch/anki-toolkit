@@ -28,6 +28,6 @@
     "ai_review_tag": "ai-review"
   },
   "web_bridge": {
-    "port": 8766
+    "port": 8767
   }
 }

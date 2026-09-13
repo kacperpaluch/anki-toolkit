@@ -124,10 +124,11 @@ class AddNotesTests(unittest.TestCase):
         self.assertEqual(self.added[0][0]["ang"], "sprawling")
         self.assertEqual(self.added[0][0]["def"], "covering a large area")
 
-    def test_review_tag_only_on_uncertain_matches(self):
+    def test_tags_are_mutually_exclusive(self):
+        """Pewne dopasowanie dostaje ai_tag, reszta ai_review_tag — nigdy oba."""
         self.add([self.sense(), self.sense(match="approx"), self.sense(match="none", en="")])
         self.assertEqual([note.tags for note, _ in self.added],
-                         [["ai-auto"], ["ai-auto", "ai-review"], ["ai-auto", "ai-review"]])
+                         [["ai-auto"], ["ai-review"], ["ai-review"]])
 
     def test_empty_tags_add_nothing(self):
         self.add([self.sense(match="none", en="")], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})

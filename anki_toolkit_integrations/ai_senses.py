@@ -11,8 +11,10 @@ po prostu nie przechodzi (jest czyszczona, znaczenie dostaje `match: none`).
 
 Brak dopasowania nie jest błędem. Znaczenie bez angielskiej definicji dalej
 zasługuje na kartę EN-PL — wymuszanie 1:1 produkowałoby definicje UDAJĄCE
-słownikowe, a to gorsze niż puste pole. Wszystko poza `exact` dostaje tag
-`ai_tag` i ląduje w Browserze do przejrzenia.
+słownikowe, a to gorsze niż puste pole. Tagi są ROZŁĄCZNE: `exact` dostaje
+`ai_tag`, wszystko poza nim `ai_review_tag` i ląduje w Browserze do
+przejrzenia. Jeden tag na kartę, więc filtr `tag:ai-review` to dokładnie
+robota do zrobienia, a nie podzbiór `tag:ai-auto`.
 
 Dostawcę AI pożyczamy z dodatku Content (ten sam, który masz skonfigurowany,
 łącznie z Codex/Claude CLI na subskrypcji) — nie duplikujemy klienta HTTP.
@@ -283,16 +285,14 @@ def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, 
     if unknown:
         return 0, f"typ notatki nie ma pól: {', '.join(unknown)} — popraw ai_fields w config.json"
 
-    always = parse_tags(cfg.get("ai_tag"))          # każda dodana notatka
+    exact = parse_tags(cfg.get("ai_tag"))            # tylko pewne dopasowanie
     review = parse_tags(cfg.get("ai_review_tag"))    # tylko niepewne dopasowanie
     added = 0
     for sense in senses:
         note = mw.col.new_note(notetype)
         for field, value in note_fields(sense, mapping, word).items():
             note[field] = value
-        note.tags.extend(always)
-        if sense["match"] != "exact":
-            note.tags.extend(review)
+        note.tags.extend(exact if sense["match"] == "exact" else review)
         mw.col.add_note(note, deck_id)
         added += 1
     return added, None
