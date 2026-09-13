@@ -14,11 +14,11 @@
     {
       "on": true,
       "name": "Bloki <div> → <br>",
-      "find": "<div[^>]*>((?:(?!</?div\\b).)*?)</div>",
-      "to": "\\1<br>",
+      "find": "</?div\\b[^>]*>",
+      "to": "<br>",
       "regex": true,
       "fields": "!ang",
-      "repeat": true
+      "repeat": false
     },
     {
       "on": true,
@@ -31,8 +31,17 @@
     },
     {
       "on": true,
-      "name": "Obetnij końcowy <br>",
-      "find": "<br>\\s*$",
+      "name": "Scal sąsiadujące <br>",
+      "find": "(?:<br>\\s*){2,}",
+      "to": "<br>",
+      "regex": true,
+      "fields": "!ang",
+      "repeat": false
+    },
+    {
+      "on": true,
+      "name": "Obetnij brzegowe <br>",
+      "find": "^(?:<br>\\s*)+|(?:<br>\\s*)+$",
       "to": "",
       "regex": true,
       "fields": "!ang",

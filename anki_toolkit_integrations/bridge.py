@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 try:
     import aqt
     from aqt import mw
+    from aqt.qt import sip
 except ImportError:  # pozwala odpalić self-check (__main__) bez Anki
     aqt = mw = None
 
@@ -38,6 +39,27 @@ ALLOWED_ORIGIN_HOSTS = {
 }
 
 _server = None  # trzyma referencję, żeby przetrwał między przełączeniami profilu
+_target = None  # immutable snapshot published by the main thread
+
+
+def track_editor(editor):
+    global _target
+    if editor.addMode:
+        _target = (editor, editor.note, mw.col)
+
+
+def forget_editor(*_args):
+    global _target
+    _target = None
+
+
+def _target_alive(target):
+    if target is None or target is not _target:
+        return False
+    editor, note, col = target
+    return (col is not None and mw.col is col and editor.note is note
+            and note is not None and editor.web is not None
+            and not sip.isdeleted(editor.web))
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -53,21 +75,15 @@ def _join(existing: str, value: str, separator: str) -> str:
     return (base + separator + value) if base else value
 
 
-def _apply_fields(fields: dict, append: bool = False, separator: str = "<br><br>") -> str | None:
+def _apply_fields(fields: dict, target, append: bool = False, separator: str = "<br><br>") -> str | None:
     """Na WĄTKU GŁÓWNYM: wpisz pola do otwartego okna „Dodaj". Zwraca błąd lub None.
 
     append=True → dokleja do istniejącej treści pola przez `separator` (puste pole
     dostaje samą wartość). Inaczej nadpisuje.
     """
-    entry = aqt.dialogs._dialogs.get("AddCards")
-    addcards = entry[1] if entry else None
-    if addcards is None:
-        return 'Okno „Dodaj" nie jest otwarte'
-
-    editor = addcards.editor
-    note = editor.note
-    if note is None:
-        return "Edytor nie ma notatki"
+    if not _target_alive(target):
+        return "Okno „Dodaj” lub notatka zmieniły się — wyślij dane ponownie."
+    editor, note, _col = target
 
     written = [name for name in fields if name in note]
     if not written:
@@ -79,28 +95,51 @@ def _apply_fields(fields: dict, append: bool = False, separator: str = "<br><br>
         else:
             note[name] = fields[name]
     editor.loadNote()
-    addcards.activateWindow()
+    editor.parentWindow.activateWindow()
     return None
 
 
-def _run_on_main_sync(fn, timeout=5):
-    """Odpal fn() na wątku głównym i zaczekaj na wynik (handler HTTP jest na wątku roboczym)."""
+def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5):
+    """Save the captured editor before applying; timeout cancels pending callbacks."""
     box = {}
     done = threading.Event()
+    lock = threading.Lock()
+    target = _target
 
-    def wrapper():
-        try:
-            box["value"] = fn()
-        except Exception as e:  # noqa: BLE001 — złap wszystko, oddaj jako błąd HTTP
-            box["error"] = str(e)
-            logger.exception("web_bridge: apply failed")
-        finally:
+    def apply():
+        with lock:
+            if done.is_set():
+                return
+            try:
+                box["error"] = _apply_fields(fields, target, append, separator)
+            except Exception as error:
+                box["error"] = str(error)
+                logger.exception("web_bridge: apply failed")
             done.set()
 
-    mw.taskman.run_on_main(wrapper)
-    if not done.wait(timeout):
-        return "Anki nie odpowiedziało w czasie (zajęte?)"
-    return box.get("error") or box.get("value")
+    def start():
+        with lock:
+            if done.is_set():
+                return
+            if not _target_alive(target):
+                box["error"] = "Otwórz okno „Dodaj” i wyślij dane ponownie."
+                done.set()
+                return
+        try:
+            target[0].saveNow(apply)
+        except Exception as error:
+            with lock:
+                if not done.is_set():
+                    box["error"] = str(error)
+                    done.set()
+
+    mw.taskman.run_on_main(start)
+    done.wait(timeout)
+    with lock:
+        if not done.is_set():
+            box["error"] = "Anki nie odpowiedziało w czasie — operacja anulowana."
+            done.set()
+        return box.get("error")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -124,7 +163,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            length = min(int(self.headers.get("Content-Length", 0)), MAX_BODY)
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= MAX_BODY:
+                raise ValueError("Niepoprawny rozmiar żądania (limit 1 MB).")
             body = json.loads(self.rfile.read(length) or b"{}")
             fields = body.get("fields")
             if not isinstance(fields, dict) or not fields:
@@ -132,7 +173,9 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 append = bool(body.get("append"))
                 separator = body.get("separator") or "<br><br>"
-                error = _run_on_main_sync(lambda: _apply_fields(fields, append, separator))
+                if not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) or not isinstance(separator, str):
+                    raise ValueError("Nazwy pól, wartości i separator muszą być tekstem.")
+                error = _run_on_main_sync(fields, append, separator)
         except Exception as e:  # noqa: BLE001
             error = str(e)
             logger.exception("web_bridge: bad request")

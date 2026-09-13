@@ -71,8 +71,11 @@ def _run_batch(note_ids: list[int], silent: bool = False) -> None:
         return
     config = get_config()
     counters = {"changed": 0}
+    owner = mw.col
 
     def operation(collection: Collection) -> OpChanges:
+        if collection is not owner:
+            return OpChanges()
         changed_notes = []
         for note_id in note_ids:
             note = collection.get_note(note_id)
@@ -133,10 +136,13 @@ def _on_browser_context_menu(browser: Browser, menu) -> None:
 
 def _on_sync_finished(*_args) -> None:
     if get_config().get("scan_on_sync", _DEFAULTS["scan_on_sync"]):
-        QTimer.singleShot(_SYNC_SCAN_DELAY_MS, _run_sync_scan)
+        collection = mw.col
+        QTimer.singleShot(_SYNC_SCAN_DELAY_MS, lambda: _run_sync_scan(collection))
 
 
-def _run_sync_scan() -> None:
+def _run_sync_scan(collection) -> None:
+    if collection is None or mw.col is not collection:
+        return
     note_ids = _collection_note_ids(get_config())
     if note_ids:
         _run_batch(note_ids, silent=True)

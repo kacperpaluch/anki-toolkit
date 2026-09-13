@@ -19,12 +19,13 @@ działa na mediach już zapisanych przez Anki, TTS, słownik albo użytkownika.
 
 - Nie zmieniaj pola głównego audio, jeśli użytkownik nie umieści go jawnie na
   liście pól.
-- Konwersja musi być idempotentna: ponowny skan nie może zmieniać istniejącego
-  `<audio>`.
+- Konwersja musi być idempotentna. Nowy HTML ma `controls` i kodowany URL;
+  jedyna migracja istniejącego `<audio>` dodaje `controls` do dokładnego formatu
+  starszej wersji z pasującą klasą CSS, bez zmiany innych odtwarzaczy.
 - Wszystkie odczyty i zapisy notatek są w funkcji `CollectionOp`; worker nie
   dotyka kolekcji bezpośrednio.
 - Skan po synchronizacji uruchamia się z opóźnieniem, aby zakończyły się inne
-  hooki synchronizacji.
+  hooki synchronizacji; callback wymaga tej samej otwartej kolekcji.
 - Konfigurację zmieniaj wyłącznie przez `get_config()` / `save_config()`;
   zapis ma zachować nieznane klucze konfiguracji profilu.
 

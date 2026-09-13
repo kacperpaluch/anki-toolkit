@@ -8,7 +8,7 @@ from aqt.operations import CollectionOp
 from aqt.qt import QAction, QMessageBox, QTimer
 from aqt.utils import tooltip
 
-from .cleaning import clean_field, default_rules
+from .cleaning import clean_field, default_rules, legacy_default_rules
 
 
 _DEFAULTS = {
@@ -26,7 +26,7 @@ def _addon_name() -> str:
 def get_config() -> dict:
     config = {**_DEFAULTS, **(mw.addonManager.getConfig(_addon_name()) or {})}
     # Configs written before rules were editable carry only skip_field.
-    if not config.get("rules"):
+    if "rules" not in config or config["rules"] == legacy_default_rules(config.get("skip_field", "ang")):
         config["rules"] = default_rules(config.get("skip_field", "ang"))
     return config
 
@@ -53,15 +53,16 @@ def _tooltip(parent, counts: dict, rules: list) -> None:
 
 def _clean_note(note, rules: list) -> tuple[bool, dict]:
     counts: dict = {}
-    changed = False
+    updates = {}
     for name, value in note.items():
         cleaned, field_counts = clean_field(name, value, rules)
         for index, count in field_counts.items():
             counts[index] = counts.get(index, 0) + count
         if cleaned != value:
-            note[name] = cleaned
-            changed = True
-    return changed, counts
+            updates[name] = cleaned
+    for name, cleaned in updates.items():
+        note[name] = cleaned
+    return bool(updates), counts
 
 
 def _on_add_cards_init(add_cards) -> None:
@@ -69,14 +70,19 @@ def _on_add_cards_init(add_cards) -> None:
     _add_cards_ref = weakref.ref(add_cards)
 
 
-def _on_add_note(note) -> None:
+def _on_add_note(problem, note):
+    if problem is not None:
+        return problem
     rules = get_config()["rules"]
-    changed, counts = _clean_note(note, rules)
+    try:
+        changed, counts = _clean_note(note, rules)
+    except ValueError as error:
+        return str(error)
     if not changed:
-        return
-    mw.col.update_note(note)
+        return None
     parent = _add_cards_ref() if _add_cards_ref is not None else mw
     _tooltip(parent, counts, rules)
+    return None
 
 
 def clean_collection() -> None:
@@ -132,7 +138,7 @@ def _setup_menu(*_args) -> None:
 
 
 gui_hooks.add_cards_did_init.append(_on_add_cards_init)
-gui_hooks.add_cards_did_add_note.append(_on_add_note)
+gui_hooks.add_cards_will_add_note.append(_on_add_note)
 gui_hooks.profile_did_open.append(_maybe_auto_clean)
 if hasattr(gui_hooks, "main_window_did_init"):
     gui_hooks.main_window_did_init.append(_setup_menu)

@@ -167,7 +167,7 @@ class HtmlCleanupSettingsDialog(QDialog):
             if not rule["regex"] or not rule["find"]:
                 continue
             try:
-                re.compile(rule["find"])
+                re.compile(rule["find"]).sub(rule["to"], "")
             except re.error as error:
                 showWarning(
                     f"Wiersz {row} („{rule['name'] or rule['find']}”) ma niepoprawne "

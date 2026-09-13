@@ -26,11 +26,11 @@ class DefaultRuleTests(unittest.TestCase):
     def test_other_field_preserves_division_as_break(self):
         value, counts = cleaning.clean_field("def", "<div>one</div><div>two</div>", self.rules)
         self.assertEqual(value, "one<br>two")
-        self.assertEqual(counts, {1: 2, 3: 1})
+        self.assertEqual(counts, {1: 4, 3: 1, 4: 2})
 
     def test_nested_divs_collapse(self):
         value, _counts = cleaning.clean_field("def", "<div>a<div>b</div></div>", self.rules)
-        self.assertEqual(value, "ab<br>")
+        self.assertEqual(value, "a<br>b")
 
 
 class RuleEngineTests(unittest.TestCase):
@@ -58,9 +58,8 @@ class RuleEngineTests(unittest.TestCase):
     def test_self_feeding_repeat_rule_terminates(self):
         rules = [{"on": True, "find": "x", "to": "xx", "regex": False,
                   "fields": "", "repeat": True}]
-        value, counts = cleaning.clean_field("f", "x", rules)
-        self.assertLessEqual(len(value), 2 ** cleaning.MAX_PASSES)
-        self.assertGreater(counts[0], 0)
+        with self.assertRaises(ValueError):
+            cleaning.clean_field("f", "x", rules)
 
 
 if __name__ == "__main__":

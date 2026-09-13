@@ -17,7 +17,7 @@ class AudioEmbedLogicTests(unittest.TestCase):
         converted = logic.convert_text("[sound:example.mp3]", "example-audio", "metadata")
         self.assertEqual(
             converted,
-            '<audio class="example-audio" src="example.mp3" preload="metadata"></audio>',
+            '<audio controls class="example-audio" src="example.mp3" preload="metadata"></audio>',
         )
         self.assertEqual(logic.convert_text(converted), converted)
 

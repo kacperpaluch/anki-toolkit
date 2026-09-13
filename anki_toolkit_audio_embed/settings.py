@@ -47,7 +47,8 @@ class AudioEmbedSettingsDialog(QDialog):
 
         hint = QLabel(
             "Typy notatek i pola oddzielaj przecinkami. Operacja jest idempotentna: "
-            "ponowny skan nie zmienia istniejących elementów <audio>."
+            "ponowny skan nie zmienia gotowych odtwarzaczy; starszy format dodatku "
+            "otrzymuje brakujące przyciski sterowania."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)

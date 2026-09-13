@@ -9,6 +9,7 @@ Dodatek zawiera tylko presety talii filtrowanych. Homograph Manager został
 
 - Presety przeszukują całą kolekcję i używają `reschedule=false`.
 - Istniejąca talia filtrowana o tej samej nazwie jest aktualizowana, nie duplikowana.
+  Dotyczy to również sufiksów liczbowych po kolizji ze zwykłą talią.
 - Główne menu otwiera bezpośrednio wybór presetu; dodatkowe ustawienia są
   przyciskiem w tym dialogu. Zapis zachowuje nieznane klucze.
 

@@ -4,3 +4,5 @@ Tworzy talie filtrowane z gotowych presetów (ostatnio uczone, trudne, losowe).
 Otwórz **Narzędzia → Anki Toolkit: Learning…**, wybierz preset i utwórz talię.
 Przycisk **Dodatkowe ustawienia…** w tym samym oknie pozwala zmienić jej nazwę
 bazową. Oceny w tych taliach nie zmieniają harmonogramu powtórek.
+Jeśli nazwa koliduje ze zwykłą talią, dodatek używa sufiksu liczbowego;
+kolejne uruchomienie aktualizuje tę samą talię filtrowaną z sufiksem.

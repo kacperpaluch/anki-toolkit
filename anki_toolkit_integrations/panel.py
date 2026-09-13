@@ -22,6 +22,7 @@ z Oxfordem często nawet nie otwierasz.
 
 import logging
 import random
+from concurrent.futures import Future
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -47,7 +48,9 @@ from aqt.qt import (
     QWebEngineView,
     sip,
 )
-from aqt.utils import tooltip
+from aqt.utils import askUser, tooltip
+
+from .html import clean_html_normalized
 
 def get_full_config():
     return mw.addonManager.getConfig(__package__) or {}
@@ -129,6 +132,11 @@ class WordQueuePanel(QDockWidget):
         self._marked: set = set()  # id wierszy już odhaczonych — PATCH tylko raz na wiersz
         self._done_count = 0
         self._suspend = False  # blokuje itemChanged przy zmianach programowych
+        self._pending: dict = {}  # one in-flight PATCH per row
+        self._refill_generation = 0
+        self._selection_generation = 0
+        self._bound_note = None
+        self._bound_row_id = None
 
         self.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
@@ -206,7 +214,14 @@ class WordQueuePanel(QDockWidget):
 
     def refill(self) -> None:
         """Pobierz świeżą paczkę wierszy z flag_column == false i zbuduj listę."""
+        if self._pending:
+            tooltip("n8n: poczekaj na zakończenie zapisu wierszy.", parent=mw)
+            return
+        self._refill_generation += 1
+        generation = self._refill_generation
         def done(future):
+            if sip.isdeleted(self) or generation != self._refill_generation:
+                return
             try:
                 rows, error = future.result()
             except Exception:
@@ -229,12 +244,20 @@ class WordQueuePanel(QDockWidget):
 
     def _rebuild(self, rows: list[dict]) -> None:
         """Przebuduj listę z podanych wierszy, zachowując wygląd odhaczonych."""
+        selected_id = self.current_row_id()
+        self._selection_generation += 1
         with self._silent():  # addItem/setCheckState odpalają itemChanged — nie chcemy PATCH-y
             self._list.clear()
             for row in rows:
                 self._list.addItem(self._make_item(row))
         self._apply_hiding()
         self._update_counter()
+        for i in range(self._list.count()):
+            if self._list.item(i).data(Qt.ItemDataRole.UserRole).get("id") == selected_id:
+                with self._silent():
+                    self._list.setCurrentRow(i)
+                return
+        self._bound_note = self._bound_row_id = None
         self._select_first_visible()  # odpala _on_item_changed → prefill + zakładki
 
     def _select_first_visible(self) -> None:
@@ -248,7 +271,10 @@ class WordQueuePanel(QDockWidget):
         item = QListWidgetItem(row.get(self._cfg["word_column"]) or "—")
         item.setData(Qt.ItemDataRole.UserRole, row)
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        done = row.get("id") in self._marked
+        row_id = row.get("id")
+        done = self._pending.get(row_id, row_id in self._marked)
+        if row_id in self._pending:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
         item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
         self._style_item(item, done)
         return item
@@ -296,28 +322,54 @@ class WordQueuePanel(QDockWidget):
         row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
         if row_id is None:
             return
+        if row_id in self._pending:
+            self._set_check(item, self._pending[row_id])
+            return
+        previous = row_id in self._marked
+        if previous == done:
+            self._set_check(item, done)
+            return
+        self._refill_generation += 1  # an older GET must not overwrite this PATCH
+        self._pending[row_id] = done
+        with self._silent():
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+        self._set_check(item, done)
 
         def finished(future):
             try:
-                _matched, error = future.result()
+                matched, error = future.result()
+                if not error and matched != 1:
+                    error = f"oczekiwano 1 wiersza, zmieniono {matched}; odśwież kolejkę"
             except Exception:
                 log.exception("word_queue: PATCH rzucił wyjątkiem")
                 error = "wyjątek (szczegóły w Logach)"
-            if sip.isdeleted(self) or sip.isdeleted(item):
-                return  # okno zamknięte / lista przebudowana, zanim PATCH wrócił
+            self._pending.pop(row_id, None)
+            if sip.isdeleted(self):
+                return
             if error:
                 tooltip(f"n8n: nie zapisano wiersza {row_id} — {error}", parent=mw, period=5000)
-                self._set_check(item, not done)  # rollback do stanu sprzed kliknięcia
-                return
-            self._marked.add(row_id) if done else self._marked.discard(row_id)
-            self._done_count += 1 if done else -1
-            self._style_item(item, done)
+            else:
+                self._marked.add(row_id) if done else self._marked.discard(row_id)
+                self._done_count += 1 if done else -1
+            # Shuffle may have rebuilt the QListWidget while HTTP was running.
+            for i in range(self._list.count()):
+                current = self._list.item(i)
+                if current.data(Qt.ItemDataRole.UserRole).get("id") == row_id:
+                    self._set_check(current, row_id in self._marked)
+                    with self._silent():
+                        current.setFlags(current.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    self._style_item(current, row_id in self._marked)
             self._apply_hiding()
             self._update_counter()
 
-        mw.taskman.run_in_background(
-            lambda: self._mark_row_done(row_id, self._cfg, done), finished
-        )
+        try:
+            mw.taskman.run_in_background(
+                lambda: self._mark_row_done(row_id, self._cfg, done), finished
+            )
+        except Exception as error:
+            failed = Future()
+            failed.set_exception(error)
+            finished(failed)
 
     def _set_check(self, item: QListWidgetItem, checked: bool) -> None:
         with self._silent():
@@ -354,59 +406,47 @@ class WordQueuePanel(QDockWidget):
                 self._list.setCurrentRow(i)
                 return
 
-    def _on_item_changed(self, current: QListWidgetItem, _previous) -> None:
+    def _on_item_changed(self, current: QListWidgetItem, previous) -> None:
         """Zmiana zaznaczenia (klik lub strzałki): wpisz słówko, załaduj słowniki."""
-        if current is None:
+        if self._suspend or current is None:
             return
         row = current.data(Qt.ItemDataRole.UserRole)
         word = row.get(self._cfg["word_column"]) or ""
-        self._prefill(word)
-        self._tabs.set_urls(
-            {label: row.get(column) or "" for label, column in self._cfg["link_columns"].items()}
-        )
+        def ready(accepted):
+            if accepted:
+                self._tabs.set_urls(
+                    {label: row.get(column) or "" for label, column in self._cfg["link_columns"].items()}
+                )
+            else:
+                with self._silent():
+                    self._list.setCurrentItem(previous if previous is not None and not sip.isdeleted(previous) else None)
+        self._prefill(word, ready, confirm=True)
 
-    def note_added(self) -> None:
+    def note_added(self, note) -> None:
         """Hook po dodaniu notatki: odhacz wiersz, ale ZOSTAŃ na słówku.
 
         Bez przeskoku, bo jedno hasło bywa kilkoma kartami (kilka znaczeń).
         Kolejne dodania nie wołają n8n ponownie — `_marked` pilnuje jednego PATCH-a.
         """
         row = self._current_row()
-        if row is None:
+        if row is None or note is not self._bound_note or row.get("id") != self._bound_row_id:
+            return
+        field = self._cfg["word_field"]
+        word = row.get(self._cfg["word_column"]) or ""
+        if field not in note or clean_html_normalized(note[field]).casefold() != clean_html_normalized(word).casefold():
+            tooltip("n8n: inne hasło — wiersz nie został odhaczony. Użyj „Zrobione →”, jeśli to ta sama pozycja.", parent=mw)
             return
 
         # Anki wczytało już pustą notatkę (_load_new_note leci przed hookiem),
         # więc wpisujemy hasło z powrotem — gotowe na kolejne znaczenie.
-        self._prefill(row.get(self._cfg["word_column"]) or "")
+        self._prefill(word)
 
         row_id = row.get("id")
-        if row_id is None or row_id in self._marked:
+        if row_id is None or row_id in self._marked or row_id in self._pending:
             return
-        self._marked.add(row_id)
-
         item = self._list.currentItem()
-
-        def done(future):
-            try:
-                _matched, error = future.result()
-            except Exception:
-                log.exception("word_queue: PATCH rzucił wyjątkiem")
-                self._marked.discard(row_id)  # pozwól spróbować ponownie przy następnej karcie
-                return
-            if error:
-                self._marked.discard(row_id)
-                tooltip(f"n8n: nie odhaczono wiersza {row_id} — {error}", parent=mw, period=5000)
-                return
-            if sip.isdeleted(self):
-                return  # okno „Dodaj" zamknięte, zanim n8n odpowiedział
-            self._done_count += 1
-            if item is not None and not sip.isdeleted(item):
-                self._set_check(item, True)  # bez _set_row — PATCH właśnie poszedł
-                self._style_item(item, True)
-                self._apply_hiding()
-            self._update_counter()
-
-        mw.taskman.run_in_background(lambda: self._mark_row_done(row_id, self._cfg), done)
+        if item is not None:
+            self._set_row(item, True)
 
     def _update_counter(self) -> None:
         left = self._list.count() - len(self._marked)
@@ -414,12 +454,41 @@ class WordQueuePanel(QDockWidget):
 
     # -- pomocnicze ---------------------------------------------------------
 
-    def _prefill(self, word: str) -> None:
-        """Wpisz słówko do pola notatki. Hook leci po _load_new_note(), więc notatka jest pusta."""
+    def _prefill(self, word: str, after=None, confirm=False) -> None:
+        """Flush unsaved fields before changing the headword; reject stale callbacks."""
         editor = self._addcards.editor
         note = editor.note
+        collection = mw.col
+        self._selection_generation += 1
+        generation = self._selection_generation
         field = self._cfg["word_field"]
         if note is None or field not in note:
+            if after:
+                after(False)
             return
-        note[field] = word
-        editor.loadNote()
+
+        def valid():
+            return (not sip.isdeleted(self) and generation == self._selection_generation
+                    and mw.col is collection and editor.note is note
+                    and editor.web is not None and not sip.isdeleted(editor.web))
+
+        def saved():
+            if not valid():
+                return
+            existing = clean_html_normalized(note[field])
+            if confirm and existing and existing != clean_html_normalized(word):
+                accepted = askUser(f"Zastąpić hasło „{existing}” przez „{word}” w rozpoczętej notatce? Pozostałe pola pozostaną bez zmian.", parent=self)
+                if not valid():
+                    return
+                if not accepted:
+                    if after:
+                        after(False)
+                    return
+            note[field] = word
+            self._bound_note = note
+            self._bound_row_id = self.current_row_id()
+            editor.loadNote()
+            if after:
+                after(True)
+
+        editor.saveNow(saved)

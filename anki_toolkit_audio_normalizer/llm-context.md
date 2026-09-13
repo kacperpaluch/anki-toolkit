@@ -10,9 +10,13 @@ katalogu mediów.
 - `logic.process_media_dir()` jest workerem: otrzymuje ścieżkę i nigdy nie
   dotyka `mw`, kolekcji ani Qt.
 - Ścieżkę media i `media.write_data()` pobieraj/wykonuj na głównym wątku.
-- Historia należy do `user_files/audio_normalizer_history.json` i nie może trafić
-  do repozytorium.
-- Watcher jest pojedynczy, ma debounce 3 s i ignoruje własne zapisy normalizera.
+- Historia w `user_files/audio_normalizer_<hash-katalogu>.json` używa mtime_ns
+  i rozmiaru pliku; zapis jest atomowy. Stara historia bez właściciela nie jest importowana.
+- Watcher jest pojedynczy, ma debounce 3 s i jest odpinany przy zamykaniu profilu.
+  Zdarzenia podczas pracy ustawiają flagę ponownego skanu (także własne zapisy;
+  historia zapobiega kolejnej konwersji). Callback sprawdza kolekcję i anulowanie.
+- Worker sprawdza anulowanie oraz niezmienność pliku przed podmianą; zbiera
+  wyniki już zakończonych zadań również po anulowaniu pozostałych.
 - Konfiguracja jest dostępna z menu Narzędzia; zapis zachowuje obce klucze.
 
 ## Pliki

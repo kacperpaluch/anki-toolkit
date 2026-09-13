@@ -11,3 +11,13 @@ Bridge nasłuchuje wyłącznie na `127.0.0.1`; handler HTTP przekazuje zmianę d
 głównego wątku i zachowuje protokół `{"fields": {...}}`. Panel odhacza wiersz
 po `id`, a fallback bez panelu może odhaczyć go po słowie. Nie ma automatycznej
 migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
+
+- Bridge przechwytuje sesję edytora przez `editor_did_load_note`. Zmiana wymaga
+  `saveNow`, żywego celu i niewygasłego żądania; timeout obejmuje także callback zapisu.
+- Panel blokuje równoległe PATCH-e tego samego ID. Wspólna `_set_row` obsługuje
+  checkbox i dodanie notatki; sukces wymaga dokładnie jednego trafienia.
+- Starsze GET-y nie zastępują nowej listy ani wyniku PATCH-a. Przebudowa listy
+  zachowuje wybrane ID i unieważnia stare callbacki wypełniania edytora.
+- Automatyczne odhaczenie wymaga powiązanej notatki, ID i zgodnego hasła;
+  zmienioną formę hasła użytkownik zatwierdza przez „Zrobione →”.
+- Zapamiętany host musi należeć do adresów przekazanej konfiguracji.

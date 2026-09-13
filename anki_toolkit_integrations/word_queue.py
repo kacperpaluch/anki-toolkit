@@ -71,7 +71,9 @@ def _configured(cfg: dict) -> bool:
 def _base_urls(cfg: dict) -> list[str]:
     """Adresy do wypróbowania: ostatni działający, potem domowy, potem fallback."""
     urls = []
-    for url in (_active_url, cfg["n8n_url"], cfg.get("fallback_url", "")):
+    configured = [(cfg.get(key) or "").rstrip("/") for key in ("n8n_url", "fallback_url")]
+    remembered = _active_url if _active_url in configured else None
+    for url in (remembered, *configured):
         url = (url or "").rstrip("/")
         if url and url not in urls:
             urls.append(url)
@@ -235,12 +237,8 @@ def on_add_note(note) -> None:
     if not _configured(cfg):
         return  # nieskonfigurowany → moduł śpi
 
-    # Widoczny panel wie, który wiersz robisz → patch po id. Uwaga: gdy panel jest
-    # otwarty, KAŻDA dodana notatka odhacza bieżący wiersz, także dodana
-    # obok kolejki. ponytail: w praktyce panel otwierasz po to, żeby robić
-    # kolejkę; gdyby to gryzło — porównaj pole z wierszem przed patchem.
     if _panel is not None and _panel.isVisible():
-        _panel.note_added()
+        _panel.note_added(note)
         return
 
     field = cfg["word_field"]

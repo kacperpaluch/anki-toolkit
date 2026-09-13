@@ -17,16 +17,19 @@ użytkownik w tabeli w ustawieniach. Działa przy dodawaniu notatki oraz na
 ## Niezmienniki
 
 - `clean_field()` jest jedynym silnikiem reguł dla Add Cards i skanu kolekcji.
-- Reguły stosowane są w kolejności listy — `Bloki <div> → <br>` musi wyprzedzać
-  `Obetnij końcowy <br>`, inaczej zostaje wiszący `<br>`.
+- Reguły domyślne zastępują oba końce bloków `<div>` przez `<br>`, następnie
+  scalają sąsiadujące separatory i obcinają je na brzegach pola.
 - `default_rules(skip_field)` służy zarówno za zestaw domyślny, jak i za migrację
-  configów sprzed edytowalnych reguł (`get_config()` uzupełnia brakujące `rules`).
+  configów sprzed edytowalnych reguł. `get_config()` uzupełnia brakujący klucz,
+  zachowuje pustą listę i aktualizuje wyłącznie dokładny stary zestaw domyślny.
 - `clean_field()` zwraca liczniki kluczowane indeksem reguły; tooltip mapuje je
   na `name`, więc indeksy muszą pochodzić z tej samej listy, która czyściła.
 - Niepoprawny regex jest pomijany w locie; dialog odrzuca go przy zapisie
   (`re.compile`) — to jedyne miejsce walidacji.
-- `MAX_PASSES` ogranicza `repeat`; koszt jest wykładniczy, nie podnoś bez limitu
-  rozmiaru.
+- `MAX_PASSES` i `MAX_FIELD_CHARS` ograniczają rozrost tekstu; zamiennik jest
+  budowany przyrostowo z kontrolą rozmiaru. Nie ograniczają czasu działania `re`.
+- `_clean_note` zbiera zmiany przed mutacją, więc błąd rozrostu nie zmienia
+  części notatki. Hook `add_cards_will_add_note` zwraca błąd bez zapisu do kolekcji.
 - Skan kolekcji musi używać `CollectionOp`, aby tworzyć poprawny krok undo.
 - Hook Add Cards działa na głównym wątku; nie przenoś zapisu notatki do workera.
 - `save_config()` zachowuje nieznane klucze konfiguracji profilu.

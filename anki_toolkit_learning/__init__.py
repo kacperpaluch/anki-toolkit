@@ -24,11 +24,10 @@ class PresetDialog(QDialog):
 def create_filtered_deck(index, limit=None):
     label,query,default,order=PRESETS[index]; limit=limit or default or NO_LIMIT; base=get_config()["deck_name"]; name=f"{base} — {label}"; col=mw.col
     try:
-        existing=col.decks.by_name(name); reused=bool(existing and existing.get("dyn")); deck_id=existing["id"] if reused else None
-        if not deck_id:
-            counter=1; candidate=name
-            while col.decks.by_name(candidate): candidate=f"{name} ({counter})"; counter+=1
-            name=candidate; deck_id=col.decks.new_filtered(name)
+        base_name=name; counter=1; existing=col.decks.by_name(name)
+        while existing and not existing.get("dyn"):
+            name=f"{base_name} ({counter})"; counter+=1; existing=col.decks.by_name(name)
+        reused=bool(existing); deck_id=existing["id"] if reused else col.decks.new_filtered(name)
         deck=col.decks.get(deck_id)
         if isinstance(deck,dict): deck["terms"][0][0]=query; deck["terms"][0][1]=limit; deck["terms"][0][2]=order; deck["resched"]=False; deck["separate"]=True; col.decks.save(deck)
         else:

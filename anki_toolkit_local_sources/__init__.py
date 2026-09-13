@@ -25,7 +25,10 @@ _migrate_legacy_databases()
 def _name(): return __name__.split('.')[0]
 def get_config(): return {'oxford':{'match_field':'ang'},'supermemo':{'match_field':'ang','field_map':{'Translation':'pol','Definition':'def','Synonyms':'synonim','PartOfSpeech':'cz_mowy'}},**(mw.addonManager.getConfig(_name()) or {})}
 def save_config(changes):
- c=mw.addonManager.getConfig(_name()) or {}; c.update(changes); mw.addonManager.writeConfig(_name(),c)
+ c=mw.addonManager.getConfig(_name()) or {}
+ for key,value in changes.items():
+  c[key]={**c.get(key,{}),**value} if isinstance(value,dict) else value
+ mw.addonManager.writeConfig(_name(),c)
 def _db(kind):
  if kind not in _cache:
   try:
