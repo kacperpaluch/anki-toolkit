@@ -39,6 +39,7 @@ from aqt.qt import (
     QSplitter,
     Qt,
     QTabWidget,
+    QTimer,
     QUrl,
     QVBoxLayout,
     QWebEnginePage,
@@ -50,6 +51,7 @@ from aqt.qt import (
 )
 from aqt.utils import askUser, tooltip
 
+from . import ai_senses
 from .html import clean_html_normalized
 
 def get_full_config():
@@ -92,9 +94,12 @@ class _DictTabs(QTabWidget):
         self._labels = list(labels)          # indeks zakładki → etykieta
         self._views: list[QWebEngineView] = []
         self._pending: dict[int, str] = {}   # indeks → URL czekający na pierwsze wejście
-        for label in self._labels:
+        self._loaded: dict[int, bool] = {}   # indeks → strona dojechała (AI czeka na to)
+        for index, label in enumerate(self._labels):
             view = QWebEngineView(self)
             view.setPage(QWebEnginePage(_dict_profile(), view))
+            # ok=False też kończy czekanie: pusta zakładka jest lepsza niż zawieszony przycisk AI.
+            view.loadFinished.connect(lambda _ok, i=index: self._loaded.__setitem__(i, True))
             self._views.append(view)
             self.addTab(view, label)
         self.currentChanged.connect(lambda _i: self._load_current())
@@ -103,6 +108,7 @@ class _DictTabs(QTabWidget):
         """urls: etykieta → URL. Brak/pusty URL = zakładka wyszarzona."""
         self._pending = {i: urls.get(label) or "" for i, label in enumerate(self._labels)}
         self._pending = {i: url for i, url in self._pending.items() if url}
+        self._loaded = {}  # nowe hasło — stary tekst stron przestał obowiązywać
         for i in range(len(self._labels)):
             enabled = i in self._pending
             self.setTabEnabled(i, enabled)
@@ -115,9 +121,61 @@ class _DictTabs(QTabWidget):
         self._load_current()
 
     def _load_current(self) -> None:
-        url = self._pending.pop(self.currentIndex(), None)
+        self._start_load(self.currentIndex())
+
+    def _start_load(self, index: int) -> None:
+        url = self._pending.pop(index, None)
         if url:
-            self._views[self.currentIndex()].load(QUrl(url))
+            self._loaded[index] = False
+            self._views[index].load(QUrl(url))
+
+    def _enabled(self) -> list[int]:
+        return [i for i in range(len(self._labels)) if self.isTabEnabled(i)]
+
+    def texts(self, callback, timeout_ms: int = 20000) -> None:
+        """{etykieta: tekst strony} dla włączonych zakładek — do promptu AI.
+
+        Dociąga zakładki, które jeszcze nie wisiały: leniwe ładowanie oszczędza
+        pamięć przy przeglądaniu, ale model potrzebuje diki (PL) razem z Oxfordem
+        (EN). Zakładka, która nie dojedzie w `timeout_ms`, jest pomijana —
+        lepszy prompt z dwóch słowników niż przycisk, który nigdy nie oddaje.
+
+        ponytail: odpytujemy timerem zamiast pilnować sygnałów loadFinished na
+        krzyż. Ćwierć sekundy opóźnienia przy akcji, która i tak trwa sekundy.
+        """
+        for index in self._enabled():
+            self._start_load(index)
+        remaining = [timeout_ms]
+
+        def ready():
+            if sip.isdeleted(self):
+                return
+            if any(not self._loaded.get(i) for i in self._enabled()) and remaining[0] > 0:
+                remaining[0] -= 250
+                QTimer.singleShot(250, ready)
+                return
+            self._collect(callback)
+
+        ready()
+
+    def _collect(self, callback) -> None:
+        indexes = [i for i in self._enabled() if self._loaded.get(i)]
+        if not indexes:
+            callback({})
+            return
+        result: dict[str, str] = {}
+        missing = [len(indexes)]
+
+        def got(text, label):
+            result[label] = text or ""
+            missing[0] -= 1
+            if missing[0] == 0 and not sip.isdeleted(self):
+                callback(result)
+
+        for index in indexes:
+            self._views[index].page().toPlainText(
+                lambda text, label=self._labels[index]: got(text, label)
+            )
 
 
 class WordQueuePanel(QDockWidget):
@@ -169,6 +227,14 @@ class WordQueuePanel(QDockWidget):
         self._hide_done.setChecked(True)  # domyślnie widzisz tylko to, co zostało
         self._hide_done.toggled.connect(lambda _c: self._apply_hiding())
         bar.addWidget(self._hide_done)
+
+        self._ai_btn = QPushButton("AI: znaczenia")
+        self._ai_btn.setToolTip(
+            "Dopasuj polskie znaczenia z diki do definicji z Oxforda/Longmana\n"
+            "i utwórz po jednej karcie na każde znaczenie"
+        )
+        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
+        bar.addWidget(self._ai_btn)
 
         done_btn = QPushButton("Zrobione →")
         done_btn.setToolTip("Odhacz w n8n i przejdź do następnego słówka")
@@ -446,6 +512,73 @@ class WordQueuePanel(QDockWidget):
             return
         item = self._list.currentItem()
         if item is not None:
+            self._set_row(item, True)
+
+    # -- AI: znaczenia → karty ----------------------------------------------
+
+    def _ai_senses(self) -> None:
+        """Tekst otwartych słowników → model → wybór znaczeń → po karcie na znaczenie."""
+        row = self._current_row()
+        word = (row or {}).get(self._cfg["word_column"]) or ""
+        if not word:
+            tooltip("AI: najpierw wybierz słówko z listy.", parent=mw)
+            return
+        self._ai_btn.setEnabled(False)
+
+        def with_texts(texts):
+            if sip.isdeleted(self):
+                return
+            if not texts:
+                self._ai_failed("zakładki słownikowe się nie wczytały")
+                return
+            mw.taskman.run_in_background(
+                lambda: ai_senses.generate(word, texts, self._cfg),
+                lambda future: self._on_senses(word, future),
+            )
+
+        self._tabs.texts(with_texts)
+
+    def _ai_failed(self, message: str) -> None:
+        self._ai_btn.setEnabled(True)
+        tooltip(f"AI: {message}", parent=mw, period=6000)
+
+    def _on_senses(self, word: str, future) -> None:
+        try:
+            senses, error = future.result()
+        except Exception:  # noqa: BLE001 — błąd dostawcy nie może wysadzać okna „Dodaj"
+            log.exception("ai_senses: generowanie rzuciło wyjątkiem")
+            senses, error = [], "wyjątek (szczegóły w Logach)"
+        if sip.isdeleted(self):
+            return
+        if error:
+            self._ai_failed(error)
+            return
+        self._ai_btn.setEnabled(True)
+
+        chosen = ai_senses.pick_senses(senses, word, self)
+        if not chosen or sip.isdeleted(self):
+            return
+        try:
+            added, error = ai_senses.add_notes(self._addcards, word, chosen, self._cfg)
+        except Exception:  # noqa: BLE001
+            log.exception("ai_senses: zapis notatek rzucił wyjątkiem")
+            tooltip("AI: nie zapisano kart (szczegóły w Logach)", parent=mw, period=6000)
+            return
+        if error:
+            tooltip(f"AI: {error}", parent=mw, period=8000)
+        if not added:
+            return
+
+        mw.reset()
+        review = sum(1 for sense in chosen if sense["match"] != "exact")
+        tag = self._cfg.get("ai_review_tag") or ""
+        suffix = f", {review} do przejrzenia" + (f" (tag „{tag}”)" if tag else "") if review else ""
+        tooltip(f"AI: dodano {added} kart dla „{word}”{suffix}", parent=mw, period=5000)
+
+        # Karty są w talii, więc wiersz jest zrobiony — hook add_cards_did_add_note
+        # tu nie leci (to nie okno „Dodaj" je zapisało), odhaczamy wprost.
+        item = self._list.currentItem()
+        if item is not None and self.current_row_id() not in self._marked:
             self._set_row(item, True)
 
     def _update_counter(self) -> None:

@@ -54,6 +54,15 @@ _DEFAULTS = {
     "page_size": 250,          # maksimum, jakie przyjmuje n8n
     "max_rows": 5000,          # bezpiecznik pętli stronicowania
     "random_order": False,     # startowy stan checkboxa „Losowo"
+    # „AI: znaczenia" — dostawca pożyczany z dodatku Content (klucze trzyma on).
+    "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
+    "ai_model": "",            # puste = model domyślny dostawcy z Contentu
+    "ai_max_senses": 3,        # ile kart maksymalnie z jednego hasła
+    "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
+    "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)
+    "ai_review_tag": "ai-review",  # dodatkowo, gdy dopasowanie nie jest pewne
+    # Pole angielskie to `word_field` powyżej — tu tylko reszta.
+    "ai_fields": {"pl": "pol", "definition": "def", "example": "przyklad"},
 }
 
 _panel = None       # aktywny WordQueuePanel albo None
