@@ -1,0 +1,6 @@
+meta.json
+user_files/
+*.log
+__pycache__/
+*.py[cod]
+.DS_Store

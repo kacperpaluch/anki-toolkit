@@ -11,6 +11,7 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 |---|---|---|
 | [Content](anki_toolkit_content/README.md) | AI Generator, Batch API, workflowy, słowniki, TTS i dzielenie pól. | **Narzędzia → Anki Toolkit: Content** |
 | [Learning](anki_toolkit_learning/README.md) | Talie filtrowane z presetów szybkich powtórek. | **Narzędzia → Anki Toolkit: Learning…** |
+| [Workload](anki_toolkit_workload/README.md) | Raport obciążenia: czy limity nowych kart nie zbudują lawiny powtórek. | **Narzędzia → Anki Toolkit: Workload…** |
 | [Audio Normalizer](anki_toolkit_audio_normalizer/README.md) | Normalizacja głośności mediów przez `ffmpeg`, ręcznie lub automatycznie. | **Narzędzia → Anki Toolkit: Audio Normalizer** |
 | [Audio Embed](anki_toolkit_audio_embed/README.md) | Zamiana `[sound:...]` na odtwarzacze HTML5 w wybranych polach. | **Narzędzia → Anki Toolkit: Audio Embed** |
 | [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
@@ -35,6 +36,16 @@ Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI** i
 Tworzy lub odświeża talie filtrowane z gotowych presetów: karty uczone ostatnio,
 trudne, wszystkie nie-nowe albo losowe. Wybierasz preset i limit kart, a oceny
 w takiej talii nie zmieniają zwykłego harmonogramu powtórek.
+
+### Workload
+
+Pokazuje, czy obecne limity nie prowadzą do lawiny powtórek. Mierzy obciążenie,
+które już masz — sumę odwrotności interwałów kart — i porównuje je z czasem,
+jaki chcesz poświęcać, uwzględniając koszt wprowadzania nowych kart. Osobno
+podaje projekcję: do ilu powtórek dziennie dojdzie obecny dopływ. Dolicza trend
+z ostatnich tygodni z datą przebicia sufitu, prognozę terminów, zaległości i
+brakujące hamulce, w tym preset bez realnego limitu powtórek. Tylko czyta
+kolekcję — zmiany wpisujesz sam w Opcjach talii.
 
 ### Audio Normalizer
 
