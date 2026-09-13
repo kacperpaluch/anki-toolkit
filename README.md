@@ -11,7 +11,7 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 |---|---|---|
 | [Content](anki_toolkit_content/README.md) | AI Generator, Batch API, workflowy, słowniki, TTS i dzielenie pól. | **Narzędzia → Anki Toolkit: Content** |
 | [Learning](anki_toolkit_learning/README.md) | Talie filtrowane z presetów szybkich powtórek. | **Narzędzia → Anki Toolkit: Learning…** |
-| [Workload](anki_toolkit_workload/README.md) | Raport obciążenia: czy limity nowych kart nie zbudują lawiny powtórek. | **Narzędzia → Anki Toolkit: Workload…** |
+| [Workload](anki_toolkit_workload/README.md) | Elastyczny plan na dziś i spokojne tempo nowych kart. | **Narzędzia → Anki Toolkit: Workload…** |
 | [Audio Normalizer](anki_toolkit_audio_normalizer/README.md) | Normalizacja głośności mediów przez `ffmpeg`, ręcznie lub automatycznie. | **Narzędzia → Anki Toolkit: Audio Normalizer** |
 | [Audio Embed](anki_toolkit_audio_embed/README.md) | Zamiana `[sound:...]` na odtwarzacze HTML5 w wybranych polach. | **Narzędzia → Anki Toolkit: Audio Embed** |
 | [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
@@ -39,13 +39,12 @@ w takiej talii nie zmieniają zwykłego harmonogramu powtórek.
 
 ### Workload
 
-Pokazuje, czy obecne limity nie prowadzą do lawiny powtórek. Mierzy obciążenie,
-które już masz — sumę odwrotności interwałów kart — i porównuje je z czasem,
-jaki chcesz poświęcać, uwzględniając koszt wprowadzania nowych kart. Osobno
-podaje projekcję: do ilu powtórek dziennie dojdzie obecny dopływ. Dolicza trend
-z ostatnich tygodni z datą przebicia sufitu, prognozę terminów, zaległości i
-brakujące hamulce, w tym preset bez realnego limitu powtórek. Tylko czyta
-kolekcję — zmiany wpisujesz sam w Opcjach talii.
+Pomaga spokojnie rozpocząć i utrzymać naukę: domyślnie 15 minut jako punkt
+odniesienia, 30 minut jako górna granica i 3 nowe karty dziennie łącznie. Czas na dziś można zmienić w oknie;
+krótszy dzień wstrzymuje nowe, dłuższy nie zwiększa tempa. Uwzględnia dzisiejszą
+naukę, zaległości i częste odpowiedzi „Ponownie”, proponując ostrożne zmiany tempa.
+Szczegółowy raport można rozwinąć. Dodatek doradza — nie zmienia limitów Anki
+ani harmonogramu i nie zatrzymuje sesji.
 
 ### Audio Normalizer
 

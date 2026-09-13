@@ -77,12 +77,6 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(logic.ceiling_from_minutes(0, 9.0), 0)
         self.assertEqual(logic.ceiling_from_minutes(30, 0), 0)
 
-    def test_suggested_intake_includes_both_costs(self):
-        # Koszt jednej nowej karty dziennie: 10 × 9 s powtórek + 2.5 × 12 s nauki.
-        self.assertEqual(logic.suggest_new_per_day(30, 9.0, 10.0, 2.5, 12.0), 15)
-        # Bez kosztu nauki wychodzi klasyczne 20.
-        self.assertEqual(logic.suggest_new_per_day(30, 9.0, 10.0), 20)
-
     def test_new_card_cost_is_never_negative(self):
         self.assertEqual(logic.new_card_cost(-1, 12.0), 0.0)
 
@@ -101,10 +95,6 @@ class StructuralLoadTests(unittest.TestCase):
         self.assertEqual(report.structural_load, 4)
         self.assertEqual([row.structural_load for row in report.decks], [1.5, 2.5])
 
-    def test_load_above_ceiling_is_an_alert(self):
-        data = snapshot([deck("a", new_left=0, reciprocal_sum=500.0, review_per_day=100)])
-        titles = [f.title for f in logic.analyze(data, SETTINGS).findings]
-        self.assertIn("Już teraz powyżej sufitu", titles)
 
 
 class SplitTests(unittest.TestCase):
@@ -125,51 +115,18 @@ class SplitTests(unittest.TestCase):
         second = logic.scale_limits({"b": 10, "a": 10}, 15, logic.SPLIT_HEAVIEST_FIRST)
         self.assertEqual(first, second)
 
-    def test_every_deck_keeps_at_least_one_card(self):
-        result = logic.scale_limits({"a": 100, "b": 1}, 3)
-        self.assertEqual(result["b"], 1)
-        self.assertTrue(all(value >= 1 for value in result.values()))
+    def test_small_budget_can_pause_decks(self):
+        for strategy in (logic.SPLIT_PROPORTIONAL, logic.SPLIT_HEAVIEST_FIRST):
+            self.assertEqual(sum(logic.scale_limits({"a": 100, "b": 1}, 1, strategy).values()), 1)
+            self.assertEqual(logic.scale_limits({"a": 10, "b": 5}, 0, strategy), {"a": 0, "b": 0})
+            self.assertEqual(logic.scale_limits({"a": 2}, 100, strategy), {"a": 2})
 
-    def test_strategy_from_settings_is_used(self):
+    def test_strategy_from_settings_is_used_for_today(self):
         data = snapshot([deck("a", new_per_day=30), deck("b", new_per_day=5)])
-        report = logic.analyze(data, {**SETTINGS, "split_strategy": logic.SPLIT_HEAVIEST_FIRST})
-        proposals = {row.name: row.suggested_new_per_day for row in report.decks}
-        self.assertEqual(proposals["b"], 5)
-
-
-class ReviewCeilingSplitTests(unittest.TestCase):
-    def test_root_gets_the_whole_ceiling_and_children_a_share(self):
-        data = snapshot([
-            deck("angielski", new_per_day=999, new_left=0, due_counts={1: 1}),
-            deck("angielski::a", new_per_day=10),
-            deck("angielski::b", new_per_day=5),
-        ])
-        report = logic.analyze(data, SETTINGS)
-        rows = {row.name: row for row in report.decks}
-        self.assertTrue(rows["angielski"].is_root)
-        self.assertFalse(rows["angielski::a"].is_root)
-        self.assertEqual(rows["angielski"].suggested_review_per_day, report.ceiling)
-        self.assertLess(rows["angielski::a"].suggested_review_per_day, report.ceiling)
-        self.assertGreater(
-            rows["angielski::a"].suggested_review_per_day,
-            rows["angielski::b"].suggested_review_per_day,
-        )
-
-    def test_finding_warns_that_equal_ceilings_do_not_cap_the_total(self):
-        data = snapshot([
-            deck("angielski", new_per_day=999, new_left=0, due_counts={1: 1}),
-            deck("angielski::a", new_per_day=10),
-        ])
-        detail = next(
-            f.detail for f in logic.analyze(data, SETTINGS).findings
-            if f.title == "Brak sufitu powtórek"
-        )
-        self.assertIn("nie ogranicza sumy", detail)
-        self.assertIn("z których się uczysz", detail)
-
-    def test_deck_without_parent_in_report_is_its_own_root(self):
-        report = logic.analyze(snapshot([deck("angielski::a")]), SETTINGS)
-        self.assertEqual(report.roots, ["angielski::a"])
+        report = logic.analyze(data, {**SETTINGS, "new_cards_per_day": 10,
+                                     "split_strategy": logic.SPLIT_HEAVIEST_FIRST})
+        self.assertEqual(sum(row.suggested_new_per_day for row in report.decks), 10)
+        self.assertEqual(report.decks[1].suggested_new_per_day, 5)
 
 
 class ForecastTests(unittest.TestCase):
@@ -252,59 +209,12 @@ class TrendTests(unittest.TestCase):
         trend = logic.measured_trend(points, 30, 200, datetime.date(2026, 9, 13))
         self.assertEqual(trend.days_to_ceiling, 0)
 
-    def test_trend_finding_names_the_date(self):
-        data = snapshot(
-            [deck("a", new_left=0, new_per_day=0, review_per_day=100, reciprocal_sum=5.0)],
-            active_days=40,
-            daily_reviews=[(day, 5 * day) for day in range(20)],
-        )
-        detail = next(
-            (f.detail for f in logic.analyze(data, SETTINGS).findings
-             if f.title == "Obciążenie rośnie"), ""
-        )
-        self.assertIn("przebijesz za", detail)
-
-
 class FindingTests(unittest.TestCase):
-    def test_missing_ceiling_is_flagged(self):
-        titles = [f.title for f in logic.analyze(snapshot(), SETTINGS).findings]
-        self.assertIn("Brak sufitu powtórek", titles)
-
-    def test_intake_above_capacity_gets_a_per_deck_proposal(self):
-        data = snapshot([deck("a", new_per_day=30), deck("b", new_per_day=5)])
-        report = logic.analyze(data, SETTINGS)
-        self.assertEqual(report.new_total, 35)
-        self.assertEqual(report.suggested_new_total, 15)
-        self.assertEqual(sum(row.suggested_new_per_day for row in report.decks), 15)
-
-    def test_decks_without_new_cards_do_not_inflate_intake(self):
-        data = snapshot([
-            deck("a", new_per_day=10), deck("b", new_per_day=5),
-            deck("parent", new_per_day=999, new_left=0, due_counts={1: 1}),
-        ])
-        self.assertEqual(logic.analyze(data, SETTINGS).new_total, 15)
-
-    def test_backlog_above_ceiling_is_an_alert(self):
-        data = snapshot([deck("d", new_per_day=1, review_per_day=100,
-                              due_counts={-1: 300})])
-        report = logic.analyze(data, SETTINGS)
-        self.assertEqual(report.backlog, 300)
-        self.assertIn("Zaległości", [f.title for f in report.findings if f.level == "alert"])
-
-    def test_intake_eating_whole_budget_is_an_alert(self):
-        data = snapshot([deck("d", new_per_day=200, review_per_day=100)])
-        titles = [f.title for f in logic.analyze(data, SETTINGS).findings]
-        self.assertIn("Nowe karty zjadają cały czas", titles)
-
-    def test_brake_is_explained_when_switched_off(self):
-        data = snapshot(flags={"newCardsIgnoreReviewLimit": False})
-        titles = [f.title for f in logic.analyze(data, SETTINGS).findings]
-        self.assertIn("Hamulec działa", titles)
-
-    def test_brake_switched_on_is_an_alert(self):
-        data = snapshot(flags={"newCardsIgnoreReviewLimit": True})
-        findings = logic.analyze(data, SETTINGS).findings
-        self.assertIn("Hamulec wyłączony", [f.title for f in findings if f.level == "alert"])
+    def test_high_review_limit_is_not_an_alarm(self):
+        report = logic.analyze(snapshot(), SETTINGS)
+        self.assertNotIn("Brak sufitu powtórek", [f.title for f in report.findings])
+        self.assertIn("Limit sesji nie usuwa zaległości", [f.title for f in report.findings])
+        self.assertTrue(all(row.suggested_review_per_day is None for row in report.decks))
 
     def test_unread_flags_are_reported_not_assumed(self):
         data = snapshot(flags={"fsrs": None}, flag_errors=["fsrs"])
@@ -312,55 +222,110 @@ class FindingTests(unittest.TestCase):
         self.assertNotIn("FSRS wyłączone", titles)
         self.assertIn("Nie odczytano ustawień kolekcji", titles)
 
-    def test_easy_days_are_reported(self):
-        data = snapshot([deck("a", easy_days=[1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0])])
-        detail = next(
-            f.detail for f in logic.analyze(data, SETTINGS).findings
-            if f.title == "Dni łatwe zmieniają sufit"
-        )
-        self.assertIn("sobota", detail)
-        self.assertIn("niedziela", detail)
 
-    def test_parent_gap_only_with_limits_from_top(self):
-        decks = [
-            deck("angielski", new_per_day=999, new_left=0, due_counts={1: 1}),
-            deck("angielski::a", new_per_day=10),
-        ]
-        without = logic.analyze(snapshot(decks), SETTINGS)
-        with_flag = logic.analyze(
-            snapshot(decks, flags={"applyAllParentLimits": True}), SETTINGS
-        )
-        self.assertNotIn(
-            "Talia nadrzędna szersza niż podtalie", [f.title for f in without.findings]
-        )
-        self.assertIn(
-            "Talia nadrzędna szersza niż podtalie", [f.title for f in with_flag.findings]
-        )
+class StudyPlanTests(unittest.TestCase):
+    settings = {**SETTINGS, "minutes_per_day": 15, "new_cards_per_day": 3}
+    today = datetime.date(2026, 9, 14)  # poniedziałek
 
-    def test_healthy_collection_reports_no_issues(self):
-        data = snapshot(
-            [deck("d", new_per_day=10, review_per_day=100, new_left=100,
-                  reciprocal_sum=20.0, due_counts={1: 5, 2: 5})],
-            active_days=200, new_introduced=100, reviews_done=900,
-            learn_answers=250, review_seconds=[9.0] * 50, learn_seconds=[12.0] * 50,
-            flags={"newCardsIgnoreReviewLimit": False, "fsrs": True,
-                   "loadBalancerEnabled": True},
-            daily_reviews=[(day, 60) for day in range(28)],
-        )
-        report = logic.analyze(data, {**SETTINGS, "seconds_per_card": 0,
-                                      "learn_seconds_per_card": 0,
-                                      "learn_answers_per_new_card": 0,
-                                      "reviews_per_new_card": 0})
-        self.assertEqual([f.level for f in report.findings if f.level in ("alert", "warn")], [])
-        self.assertEqual(report.findings[0].title, "Bez uwag")
+    def history(self, count=14, seconds=300, new=3):
+        return {(self.today - datetime.timedelta(days=i)).isoformat():
+                {"seconds": seconds, "new": new, "answers": 10}
+                for i in range(1, count + 1)}
+
+    def report(self, today_minutes=None, **data):
+        return logic.analyze(snapshot(today=self.today, **data), self.settings, today_minutes)
+
+    def test_start_short_day_and_long_day(self):
+        normal = self.report().plan
+        self.assertEqual((normal.today_minutes, normal.weekly_new, normal.new_remaining), (15, 3, 3))
+        self.assertEqual(self.report(5).plan.new_remaining, 0)
+        self.assertEqual(self.report(0).plan.new_remaining, 0)
+        self.assertEqual(self.report(60).plan.new_remaining, 3)
+        self.assertEqual(self.report(60).plan.weekly_new, 3)
+
+    def test_today_is_not_a_new_allowance_on_each_open(self):
+        history = {self.today.isoformat(): {"seconds": 60, "new": 2, "answers": 5}}
+        report = self.report(study_days=history)
+        self.assertEqual(report.plan.new_remaining, 1)
+        self.assertEqual(sum(row.suggested_new_per_day for row in report.decks), 1)
+        history[self.today.isoformat()]["new"] = 3
+        self.assertEqual(self.report(study_days=history).plan.new_remaining, 0)
+        history[self.today.isoformat()].update(new=0, seconds=15 * 60)
+        self.assertEqual(self.report(study_days=history).plan.new_remaining, 0)
+
+    def test_backlog_and_learning_take_priority(self):
+        report = self.report(decks=[deck("a", due_counts={-1: 1, 0: 2})])
+        self.assertEqual((report.plan.new_remaining, report.plan.weekly_new), (0, 0))
+        self.assertEqual(report.plan.due_cards, 3)
+        self.assertEqual(self.report(learning_cards=30).plan.new_remaining, 0)
+        self.assertEqual(self.report(decks=[deck("a", due_counts={0: 100})]).plan.new_remaining, 0)
+
+    def test_two_complete_weeks_only_offer_one_extra(self):
+        history = self.history()
+        report = self.report(study_days=history)
+        self.assertEqual(report.plan.weekly_new, 4)
+        self.assertEqual(report.plan.new_remaining, 3)  # akceptacja wymaga ustawień
+        history[self.today.isoformat()] = {"seconds": 600, "new": 20, "answers": 50}
+        self.assertEqual(self.report(study_days=history).plan.weekly_new, 4)
+        for length in (0, 1, 7):
+            self.assertEqual(self.report(study_days=self.history(length)).plan.weekly_new, 3)
+        changed = logic.analyze(snapshot(today=self.today, study_days=self.history()),
+                                {**self.settings, "new_cards_per_day": 4})
+        self.assertEqual(changed.plan.weekly_new, 4)  # nie eskaluje po ponownym otwarciu
+
+    def test_break_overload_and_no_new_material(self):
+        self.assertEqual(self.report(active_days=100).plan.weekly_new, 3)
+        overloaded = self.report(study_days=self.history(seconds=2000))
+        self.assertEqual(overloaded.plan.weekly_new, 2)
+        self.assertEqual(overloaded.plan.new_remaining, 2)
+        self.assertEqual(self.report(decks=[]).plan.new_remaining, 0)
+        self.assertEqual(self.report(decks=[deck("a", new_per_day=0)]).plan.new_remaining, 0)
+        paused = logic.analyze(snapshot(), {**self.settings, "new_cards_per_day": 0})
+        self.assertEqual(paused.plan.new_remaining, 0)
+        self.assertEqual(paused.plan.weekly_new, 0)
+
+    def test_one_binge_or_review_only_history_cannot_raise_pace(self):
+        history = self.history()
+        history[(self.today - datetime.timedelta(days=1)).isoformat()]["new"] = 30
+        self.assertEqual(self.report(study_days=history).plan.weekly_new, 3)
+        self.assertEqual(self.report(study_days=self.history(new=0)).plan.weekly_new, 3)
+
+    def test_missing_times_or_full_queue_cannot_raise_pace(self):
+        self.assertEqual(self.report(study_days=self.history(seconds=0)).plan.weekly_new, 3)
+        self.assertEqual(self.report(study_days=self.history(),
+                                     decks=[deck("a", due_counts={0: 200})]).plan.weekly_new, 0)
+
+    def test_difficult_cards_slow_intake_before_backlog(self):
+        history = self.history()
+        for day in history.values():
+            day["again"] = 3  # 30%, 70 odpowiedzi w ostatnim tygodniu
+        report = self.report(study_days=history)
+        self.assertEqual(report.backlog, 0)
+        self.assertEqual((report.plan.weekly_new, report.plan.new_remaining), (2, 2))
+        self.assertIn("Ponownie", report.plan.weekly_reason)
+        for day in history.values():
+            day["again"] = 5
+        self.assertEqual(self.report(study_days=history).plan.new_remaining, 0)
+        self.assertEqual(self.report(study_days=dict(list(history.items())[:1])).plan.weekly_new, 3)
+
+    def test_flexible_range_holds_pace_between_fifteen_and_thirty(self):
+        self.assertEqual(self.report(study_days=self.history(seconds=20 * 60)).plan.weekly_new, 3)
+        self.assertEqual(self.report(60).plan.today_minutes, 30)
+
+    def test_copy_contains_the_selected_daily_plan(self):
+        text = logic.render_text(self.report(5))
+        self.assertIn("Dziś około 5 min", text)
+        self.assertIn("Jeszcze najwyżej 0", text)
+        self.assertIn("nie zmienia limitów", text)
+
 
 
 class RenderTests(unittest.TestCase):
     def test_html_shows_both_load_numbers(self):
         data = snapshot([deck("a", reciprocal_sum=12.0, review_cards=100)])
         html = logic.render_html(logic.analyze(data, SETTINGS))
-        self.assertIn("Teraz — pomiar", html)
-        self.assertIn("Docelowo — projekcja", html)
+        self.assertIn("Przybliżenie z interwałów", html)
+        self.assertIn("Scenariusz według limitów", html)
         self.assertIn("tylko czyta kolekcję", html)
 
     def test_text_version_is_copyable_plain_text(self):
@@ -421,11 +386,11 @@ class FakeCol:
         self._raising = raising
         connection = sqlite3.connect(":memory:")
         connection.execute(
-            "create table cards (did int, odid int, queue int, type int, due int, ivl int)"
+            "create table cards (id integer primary key, did int, odid int, queue int, type int, due int, ivl int)"
         )
-        connection.executemany("insert into cards values (?,?,?,?,?,?)", cards)
-        connection.execute("create table revlog (id int, cid int, type int, time int)")
-        connection.executemany("insert into revlog values (?,?,?,?)", revlog)
+        connection.executemany("insert into cards (did,odid,queue,type,due,ivl) values (?,?,?,?,?,?)", cards)
+        connection.execute("create table revlog (id int, cid int, type int, time int, ease int default 3)")
+        connection.executemany("insert into revlog (id,cid,type,time) values (?,?,?,?)", revlog)
         self.connection = connection
         self.db = types.SimpleNamespace(
             all=lambda sql, *args: connection.execute(sql, args).fetchall(),
@@ -465,6 +430,8 @@ class SnapshotTests(unittest.TestCase):
             2: {"name": "angielski::a", "conf": preset("a", 10)},
             3: {"name": "filtrowana", "dyn": 1, "conf": preset("f")},
         }
+        if revlog and not cards:
+            cards = [(2, 0, 2, 2, 105, 10)] * max(row[1] for row in revlog)
         col = FakeCol(decks, list(cards), list(revlog), **kwargs)
         self.addCleanup(col.connection.close)
         return col
@@ -548,6 +515,42 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(data["new_introduced"], 2)
         self.assertEqual(data["learn_answers"], 3)
         self.assertEqual(data["reviews_done"], 2)
+
+    def test_study_history_filters_decks_and_counts_first_learning_only(self):
+        cards = [(1, 0, 0, 0, 0, 0), (3, 2, 1, 1, 9999999999, 0)]
+        revlog = [(day_ms(99), 1, 0, 900000), (day_ms(99) + 1, 2, 0, 10000),
+                  (day_ms(100), 2, 0, 10000), (day_ms(100) + 1, 2, 3, 5000)]
+        data = self.addon.build_snapshot(self._col(cards, revlog), {"decks": ["angielski::a"]})
+        self.assertEqual(data["learn_seconds"], [10, 10])
+        self.assertEqual(data["review_seconds"], [5])
+        self.assertEqual(data["new_introduced"], 1)
+        current = data["study_days"][data["today"].isoformat()]
+        self.assertEqual(current, {"seconds": 15, "answers": 2, "new": 0,
+                                   "again": 0, "learning_seconds": 10})
+        self.assertEqual(data["learning_cards"], 1)
+        empty = self.addon.build_snapshot(self._col(cards, revlog), {"decks": ["missing"]})
+        self.assertEqual(empty["study_days"], {})
+
+    def test_again_and_learning_cost_are_read_from_answers(self):
+        col = self._col(revlog=[(day_ms(100), 1, 0, 20000),
+                               (day_ms(100) + 1, 1, 2, 10000),
+                               (day_ms(100) + 2, 1, 1, 5000)])
+        col.connection.execute("update revlog set ease = 1 where type = 0")
+        data = self.addon.build_snapshot(col, {})
+        current = data["study_days"][data["today"].isoformat()]
+        self.assertEqual(current["again"], 1)
+        self.assertEqual(current["learning_seconds"], 30)
+        self.assertEqual(current["seconds"], 35)
+
+    def test_day_rollover_uses_scheduler_cutoff(self):
+        col = self._col(revlog=[(day_ms(100) + 3 * 3600000, 1, 0, 10000),
+                               (day_ms(100) + 5 * 3600000, 2, 0, 10000)])
+        col.sched.day_cutoff += 4 * 3600
+        data = self.addon.build_snapshot(col, {})
+        current = data["study_days"][data["today"].isoformat()]
+        self.assertEqual(current["new"], 1)
+        yesterday = (data["today"] - datetime.timedelta(days=1)).isoformat()
+        self.assertEqual(data["study_days"][yesterday]["new"], 1)
 
     def test_missing_flag_is_none_and_not_an_error(self):
         data = self.addon.build_snapshot(self._col(), {})

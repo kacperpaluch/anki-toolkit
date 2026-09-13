@@ -1,106 +1,104 @@
 # Anki Toolkit: Workload
 
-Odpowiada na jedno pytanie: **czy przy obecnych limitach nie zafunduję sobie
-lawiny powtórek?** Otwórz **Narzędzia → Anki Toolkit: Workload…**, a dodatek
-zmierzy obecne obciążenie, porówna je z Twoim czasem i wypisze, co warto
-zmienić.
+Pomaga utrzymać spokojne tempo nauki, także w słabsze dni. Otwórz
+**Narzędzia → Anki Toolkit: Workload…**: na początku zobaczysz plan na dziś,
+a szczegóły rozwiniesz przyciskiem **Pokaż szczegóły raportu**.
 
-Dodatek **tylko czyta** kolekcję. Nie zmienia limitów, presetów, harmonogramu
-ani kart — proponuje liczby, które wpisujesz sam w Opcjach talii. Przycisk
-**Kopiuj raport** zapisuje wersję tekstową do schowka.
+## Elastyczny czas, spokojne tempo
 
-## Dwie liczby, których nie należy mieszać
+Domyślnie celujesz w **15 minut**, z górną granicą zwykłego dnia **30 minut**,
+i zaczynasz od **3 nowych kart dziennie łącznie**.
+Istniejące ustawienia czasu pozostają zachowane. To ostrożny punkt startowy,
+nie gwarancja przyszłego obciążenia ani obowiązek wykorzystania całego czasu.
 
-- **Teraz — pomiar.** Suma odwrotności interwałów wszystkich kart powtórkowych:
-  karta z interwałem 10 dni kosztuje 0,1 powtórki dziennie. To nie prognoza, to
-  właściwość Twojej kolekcji, prawdziwa od pierwszego dnia nauki.
-- **Docelowo — projekcja.** Dopływ nowych kart przemnożony przez „ile powtórek
-  generuje jedna nowa karta". Raport zawsze podaje, skąd ten współczynnik
-  pochodzi: z Twojej historii czy z reguły ×10 z manuala Anki.
+- **Dziś mam łącznie** zmienia czas tylko w otwartym oknie. To czas całego dnia,
+  nie dodatkowa sesja. Krótszy dzień (np. 5 minut) oznacza zero nowych kart.
+  Zero minut pozwala zaplanować przerwę.
+- Dłuższy dzień nie podnosi tempa nowych kart. Nie nadrabiamy opuszczonych porcji.
+- Najpierw należne powtórki i nauka rozpoczętych kart; nowe tylko, jeśli zostanie
+  zapas. Plan rezerwuje 20% czasu i odejmuje zapisany czas odpowiedzi z dzisiaj.
+- Wprowadzone dziś nowe karty odejmują się od dziennej porcji, również po
+  ponownym otwarciu okna. **Odśwież** ponownie odczytuje kolekcję.
+- Każda zaległość w kartach powtórkowych wstrzymuje nowe. Możesz odrabiać ją
+  stopniowo — ograniczenie sesji nie usuwa kart czekających po terminie.
+- Podział porcji między talie może wynosić zero. Jego suma nie przekracza porcji
+  na dziś. Nadal obowiązują limity i dostępność kart w Anki.
 
-## Budżet czasu
+**Dodatek tylko doradza. Nie zatrzymuje sesji, nie zmienia limitów, presetów,
+harmonogramu ani kart.** Po osiągnięciu swojego czasu kończysz naukę sam.
+Tempo można zmienić w **Ustawienia… → Spokojne tempo nowych/dzień (łącznie)**;
+limity Anki pozostają osobnymi ustawieniami w Opcjach talii.
 
-Sufit nie jest zwykłym dzieleniem czasu przez czas powtórki, bo **nowe karty nie
-są darmowe**. Przy krokach nauki 1 min / 10 min każda nowa karta kosztuje kilka
-odpowiedzi tego samego dnia. Dodatek odejmuje ten koszt od budżetu, a potem
-liczy, ile powtórek zostaje.
+## Propozycja tempa na tydzień
 
-Największy dopływ nowych kart wychodzi z zamkniętego wzoru: jedna nowa karta
-dziennie kosztuje dziennie `powtórki_na_kartę × czas_powtórki` plus
-`odpowiedzi_w_nauce × czas_odpowiedzi`.
+Zwiększenie wymaga dwóch pełnych tygodni kalendarzowych (poniedziałek–niedziela),
+z co najmniej pięcioma dniami nauki w każdym. Każdy dzień musi mieścić się w 80%
+zwykłego czasu, a tempo wprowadzania musi odpowiadać ustawionemu tempu, bez
+jednorazowej dużej porcji. Wtedy raport proponuje **+1**, do ręcznego rozważenia.
+Dodatkowa karta nie trafia automatycznie do planu na dziś. Zmiana czasu na dziś
+nie zmienia propozycji tygodniowej.
 
-## Co mierzy z historii
+Przekroczenie górnej granicy czasu w którymkolwiek z ostatnich siedmiu
+zakończonych dni daje propozycję **−1**. Czas między 15 a 30 minutami nie
+jest powodem do zwiększania tempa. Jeśli obecna kolejka zajmuje już 80%
+górnej granicy, plan wstrzymuje nowe. Zaległości oznaczają zero nowych. Po tygodniu bez nauki
+powrót zaczyna się od najwyżej trzech nowych dziennie. Są to ostrożne heurystyki.
 
-| Wielkość | Skąd |
-|---|---|
-| Czas powtórki | Mediana czasu odpowiedzi (typy revlog 1 i 2) z 30 dni. |
-| Czas odpowiedzi w nauce | Mediana czasu odpowiedzi w nauce (typ 0) z 30 dni. |
-| Odpowiedzi na nową kartę | Liczba odpowiedzi w nauce ÷ liczba wprowadzonych kart. |
-| Powtórki na nową kartę | Powtórki ÷ wprowadzone karty, ale **tylko od 60 dni z faktyczną nauką** — krócej wynik jest zaniżony, bo karty nie zdążyły wrócić. |
-| Trend | Nachylenie prostej z ostatnich 28 dni, od 10 dni z faktyczną nauką. Dni bez nauki wchodzą jako zera. |
+Historia odpowiedzi nie dowodzi, że kończyłeś należne powtórki. Dlatego propozycja
+zwiększenia jest warunkowa: skorzystaj z niej tylko, jeśli rzeczywiście kończyłeś
+kolejkę bez wysiłku. Dodatek nie przechowuje historycznych stanów zaległości.
 
-Liczone są dni z nauką, nie dni kalendarzowe — miesiąc przerwy nie udaje
-historii. Każdą z tych wielkości możesz nadpisać w ustawieniach; zero oznacza
-„policz z historii".
+## Gdy słówka trudno wchodzą
 
-## Co raportuje
+Plan reaguje przed powstaniem zaległości także na odpowiedzi **Ponownie**.
+Przy co najmniej 20 odpowiedziach w ostatnich siedmiu zakończonych dniach:
 
-- **Budżet** — czas powtórki, koszt nowej karty, sufit powtórek po odjęciu tego
-  kosztu, największy sensowny dopływ nowych kart.
-- **Teraz** — obciążenie strukturalne z interwałów, zaległości, trend dziennej
-  liczby powtórek i data przebicia sufitu, jeśli rośnie.
-- **Docelowo** — stan stacjonarny z obecnego dopływu, zapas nowych kart i na ile
-  dni wystarczy.
-- **Tabela talii** — limity, propozycje obu limitów, obciążenie dzienne, zapas,
-  karty na dziś. Gwiazdka oznacza talię, z której się uczysz.
-- **Prognoza** — karty wypadające za 1, 3, 7, 14, 30, 60, 90, 180 i 365 dni,
-  z paskiem i sumą narastającą oraz największym dniem w oknie.
-- **Uwagi** — patrz niżej.
+- od 30% odpowiedzi „Ponownie” proponuje zmniejszenie tempa o jedną kartę,
+- od 50% proponuje chwilowo zero nowych.
 
-## Uwagi, które potrafi zgłosić
+Wzrost tempa wymaga najwyżej 20% odpowiedzi „Ponownie” w każdym z dwóch
+pełnych tygodni. Dzisiejsze rozpoczęte karty zajmują miejsce w budżecie,
+a raport pokazuje też czas nauki i ponownej nauki z ostatniego tygodnia.
+Te progi są ostrożnymi heurystykami, nie diagnozą jakości kart ani gwarancją,
+że nigdy nie pojawi się górka powtórek. Pojedyncza trudna odpowiedź nie
+wstrzymuje dopływu.
 
-- **Brak sufitu powtórek** — z rozróżnieniem talii nadrzędnej i podtalii. Ta
-  sama liczba wpisana w każdą podtalię **nie ogranicza sumy**: pięć presetów po
-  200 daje 1000 powtórek dziennie. Pełną wartość dostaje talia, z której się
-  uczysz, a podtalie swój udział proporcjonalny do dopływu.
-- **Nowe karty zjadają cały czas** — sam koszt wprowadzania przekracza budżet.
-- **Już teraz powyżej sufitu** — pomiar z interwałów przewyższa sufit.
-- **Zaległości** — kart po terminie więcej niż dzienny sufit.
-- **Dopływ nowych kart za wysoki** — z podziałem propozycji per talia.
-- **Obciążenie rośnie** — z tempem wzrostu i datą przebicia sufitu.
-- **Górka w prognozie** — najgorszy dzień w oknie powyżej sufitu.
-- **Hamulec działa / wyłączony** — stan „nowe karty ignorują limit powtórek".
-  Przy wyłączonej opcji raport wyjaśnia, że to ona sama reguluje dopływ.
-- **Dni łatwe zmieniają sufit**, **FSRS wyłączone**, **Load balancer wyłączony**,
-  **Talia nadrzędna szersza niż podtalie** (tylko przy „limitach od góry").
-- **Nie odczytano ustawień kolekcji** — gdy odczyt klucza się wywali, raport to
-  mówi, zamiast po cichu pominąć powiązane uwagi.
-- **Część liczb jest oszacowana** — lista wielkości wziętych z wartości
-  domyślnych zamiast z Twoich danych.
+## Szczegóły i ograniczenia
 
-Klucz nieobecny w konfiguracji kolekcji nie generuje uwagi — brak odpowiedzi nie
-jest traktowany jak wyłączona opcja.
+**Kopiuj raport** kopiuje aktualny plan i tekstowe podsumowanie. Rozwijany raport
+pokazuje talie, źródła oszacowań i już zaplanowane terminy.
+
+- Historia i czasy dotyczą wybranych talii; karty z talii filtrowanych są
+  przypisane do talii macierzystej. Historia jest przypisywana według obecnego
+  położenia kart; usunięte karty nie są uwzględniane.
+- Czas z Anki to suma zarejestrowanych czasów odpowiedzi. Nie obejmuje wszystkich
+  przerw i może być ograniczony ustawieniami timera. To nie stoper całej sesji.
+- Pierwszy wpis nauki w dostępnej historii wyznacza wprowadzenie nowej karty.
+  Niepełna historia lub reset kart mogą zaburzać ten pomiar.
+- Nauka wewnątrz dnia jest uwzględniana osobno; jej czas jest przybliżeniem.
+- Suma `1/interwał` jest wskaźnikiem przy założeniu stałych interwałów, nie
+  pomiarem przyszłego obciążenia.
+- Scenariusz z sumy limitów i mnożnika powtórek jest orientacyjny. Nie uwzględnia
+  ograniczania dopływu przez rodzica. Historyczny iloraz powtórek i nowych kart
+  nie jest wiarygodnym kosztem przyszłych kart; nie steruje spokojnym planem.
+- Tabela terminów pokazuje każdą kartę tylko raz, bez jej następnych powrotów
+  i bez nowych kart wprowadzonych w przyszłości. Do porównania dalszych
+  scenariuszy służy wbudowany symulator w Opcjach talii Anki.
 
 ## Ustawienia
 
-Przycisk **Ustawienia…** w oknie raportu:
-
 | Klucz `config.json` | Znaczenie |
 |---|---|
-| `minutes_per_day` | Ile minut dziennie chcesz poświęcać. Jedyna wartość, której dodatek nie zgadnie. |
-| `seconds_per_card` | Czas powtórki; `0` = mediana z historii, bez historii 9 s. |
-| `learn_seconds_per_card` | Czas odpowiedzi w nauce; `0` = mediana z historii, bez historii 12 s. |
-| `learn_answers_per_new_card` | Odpowiedzi na nową kartę w dniu wprowadzenia; `0` = policz z historii, bez historii 2,5. |
-| `reviews_per_new_card` | Powtórki generowane przez nową kartę; `0` = policz z historii, bez historii reguła ×10. |
-| `forecast_days` | Okno prognozy w dniach. |
-| `split_strategy` | `proportional` zachowuje proporcje talii, `heaviest_first` ścina najpierw największą i zostawia małe w spokoju. |
-| `decks` | Talie objęte raportem; puste = wszystkie. Wpisanie talii nadrzędnej obejmuje jej podtalie. |
+| `minutes_per_day` | Zwykły czas jako punkt odniesienia; domyślnie 15 minut. |
+| `max_minutes_per_day` | Górna granica zwykłego dnia; domyślnie 30 minut, nie mniej niż zwykły cel. |
+| `new_cards_per_day` | Spokojne tempo nowych kart łącznie; domyślnie 3, zero wstrzymuje nowe. |
+| `seconds_per_card` | Czas powtórki; `0` = mediana z 30 dni, bez danych 9 s. |
+| `learn_seconds_per_card` | Czas odpowiedzi w nauce; `0` = mediana z 30 dni, bez danych 12 s. |
+| `learn_answers_per_new_card` | Odpowiedzi w nauce na wprowadzoną kartę; `0` = historia, bez danych 2,5. |
+| `reviews_per_new_card` | Mnożnik wyłącznie do scenariusza w szczegółach; `0` = historia od 60 aktywnych dni, wcześniej ×10. |
+| `forecast_days` | Okno tabeli już zaplanowanych terminów. |
+| `split_strategy` | `proportional` dzieli porcję proporcjonalnie do limitów, `heaviest_first` najpierw zmniejsza największy. Obie strategie dopuszczają zero. |
+| `decks` | Talie objęte planem i historią; puste = wszystkie, rodzic obejmuje podtalie. |
 
-## Ograniczenia
-
-Raport to arytmetyka na Twoich danych, nie symulacja schedulera. Prognoza
-pokazuje terminy już zaplanowanych kart — nie przewiduje powtórek, które
-powstaną z kart wprowadzonych w przyszłości; to pokazuje osobno stan
-stacjonarny. Karty zaległe liczą się w dniu 0, bo czekają już teraz. Stan
-stacjonarny zależy od współczynnika, który przy krótkiej historii jest regułą, a
-nie pomiarem — dlatego obciążenie „teraz” i „docelowo” są podane osobno.
+Zapis ustawień zachowuje nieznane klucze. Nie powstają dodatkowe pliki z historią
+ani nowe zależności produkcyjne.

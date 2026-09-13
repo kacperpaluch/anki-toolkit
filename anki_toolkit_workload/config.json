@@ -1,5 +1,7 @@
 {
-  "minutes_per_day": 30,
+  "minutes_per_day": 15,
+  "max_minutes_per_day": 30,
+  "new_cards_per_day": 3,
   "seconds_per_card": 0,
   "learn_seconds_per_card": 0,
   "learn_answers_per_new_card": 0,

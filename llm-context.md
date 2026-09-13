@@ -9,7 +9,7 @@ oraz `user_files/` danego dodatku i nie mogą trafić do Git.
 |---|---|
 | `anki_toolkit_content` | AI, workflowy, słownik, TTS, Field Splitter |
 | `anki_toolkit_learning` | talie filtrowane |
-| `anki_toolkit_workload` | raport obciążenia: budżet czasu, pomiar z interwałów, trend, prognoza |
+| `anki_toolkit_workload` | elastyczny plan dnia, spokojne tempo nowych kart, szczegóły obciążenia |
 | `anki_toolkit_audio_normalizer` | ffmpeg i watcher mediów |
 | `anki_toolkit_audio_embed` | `[sound:]` → `<audio>` |
 | `anki_toolkit_html_cleanup` | czyszczenie HTML |

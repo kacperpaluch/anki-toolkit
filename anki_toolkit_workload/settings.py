@@ -20,12 +20,18 @@ class SettingsDialog(QDialog):
         config = get_config()
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
-            "Sufit czasowy jest Twoją decyzją — resztę raport wylicza z niego.\n"
+            "Zwykły czas to punkt odniesienia. Czas na dziś zmienisz w oknie planu.\n"
             "Zero w polach pomiarowych oznacza: policz z historii powtórek."
         ))
         form = QFormLayout()
         self.minutes = self._spin(5, 240, config["minutes_per_day"], " min")
-        form.addRow("Czas na naukę dziennie:", self.minutes)
+        form.addRow("Zwykle celuję w:", self.minutes)
+        self.max_minutes = self._spin(self.minutes.value(), 240,
+                                     config["max_minutes_per_day"], " min")
+        self.minutes.valueChanged.connect(self.max_minutes.setMinimum)
+        form.addRow("Najwyżej w zwykły dzień:", self.max_minutes)
+        self.pace = self._spin(0, 100, config["new_cards_per_day"], "")
+        form.addRow("Spokojne tempo nowych/dzień (łącznie):", self.pace)
         self.seconds = self._spin(0, 120, config["seconds_per_card"], " s")
         form.addRow("Czas powtórki (0 = zmierz):", self.seconds)
         self.learn_seconds = self._spin(0, 120, config["learn_seconds_per_card"], " s")
@@ -64,6 +70,8 @@ class SettingsDialog(QDialog):
         decks = [part.strip() for part in self.decks.text().split(",") if part.strip()]
         save_config({
             "minutes_per_day": self.minutes.value(),
+            "max_minutes_per_day": self.max_minutes.value(),
+            "new_cards_per_day": self.pace.value(),
             "seconds_per_card": self.seconds.value(),
             "learn_seconds_per_card": self.learn_seconds.value(),
             "learn_answers_per_new_card": round(self.learn_answers.value(), 1),

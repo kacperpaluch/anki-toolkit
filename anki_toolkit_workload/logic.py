@@ -8,7 +8,7 @@ Dwie wielkości opisują obciążenie i nie należy ich mieszać:
 
 - `structural_load` — ile powtórek dziennie generują karty, które już masz.
   Suma odwrotności interwałów: karta z interwałem 10 dni kosztuje 0,1 powtórki
-  na dzień. To pomiar, nie prognoza.
+  na dzień przy stałym interwale. To przybliżenie, nie prognoza schedulera.
 - `steady_state` — ile powtórek dziennie da dopływ nowych kart, gdy zapas się
   rozejdzie. To projekcja przez współczynnik „powtórek na nową kartę”, więc
   raport zawsze podaje, skąd ten współczynnik pochodzi.
@@ -16,6 +16,8 @@ Dwie wielkości opisują obciążenie i nie należy ich mieszać:
 
 import dataclasses
 import datetime
+import math
+from html import escape
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # Zapasowe stałe używane, gdy historia powtórek jest za krótka, by cokolwiek zmierzyć.
@@ -25,13 +27,11 @@ DEFAULT_LEARN_SECONDS = 12.0
 DEFAULT_LEARN_ANSWERS_PER_NEW_CARD = 2.5
 # Reguła z manuala Anki: 20 nowych kart dziennie daje około 200 powtórek dziennie.
 DEFAULT_REVIEWS_PER_NEW_CARD = 10.0
-# Poniżej tylu dni z faktyczną nauką zmierzony stosunek powtórek do nowych kart
-# jest zaniżony (karty nie zdążyły jeszcze wrócić), więc używamy reguły ×10.
+# Minimalna historia dla opisowego ilorazu. Nawet długa historia nie
+# czyni go modelem przyszłego kosztu nowych kart.
 MIN_ACTIVE_DAYS_FOR_RATIO = 60
 # Tyle dni z faktyczną nauką wystarczy, by liczyć trend dziennej liczby powtórek.
 MIN_ACTIVE_DAYS_FOR_TREND = 10
-# Limit powtórek w presecie powyżej tej wartości traktujemy jako brak sufitu.
-NO_CEILING_THRESHOLD = 1000
 # Trend poniżej tego nachylenia to szum, nie wzrost.
 MIN_TREND_SLOPE = 0.2
 
@@ -70,6 +70,24 @@ class Trend:
 
 
 @dataclasses.dataclass
+class StudyPlan:
+    today_minutes: int
+    spent_minutes: float
+    due_cards: int
+    due_minutes: float
+    new_done: int
+    new_remaining: int
+    weekly_new: int
+    reason: str
+    weekly_reason: str
+    recent_minutes: float
+    active_days: int
+    max_minutes: int
+    again_percent: Optional[int]
+    learning_minutes: float
+
+
+@dataclasses.dataclass
 class Report:
     minutes_per_day: int
     review_seconds: float
@@ -82,13 +100,11 @@ class Report:
     ratio_source: str
     ceiling: int
     new_total: int
-    suggested_new_total: int
     structural_load: int
     structural_minutes: int
     steady_state: int
     steady_state_minutes: int
     new_left_total: int
-    days_of_intake: Optional[int]
     backlog: int
     peak: Optional[Tuple[int, int]]
     forecast: List[Tuple[int, int]]
@@ -96,6 +112,7 @@ class Report:
     decks: List[DeckRow]
     roots: List[str]
     findings: List[Finding]
+    plan: Optional[StudyPlan] = None
 
 
 # ── Pomocnicze ─────────────────────────────────────────────────────────────
@@ -189,26 +206,6 @@ def steady_state_reviews(new_per_day: int, reviews_per_new_card: float) -> int:
     return max(0, int(round(new_per_day * reviews_per_new_card)))
 
 
-def suggest_new_per_day(
-    minutes: int,
-    review_seconds: float,
-    reviews_per_new_card: float,
-    learn_answers_per_new_card: float = 0.0,
-    learn_seconds: float = 0.0,
-) -> int:
-    """Dopływ nowych kart, którego pełny koszt zmieści się w budżecie czasu.
-
-    Jedna nowa karta dziennie kosztuje dziennie: powtórki, które wygeneruje, oraz
-    odpowiedzi w dniu wprowadzenia. Stąd zamknięty wzór na największy dopływ.
-    """
-    cost = reviews_per_new_card * review_seconds + new_card_cost(
-        learn_answers_per_new_card, learn_seconds
-    )
-    if minutes <= 0 or cost <= 0:
-        return 0
-    return max(1, int(minutes * 60 / cost))
-
-
 def structural_load(reciprocal_sum: float) -> float:
     """Powtórki dziennie generowane przez karty, które już są w kolekcji."""
     return max(0.0, reciprocal_sum)
@@ -223,13 +220,12 @@ def scale_limits(
 
     `proportional` zachowuje wzajemne proporcje talii. `heaviest_first` ścina
     najpierw talię z największym limitem, więc małe talie zostają nietknięte.
-    Każda talia dostaje co najmniej 1 kartę dziennie, więc przy bardzo małym
-    `target_total` suma może być większa od zadanej — lepiej zaproponować
-    minimum niż wyłączyć talię.
+    Zero jest dozwolone: mały budżet nie może wymuszać nowych kart.
     """
     active = {name: value for name, value in limits.items() if value > 0}
     if not active:
         return {}
+    target_total = max(0, min(target_total, sum(active.values())))
     if strategy == SPLIT_HEAVIEST_FIRST:
         return _cut_heaviest_first(active, target_total)
     return _scale_proportional(active, target_total)
@@ -238,7 +234,7 @@ def scale_limits(
 def _scale_proportional(active: Dict[str, int], target_total: int) -> Dict[str, int]:
     current_total = sum(active.values())
     exact = {name: value * target_total / current_total for name, value in active.items()}
-    scaled = {name: max(1, int(value)) for name, value in exact.items()}
+    scaled = {name: int(value) for name, value in exact.items()}
     # Rozdaj resztę metodą największych ułamków, żeby suma trafiła dokładnie w cel.
     missing = target_total - sum(scaled.values())
     if missing > 0:
@@ -254,8 +250,6 @@ def _cut_heaviest_first(active: Dict[str, int], target_total: int) -> Dict[str, 
         # Malejąco po wartości, przy równych wartościach alfabetycznie — wynik
         # musi być powtarzalny między uruchomieniami.
         name = sorted(result, key=lambda key: (-result[key], key))[0]
-        if result[name] <= 1:
-            break  # dalej nie ma czego ścinać bez wyłączania talii
         result[name] -= 1
     return result
 
@@ -351,9 +345,9 @@ def measured_trend(
 
 # ── Główna analiza ─────────────────────────────────────────────────────────
 
-def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any]) -> Report:
+def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any], today_minutes=None) -> Report:
     """Buduje raport z migawki kolekcji (patrz `__init__.build_snapshot`)."""
-    minutes = int(settings.get("minutes_per_day", 30))
+    minutes = max(1, int(settings.get("minutes_per_day", 15)))
     active_days = int(snapshot.get("active_days", 0))
 
     review_seconds, review_source = _override_or_measure(
@@ -387,14 +381,6 @@ def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any]) -> Report:
     new_total = sum(feeding.values())
 
     ceiling = ceiling_from_minutes(minutes, review_seconds, new_total, learn_answers, learn_seconds)
-    suggested_total = suggest_new_per_day(
-        minutes, review_seconds, ratio, learn_answers, learn_seconds
-    )
-    strategy = settings.get("split_strategy", SPLIT_PROPORTIONAL)
-    proposal = scale_limits(feeding, suggested_total, strategy) if new_total > suggested_total else {}
-    for row in rows:
-        row.suggested_new_per_day = proposal.get(row.name)
-
     due_counts = merge_due_counts(snapshot.get("decks", []))
     forecast = forecast_from_counts(due_counts, int(settings.get("forecast_days", 60)))
     peak = max(forecast, key=lambda item: item[1]) if forecast else None
@@ -414,7 +400,6 @@ def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any]) -> Report:
         ratio_source=ratio_source,
         ceiling=ceiling,
         new_total=new_total,
-        suggested_new_total=suggested_total,
         structural_load=int(round(load)),
         structural_minutes=int(round(load * review_seconds / 60)),
         steady_state=steady,
@@ -422,7 +407,6 @@ def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any]) -> Report:
             round((steady * review_seconds + new_total * new_card_cost(learn_answers, learn_seconds)) / 60)
         ),
         new_left_total=new_left_total,
-        days_of_intake=int(new_left_total / new_total) if new_total > 0 else None,
         backlog=backlog_from_counts(due_counts),
         peak=peak if peak and peak[1] > 0 else None,
         forecast=forecast,
@@ -433,9 +417,133 @@ def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any]) -> Report:
         roots=roots,
         findings=[],
     )
-    _assign_review_ceilings(report)
+    report.plan = study_plan(snapshot, settings, report, today_minutes)
+    weights = {row.name: min(row.new_left, max(0, row.new_per_day))
+               for row in rows if row.new_left > 0}
+    proposal = scale_limits(weights, report.plan.new_remaining,
+                            settings.get("split_strategy", SPLIT_PROPORTIONAL))
+    report.plan.new_remaining = sum(proposal.values())
+    for row in rows:
+        row.suggested_new_per_day = proposal.get(row.name, 0)
     report.findings = _findings(report, snapshot)
     return report
+
+
+def study_plan(snapshot, settings, report, today_minutes=None) -> StudyPlan:
+    """Ostrożna porada, nie harmonogram. Dłuższy dzień nie podnosi dopływu."""
+    normal = report.minutes_per_day
+    maximum = max(normal, int(settings.get("max_minutes_per_day", 30)))
+    available = normal if today_minutes is None else min(maximum, max(0, int(today_minutes)))
+    pace = max(0, int(settings.get("new_cards_per_day", 3)))
+    history = snapshot.get("study_days", {})
+    today = snapshot.get("today", datetime.date.today())
+    current = history.get(today.isoformat(), {})
+    spent = current.get("seconds", 0) / 60
+    new_done = current.get("new", 0)
+    due = sum(row.due_today for row in report.decks)
+    learning = snapshot.get("learning_cards", 0)
+    due_minutes = (due * report.review_seconds + learning * new_card_cost(
+        report.learn_answers_per_new_card, report.learn_seconds
+    )) / 60
+    due += learning
+
+    # ponytail: dwa pełne tygodnie i próg 80% to heurystyka; symulator FSRS
+    # jest właściwym miejscem na modelowanie przyszłego kosztu kart.
+    monday = today - datetime.timedelta(days=today.weekday())
+    weeks = [[history.get((monday - datetime.timedelta(days=offset + day)).isoformat(), {})
+              for day in range(1, 8)] for offset in (7, 0)]
+    recent = [history.get((today - datetime.timedelta(days=day)).isoformat(), {})
+              for day in range(1, 8)]
+    active = [day for day in recent if day.get("answers", 0) > 0]
+    average = sum(day.get("seconds", 0) for day in active) / max(1, len(active)) / 60
+    answers = sum(day.get("answers", 0) for day in recent)
+    again = sum(day.get("again", 0) for day in recent)
+    again_percent = round(100 * again / answers) if answers else None
+    learning_minutes = sum(day.get("learning_seconds", 0) for day in recent) / 60
+    weekly = pace
+    weekly_reason = "Utrzymaj spokojne tempo. Zwiększenie nie jest obowiązkiem."
+    if report.backlog:
+        weekly = 0
+        weekly_reason = "Wstrzymaj nowe karty, aż odrobisz zaległości. Nie musisz nadrabiać wszystkiego dziś."
+    elif due_minutes >= maximum * 0.8:
+        weekly = 0
+        weekly_reason = "Obecna kolejka zajmuje zwykły czas z zapasem. Na razie bez nowych kart."
+    elif not active and snapshot.get("active_days", 0):
+        weekly = min(pace, 3)
+        weekly_reason = "Wracasz po przerwie: zacznij spokojnie, bez nadrabiania nowych kart."
+    elif answers >= 20 and again / answers >= 0.3:
+        weekly = 0 if again / answers >= 0.5 else max(0, pace - 1)
+        weekly_reason = (
+            f"W ostatnich 7 dniach „Ponownie” stanowiło {again_percent}% odpowiedzi. "
+            "Nowe słówka mogą poczekać — daj czas kartom, które już wracają."
+        )
+    elif any(day.get("seconds", 0) > maximum * 60 for day in recent):
+        weekly = max(0, pace - 1)
+        weekly_reason = "W ostatnim tygodniu nauka przekroczyła górną granicę czasu. Proponuję mniej nowych kart."
+    elif pace and all(
+        sum(day.get("answers", 0) > 0 for day in week) >= 5
+        and sum(day.get("new", 0) for day in week) >= pace * sum(
+            day.get("answers", 0) > 0 for day in week)
+        and all((not day.get("answers", 0) or 0 < day.get("seconds", 0) <= normal * 60 * 0.8)
+                and day.get("new", 0) <= pace for day in week)
+        and sum(day.get("again", 0) for day in week) <= 0.2 * sum(
+            day.get("answers", 0) for day in week)
+        for week in weeks
+    ):
+        weekly = pace + 1
+        weekly_reason = (
+            "Dwa pełne tygodnie mieściły się w czasie z zapasem. Jeśli kończyłeś należne "
+            "powtórki, możesz rozważyć +1 nową kartę dziennie w ustawieniach."
+        )
+    elif not any(day.get("answers", 0) for week in weeks for day in week):
+        weekly_reason = "Spokojny start. Najpierw poznaj swój rytm; nie zwiększaj tempa na zapas."
+
+    cost = max(1, new_card_cost(report.learn_answers_per_new_card, report.learn_seconds))
+    room = max(0, int((available * 0.8 - spent - due_minutes) * 60 / cost))
+    remaining = min(max(0, min(pace, weekly) - new_done), room, report.new_left_total)
+    reason = "Najpierw zakończ należne powtórki i naukę rozpoczętych kart. Nowe tylko, jeśli zostanie czas."
+    if available < normal:
+        remaining = 0
+        reason = "Dziś krócej: bez nowych kart. Zrób tyle powtórek, na ile masz czas."
+    elif report.backlog:
+        remaining = 0
+        reason = "Najpierw spokojny powrót do powtórek. Zaległości nie wymagają restartu talii."
+    elif spent + due_minutes >= available * 0.8:
+        reason = "Zostaw zapas czasu. Dziś skup się na powtórkach i rozpoczętych kartach."
+    elif new_done >= min(pace, weekly):
+        reason = "Na dziś wystarczy nowych kart. Dodatkowy czas nie zwiększa tempa na kolejne dni."
+    elif report.new_left_total == 0:
+        reason = "Nie ma nowych kart w wybranych taliach. Spokojnie kontynuuj powtórki."
+    return StudyPlan(available, spent, due, due_minutes, new_done, remaining,
+                     weekly, reason, weekly_reason, average, len(active), maximum,
+                     again_percent, learning_minutes)
+
+
+def plan_lines(report):
+    plan = report.plan
+    return [
+        "Twój spokojny plan",
+        f"Dziś około {plan.today_minutes} min; zwykle {report.minutes_per_day}–{plan.max_minutes} min. To punkt odniesienia, nie obowiązek.",
+        f"Zapisany czas odpowiedzi dziś: {plan.spent_minutes:.1f} min.",
+        f"Pozostało do powtórek i nauki: {cards(plan.due_cards)} (~{math.ceil(plan.due_minutes)} min).",
+        f"Po terminie: {cards(report.backlog)}. Limit sesji nie usuwa zaległości.",
+        f"Nowe już dziś: {plan.new_done}. Jeszcze najwyżej {plan.new_remaining} łącznie we wszystkich wybranych taliach.",
+        plan.reason,
+        f"Propozycja tempa na tydzień: {new_cards(plan.weekly_new)} dziennie.",
+        plan.weekly_reason,
+        f"Ostatnie 7 zakończonych dni: {plan.active_days} dni nauki, średnio {plan.recent_minutes:.1f} min w dni nauki.",
+        f"Nauka i ponowna nauka w tym okresie: {plan.learning_minutes:.1f} min łącznie. "
+        + (f"Odpowiedzi „Ponownie”: {plan.again_percent}%." if plan.again_percent is not None else "Brak odpowiedzi do oceny trudności."),
+        "Czas z Anki nie obejmuje wszystkich przerw. Nie wiemy, czy w poprzednich dniach kończyłeś kolejkę.",
+        "To wskazówki: dodatek nie zatrzymuje sesji ani nie zmienia limitów Anki. Po nauce odśwież plan.",
+    ]
+
+
+def render_plan_html(report):
+    lines = plan_lines(report)
+    return "<h2>" + escape(lines[0]) + "</h2>" + "".join(
+        "<p>" + escape(line) + "</p>" for line in lines[1:]
+    )
 
 
 def _override_or_measure(override: Any, measure) -> Tuple[float, str]:
@@ -469,152 +577,15 @@ def _deck_rows(decks: Sequence[Dict[str, Any]]) -> Tuple[List[DeckRow], List[str
     return rows, [row.name for row in rows if row.is_root]
 
 
-def _assign_review_ceilings(report: Report) -> None:
-    """Rozdziela sufit powtórek: korzeń dostaje całość, podtalie swój udział.
-
-    Sufit wpisany w każdą podtalię osobno nie ogranicza sumy — dlatego wartość
-    dla korzenia i dla podtalii musi być inna.
-    """
-    if report.ceiling <= 0:
-        return
-    children = [row for row in report.decks if not row.is_root]
-    share_base = {row.name: max(1, row.new_per_day) for row in children}
-    total = sum(share_base.values())
-    for row in report.decks:
-        if row.is_root:
-            row.suggested_review_per_day = report.ceiling
-        elif total > 0:
-            row.suggested_review_per_day = max(
-                1, int(report.ceiling * share_base[row.name] / total)
-            )
-
-
-# ── Uwagi ──────────────────────────────────────────────────────────────────
-
 def _findings(report: Report, snapshot: Dict[str, Any]) -> List[Finding]:
-    flags = snapshot.get("flags", {})
-    findings: List[Finding] = []
-    findings.extend(_ceiling_findings(report))
-    findings.extend(_load_findings(report))
-    findings.extend(_brake_findings(report, flags))
-    findings.extend(_measurement_findings(report))
-    findings.extend(_setting_findings(report, snapshot))
-    if not [f for f in findings if f.level in ("alert", "warn")]:
-        findings.insert(
-            0,
-            Finding("ok", "Bez uwag", "Dopływ nowych kart i sufit powtórek są spójne."),
-        )
-    return findings
-
-
-def _ceiling_findings(report: Report) -> List[Finding]:
-    uncapped = [row for row in report.decks if row.review_per_day >= NO_CEILING_THRESHOLD]
-    if not uncapped:
-        return []
-    roots = [row for row in uncapped if row.is_root]
-    children = [row for row in uncapped if not row.is_root]
-    lines = []
-    if roots:
-        lines.append(
-            "w presetach talii, z których się uczysz ("
-            + ", ".join(f"{row.preset or row.name} → {row.suggested_review_per_day}" for row in roots)
-            + ")"
-        )
-    if children:
-        lines.append(
-            "w podtaliach ("
-            + ", ".join(f"{row.preset or row.name} → {row.suggested_review_per_day}" for row in children)
-            + ")"
-        )
-    return [
-        Finding(
-            "alert",
-            "Brak sufitu powtórek",
-            f"Twój sufit to {reviews(report.ceiling)} dziennie. Wpisz Maksymalna "
-            "liczba powtórek/dzień " + " oraz ".join(lines) + ". "
-            "Ta sama liczba w każdej podtalii nie ogranicza sumy — pięć presetów "
-            f"po {report.ceiling} daje {reviews(report.ceiling * 5)} dziennie, dlatego "
-            "całość należy do talii nadrzędnej, a podtalie dostają swój udział.",
-        )
-    ]
-
-
-def _load_findings(report: Report) -> List[Finding]:
-    findings: List[Finding] = []
-    if report.backlog > report.ceiling:
-        findings.append(
-            Finding(
-                "alert",
-                "Zaległości",
-                f"{cards(report.backlog)} czeka po terminie, czyli więcej niż dzienny "
-                f"sufit ({report.ceiling}). Zanim wrócisz do nowych kart, odrób "
-                "zaległość lub tymczasowo zejdź z dopływu do zera.",
-            )
-        )
-
-    if report.ceiling <= 0:
-        findings.append(
-            Finding(
-                "alert",
-                "Nowe karty zjadają cały czas",
-                f"Samo wprowadzenie {new_cards(report.new_total)} dziennie kosztuje "
-                f"więcej niż {report.minutes_per_day} min, które chcesz poświęcać. "
-                "Na powtórki nie zostaje nic — obniż dopływ albo zwiększ czas.",
-            )
-        )
-    elif report.structural_load > report.ceiling:
-        findings.append(
-            Finding(
-                "alert",
-                "Już teraz powyżej sufitu",
-                f"Karty, które już masz, generują {reviews(report.structural_load)} "
-                f"dziennie (~{report.structural_minutes} min) — to pomiar z interwałów, "
-                f"nie prognoza. Twój sufit to {report.ceiling}.",
-            )
-        )
-
-    if report.new_total > report.suggested_new_total:
-        changes = ", ".join(
-            f"{row.name}: {row.new_per_day} → {row.suggested_new_per_day}"
-            for row in report.decks
-            if row.suggested_new_per_day is not None
-            and row.suggested_new_per_day != row.new_per_day
-        )
-        findings.append(
-            Finding(
-                "warn",
-                "Dopływ nowych kart za wysoki",
-                f"Razem {new_cards(report.new_total)} dziennie dojdzie do "
-                f"{reviews(report.steady_state)} dziennie (~{report.steady_state_minutes} min "
-                f"z kosztem nauki), a mieści się {new_cards(report.suggested_new_total)}. "
-                + (f"Podział: {changes}." if changes else ""),
-            )
-        )
-
-    trend = report.trend
-    if trend.days_to_ceiling is not None and trend.slope:
-        date = f" (około {trend.date_of_ceiling.isoformat()})" if trend.date_of_ceiling else ""
-        findings.append(
-            Finding(
-                "warn",
-                "Obciążenie rośnie",
-                f"Dzienna liczba powtórek rośnie o {trend.slope:.1f} na dzień, "
-                f"teraz jest {trend.level:.0f}. Przy tym tempie sufit "
-                f"{report.ceiling} przebijesz za {days(trend.days_to_ceiling)}{date}.",
-            )
-        )
-
-    if report.peak and report.peak[1] > report.ceiling:
-        day, count = report.peak
-        findings.append(
-            Finding(
-                "warn",
-                "Górka w prognozie",
-                f"Za {days(day)} wypada {cards(count)}, powyżej sufitu {report.ceiling}. "
-                "Jeden dzień ponad limit nie jest problemem, powtarzająca się górka "
-                "oznacza za szybki dopływ.",
-            )
-        )
+    findings = _measurement_findings(report) + _setting_findings(report, snapshot)
+    findings.extend(_brake_findings(report, snapshot.get("flags", {})))
+    findings.append(Finding(
+        "info", "Limit sesji nie usuwa zaległości",
+        "Maksymalna liczba powtórek/dzień ogranicza widoczną kolejkę. "
+        "Wysoki limit sam w sobie nie jest błędem. Gdy brakuje czasu, ogranicz nowe "
+        "karty; pozostałe powtórki nadal czekają."
+    ))
     return findings
 
 
@@ -623,22 +594,22 @@ def _brake_findings(report: Report, flags: Dict[str, Any]) -> List[Finding]:
     if ignore is True:
         return [
             Finding(
-                "alert",
-                "Hamulec wyłączony",
+                "info",
+                "Nowe karty niezależne od limitu",
                 "„Nowe karty ignorują limit powtórek” jest włączone, więc nowe karty "
-                "wchodzą nawet przy pełnej kolejce powtórek. Wyłącz tę opcję — razem "
-                "z sufitem powtórek to jedyny mechanizm, który sam reguluje dopływ.",
+                "mogą pojawiać się mimo pełnej kolejki powtórek. Plan Workload nie blokuje ich; "
+                "zakończ sesję po osiągnięciu wybranego czasu.",
             )
         ]
     if ignore is False:
         return [
             Finding(
                 "info",
-                "Hamulec działa",
+                "Nowe karty podlegają limitowi",
                 "„Nowe karty ignorują limit powtórek” jest wyłączone, więc nowe karty "
                 "liczą się do limitu powtórek: w dniach z dużą kolejką same przestaną "
                 "wchodzić. Ten mechanizm działa tylko wtedy, gdy limit powtórek ma "
-                "realną wartość.",
+                "odpowiednio niską wartość. Nie gwarantuje to zmieszczenia się w czasie.",
             )
         ]
     return []
@@ -665,7 +636,7 @@ def _measurement_findings(report: Report) -> List[Finding]:
                 + ", ".join(estimated)
                 + f". Stan stacjonarny liczony jest wtedy regułą ×{DEFAULT_REVIEWS_PER_NEW_CARD:.0f} "
                 "z manuala Anki, a nie Twoimi danymi. Obciążenie „teraz” pochodzi z "
-                "interwałów kart i jest pomiarem niezależnie od historii.",
+                "interwałów kart i również jest przybliżeniem.",
             )
         )
     if report.trend.slope is None and report.structural_load > 0:
@@ -709,8 +680,8 @@ def _setting_findings(report: Report, snapshot: Dict[str, Any]) -> List[Finding]
                 "warn",
                 "Talia nadrzędna szersza niż podtalie",
                 "Włączone jest „Limity od góry”, a limity talii nadrzędnej są szersze "
-                f"niż suma podtalii: {gaps}. To one obowiązują podczas nauki, więc "
-                "sufit z podtalii nie działa.",
+                f"niż suma podtalii: {gaps}. Limity opisują ustawienia, "
+                "nie należy sumować limitów jako rzeczywistego dopływu nowych kart.",
             )
         )
 
@@ -719,9 +690,9 @@ def _setting_findings(report: Report, snapshot: Dict[str, Any]) -> List[Finding]
         findings.append(
             Finding(
                 "info",
-                "Dni łatwe zmieniają sufit",
-                f"Obniżone dni tygodnia: {reduced}. W te dni realny sufit jest "
-                "odpowiednio mniejszy, a raport liczy wartość dla zwykłego dnia.",
+                "Dni łatwe",
+                f"Obniżone dni tygodnia: {reduced}. Mogą zmieniać rozkład terminów w Anki; "
+                "nie zmieniają wybranego czasu w Workload.",
             )
         )
 
@@ -773,11 +744,8 @@ def _easy_days(snapshot: Dict[str, Any]) -> str:
 
 # ── Renderowanie raportu (czyste, bez Qt) ──────────────────────────────────
 
-_LEVEL_MARK = {"alert": "●", "warn": "▲", "info": "·", "ok": "✓"}
-_LEVEL_COLOR = {"alert": "#b00020", "warn": "#a35b00", "info": "#555", "ok": "#1b7a2f"}
 # Punkty prognozy pokazywane w tabeli — pełna lista dzienna byłaby nieczytelna.
 _FORECAST_MARKS = (1, 3, 7, 14, 30, 60, 90, 180, 365)
-_BAR_WIDTH = 18
 
 
 def forecast_marks(forecast: Sequence[Tuple[int, int]]) -> List[Tuple[int, int, int]]:
@@ -794,182 +762,65 @@ def forecast_marks(forecast: Sequence[Tuple[int, int]]) -> List[Tuple[int, int, 
     return rows
 
 
-def _bar(value: int, reference: int) -> str:
-    if reference <= 0 or value <= 0:
-        return ""
-    return "█" * max(1, min(_BAR_WIDTH, int(_BAR_WIDTH * value / reference)))
-
-
 def render_html(report: Report) -> str:
-    """Buduje HTML raportu dla okna dodatku."""
-    parts = [
-        "<style>"
-        "body{font-family:-apple-system,Segoe UI,sans-serif;font-size:13px}"
-        "h3{margin:14px 0 6px}"
-        "table{border-collapse:collapse;margin:4px 0}"
-        "td,th{border:1px solid #bbb;padding:3px 7px;text-align:right}"
-        "th:first-child,td:first-child{text-align:left}"
-        ".note{color:#666}.bar{font-family:monospace;color:#888}"
-        "</style>"
-    ]
-    cost = new_card_cost(report.learn_answers_per_new_card, report.learn_seconds)
-
-    parts.append("<h3>Twój budżet</h3>")
+    """Szczegóły opisują dane i założenia, nie obiecują bezpiecznego dopływu."""
+    parts = ["<h3>Szczegóły raportu</h3>"]
     parts.append(
-        f"<p>{report.minutes_per_day} min dziennie, powtórka {report.review_seconds:.1f} s "
-        f"({report.review_seconds_source}). Jedna nowa karta kosztuje dodatkowo "
-        f"{report.learn_answers_per_new_card:.1f} × {report.learn_seconds:.1f} s = {cost:.0f} s "
-        f"w dniu wprowadzenia ({report.learn_answers_source}).<br>"
-        f"Po odjęciu kosztu {new_cards(report.new_total)} zostaje "
-        f"<b>{reviews(report.ceiling)} dziennie</b>, a docelowo mieści się "
-        f"<b>{new_cards(report.suggested_new_total)} dziennie</b>.</p>"
+        f"<p>Zwykły czas: {report.minutes_per_day} min. Czas odpowiedzi powtórkowej: "
+        f"{report.review_seconds:.1f} s ({escape(report.review_seconds_source)}). "
+        f"Koszt nauki nowej karty: około "
+        f"{new_card_cost(report.learn_answers_per_new_card, report.learn_seconds):.0f} s.</p>"
+        f"<h3>Przybliżenie z interwałów</h3><p>{reviews(report.structural_load)} na dzień "
+        f"(~{report.structural_minutes} min), przy założeniu stałych interwałów. "
+        "To wskaźnik, nie pomiar rzeczywistego czasu ani prognoza schedulera.</p>"
+        f"<h3>Scenariusz według limitów</h3><p>Suma limitów talii z nowymi kartami: "
+        f"{report.new_total}. Nie uwzględnia ograniczenia przez rodzica ani dzisiejszej dostępności. "
+        f"Mnożnik {report.reviews_per_new_card:.1f} ({escape(report.ratio_source)}) daje "
+        f"{reviews(report.steady_state)} dziennie (~{report.steady_state_minutes} min z nauką). "
+        "To uproszczony scenariusz, nie zalecane tempo. Historyczny stosunek powtórek do nowych "
+        "kart nie określa ich przyszłego kosztu. Do porównania przyszłych scenariuszy służy "
+        "symulator w Opcjach talii Anki.</p>"
     )
-
-    parts.append("<h3>Teraz — pomiar</h3>")
-    parts.append(
-        f"<p>Karty, które już masz, generują <b>{reviews(report.structural_load)} dziennie</b> "
-        f"(~{report.structural_minutes} min). To suma odwrotności interwałów, nie prognoza.<br>"
-        f"Zaległości: {cards(report.backlog)}."
-    )
-    trend = report.trend
-    if trend.slope is not None and trend.level is not None:
-        direction = "rośnie" if trend.slope > 0 else "maleje"
-        parts.append(
-            f"<br>Trend: {reviews(trend.level)} dziennie, {direction} o "
-            f"{abs(trend.slope):.1f} na dzień."
-        )
-        if trend.days_to_ceiling is not None:
-            date = f" ({trend.date_of_ceiling.isoformat()})" if trend.date_of_ceiling else ""
-            parts.append(f" Sufit za {days(trend.days_to_ceiling)}{date}.")
-    parts.append("</p>")
-
-    parts.append("<h3>Docelowo — projekcja</h3>")
-    parts.append(
-        f"<p>Dopływ <b>{new_cards(report.new_total)}</b> dziennie przy "
-        f"{report.reviews_per_new_card:.1f} powtórkach na kartę ({report.ratio_source}) "
-        f"daje <b>{reviews(report.steady_state)} dziennie</b> "
-        f"(~{report.steady_state_minutes} min z kosztem nauki).<br>"
-        f"Zapas: {new_cards(report.new_left_total)}"
-        + (f", wystarczy na {days(report.days_of_intake)}." if report.days_of_intake else ".")
-        + "</p>"
-    )
-
-    parts.append("<h3>Talie</h3>")
-    parts.append(
-        "<table><tr><th>Talia</th><th>Preset</th><th>Nowe/dzień</th><th>Propozycja</th>"
-        "<th>Max powtórek</th><th>Propozycja</th><th>Obciążenie/dzień</th>"
-        "<th>Nowe zostało</th><th>Due dziś</th></tr>"
-    )
+    if report.trend.level is not None:
+        parts.append(f"<p>Wykonane powtórki: średnio {report.trend.level:.0f}/dzień "
+                     "w ostatnich 7 dniach (z dzisiejszym). To aktywność, nie liczba należnych kart.</p>")
+    parts.append("<h3>Talie</h3><table cellpadding='5'><tr><th>Talia</th><th>Preset</th>"
+                 "<th>Limit nowych</th><th>Jeszcze dziś — propozycja</th>"
+                 "<th>Limit powtórek</th><th>Przybliżenie/dzień</th><th>Zapas nowych</th></tr>")
     for row in report.decks:
-        new_suggestion = (
-            str(row.suggested_new_per_day) if row.suggested_new_per_day is not None else "—"
-        )
-        ceiling_suggestion = (
-            str(row.suggested_review_per_day)
-            if row.suggested_review_per_day is not None
-            else "—"
-        )
-        current_ceiling = (
-            f"<b>{row.review_per_day}</b>"
-            if row.review_per_day >= NO_CEILING_THRESHOLD
-            else str(row.review_per_day)
-        )
-        name = f"{row.name} ★" if row.is_root else row.name
         parts.append(
-            f"<tr><td>{name}</td><td>{row.preset}</td><td>{row.new_per_day}</td>"
-            f"<td>{new_suggestion}</td><td>{current_ceiling}</td><td>{ceiling_suggestion}</td>"
-            f"<td>{row.structural_load:.1f}</td><td>{row.new_left}</td><td>{row.due_today}</td></tr>"
+            f"<tr><td>{escape(row.name)}</td><td>{escape(row.preset)}</td>"
+            f"<td>{row.new_per_day}</td><td>{row.suggested_new_per_day}</td>"
+            f"<td>{row.review_per_day}</td><td>{row.structural_load:.1f}</td><td>{row.new_left}</td></tr>"
         )
-    parts.append("</table>")
-    parts.append(
-        "<p class='note'>★ talia, z której się uczysz — jej preset narzuca sufit całej "
-        "sesji, dlatego dostaje pełną wartość, a podtalie swój udział.</p>"
-    )
-
+    parts.append("</table><p>Podział propozycji jest orientacyjny; Anki nadal stosuje swoje "
+                 "limity i zakopywanie kart. Możesz zrobić mniej lub zero nowych.</p>")
     marks = forecast_marks(report.forecast)
     if marks:
-        reference = max(single for _, single, _ in marks) or 1
-        parts.append("<h3>Prognoza</h3>")
-        parts.append(
-            "<table><tr><th>Za dni</th><th>Kart tego dnia</th><th></th>"
-            "<th>Razem do tego dnia</th></tr>"
-        )
+        parts.append("<h3>Już zaplanowane terminy</h3><p>Każda karta występuje tylko raz. "
+                     "Tabela nie uwzględnia jej kolejnych powrotów ani przyszłych nowych kart.</p>"
+                     "<table cellpadding='5'><tr><th>Za dni</th><th>Kart</th><th>Łącznie do dnia</th></tr>")
         for day, single, total in marks:
-            parts.append(
-                f"<tr><td>{day}</td><td>{single}</td>"
-                f"<td class='bar'>{_bar(single, reference)}</td><td>{total}</td></tr>"
-            )
+            parts.append(f"<tr><td>{day}</td><td>{single}</td><td>{total}</td></tr>")
         parts.append("</table>")
         if report.peak:
-            parts.append(
-                f"<p class='note'>Największy dzień w oknie: za {days(report.peak[0])}, "
-                f"{cards(report.peak[1])}.</p>"
-            )
-
-    parts.append("<h3>Uwagi</h3><ul>")
+            parts.append(f"<p>Największa obecnie zaplanowana kolejka: za {days(report.peak[0])}, "
+                         f"{cards(report.peak[1])}.</p>")
+    parts.append("<h3>Uwagi</h3>")
     for finding in report.findings:
-        color = _LEVEL_COLOR.get(finding.level, "#333")
-        mark = _LEVEL_MARK.get(finding.level, "·")
-        parts.append(
-            f"<li><span style='color:{color}'>{mark} <b>{finding.title}</b></span>"
-            f"<br>{finding.detail}</li>"
-        )
-    parts.append("</ul>")
-    parts.append(
-        "<p class='note'>Dodatek tylko czyta kolekcję. Żadnej z tych wartości nie "
-        "zapisuje — wpisujesz je sam w Opcjach talii.</p>"
-    )
+        parts.append(f"<p><b>{escape(finding.title)}</b><br>{escape(finding.detail)}</p>")
+    parts.append("<p>Dodatek tylko czyta kolekcję. Propozycje nie zmieniają opcji Anki.</p>")
     return "".join(parts)
 
 
 def render_text(report: Report) -> str:
-    """Wersja tekstowa raportu do skopiowania."""
-    lines = [
-        "Anki Toolkit: Workload",
-        "",
-        f"Budżet: {report.minutes_per_day} min/dzień, powtórka {report.review_seconds:.1f} s "
-        f"({report.review_seconds_source})",
-        f"Sufit przy obecnym dopływie: {reviews(report.ceiling)} na dzień",
-        f"Mieści się: {new_cards(report.suggested_new_total)} na dzień",
-        "",
-        f"Teraz (pomiar z interwałów): {reviews(report.structural_load)} na dzień "
-        f"(~{report.structural_minutes} min)",
-        f"Zaległości: {report.backlog}",
-    ]
-    trend = report.trend
-    if trend.slope is not None and trend.level is not None:
-        lines.append(
-            f"Trend: {trend.level:.0f}/dzień, zmiana {trend.slope:+.1f}/dzień"
-            + (
-                f", sufit za {trend.days_to_ceiling} dni"
-                if trend.days_to_ceiling is not None
-                else ""
-            )
-        )
-    lines += [
-        "",
-        f"Dopływ: {new_cards(report.new_total)} na dzień → docelowo {reviews(report.steady_state)} "
-        f"na dzień (~{report.steady_state_minutes} min)",
-        f"Zapas: {new_cards(report.new_left_total)}"
-        + (f", na {days(report.days_of_intake)}" if report.days_of_intake else ""),
-        "",
-        "Talie:",
-    ]
+    lines = ["Anki Toolkit: Workload", "", *plan_lines(report), "", "Szczegóły:",
+             f"Przybliżenie z interwałów: {reviews(report.structural_load)} na dzień "
+             f"(~{report.structural_minutes} min), przy stałych interwałach.",
+             "Talie (propozycje dodatkowych nowych kart na dziś):"]
     for row in report.decks:
-        root = " ★" if row.is_root else ""
-        lines.append(
-            f"  {row.name}{root} [{row.preset}] nowe {row.new_per_day}"
-            + (f"→{row.suggested_new_per_day}" if row.suggested_new_per_day is not None else "")
-            + f", max powtórek {row.review_per_day}"
-            + (
-                f"→{row.suggested_review_per_day}"
-                if row.suggested_review_per_day is not None
-                else ""
-            )
-            + f", obciążenie {row.structural_load:.1f}/dzień, zapas {row.new_left}"
-        )
+        lines.append(f"  {row.name}: {row.suggested_new_per_day}, zapas {row.new_left}")
     lines += ["", "Uwagi:"]
-    for finding in report.findings:
-        lines.append(f"  {_LEVEL_MARK.get(finding.level, '·')} {finding.title}: {finding.detail}")
-    lines += ["", "Dodatek tylko czyta kolekcję — wartości wpisujesz sam w Opcjach talii."]
+    lines.extend(f"  {finding.title}: {finding.detail}" for finding in report.findings)
+    lines.append("Dodatek tylko czyta kolekcję — nie zmienia limitów Anki.")
     return "\n".join(lines)
