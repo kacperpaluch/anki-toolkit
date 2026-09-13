@@ -3,19 +3,27 @@ services:
     build:
       context: ..
       dockerfile: workload_service/Dockerfile
+    image: anki-workload:local
     restart: unless-stopped
-    environment:
+    environment: &workload_environment
       TZ: Europe/Warsaw
-      ANKI_SYNC_URL: ${ANKI_SYNC_URL:?Set ANKI_SYNC_URL in .env}
-      ANKI_SYNC_USERNAME: ${ANKI_SYNC_USERNAME:?Set ANKI_SYNC_USERNAME in .env}
-      ANKI_SYNC_PASSWORD_FILE: /run/secrets/anki_password
+      ANKI_SYNC_URL: 'ankiweb' # albo pełny URL własnego serwera
+      ANKI_SYNC_USERNAME: 'twoj-email@example.com'
+      ANKI_SYNC_PASSWORD: '' # wpisz hasło; literalny $ zapisuj jako $$
+      WORKLOAD_CONFIG: >-
+        {"apply": false, "run_at": "05:00", "minutes_per_day": 15,
+         "max_minutes_per_day": 30, "new_cards_per_day": 3,
+         "decks": ["angielski"], "split_strategy": "proportional"}
     volumes:
       - workload_data:/data/user_files
-      - ./config.json:/config/workload.json:ro
-    secrets:
-      - anki_password
-secrets:
-  anki_password:
-    file: ./user_files/anki_password.txt
+  dashboard:
+    image: anki-workload:local
+    command: dashboard
+    environment: *workload_environment
+    restart: unless-stopped
+    ports:
+      - '8070:8080' # panel w sieci lokalnej, bez logowania
+    volumes:
+      - workload_data:/data/user_files
 volumes:
   workload_data:

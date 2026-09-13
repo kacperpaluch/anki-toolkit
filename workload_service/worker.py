@@ -45,9 +45,13 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def settings_from(path):
+def settings_from(path, data_dir=None, overrides=None):
     settings = read_json(ROOT / "anki_toolkit_workload/config.json")
-    settings.update(read_json(path))
+    settings.update(read_json(path, {}))
+    settings.update(json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")))
+    if data_dir is not None:
+        settings.update(read_json(data_dir / "settings.json", {}))
+    settings.update(overrides or {})
     for key, low, high in (("minutes_per_day", 5, 240), ("max_minutes_per_day", 5, 240),
                            ("new_cards_per_day", 0, 100)):
         if type(settings[key]) is not int or not low <= settings[key] <= high:
@@ -64,14 +68,14 @@ def settings_from(path):
     return settings
 
 
-def credentials():
-    target = os.environ.get("ANKI_SYNC_URL", "").strip()
+def credentials(target=None, username=None):
+    target = (os.environ.get("ANKI_SYNC_URL", "") if target is None else target).strip()
     endpoint = None if target == "ankiweb" else target.rstrip("/") + "/"
     if endpoint is not None:
         url = urlsplit(endpoint)
         if url.scheme not in ("http", "https") or not url.hostname or url.username or url.query or url.fragment:
             raise WorkloadError("ANKI_SYNC_URL must be 'ankiweb' or an HTTP(S) URL without credentials/query")
-    username = os.environ.get("ANKI_SYNC_USERNAME", "")
+    username = os.environ.get("ANKI_SYNC_USERNAME", "") if username is None else username
     if not username:
         raise WorkloadError("Set ANKI_SYNC_USERNAME")
     return endpoint, username
@@ -105,9 +109,10 @@ def get_auth(col, data_dir, identity, login=False):
             auth.endpoint = identity["endpoint"]
         return auth
     password_file = os.environ.get("ANKI_SYNC_PASSWORD_FILE", "")
-    password = Path(password_file).read_text().rstrip("\r\n") if password_file else ""
+    password = (Path(password_file).read_text().rstrip("\r\n") if password_file
+                else os.environ.get("ANKI_SYNC_PASSWORD", ""))
     if not password:
-        raise WorkloadError("Login requires ANKI_SYNC_PASSWORD_FILE containing the password")
+        raise WorkloadError("Login requires ANKI_SYNC_PASSWORD or ANKI_SYNC_PASSWORD_FILE")
     auth = col.sync_login(identity["username"], password, identity["endpoint"])
     if identity["endpoint"] is not None:
         auth.endpoint = identity["endpoint"]
@@ -245,7 +250,7 @@ def initialize(data_dir, identity):
     print("Private replica downloaded. No limits changed.", flush=True)
 
 
-def run(data_dir, settings, command):
+def _run(data_dir, settings, command, event):
     from anki.collection import Collection
     data_dir.mkdir(parents=True, exist_ok=True)
     with (data_dir / "worker.lock").open("a") as lock:
@@ -253,6 +258,10 @@ def run(data_dir, settings, command):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise WorkloadError("Another Workload process is running") from None
+        connection = read_json(data_dir / "connection.json", {})
+        if connection:
+            os.environ["ANKI_SYNC_URL"] = connection["url"]
+            os.environ["ANKI_SYNC_USERNAME"] = connection["username"]
         endpoint, username = credentials()
         identity = {"endpoint": endpoint, "username": username}
         if command == "init":
@@ -296,6 +305,13 @@ def run(data_dir, settings, command):
                                       "pace_reason": report.plan.weekly_reason, "limits": [
                         {"deck": deck["name"], **limits(deck)} for deck in proposals
                     ]}, ensure_ascii=False), flush=True)
+                event["changes"] = [{"deck": deck["name"],
+                    "before": limits(col.decks.get(deck["id"], default=False)), "after": limits(deck)}
+                    for deck in proposals
+                    if limits(col.decks.get(deck["id"], default=False)) != limits(deck)]
+                if command != "restore":
+                    event["reason"] = report.plan.reason
+                    event["card_costs"] = report.card_costs
                 if apply:
                     # Reserve same-day caps BEFORE attempting the remote write. A failed
                     # upload must never result in a larger allowance on retry.
@@ -327,21 +343,49 @@ def run(data_dir, settings, command):
             print("Dry run: no limit changes uploaded.", flush=True)
 
 
+def run(data_dir, settings, command):
+    event = {"started": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+             "command": command, "apply": command == "restore" or settings.get("apply", False),
+             "status": "running", "changes": []}
+    try:
+        _run(data_dir, settings, command, event)
+        event["status"] = "success"
+    except Exception as error:
+        event["status"] = "error"
+        event["error"] = str(error) if isinstance(error, WorkloadError) else type(error).__name__
+        raise
+    finally:
+        event["finished"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        with (data_dir / "history.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            history = read_json(data_dir / "history.json", [])
+            # ponytail: retain 200 runs; use SQLite if searchable long-term history is needed.
+            write_json(data_dir / "history.json", (history + [event])[-200:])
+
+
 def main():
     os.umask(0o077)
     os.environ.setdefault("TZ", "Europe/Warsaw")
     time.tzset()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("init", "login", "run", "serve", "restore"))
+    parser.add_argument("command", choices=("init", "login", "run", "serve", "restore", "dashboard"))
     parser.add_argument("--config", type=Path, default=Path("/config/workload.json"))
     parser.add_argument("--data", type=Path, default=Path("/data/user_files"))
     args = parser.parse_args()
+    if args.command == "dashboard":
+        from dashboard import serve
+        serve(args.data.resolve())
+        return
     if args.command != "serve":
-        run(args.data.resolve(), settings_from(args.config), args.command)
+        run(args.data.resolve(), settings_from(args.config, args.data), args.command)
         return
     last_run = None
     while True:
-        settings = settings_from(args.config)
+        if not (args.data / "identity.json").exists():
+            time.sleep(30)
+            continue
+        settings = settings_from(args.config, args.data)
         now = dt.datetime.now()
         stored = read_json(args.data / "state.json", {})
         today = now.date().isoformat()

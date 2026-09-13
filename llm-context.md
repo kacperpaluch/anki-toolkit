@@ -23,3 +23,7 @@ dodatku. Nie przywracaj scalonego root loadera.
 `workload_service/` to osobny klient headless: przeczytaj jego `README.md` oraz
 kontekst Workload. Własna replika, oficjalny sync, tylko limity nowych;
 bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/`.
+
+Usługa: `WORKLOAD_CONFIG` w Compose nadpisuje plik; `dashboard.py` czyta historię
+i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko
+w głównym wątku workera, chroniony flock. Panel nie udostępnia plików wolumenu.

@@ -9,51 +9,72 @@ aplikacja. Nie wymaga włączonego macOS ani dodatku.
 ## Uruchomienie Docker Compose
 
 Najpierw zsynchronizuj istniejącą kolekcję z wybranym serwerem w swojej aplikacji.
-W katalogu `workload_service` utwórz `.env`:
-
-```dotenv
-ANKI_SYNC_URL=ankiweb
-ANKI_SYNC_USERNAME=twoj-adres-email
-```
-
-Dla własnego serwera zamiast `ankiweb` wpisz pełny adres HTTP(S), dostępny
-z kontenera, oraz jego nazwę użytkownika. Nie wpisuj danych logowania w URL.
-Dla serwera poza zaufaną siecią używaj HTTPS.
-
-Utwórz `user_files/anki_password.txt` z hasłem (pojedyncza linia), nadaj plikowi
-uprawnienia 600. Plik oraz `.env` są ignorowane przez Git. W `config.json` wpisz
-prawdziwe nazwy wybranych talii; rodzic obejmuje podtalie. Pozostaw `apply: false`.
+W katalogu `workload_service` edytuj **compose.yaml**. Wszystkie ustawienia są
+w jednym miejscu: `ANKI_SYNC_URL` (`ankiweb` lub URL własnego serwera),
+`ANKI_SYNC_USERNAME`, `ANKI_SYNC_PASSWORD`, `TZ` i obiekt `WORKLOAD_CONFIG`.
+Wpisz nazwy swoich talii w `decks`. Nie potrzebujesz `.env`, pliku hasła ani
+montowanego `config.json`. Literalny znak `$` w haśle zapisz jako `$$`, aby
+Compose nie potraktował go jako zmiennej. Nie commituj pliku z prawdziwym hasłem.
 
 ```bash
-mkdir -p user_files
-# Utwórz plik hasła w edytorze, następnie:
-chmod 600 user_files/anki_password.txt
 docker compose build
 docker compose run --rm workload init
 docker compose run --rm workload run
+docker compose up -d
 ```
 
-`init` pobiera całą kolekcję do świeżego prywatnego wolumenu; nigdy jej nie
-wysyła. `run` przy `apply: false` synchronizuje kopię i wypisuje propozycję,
-bez zmiany limitów. Sprawdź nazwy talii i proponowane wartości. Następnie ustaw
-`apply: true` i uruchom:
+`init` pobiera całą kolekcję do świeżego prywatnego wolumenu. `run` przy
+`apply: false` pokazuje propozycję bez zmiany limitów. Po sprawdzeniu propozycji
+ustaw `apply: true` w Compose i wykonaj `docker compose up -d`.
+Zmiany Compose wymagają odtworzenia kontenerów tym poleceniem.
+Token hkey pozostaje w prywatnym wolumenie; po inicjalizacji możesz wyczyścić
+hasło w Compose. Gdy token wygaśnie, wpisz hasło i wykonaj
+`docker compose run --rm workload login`. Starszy sposób z
+`ANKI_SYNC_PASSWORD_FILE` i `--config` nadal działa; `WORKLOAD_CONFIG` ma
+pierwszeństwo nad plikiem konfiguracyjnym.
+
+## Godzina i cron
+
+W `WORKLOAD_CONFIG` ustaw np. `"run_at": "06:30"`. Godzina dotyczy strefy `TZ`
+(domyślnie Europe/Warsaw) i musi wypadać po granicy dnia nauki Anki.
+Proces `serve` działa raz dziennie, nadrabia uruchomienie po restarcie i ponawia
+nieudany przebieg. Przycisk dashboardu działa niezależnie od tej godziny.
+
+Możesz zamiast wbudowanego harmonogramu użyć crona. Zatrzymaj `workload`,
+a pozostaw uruchomiony sam dashboard:
 
 ```bash
-docker compose run --rm workload run
-docker compose up -d
-docker compose logs --tail 30 workload
+docker compose stop workload
+docker compose up -d dashboard
 ```
 
-Pierwsze polecenie stosuje plan od razu. Usługa wykonuje kolejne plany o 05:00
-w strefie `Europe/Warsaw`; po restarcie nadrabia dzisiejsze uruchomienie.
-Synchronizuj telefon przed i po nauce. Usługa nie synchronizuje mediów.
+Przykładowy wpis crona (podaj własną bezwzględną ścieżkę do repo i Dockera):
 
-Token `hkey` jest zapisywany w prywatnym wolumenie, w `user_files/auth.json`
-z uprawnieniami 600. Po inicjalizacji możesz opróżnić plik hasła, pozostawiając
-plik wymagany przez Docker secrets. Przy wygaśnięciu tokenu wpisz hasło ponownie
-i wykonaj `docker compose run --rm workload login`. Token daje dostęp do konta;
-chroń cały wolumen i jego kopie. Przekierowania AnkiWeb są ograniczone do HTTPS
-w domenie ankiweb.net; własny serwer może zmieniać ścieżkę w tym samym originie.
+```cron
+30 6 * * * cd /srv/anki-toolkit/workload_service && /usr/bin/docker compose run --rm workload run
+```
+
+Cron stosuje strefę czasową hosta. W tym trybie `run_at` nie steruje wykonaniem.
+Nie włączaj równocześnie dwóch harmonogramów; blokada chroni kolekcję przed
+równoległym dostępem, a ponowienia nie podnoszą przydziału tego samego dnia.
+
+## Dashboard
+
+Otwórz **http://ADRES-SERWERA:8070**. Port jest dostępny na interfejsach sieciowych serwera.
+Panel nie ma logowania — udostępniaj go tylko w zaufanej sieci.
+
+Pokazuje ostatnie 200 zakończonych przebiegów: czas rozpoczęcia i zakończenia,
+sukces lub błąd, tryb symulacji/zapisu, powód decyzji i wartości limitów przed/po.
+Przy błędzie planowane zmiany nie są oznaczane jako potwierdzone; część mogła
+już trafić na serwer. Historia jest zapisana w `user_files/history.json`.
+To historia automatu, nie potwierdzenie synchronizacji telefonu.
+
+**Uruchom teraz** wykonuje pełny zwykły przebieg z aktualnym `apply`, również
+przed godziną harmonogramu. Nie wymusza pełnego nadpisania kolekcji.
+Po kliknięciu panel pokazuje działający proces. Wynik sprawdzisz przyciskiem
+**Odśwież historię**. Strona nie odświeża się automatycznie.
+Blokada kolekcji zapobiega równoległemu zapisowi przez harmonogram i przycisk.
+Panel i worker współdzielą ustawienia przez kotwicę YAML oraz prywatny wolumen.
 
 ## Konfiguracja
 
@@ -99,10 +120,10 @@ sprawdź logi. Anki rozstrzyga konflikty także według czasu modyfikacji talii:
 nie edytuj równolegle zarządzanych limitów. Usługa nie nadpisuje wykrytej obcej
 zmiany. Nie uruchamiaj drugiego kontrolera tego samego konta.
 
-Aby wyłączyć automat i przywrócić zapamiętane limity:
+Aby wyłączyć automat i przywrócić zapamiętane limity (usuń też wpis crona, jeśli go używasz):
 
 ```bash
-docker compose stop workload
+docker compose stop workload dashboard
 docker compose run --rm workload restore
 ```
 
@@ -132,3 +153,18 @@ z 7 zakończonych dni, koszt kohorty wprowadzonej w 14 zakończonych dniach oraz
 5 najbardziej czasochłonnych kart (ID, czas, odpowiedzi, Ponownie).
 Treść notatek nie trafia do logów. Ten pomiar nie zmienia decyzji o limitach;
 szczegóły interpretacji opisuje [Workload](../anki_toolkit_workload/README.md#co-zabiera-czas).
+
+### Konfiguracja w panelu
+
+Możesz uruchomić samo `docker compose up -d --build` i rozwinąć **Ustawienia i konto Anki**.
+Wpisz serwer, login, hasło, nazwy talii, godzinę i budżet. **Zapisz ustawienia / zaloguj**
+zapisuje ustawienia, a podane hasło uruchamia inicjalizację (pierwszy raz) lub
+odnowienie tokenu (istniejąca kopia). Poczekaj na sukces w historii, następnie
+kliknij **Uruchom teraz**. Zacznij od odznaczonego **Zapisuj limity**.
+
+Ustawienia panelu są trwałe w wolumenie (`settings.json`, `connection.json`) i mają
+pierwszeństwo nad Compose. Worker odczytuje je przed kolejnym przebiegiem;
+nie trzeba restartować kontenera. Strefę `TZ` i port nadal ustawiasz w Compose.
+Hasło z formularza jest przekazywane tylko do procesu logowania, nie jest zapisywane
+w plikach ani historii. Panel nie ma logowania. Token formularza chroni tylko
+przed przypadkowym wywołaniem przez obcą stronę, nie ogranicza dostępu w LAN.

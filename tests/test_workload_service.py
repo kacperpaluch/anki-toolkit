@@ -28,6 +28,23 @@ class ServiceTests(unittest.TestCase):
                 with self.assertRaises(worker.WorkloadError):
                     worker.settings_from(path)
 
+    def test_compose_settings_and_dashboard_escape(self):
+        from workload_service.dashboard import render
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.dict(os.environ, {"WORKLOAD_CONFIG": json.dumps({
+                "decks": ["English"], "run_at": "06:30", "apply": True})}):
+                settings = worker.settings_from(Path(folder) / "missing.json")
+                self.assertEqual(settings["run_at"], "06:30")
+                self.assertTrue(settings["apply"])
+        html = render([{"status": "error", "error": "<script>bad</script>",
+                        "changes": [], "command": "run"}], "test-token", True)
+        self.assertNotIn("<script>bad</script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("disabled", html)
+        self.assertIn('action="/run"', html)
+        self.assertNotIn("setInterval", html)
+        self.assertNotIn('http-equiv="refresh"', html)
+
     def test_credentials_do_not_accept_a_url_with_embedded_password(self):
         with patch.dict(os.environ, {"ANKI_SYNC_URL": "https://user:secret@example.com/"}):
             with self.assertRaises(worker.WorkloadError):
