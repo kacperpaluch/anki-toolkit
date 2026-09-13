@@ -25,9 +25,11 @@ W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki T
 ### Edytor kart (pojedyncza notatka)
 Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, TTS albo workflow, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
 
-**PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio jest usuwane i generowane jest nowe). Działa też w oknie dodawania nowej karty (AddCards).
+**PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio zostaje zastąpione nowym). **Stare nagranie znika dopiero wtedy, gdy nowe faktycznie powstanie**: gdy API padnie, pole zostaje nietknięte, a przy częściowym sukcesie segmenty, których nie udało się wygenerować, zachowują dotychczasowe audio. Działa też w oknie dodawania nowej karty (AddCards).
 
 Notatki które już mają audio w polu docelowym są pomijane — liczy się zarówno `[sound:...]`, jak i osadzony `<audio>` po konwersji przez Audio Embed. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
+
+Zmiana dowolnego pola podczas generowania w edytorze powoduje pominięcie wyniku bieżącego kroku, aby nie przypisać audio do zmienionego tekstu. Zamknięcie lub zmiana profilu przerywa zapis. W trybie `split` zapisującym do osobnego, już wypełnionego pola częściowa awaria pozostawia całe stare pole — zastępuje je dopiero pełny wynik.
 
 ### Zadania TTS
 
@@ -38,7 +40,7 @@ Każde zadanie definiuje:
 - **Tryb**:
   - `single` — jedno audio na notatkę (np. dla pola `ang`)
   - `split` — każdy segment dostaje osobne audio wstawiane **obok słowa** w to samo pole (np. `przyklad` rozdzielany `<br><br>` → `słowo [sound:...]`)
-  - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`)
+  - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`). Pole puste lub niekompletne zostaje zastąpione dopiero po wygenerowaniu całego zestawu; częściowa awaria pozostawia dotychczasową treść do ponowienia. Przy regeneracji kompletnego zestawu nieudane segmenty zachowują swoje stare nagrania.
 - **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
 
 Zadania konfiguruje się w **Ustawienia → Wymowa → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.

@@ -17,14 +17,27 @@ Workflowy uruchamiają te kroki sekwencyjnie dla jednej notatki.
 | `tts/` | generowanie audio przez Kokoro lub OpenRouter |
 | `field_splitter/` | dzielenie pola źródłowego na pola docelowe |
 | `common/` | współdzielone HTTP, konfiguracja, progress i operacje edytora |
-| `settings/` | techniczne panele używane przez `content_settings.py` |
+| `settings/` | panele zakładek używane przez `content_settings.py` |
 
 ## Niezmienniki
 
 - Kolekcja Anki i edytor pozostają na głównym wątku. HTTP, AI i TTS mogą działać
   w workerach; zapis wyniku wraca na główny wątek.
-- Batch API zapisuje stan w `user_files/ai_batches.json`; wynik wpisuj tylko do
-  pola, które nadal jest puste.
+- Worker nie dotyka notatki otwartej w edytorze. Ścieżki edytorowe pracują na
+  kopii (`common.editor_operation.detach_note`) i wracają przez `merge_note()`,
+  które pomija wyniki bieżącego kroku, jeśli użytkownik zmienił jakiekolwiek pole
+  (mogło być jego źródłem). `merge_editor_note()` sprawdza tożsamość kolekcji,
+  wczytuje świeżą notatkę po przełączeniu edytora, zapisuje istniejącą notatkę
+  z powiadomieniem `OpChanges` i odświeża webview po każdym kroku workflow.
+- Operacja niszcząca dotychczasową treść (regeneracja audio) wykonuje się dopiero
+  po tym, jak powstanie zastępnik. Brak wyniku = pole zostaje nietknięte.
+- Batch API zapisuje stan w `user_files/ai_batches.json`; plik jest wspólny dla
+  wszystkich profili, więc każdy rekord i job nosi `col` i jest widoczny tylko w
+  swojej kolekcji. Wynik wpisuj tylko do pola, które nadal jest puste, a pola
+  czekające w kolejce (`inflight_fields()`) nie mogą trafić do kolejnej wysyłki.
+  Właściciel jest przechwytywany przed uruchomieniem workera. Rekordy bez `col`
+  są zachowane do ręcznego przypisania; nigdy nie zakładaj, że należą do aktualnego
+  profilu. `submit()` serializuje wysyłki i ponownie deduplikuje pola pod blokadą.
 - Zapis konfiguracji musi zachować nieznane klucze i dane providerów.
 - Nie importuj innych dodatków Toolkit. Audio Normalizer i Audio Embed reagują
   na pliki mediów niezależnie od Content.
@@ -32,7 +45,9 @@ Workflowy uruchamiają te kroki sekwencyjnie dla jednej notatki.
 ## Interfejs
 
 **Narzędzia → Anki Toolkit: Content…** otwiera od razu okno ustawień
-(workflowy, AI, TTS, słownik, Field Splitter) — bez pośredniego submenu.
+(workflowy, AI, TTS, słownik, Field Splitter, Diagnostyka) — bez pośredniego
+submenu. Zakładka Diagnostyka pokazuje bufor logów wtyczki (`common.debug_log`,
+inicjowany w `__init__.py`) — tam trafia historia batchy i błędów.
 Ten sam dialog podpięty jest pod przycisk Config w menedżerze dodatków
 (`setConfigAction`). Browser ma jedno submenu Content; przyciski edytora
 rejestrują AI, słownik i TTS.

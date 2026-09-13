@@ -43,7 +43,7 @@ def _process_note(note, cfg: dict) -> bool:
     """Split source field into targets on *note*. Returns True if changed."""
     source = cfg.get("source_field", _DEFAULTS["source_field"])
     separator = cfg.get("separator", _DEFAULTS["separator"])
-    targets = parse_target_fields(cfg.get("target_fields", ""))
+    targets = [f for f in parse_target_fields(cfg.get("target_fields", "")) if f != source]
 
     field_names = set(note.keys())
     if source not in field_names:
@@ -58,6 +58,10 @@ def _process_note(note, cfg: dict) -> bool:
     changed = False
     for tf, part in mapping.items():
         if tf not in field_names:
+            continue
+        if tf == source:
+            # The source is a copy source, never a target — listing it among
+            # the targets would replace the whole field with its first part.
             continue
         current = note[tf] or ""
         if not overwrite and current.strip():

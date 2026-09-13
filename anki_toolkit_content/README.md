@@ -37,6 +37,11 @@ lokalni](ai_generator/README.md#dostawcy-lokalni--generowanie-bez-klucza-api).
 profilu trafiają do `meta.json` dodatku. Dane trwałe (stan Batch API) należą do
 `user_files/`. Klucze API, `meta.json` i `user_files/` są ignorowane przez Git.
 
+Uwaga przy wielu profilach Anki: ustawienia i stan Batch API są wspólne dla
+całego dodatku, ale każdy batch i każde zadanie zna swoją kolekcję — po
+przełączeniu profilu czekają na powrót do swojego, zamiast dopisywać się do
+cudzych notatek.
+
 ## Współpraca z pozostałymi dodatkami
 
 Content nie importuje innych dodatków Toolkit. Audio Normalizer i Audio Embed

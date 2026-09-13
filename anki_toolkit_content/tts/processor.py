@@ -36,16 +36,23 @@ def has_audio(text: str) -> bool:
     return bool(_AUDIO_RE.search(text or ""))
 
 
+def audio_tags(text: str) -> list:
+    """Every audio tag in the field, in order."""
+    return _AUDIO_RE.findall(text or "")
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def build_note_work_items(note, tasks: list[dict], voices: list[str]):
-    """Collect TTS work items for one note.
+def build_note_work_items(note, tasks: list[dict], voices: list[str],
+                          overwrite: bool = False):
+    """Collect TTS work items for one note. Never mutates the note.
 
     Returns (work_items, split_contexts):
       work_items     — [{task_i, mode, seg_i, text, voice[, target_field]}]
-      split_contexts — {task_i: (target_field, split_sep, raw_segments, mode)}
+      split_contexts — {task_i: {target, sep, segments, mode, eligible,
+                                 prev, prev_tags}}
 
     Modes:
       single      — one audio per note, written to target_field
@@ -53,6 +60,10 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
                     back interleaved (keeps the words)
       split_audio — split source, write ONLY the [sound:...] tags concatenated
                     into a separate target_field (no words)
+
+    overwrite=True regenerates audio that is already there. The old tags are
+    only remembered here (`prev`) — nothing is removed from the note until a
+    replacement actually exists, so a failed regeneration can't lose audio.
     """
     work_items: list[dict] = []
     split_contexts: dict = {}
@@ -64,38 +75,57 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str]):
         split_sep = task.get("split_separator", "<br><br>")
 
         if mode in ("split", "split_audio"):
-            if source_field not in note:
-                continue
-            # split_audio writes to a separate field — skip if it already has
-            # audio (regen strips it first via overwrite).
-            if mode == "split_audio" and (
-                target_field not in note or has_audio(note[target_field])
-            ):
+            if source_field not in note or target_field not in note:
                 continue
             raw_segments = split_separator_regex(split_sep).split(note[source_field])
+            # prev: old audio kept aside so a segment that fails to regenerate
+            # keeps what it had. split → keyed by segment index (audio sits in
+            # the source); split_audio → a positional list (audio sits in the
+            # separate target field).
+            prev: dict = {}
+            prev_tags: list = []
+            if overwrite and mode == "split":
+                for i, seg in enumerate(raw_segments):
+                    tags = "".join(audio_tags(seg))
+                    if tags:
+                        prev[i] = tags
+                raw_segments = [_strip_sound_tags(seg) for seg in raw_segments]
+            eligible = [
+                i for i, seg in enumerate(raw_segments)
+                if not has_audio(seg) and clean_html(seg)
+            ]
+            if mode == "split_audio":
+                if target_field not in note:
+                    continue
+                prev_tags = audio_tags(note[target_field])
+                if not overwrite and eligible and len(prev_tags) >= len(eligible):
+                    # Fewer tags than segments = an earlier run only partly
+                    # succeeded. The tags are positional, so a gap in the
+                    # middle can't be filled selectively — regenerate the set.
+                    continue
+            if not eligible:
+                continue
             note_voices = list(voices)
             random.shuffle(note_voices)
-            task_has_items = False
-            for seg_i, seg in enumerate(raw_segments):
-                if has_audio(seg):
-                    continue
-                text = clean_html(seg)
-                if not text:
-                    continue
+            for seg_i in eligible:
                 work_items.append({
                     "task_i": task_i,
                     "mode": mode,
                     "seg_i": seg_i,
-                    "text": text,
+                    "text": clean_html(raw_segments[seg_i]),
                     "voice": note_voices[seg_i % len(note_voices)],
                 })
-                task_has_items = True
-            if task_has_items:
-                split_contexts[task_i] = (target_field, split_sep, raw_segments, mode)
+            split_contexts[task_i] = {
+                "target": target_field, "sep": split_sep, "mode": mode,
+                "segments": raw_segments, "eligible": eligible,
+                "prev": prev, "prev_tags": prev_tags,
+                "require_complete": mode == "split" and target_field != source_field
+                                    and bool(note[target_field]),
+            }
         else:
             if source_field not in note or target_field not in note:
                 continue
-            if has_audio(note[target_field]):
+            if has_audio(note[target_field]) and not overwrite:
                 continue
             text = clean_html(note[source_field])
             if not text:
@@ -116,7 +146,9 @@ def apply_results_to_note(note, work_items: list[dict], split_contexts: dict,
                           results: dict) -> bool:
     """Write generated audio into note fields (in memory — no collection save).
 
-    `results` maps (task_i, seg_i) → media filename.
+    `results` maps (task_i, seg_i) → media filename. A segment with no result
+    keeps whatever audio it had before (split_contexts["prev"]), so a partial
+    failure never costs the user existing recordings.
     Returns True if any field changed.
     """
     changed = False
@@ -129,7 +161,9 @@ def apply_results_to_note(note, work_items: list[dict], split_contexts: dict,
             note[item["target_field"]] = f"[sound:{fname}]"
             changed = True
 
-    for task_i, (target_field, split_sep, raw_segments, mode) in split_contexts.items():
+    for task_i, ctx in split_contexts.items():
+        target_field, mode = ctx["target"], ctx["mode"]
+        raw_segments, prev = ctx["segments"], ctx["prev"]
         seg_map = {
             seg_i: fname
             for (ti, seg_i), fname in results.items()
@@ -137,10 +171,24 @@ def apply_results_to_note(note, work_items: list[dict], split_contexts: dict,
         }
         if not seg_map:
             continue
+        if ctx["require_complete"] and any(i not in seg_map for i in ctx["eligible"]):
+            continue  # separate old text/audio cannot be safely matched by index
         if mode == "split_audio":
-            note[target_field] = "".join(
-                f"[sound:{seg_map[i]}]" for i in sorted(seg_map)
-            )
+            eligible = ctx["eligible"]
+            # Positional: the n-th old tag belongs to the n-th eligible
+            # segment — only usable when the counts still line up.
+            old = ctx["prev_tags"] if len(ctx["prev_tags"]) == len(eligible) else []
+            if not old and any(i not in seg_map for i in eligible):
+                # Incomplete old tags have no reliable positional mapping.
+                # Keep the field intact until a complete replacement exists.
+                continue
+            tags = []
+            for n, i in enumerate(eligible):
+                if i in seg_map:
+                    tags.append(f"[sound:{seg_map[i]}]")
+                elif n < len(old):
+                    tags.append(old[n])
+            note[target_field] = "".join(tags)
             changed = True
             continue
         parts = []
@@ -148,8 +196,10 @@ def apply_results_to_note(note, work_items: list[dict], split_contexts: dict,
             content = seg
             if i in seg_map:
                 content += f"[sound:{seg_map[i]}]"
+            elif prev.get(i):
+                content += prev[i]
             parts.append(content)
-        note[target_field] = split_sep.join(parts)
+        note[target_field] = ctx["sep"].join(parts)
         changed = True
 
     return changed
@@ -161,6 +211,7 @@ def generate_for_items(
     key_fn: Optional[Callable[[dict], tuple]] = None,
     cancel_flag: Optional[dict] = None,
     on_progress: Optional[Callable[[], None]] = None,
+    collection=None,
 ) -> tuple[dict, int, Optional[str]]:
     """Generate audio for work items in parallel and write media files.
 
@@ -173,6 +224,7 @@ def generate_for_items(
     """
     if key_fn is None:
         key_fn = lambda item: (item["task_i"], item["seg_i"])
+    col = collection if collection is not None else mw.col
 
     results: dict = {}
     errors = 0
@@ -182,8 +234,13 @@ def generate_for_items(
         nonlocal errors, first_error
         try:
             audio_bytes = future.result()
+            # Media writes go through the Rust backend (which serializes them),
+            # but the collection can be gone if the profile closed mid-batch —
+            # fail this item instead of raising AttributeError on None.
+            if col is None or mw.col is not col:
+                raise RuntimeError("profil Anki został zamknięty w trakcie generowania")
             # write_data may rename on collision — always use the returned name
-            fname = mw.col.media.write_data(unique_filename(), audio_bytes)
+            fname = col.media.write_data(unique_filename(), audio_bytes)
             results[key_fn(item)] = fname
         except Exception as e:
             errors += 1
@@ -329,7 +386,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 # ---------------------------------------------------------------------------
 
 def _strip_sound_tags(text: str) -> str:
-    """Remove audio ([sound:...] or <audio>) so regeneration can replace it."""
+    """Remove audio ([sound:...] or <audio>) from a copy of the text."""
     return _AUDIO_RE.sub("", text).strip()
 
 
@@ -343,8 +400,9 @@ def process_single_note(note, config: dict = None,
 
     tasks: subset of configured TTS tasks to run (default: all). Each entry
     must be a task dict with at least source_field, target_field, mode.
-    overwrite: if True, strip [sound:...] from target fields before
-    generating so existing audio is replaced. False = skip filled (today).
+    overwrite: if True, regenerate audio that is already there. The old tags
+    are replaced only where a new file was generated, so a failed request
+    never leaves the note without its recording. False = skip filled fields.
     """
     if config is None:
         config = get_tts_config()
@@ -360,13 +418,9 @@ def process_single_note(note, config: dict = None,
     if not voices:
         return False, None
 
-    if overwrite:
-        for task in tasks:
-            target = task.get("target_field", "")
-            if target and target in note:
-                note[target] = _strip_sound_tags(note[target])
-
-    work_items, split_contexts = build_note_work_items(note, tasks, voices)
+    work_items, split_contexts = build_note_work_items(
+        note, tasks, voices, overwrite=overwrite
+    )
     if not work_items:
         return False, None
 
@@ -375,7 +429,8 @@ def process_single_note(note, config: dict = None,
         f"max_workers={int(config.get('max_workers', 12))}"
     )
 
-    results, errors, first_error = generate_for_items(work_items, config)
+    results, errors, first_error = generate_for_items(
+        work_items, config, collection=getattr(note, "_toolkit_collection", None))
 
     if not results:
         if errors:

@@ -10,7 +10,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
-| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
+| `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; pobieranie leci na kopii z `detach_note()`, a wynik wraca przez `saveNow(apply)` → `merge_editor_note()` (pole zmienione w trakcie zostaje przy użytkowniku); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch; natywny pasek `mw.progress` przez `common.progress` (`start_progress`/`update_progress`/`finish_progress`); używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
 | `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |
@@ -50,7 +50,7 @@ Kliknięcie przycisku/menu
 ```
 
 W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `Anki Toolkit`:
-- `Wszystkie włączone słowniki` — batch po wszystkich aktywnych pozycjach z `buttons`
+- `Wszystkie włączone słowniki` — źródła ze wszystkich aktywnych pozycji `buttons` scalone w JEDNĄ grupę (`unique()`), bo `process_note_group()` pisze do `target_field` tylko gdy jest puste: kolejne grupy w pętli trafiały na własny wynik poprzedniej i cicho się pomijały
 - `Pobierz z {label}` — batch tylko dla jednej skonfigurowanej grupy słowników
 
 Batch działa w tle (`mw.taskman.run_in_background`); notatki są wczytywane (`mw.col.get_note`) na głównym wątku przed startem — kolekcja Anki jest jednowątkowa, wątek roboczy tylko mutuje je w pamięci (ten sam wzorzec co batch AI/TTS), a zapisuje `CollectionOp` na głównym wątku. Postęp przez natywny pasek Anki (`common.progress.start_progress`/`update_progress`/`finish_progress` → `mw.progress`) — trzyma Anki „busy", więc automatyczna kopia zapasowa / sync nie wyskakuje NAD paskiem i nie blokuje Anuluj (kosztem zablokowania całego okna na czas batcha). Anulowanie: `update_progress` czyta `mw.progress.want_cancel()` → ustawia `cancel_flag["cancelled"]`, sprawdzane między notatkami. Po zakończeniu jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
@@ -80,7 +80,7 @@ Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw za
 - `max_retries` — liczba prób przy HTTP 429/5xx oraz błędach połączenia/timeoutach, przekazywana przez `process_note_group()` do `fetch_audio_group(max_retries=...)`
 - `page_timeout` — timeout GET strony słownika (Oxford/Cambridge/Longman); przekazywany do `fetch_text(timeout=page_timeout)`
 - `mp3_timeout` — timeout GET pliku MP3; przekazywany do `fetch_url(timeout=mp3_timeout)`
-- `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne w **Wymowa → Słownik**
+- `wiktionary_ipa_fallback` — `true` (domyślnie) = gdy primary IPA source (oxford/cambridge) zwróci `None`, próbuje Wiktionary API; `false` = wyłącza fallback; konfigurowalne w **Słownik**
 - `diki_ipa_fallback` — gdy `true`, przy pobieraniu z Diki moduł próbuje uzupełnić IPA z `diki_ipa_fallback_source`
 - `diki_ipa_fallback_source` — źródło IPA dla Diki (`wiktionary`, `oxford`, `cambridge`); jeśli źródło inne niż Wiktionary zwróci `None`, może zadziałać `wiktionary_ipa_fallback`
 - Każdy przycisk może mieć listę słowników — pobiera UK i US naraz, zapisuje oba `[sound:...]` w jednym polu

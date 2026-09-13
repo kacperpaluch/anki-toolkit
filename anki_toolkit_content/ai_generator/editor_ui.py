@@ -9,12 +9,22 @@ from .field_generator import FieldGenerator
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
+    detach_note,
+    editor_shows_note,
     finish_editor_operation,
+    merge_editor_note,
 )
 
 
-def _on_generate_editor(editor: Editor):
-    token = begin_editor_operation(editor, "generowanie AI")
+def _run_editor_generation(editor: Editor, label: str, only_fields=None,
+                           overwrite: bool = False, empty_msg: str = ""):
+    """Generate AI fields for the editor's note.
+
+    The worker runs on a detached copy of the note (process_note writes results
+    straight into the note it is given), so the user can keep typing; merge_note
+    then writes back only the fields they did not touch meanwhile.
+    """
+    token = begin_editor_operation(editor, label)
     if token is None:
         tooltip(
             f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
@@ -39,12 +49,14 @@ def _on_generate_editor(editor: Editor):
             if note is None:
                 finish_editor_operation(editor, token)
                 return
+            clone, before = detach_note(note)
         except Exception:
             finish_editor_operation(editor, token)
             raise
 
         def task():
-            return gen.process_note(note)
+            return gen.process_note(clone, only_fields=only_fields,
+                                    overwrite=overwrite)
 
         def on_done(fut):
             try:
@@ -55,30 +67,22 @@ def _on_generate_editor(editor: Editor):
                 return
 
             if not ai_results:
-                if gen.last_error:
-                    finish_editor_operation(editor, token)
-                    tooltip(f"Błąd generowania AI: {gen.last_error}", period=8000)
-                    return
                 finish_editor_operation(editor, token)
-                tooltip("Brak pól do wygenerowania.", period=3000)
+                if gen.last_error:
+                    tooltip(f"Błąd generowania AI: {gen.last_error}", period=8000)
+                else:
+                    tooltip(empty_msg or "Brak pól do wygenerowania.", period=5000)
                 return
 
             def apply():
                 try:
-                    for field, result in ai_results.items():
-                        note[field] = result
-                    # User may have switched to a different note while generating —
-                    # only refresh the editor if it still shows the processed note,
-                    # otherwise persist directly so results aren't lost.
-                    if editor.note is note:
-                        editor.loadNote()
-                    elif note.id:
-                        mw.col.update_note(note)
+                    skipped = merge_editor_note(editor, note, clone, before)
+                    _report(len(ai_results), skipped, gen.last_error)
                 finally:
                     finish_editor_operation(editor, token)
 
             try:
-                if editor.note is note:
+                if editor_shows_note(editor, note):
                     editor.saveNow(apply)
                 else:
                     apply()
@@ -97,88 +101,35 @@ def _on_generate_editor(editor: Editor):
     except Exception:
         finish_editor_operation(editor, token)
         raise
+
+
+def _report(filled: int, skipped: list, error) -> None:
+    """One tooltip covering partial failure — a field that errored while
+    another succeeded used to be reported as a clean success."""
+    if not skipped and not error:
+        return
+    parts = [f"AI: wygenerowano {filled}"]
+    if skipped:
+        parts.append("pominięto pola zmienione w trakcie: " + ", ".join(skipped))
+    if error:
+        parts.append(f"błąd: {error}")
+    tooltip(" · ".join(parts), period=8000)
+
+
+def _on_generate_editor(editor: Editor):
+    _run_editor_generation(editor, "generowanie AI")
 
 
 def _on_generate_field_editor(editor: Editor, field_name: str):
     """Generate a single AI field for the current editor note (overwrites)."""
-    token = begin_editor_operation(editor, f"generowanie AI pola „{field_name}”")
-    if token is None:
-        tooltip(
-            f"Anki Toolkit: trwa już {active_editor_operation(editor)}.",
-            period=2500,
-        )
-        return
-
-    try:
-        gen = FieldGenerator(get_config())
-    except Exception:
-        finish_editor_operation(editor, token)
-        raise
-
-    def start():
-        try:
-            note = editor.note
-            if note is None:
-                finish_editor_operation(editor, token)
-                return
-        except Exception:
-            finish_editor_operation(editor, token)
-            raise
-
-        def task():
-            return gen.process_note(note, only_fields={field_name}, overwrite=True)
-
-        def on_done(fut):
-            try:
-                ai_results = fut.result()
-            except Exception as e:
-                finish_editor_operation(editor, token)
-                tooltip(f"Błąd generowania AI: {e}", period=5000)
-                return
-
-            if not ai_results:
-                finish_editor_operation(editor, token)
-                if gen.last_error:
-                    tooltip(f"Błąd generowania AI ({field_name}): {gen.last_error}", period=8000)
-                else:
-                    tooltip(
-                        f'Pole „{field_name}” nie ma skonfigurowanego promptu '
-                        f'dla tego typu notatki.',
-                        period=5000,
-                    )
-                return
-
-            def apply():
-                try:
-                    for field, result in ai_results.items():
-                        note[field] = result
-                    if editor.note is note:
-                        editor.loadNote()
-                    elif note.id:
-                        mw.col.update_note(note)
-                finally:
-                    finish_editor_operation(editor, token)
-
-            try:
-                if editor.note is note:
-                    editor.saveNow(apply)
-                else:
-                    apply()
-            except Exception:
-                finish_editor_operation(editor, token)
-                raise
-
-        try:
-            mw.taskman.run_in_background(task, on_done)
-        except Exception:
-            finish_editor_operation(editor, token)
-            raise
-
-    try:
-        editor.saveNow(start)
-    except Exception:
-        finish_editor_operation(editor, token)
-        raise
+    _run_editor_generation(
+        editor,
+        f"generowanie AI pola „{field_name}”",
+        only_fields={field_name},
+        overwrite=True,
+        empty_msg=f'Pole „{field_name}” nie ma skonfigurowanego promptu '
+                  f'dla tego typu notatki.',
+    )
 
 
 def _fields_with_prompt_for_note_type(note_type_name: str) -> list[str]:

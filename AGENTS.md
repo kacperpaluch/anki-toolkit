@@ -6,7 +6,8 @@ Before changing code:
 
 1. Read `llm-context.md`.
 2. Follow its routing table and read only the context relevant to the task.
-3. Use `config.md` as the sole detailed configuration reference.
+3. Use the add-on's own `README.md` plus its `config.json` template as the
+   configuration reference — each add-on documents its own keys.
 4. Do not load every module context unless the task genuinely spans them.
 
 `README.md` is user-facing documentation. `llm-context.md` describes architecture
@@ -16,6 +17,10 @@ and routes to domain context. Keep this file focused on working agreements.
 
 - This is an Anki add-on written in Python and PyQt.
 - Keep Anki collection access and mutations on the main thread.
+- Background work on an editor's note runs on a detached copy
+  (`common.editor_operation.detach_note` / `merge_note`) — never mutate
+  `editor.note` from a worker, and never overwrite a field the user edited
+  while the operation was running.
 - Background workers may perform HTTP, AI, TTS, parsing, and ffmpeg work.
 - Prefer `CollectionOp` for collection changes initiated from the UI.
 - Return appropriate `OpChanges` after manual collection mutations.
@@ -27,23 +32,13 @@ and routes to domain context. Keep this file focused on working agreements.
 
 ## UI architecture
 
-Settings are organized by user domains:
+Each add-on owns exactly one settings dialog and registers one Tools-menu entry
+for it. Content assembles its tabs in `content_settings.py` from
+`settings/*.py`; the single-module add-ons keep theirs in `settings.py`.
 
-- Content: workflows, AI generation, and pronunciation.
-- Learning: card rules.
-- Integrations: Word Queue and Web Bridge.
-- System: modules, maintenance, and diagnostics.
-
-Do not add a top-level settings page for a small feature. Add it to an existing
-domain page in `settings/domain_tabs.py`.
-
-The Start page should show only:
-
-- primary-workflow readiness,
-- active Batch API work,
-- issues blocking the primary workflow.
-
-Do not turn Start into a status dashboard for every optional module.
+Do not add a top-level tab for a small feature — extend the tab of the module it
+belongs to. Do not reintroduce a cross-add-on dashboard: an add-on's dialog only
+configures that add-on.
 
 ## Implementation guidance
 
@@ -73,7 +68,7 @@ that environment is available.
 When behavior changes:
 
 - update the relevant module README for user-visible behavior,
-- update `config.md` when configuration changes,
+- update the add-on's `README.md` and `config.json` template when configuration changes,
 - update the relevant domain context when an invariant changes,
 - keep root `llm-context.md` compact and architectural,
 - document non-obvious constraints instead of copying implementation details,

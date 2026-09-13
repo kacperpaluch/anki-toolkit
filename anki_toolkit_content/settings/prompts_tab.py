@@ -918,24 +918,30 @@ class PromptsTab(QWidget):
         cfg.setdefault("ai_generator", {})
         cfg["ai_generator"].setdefault("note_types", {})
 
+        existing = cfg["ai_generator"]["note_types"]
         note_types: dict = {}
         for (nt_name, field_name), entry in self._data.items():
             note_types.setdefault(nt_name, {})
-            field_cfg: dict = {
+            # Start from what is on disk so keys this UI doesn't know about
+            # survive a save (repo rule: preserve unknown configuration keys).
+            old = existing.get(nt_name, {}).get(field_name)
+            field_cfg: dict = dict(old) if isinstance(old, dict) else {}
+            field_cfg.update({
                 "target":   entry["target"],
                 "provider": entry["provider"],
                 "model":    entry["model"],
                 "prompt":   entry["prompt"],
-            }
-            if entry.get("manual_only"):
-                field_cfg["manual_only"] = True
-            fb_provider = entry.get("fallback_provider", "")
-            fb_model = entry.get("fallback_model", "")
-            if fb_provider:
-                field_cfg["fallback_provider"] = fb_provider
-            if fb_model:
-                field_cfg["fallback_model"] = fb_model
-            if entry.get("temperature") is not None:
-                field_cfg["temperature"] = entry["temperature"]
+            })
+            # Cleared switches must be removed, not merely left at their old value.
+            for key, value in (
+                ("manual_only", True if entry.get("manual_only") else None),
+                ("fallback_provider", entry.get("fallback_provider", "") or None),
+                ("fallback_model", entry.get("fallback_model", "") or None),
+                ("temperature", entry.get("temperature")),
+            ):
+                if value is None:
+                    field_cfg.pop(key, None)
+                else:
+                    field_cfg[key] = value
             note_types[nt_name][field_name] = field_cfg
         cfg["ai_generator"]["note_types"] = note_types

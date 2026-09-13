@@ -13,7 +13,7 @@ Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Pobierz wymowę**.
 
 W submenu dostępne są:
-- **Wszystkie włączone słowniki** — używa wszystkich aktywnych pozycji z `buttons`
+- **Wszystkie włączone słowniki** — scala źródła ze wszystkich aktywnych pozycji `buttons` w jedną grupę i pobiera je za jednym razem, więc pole docelowe dostaje audio z każdej włączonej grupy (wcześniej wygrywała pierwsza, która cokolwiek znalazła, bo kolejne trafiały na „pole niepuste")
 - **Pobierz z Diki / Oxford / ...** — uruchamia batch tylko dla wybranego przycisku/słownika
 
 Batch działa w tle i pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.

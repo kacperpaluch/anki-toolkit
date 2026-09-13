@@ -17,7 +17,10 @@ from ..common import ADDON_NAME, plural_pl
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
+    detach_note,
+    editor_shows_note,
     finish_editor_operation,
+    merge_editor_note,
 )
 
 logger = logging.getLogger(__name__)
@@ -236,11 +239,15 @@ def run_workflow_editor(editor: Editor, workflow: dict):
 def _execute_steps(editor: Editor, note, steps: list, token):
     """Run workflow steps one by one in background. Each step waits for previous.
 
-    All steps operate on the note captured when the workflow started, so
-    switching notes in the editor mid-run cannot corrupt another note.
-    Collection writes happen on the main thread, after each step.
+    All steps operate on a detached copy of the note captured when the workflow
+    started: switching notes mid-run cannot corrupt another note, and typing
+    mid-run is not overwritten — merge_note() writes back only the fields the
+    user did not touch. Collection writes happen on the main thread, after
+    each step.
     """
     total = len(steps)
+    clone, before = detach_note(note)
+    skipped_fields: list = []
 
     # Jedna instancja na cały przebieg — kroki AI reużywają cache providerów,
     # a równoległe przebiegi (dwa okna edytora) nie współdzielą stanu.
@@ -250,18 +257,13 @@ def _execute_steps(editor: Editor, note, steps: list, token):
 
     def run_step(i: int):
         if i >= total:
-            try:
-                if editor.note is note:
-                    editor.loadNote()
-            except Exception:
-                pass  # editor may have been closed mid-run
-            finally:
-                finish_editor_operation(editor, token)
-            tooltip(
-                f"Workflow zakończony. Wykonano {total} "
-                f"{plural_pl(total, 'krok', 'kroki', 'kroków')}.",
-                period=5000,
-            )
+            finish_editor_operation(editor, token)
+            msg = (f"Workflow zakończony. Wykonano {total} "
+                   f"{plural_pl(total, 'krok', 'kroki', 'kroków')}.")
+            if skipped_fields:
+                msg += (" Pominięto pola zmienione w trakcie: "
+                        + ", ".join(sorted(set(skipped_fields))) + ".")
+            tooltip(msg, period=5000)
             return
 
         step = steps[i]
@@ -270,22 +272,45 @@ def _execute_steps(editor: Editor, note, steps: list, token):
         logger.info(f"Workflow: krok {i + 1}/{total} ({module}/{action}), nid={note.id}")
 
         def bg_task():
-            return execute_step(note, step, ai_generator=gen)
+            return execute_step(clone, step, ai_generator=gen)
 
         def on_done(future):
             try:
                 modified, err = future.result()
             except Exception as e:
                 modified, err = False, str(e)
-            if modified and note.id:
+
+            ran = {"once": False}
+
+            def commit():
+                nonlocal err
+                if ran["once"]:   # saveNow may call back synchronously
+                    return
+                ran["once"] = True
                 try:
-                    mw.col.update_note(note)
+                    # Also rebase a no-op/failed step: the next step must see
+                    # edits typed while this one was running. Refresh now so
+                    # the next saveNow cannot restore the previous webview.
+                    skipped_fields.extend(merge_editor_note(editor, note, clone, before))
                 except Exception as e:
-                    err = err or str(e)
-            if err:
-                logger.error(f"Workflow: krok {i + 1}/{total} ({module}/{action}): {err}")
-                tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
-            run_step(i + 1)
+                    finish_editor_operation(editor, token)
+                    tooltip(f"Workflow przerwany: {e}", period=8000)
+                    return
+                if err:
+                    logger.error(f"Workflow: krok {i + 1}/{total} ({module}/{action}): {err}")
+                    tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
+                run_step(i + 1)
+
+            # Flush the webview into the note first, so merge_note() can tell
+            # a user edit from an untouched field.
+            try:
+                if editor_shows_note(editor, note):
+                    editor.saveNow(commit)
+                else:
+                    commit()
+            except Exception as e:
+                finish_editor_operation(editor, token)
+                tooltip(f"Workflow przerwany: {e}", period=8000)
 
         try:
             mw.taskman.run_in_background(bg_task, on_done)

@@ -412,6 +412,9 @@ class WorkflowsTab(QWidget):
 
     def apply(self, cfg: dict) -> None:
         cfg["workflows"] = self._workflows
+        # Merge instead of replace — a context_menu key this dialog doesn't
+        # render would otherwise disappear on every save.
         cfg["context_menu"] = {
-            key: cb.isChecked() for key, cb in self._vis_checks.items()
+            **(cfg.get("context_menu") if isinstance(cfg.get("context_menu"), dict) else {}),
+            **{key: cb.isChecked() for key, cb in self._vis_checks.items()},
         }

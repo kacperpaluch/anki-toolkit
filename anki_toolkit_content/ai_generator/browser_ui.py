@@ -109,7 +109,9 @@ def _run_batch(browser: Browser, nids, config: dict,
             if changed:
                 changed_notes.append(note)
                 state["changed"] += 1
-            elif gen.last_error:
+            # Independently of what was written: one field failing while
+            # another succeeded used to be reported as a clean run.
+            if gen.last_error:
                 state["failures"] += 1
                 state["last_error"] = gen.last_error
             state["done"] += 1
@@ -155,6 +157,10 @@ def _run_batch(browser: Browser, nids, config: dict,
 # ---------------------------------------------------------------------------
 
 def _on_batch_submit(browser: Browser, only_fields=None):
+    col = mw.col
+    if col is None:
+        return
+    col_id = col.path
     config = get_config()
     nids = browser.selected_notes()
     if not nids:
@@ -171,6 +177,22 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         return
 
     items, skipped = batch_backfill.build_items(notes, config, only_fields=only_fields)
+    # A field sitting in a pending batch is still empty, so build_items picks
+    # it again — re-sending the same selection before the results land would
+    # pay for every request twice.
+    inflight = batch_backfill.inflight_fields()
+    resent = [i for i in items if (i["nid"], i["field"]) in inflight]
+    if resent:
+        items = [i for i in items if (i["nid"], i["field"]) not in inflight]
+        for n, item in enumerate(items):  # keep custom_ids dense and unique
+            item["custom_id"] = f"i{n}"
+    if not items and resent:
+        tooltip(
+            f"Wszystkie {len(resent)} pól czeka już w wysłanym batchu — "
+            f"nic nie wysyłam. Wyniki dopiszą się automatycznie.",
+            period=6000,
+        )
+        return
     if not items:
         msg = "Brak pustych pól z dostawcą Anthropic/OpenAI/OpenRouter w zaznaczeniu."
         if skipped:
@@ -187,12 +209,16 @@ def _on_batch_submit(browser: Browser, only_fields=None):
     )
     if skipped:
         text += f"\n\nPominięto {skipped} pól (dostawca inny niż Anthropic/OpenAI/OpenRouter lub brak modelu)."
+    if resent:
+        text += f"\n\nPominięto {len(resent)} pól, które czekają już w wysłanym batchu."
     text += "\n\nWysłać?"
     if not askUser(text, title="Batch API — potwierdzenie", parent=browser):
         return
+    if mw.col is not col:
+        return
 
     def task():
-        return batch_backfill.submit(items, config)
+        return batch_backfill.submit(items, config, col_id=col_id)
 
     def on_done(fut):
         try:
@@ -206,13 +232,21 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         # Remember the selection so the auto-poll cycle keeps sending the
         # remaining (deferred) slices until every field is filled — hands-off.
         sent = sum(r["count"] for r in records)
-        batch_backfill.add_job(nids, only_fields, total=len(items), sent=sent)
+        batch_backfill.add_job(nids, only_fields, total=len(items), sent=sent,
+                               col_id=col_id)
         msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
         if errors:
             msg += " · błędy: " + " · ".join(errors)
         tooltip(msg, period=8000)
 
     mw.taskman.run_in_background(task, on_done)
+
+
+# One poll at a time — the timer tick, the manual button and profile-open all
+# call this, and two overlapping runs would apply (and clean up) the same
+# results twice. Keep ownership until the write callback, with no time-based
+# expiry: polling many batches can legitimately take more than ten minutes.
+_checking = False
 
 
 def check_pending_batches(silent: bool = True):
@@ -222,22 +256,50 @@ def check_pending_batches(silent: bool = True):
     silent=True (startup / timer) suppresses "nothing yet" tooltips; silent=False
     (manual button) reports progress even when nothing is ready.
     """
-    config = get_config()
-    if not batch_backfill.pending_batches() and not batch_backfill.active_jobs():
+    global _checking
+    if _checking:
         if not silent:
-            tooltip("Brak oczekujących batchy.")
+            tooltip("Sprawdzanie batchy już trwa.")
+        return
+    if mw.col is None:
+        return
+    if mw.progress and mw.progress.busy():
+        return  # don't race a modal browser batch, sync, or collection operation
+    col = mw.col
+    config = get_config()
+    records = batch_backfill.pending_batches()
+    if not records and not batch_backfill.active_jobs():
+        if not silent:
+            unowned = batch_backfill.unowned_records()
+            tooltip(
+                f"Wstrzymano {unowned} starszych wpisów bez przypisanego profilu. "
+                "Wymagają ręcznego przypisania kolekcji w ai_batches.json (opis w README)."
+                if unowned else "Brak oczekujących batchy.", period=8000)
         return
 
-    def task():
-        return batch_backfill.poll_results(config)
+    _checking = True
 
-    def on_done(fut):
+    def task():
+        return batch_backfill.poll_results(config, records=records)
+
+    def release():
+        global _checking
+        _checking = False
+
+    def apply_done(fut):
         try:
             ended, still, errors = fut.result()
         except Exception as e:
+            release()
             if not silent:
                 tooltip(f"Błąd sprawdzania batchy: {e}", period=6000)
             return
+        if mw.col is not col:
+            release()
+            return  # leave records pending for the original profile
+        if mw.progress and mw.progress.busy():
+            release()
+            return  # a collection operation started while HTTP was running
         # Advance jobs when something finished (frees the token budget) or the
         # queue is fully drained (send the first slice of the remainder).
         should_advance = bool(ended) or still == 0
@@ -267,14 +329,25 @@ def check_pending_batches(silent: bool = True):
         def after():
             # Mark applied only once the results are safely in the collection —
             # if Anki dies earlier, the next poll re-downloads and re-applies.
-            if applied_ids:
-                batch_backfill.mark_applied(applied_ids)
-                applied_records = [p["record"] for p in ended.values()]
-                mw.taskman.run_in_background(
-                    lambda: batch_backfill.cleanup_openai_files(applied_records, config)
-                )
-            if should_advance:
-                _advance_jobs(config)
+            try:
+                if mw.col is not col:
+                    return
+                if applied_ids:
+                    batch_backfill.mark_applied(applied_ids)
+                    applied_records = [p["record"] for p in ended.values()]
+                    mw.taskman.run_in_background(
+                        lambda: batch_backfill.cleanup_openai_files(applied_records, config)
+                    )
+                if should_advance:
+                    _advance_jobs(config)
+            finally:
+                release()
+
+        def on_write_failed(exc):
+            # Don't mark applied — the next poll re-downloads and re-applies.
+            release()
+            logger.error(f"Batch: zapis wyników nie powiódł się: {exc}")
+            tooltip(f"Batch: zapis wyników nie powiódł się: {exc}", period=8000)
 
         changed = summary["changed_notes"]
         if changed:
@@ -282,19 +355,43 @@ def check_pending_batches(silent: bool = True):
             # filled fields and doesn't re-send them.
             CollectionOp(
                 parent=mw,
-                op=lambda col: col.update_notes(changed),
-            ).success(lambda _c: (tooltip(msg, period=8000), after())).run_in_background()
+                op=lambda active_col: _write_batch_results(active_col, col, ended),
+            ).success(
+                lambda _c: (tooltip(msg, period=8000), after())
+            ).failure(on_write_failed).run_in_background()
         else:
             if msg:
                 tooltip(msg, period=8000)
             after()
 
-    mw.taskman.run_in_background(task, on_done)
+    def on_done(fut):
+        try:
+            apply_done(fut)
+        except Exception as exc:
+            release()
+            logger.exception("Batch: nie udało się zastosować wyników")
+            tooltip(f"Batch: błąd zapisu wyników: {exc}", period=8000)
+
+    try:
+        mw.taskman.run_in_background(task, on_done)
+    except Exception:
+        release()
+        raise
+
+
+def _write_batch_results(active_col, expected_col, ended):
+    if active_col is not expected_col:
+        raise RuntimeError("Profil zmienił się przed zapisem batcha")
+    # Re-read under CollectionOp: another operation may have filled the fields
+    # between the poll callback and this queued write.
+    summary = batch_backfill.apply_results(active_col, ended)
+    return active_col.update_notes(summary["changed_notes"])
 
 
 # Guard against overlapping runs (timer tick + manual "Sprawdź batche" +
 # profile open) — two concurrent submits would double-send the same fields.
 _advance_running = False
+_scan_offsets = {}  # in-memory cursors; restarting simply rescans from the start
 
 
 def _advance_jobs(config: dict):
@@ -304,16 +401,40 @@ def _advance_jobs(config: dict):
     global _advance_running
     if _advance_running:
         return
+    col = mw.col
+    if col is None:
+        return
+    col_id = col.path
     jobs = batch_backfill.active_jobs()
     if not jobs:
         return
-    cap = batch_backfill.openai_budget_left(config)
-    if cap <= 0:
-        return  # queue full or backing off after a limit hit — next tick retries
+    job_cursor = (col_id, "")
+    start = _scan_offsets.get(job_cursor, 0) % len(jobs)
+    jobs = jobs[start:] + jobs[:start]
+    _scan_offsets[job_cursor] = (start + 1) % len(jobs)
+    # Two independent send budgets: OpenAI's org-wide enqueued-token cap, and a
+    # plain per-tick slice for the providers that have no such cap — an
+    # exhausted OpenAI queue used to stall Anthropic/OpenRouter jobs too.
+    caps = {
+        "openai": batch_backfill.openai_budget_left(config),
+        "other": batch_backfill.slice_tokens(config),
+    }
+    if max(caps.values()) <= 0:
+        return
+    used = {"openai": 0, "other": 0}
+    # Everything looked at counts against one scan budget, so a tick ends even
+    # when every item found belongs to a bucket that is already full —
+    # rendering prompts for the whole remainder froze the UI for no gain.
+    scan_cap = max(caps.values())
+    scanned = 0
+    scanned_notes = 0
+
+    def bucket(item):
+        return "openai" if item["provider"] == "openai" else "other"
+
     inflight = batch_backfill.inflight_fields()
     seen = set(inflight)  # also dedups fields shared across overlapping jobs
     to_send = []
-    tok = 0
     for job in jobs:
         if batch_backfill.job_expired(job):
             batch_backfill.finish_job(job["id"])  # 24h window up → stop retrying
@@ -323,12 +444,17 @@ def _advance_jobs(config: dict):
         # Build note-by-note and stop at the token budget — rendering prompts
         # for the WHOLE remainder (tens of thousands of fields) every poll
         # tick just to defer them again froze the UI for no gain.
-        # ponytail: anthropic/openrouter items also count toward the (OpenAI)
-        # cap; they'd merely wait one extra tick — no budget of their own.
-        for nid in job.get("nids", []):
-            if tok >= cap:
+        nids = job.get("nids", [])
+        cursor = (col_id, job["id"])
+        offset = _scan_offsets.get(cursor, 0)
+        for position in range(len(nids)):
+            if scanned >= scan_cap or scanned_notes >= 500:
                 capped = True
                 break
+            index = (offset + position) % len(nids)
+            nid = nids[index]
+            _scan_offsets[cursor] = (index + 1) % len(nids)
+            scanned_notes += 1
             try:
                 note = mw.col.get_note(nid)
             except Exception:
@@ -336,14 +462,23 @@ def _advance_jobs(config: dict):
             raw, _skipped = batch_backfill.build_items([note], config, only_fields=only)
             for i in raw:
                 found = True
+                est = batch_backfill.est_item_tokens(i, config)
+                scanned += est
                 key = (i["nid"], i["field"])
                 if key in seen:
                     continue
+                b = bucket(i)
+                # Always let the first item into an empty bucket, so one
+                # oversized prompt can't wedge the queue for good.
+                if caps[b] <= 0 or (used[b] and used[b] + est > caps[b]):
+                    capped = True   # bucket full — next tick picks it up
+                    continue
                 seen.add(key)
                 to_send.append(i)
-                tok += batch_backfill.est_item_tokens(i, config)
+                used[b] += est
         if not found and not capped:
             batch_backfill.finish_job(job["id"])  # every field filled → done
+            _scan_offsets.pop(cursor, None)
     if not to_send:
         return
     for n, item in enumerate(to_send):  # unique custom_ids across the combined submit
@@ -352,7 +487,7 @@ def _advance_jobs(config: dict):
     _advance_running = True
 
     def task():
-        return batch_backfill.submit(to_send, config)
+        return batch_backfill.submit(to_send, config, col_id=col_id)
 
     def on_done(fut):
         global _advance_running
@@ -362,6 +497,8 @@ def _advance_jobs(config: dict):
         except Exception as e:
             logger.exception("Auto-dosyłanie batchy nie powiodło się")
             tooltip(f"Batch: auto-dosyłanie nie powiodło się: {e}", period=8000)
+            return
+        if mw.col is not col:
             return
         if records:
             sent = sum(r["count"] for r in records)
@@ -376,7 +513,11 @@ def _advance_jobs(config: dict):
             if not records:
                 tooltip("Batch: " + errors[0], period=8000)
 
-    mw.taskman.run_in_background(task, on_done)
+    try:
+        mw.taskman.run_in_background(task, on_done)
+    except Exception:
+        _advance_running = False
+        raise
 
 
 # ---------------------------------------------------------------------------

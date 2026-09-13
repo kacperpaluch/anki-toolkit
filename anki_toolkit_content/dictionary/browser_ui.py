@@ -4,7 +4,7 @@ from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ..common import ADDON_NAME, start_progress, update_progress, finish_progress
+from ..common import ADDON_NAME, start_progress, update_progress, finish_progress, unique
 
 from .service import process_note_group
 
@@ -98,12 +98,20 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
 
 
 def _on_fetch_audio_browser(browser: Browser):
+    """All enabled dictionaries as ONE group.
+
+    Running the groups one after another only ever filled the target field
+    from the first group that found audio — every later group hit the
+    "field not empty" skip. One merged group fetches from every source and
+    writes them all into the field, in configured order.
+    """
     config = _get_config()
-    enabled_buttons = _get_enabled_button_configs(config)
-    _run_browser_fetch(
-        browser,
-        [btn["dictionaries"] for btn in enabled_buttons],
-    )
+    merged = unique([
+        source
+        for btn in _get_enabled_button_configs(config)
+        for source in btn["dictionaries"]
+    ])
+    _run_browser_fetch(browser, [merged] if merged else [])
 
 
 def _on_fetch_audio_browser_for_button(browser: Browser, dictionaries: list[str], label: str):

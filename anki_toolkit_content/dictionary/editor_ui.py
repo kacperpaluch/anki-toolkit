@@ -9,7 +9,10 @@ from ..common import ADDON_NAME
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
+    detach_note,
+    editor_shows_note,
     finish_editor_operation,
+    merge_editor_note,
 )
 
 from .service import process_note_group
@@ -39,8 +42,11 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
             finish_editor_operation(editor, token)
             return
 
+        # Fetch into a detached copy — the user keeps editing while we download.
+        clone, before = detach_note(note)
+
         def task():
-            return process_note_group(note, config, dictionaries)
+            return process_note_group(clone, config, dictionaries)
 
         def on_done(fut):
             try:
@@ -49,35 +55,50 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
                 finish_editor_operation(editor, token)
                 tooltip(f"Błąd pobierania wymowy: {e}", parent=mw, period=5000)
                 return
+
+            def apply():
+                try:
+                    if result.note_modified:
+                        skipped = merge_editor_note(editor, note, clone, before)
+
+                        if skipped:
+                            tooltip(
+                                "Pominięto pola zmienione w trakcie: "
+                                + ", ".join(skipped),
+                                parent=mw, period=5000,
+                            )
+                        audio_files = result.saved_filenames
+
+                        def play_next(files):
+                            if not files or mw.col is not clone._toolkit_collection:
+                                return
+                            file = files.pop(0)
+                            av_player.play_file(file)
+                            if files:
+                                QTimer.singleShot(1200, lambda: play_next(files))
+
+                        if audio_files:
+                            play_next(audio_files)
+                    elif result.audio_skipped:
+                        tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
+                    elif result.audio_requested and not result.audio_found:
+                        tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
+                finally:
+                    finish_editor_operation(editor, token)
+
+            # Flush pending edits into the note before merging, so merge_note()
+            # can tell an edited field from an untouched one.
             try:
-                if result.note_modified:
-                    # Only refresh the editor if it still shows the processed note;
-                    # otherwise persist directly so the fetched audio isn't lost.
-                    if editor.note is note:
-                        editor.loadNote()
-                    elif note.id:
-                        mw.col.update_note(note)
-
-                    audio_files = result.saved_filenames
-
-                    def play_next(files):
-                        if not files:
-                            return
-                        file = files.pop(0)
-                        av_player.play_file(file)
-                        if files:
-                            QTimer.singleShot(1200, lambda: play_next(files))
-
-                    if audio_files:
-                        play_next(audio_files)
-                elif result.audio_skipped:
-                    tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
-                elif result.audio_requested and not result.audio_found:
-                    tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
-            finally:
+                if editor_shows_note(editor, note):
+                    editor.saveNow(apply)
+                else:
+                    apply()
+            except Exception:
                 finish_editor_operation(editor, token)
+                raise
 
         mw.taskman.run_in_background(task, on_done)
+
 
     def start():
         try:

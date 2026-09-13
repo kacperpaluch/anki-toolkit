@@ -14,7 +14,10 @@ from ..common import unique
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
+    detach_note,
+    editor_shows_note,
     finish_editor_operation,
+    merge_editor_note,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,14 +86,19 @@ def _start_tts_editor(editor: Editor, token):
         finish_editor_operation(editor, token)
         return
 
-    work_items, split_contexts = build_note_work_items(note, tasks, voices)
+    # The worker mutates a detached copy — the user keeps typing in the editor
+    # meanwhile, and merge_note() decides what may be written back.
+    clone, before = detach_note(note)
+
+    work_items, split_contexts = build_note_work_items(clone, tasks, voices)
     if not work_items:
         finish_editor_operation(editor, token)
         tooltip("TTS: brak pól do wygenerowania.", period=5000)
         return
 
     def bg_task():
-        results, errors, first_error = generate_for_items(work_items, config)
+        results, errors, first_error = generate_for_items(
+            work_items, config, collection=clone._toolkit_collection)
         logger.info(
             f"TTS (edytor): wygenerowano {len(results)}/{len(work_items)}, błędów: {errors}"
         )
@@ -114,25 +122,21 @@ def _start_tts_editor(editor: Editor, token):
 
         def apply():
             try:
-                changed = apply_results_to_note(note, work_items, split_contexts, results)
-
-                # User may have switched notes while audio was generating — only
-                # refresh the editor if it still shows the processed note,
-                # otherwise persist directly so the audio isn't lost.
-                if editor.note is note:
-                    editor.loadNote()
-                elif changed and note.id:
-                    mw.col.update_note(note)
+                apply_results_to_note(clone, work_items, split_contexts, results)
+                skipped = merge_editor_note(editor, note, clone, before)
 
                 msg = f"TTS: wygenerowano {len(results)} plików audio."
                 if errors:
                     msg += f" Błędy: {errors}."
+                if skipped:
+                    msg += (" Pominięto pola zmienione w trakcie: "
+                            + ", ".join(skipped) + ".")
                 tooltip(msg, period=8000)
             finally:
                 finish_editor_operation(editor, token)
 
         try:
-            if editor.note is note:
+            if editor_shows_note(editor, note):
                 editor.saveNow(apply)
             else:
                 apply()
@@ -188,8 +192,12 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
             tooltip("Brak skonfigurowanych głosów TTS.")
             return
 
+        # Worker writes into a copy; merge_note() keeps whatever the user
+        # typed in the meantime.
+        clone, before = detach_note(note)
+
         def bg_task():
-            return process_single_note(note, config, tasks=[task], overwrite=overwrite)
+            return process_single_note(clone, config, tasks=[task], overwrite=overwrite)
 
         def on_done(future):
             try:
@@ -213,20 +221,20 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
 
             def apply():
                 try:
-                    if editor.note is note:
-                        editor.loadNote()
-                    elif note.id:
-                        mw.col.update_note(note)
+                    skipped = merge_editor_note(editor, note, clone, before)
 
                     msg = f"TTS ({label}): wygenerowano audio."
                     if err:
                         msg += f" {err}"
+                    if skipped:
+                        msg += (" Pominięto pola zmienione w trakcie: "
+                                + ", ".join(skipped) + ".")
                     tooltip(msg, period=8000)
                 finally:
                     finish_editor_operation(editor, token)
 
             try:
-                if editor.note is note:
+                if editor_shows_note(editor, note):
                     editor.saveNow(apply)
                 else:
                     apply()

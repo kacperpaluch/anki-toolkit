@@ -1,6 +1,6 @@
 # Field Splitter — rozdzielanie pól
 
-Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kopiuje** części do kolejnych pól docelowych (`p1`, `p2`, `p3`…). Pole źródłowe nie jest modyfikowane — to kopia, nie przeniesienie.
+Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kopiuje** części do kolejnych pól docelowych (`p1`, `p2`, `p3`…). Pole źródłowe nie jest modyfikowane — to kopia, nie przeniesienie. Gdy wpiszesz je omyłkowo na listę celów, jest z niej pomijane (przy zapisie ustawień i przy samym rozdzielaniu), więc nie da się zastąpić całego pola jego pierwszym fragmentem.
 
 ## Kiedy używać
 
@@ -16,9 +16,7 @@ Etykieta pokazuje skonfigurowane pole źródłowe i pierwsze 3 pola docelowe. Ba
 
 ### Cała kolekcja
 
-**Narzędzia → Anki Toolkit → Rozdziel pola w kolekcji...**
-
-Wyświetla dialog z potwierdzeniem (liczba notatek do przetworzenia). Po zatwierdzeniu uruchamia batch na wszystkich notatkach — także jeden krok undo.
+W przeglądarce wyświetl wszystkie notatki, zaznacz je i użyj tej samej akcji PPM. Content nie dodaje osobnej akcji podziału całej kolekcji do menu Narzędzia.
 
 ## Przykład
 
@@ -60,7 +58,7 @@ Tryb OFF jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpi
 
 ## Konfiguracja
 
-**Narzędzia → Anki Toolkit → Ustawienia... → Workflowy → Rozdzielanie pól**
+**Narzędzia → Anki Toolkit: Content… → Rozdzielanie pól**
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
@@ -75,13 +73,6 @@ Tryb OFF jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpi
     "separator": "<br><br>",
     "target_fields": "p1, p2, p3, p4, p5",
     "overwrite": true
-}
-```
-
-Można wyłączyć cały moduł przez sekcję `modules` w `config.json`:
-```json
-"modules": {
-    "field_splitter": false
 }
 ```
 

@@ -59,7 +59,12 @@ def process_note_group(note, config: dict, dictionaries: list[str],
         result.audio_requested = True
         # Strip path separators and other filename-unsafe characters
         safe_word = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
-        media_dir = mw.col.media.dir()
+        # Runs on a worker thread: the media write goes through the backend
+        # (serialized), but the collection may be gone if the profile closed.
+        col = getattr(note, "_toolkit_collection", mw.col)
+        if col is None or mw.col is not col:
+            raise RuntimeError("Profil zmienił się podczas pobierania wymowy")
+        media_dir = col.media.dir()
 
         # The deterministic filename IS the cache: if this source's audio for
         # this word is already in the media folder (e.g. a previous card for
@@ -81,8 +86,10 @@ def process_note_group(note, config: dict, dictionaries: list[str],
                 batch_cache=batch_cache,
             )
             for audio_result in audio_results:
+                if mw.col is not col:
+                    raise RuntimeError("Profil zmienił się podczas pobierania wymowy")
                 filename = f"dict_{audio_result.source}_{safe_word}.mp3"
-                tag_by_source[audio_result.source] = mw.col.media.write_data(
+                tag_by_source[audio_result.source] = col.media.write_data(
                     filename, audio_result.data
                 )
 

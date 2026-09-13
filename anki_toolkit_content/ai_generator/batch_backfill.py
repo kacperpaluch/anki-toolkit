@@ -13,7 +13,8 @@ per-provider backends that hide the very different wire protocols:
 
 Both give ~50% off and a 24h window. Other providers don't expose a
 compatible batch endpoint, so only anthropic/openai/openrouter fields are
-eligible. This module is pure logic (no aqt); UI actions live in browser_ui.py.
+eligible. This module is pure logic apart from current_col_id(); UI actions
+live in browser_ui.py.
 
 Limitations (v1): no fallback; dependent fields use the note's state at submit
 time (batch parents first, apply, then children); results are written only
@@ -89,9 +90,33 @@ def _chunk_by_tokens(items, budget: int, reserve: int) -> list:
         chunks.append(cur)
     return chunks
 
+# One store for every profile (user_files/ is per add-on, not per collection),
+# so every record carries the collection it belongs to. Without it, opening
+# another profile applied results to whatever collection happened to be open —
+# or silently dropped them and marked the batch applied.
+def current_col_id():
+    """Identity of the open collection, or None when there is none.
+
+    `Collection.path` is a plain attribute set at open time, so reading it from
+    a worker thread touches no database.
+    """
+    try:
+        from aqt import mw
+        return mw.col.path
+    except Exception:
+        return None
+
+
+def _mine(entry: dict) -> bool:
+    """Never guess the owner of legacy records: keep them for manual recovery."""
+    col = entry.get("col")
+    return bool(col) and col == current_col_id()
+
+
 _USER_FILES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "user_files")
 _PATH = os.path.join(_USER_FILES, "ai_batches.json")
 _LOCK = threading.Lock()
+_SUBMIT_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -125,6 +150,20 @@ def _append_record(record: dict) -> None:
 
 
 def pending_batches() -> list:
+    """In-flight batches of the open collection."""
+    return [b for b in _all_pending() if _mine(b)]
+
+
+def unowned_records() -> int:
+    store = _load_store()
+    return sum(not entry.get("col") for entry in
+               store["batches"] + store.get("jobs", [])
+               if entry.get("status") in ("in_progress", "active"))
+
+
+def _all_pending() -> list:
+    """Every in-flight batch, including other profiles' — the OpenAI enqueued
+    token cap is per organization, not per collection."""
     return [b for b in _load_store()["batches"] if b.get("status") == "in_progress"]
 
 
@@ -134,7 +173,7 @@ def _pending_openai_tokens() -> int:
     Subtracted from the per-run budget so a re-run while an earlier batch is
     in progress doesn't push the org over its enqueued-token cap again."""
     return sum(int(b.get("enq_tokens") or 0)
-               for b in pending_batches() if b.get("provider") == "openai")
+               for b in _all_pending() if b.get("provider") == "openai")
 
 
 def openai_budget_left(config: dict) -> int:
@@ -146,6 +185,13 @@ def openai_budget_left(config: dict) -> int:
         return 0
     budget = int(config.get("openai_batch_token_budget") or _OPENAI_TOKEN_BUDGET)
     return max(0, budget - _pending_openai_tokens())
+
+
+def slice_tokens(config: dict) -> int:
+    """Per-tick build budget for providers without an org-wide queue cap
+    (Anthropic/OpenRouter) — bounds how much prompt rendering one poll tick
+    does, nothing more."""
+    return int(config.get("openai_batch_token_budget") or _OPENAI_TOKEN_BUDGET)
 
 
 def est_item_tokens(item: dict, config: dict) -> int:
@@ -167,7 +213,7 @@ def inflight_fields() -> set:
 # Backfill jobs — remember a selection so deferred slices auto-submit over time
 # --------------------------------------------------------------------------
 
-def add_job(nids, only_fields, total: int = 0, sent: int = 0) -> str:
+def add_job(nids, only_fields, total: int = 0, sent: int = 0, col_id=None) -> str:
     """Persist a resumable backfill job (the selected notes + optional field
     filter). The auto-poll cycle drains it slice by slice until every field is
     filled, staying under the OpenAI enqueued-token budget each round.
@@ -178,6 +224,7 @@ def add_job(nids, only_fields, total: int = 0, sent: int = 0) -> str:
         job_id = "job-" + uuid.uuid4().hex[:12]
         store.setdefault("jobs", []).append({
             "id": job_id,
+            "col": col_id or current_col_id(),
             "nids": [int(n) for n in nids],
             "only_fields": sorted(only_fields) if only_fields else None,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -196,7 +243,8 @@ def record_job_progress(records) -> Optional[str]:
     per_nid = Counter(m.get("nid") for r in records for m in (r.get("map") or {}).values())
     with _LOCK:
         store = _load_store()
-        jobs = [j for j in store.get("jobs", []) if j.get("status") == "active"]
+        jobs = [j for j in store.get("jobs", [])
+                if j.get("status") == "active" and _mine(j)]
         for job in jobs:
             nids = set(job.get("nids", []))
             mine = sum(c for nid, c in per_nid.items() if nid in nids)
@@ -216,7 +264,8 @@ def record_job_progress(records) -> Optional[str]:
 
 
 def active_jobs() -> list:
-    return [j for j in _load_store().get("jobs", []) if j.get("status") == "active"]
+    return [j for j in _load_store().get("jobs", [])
+            if j.get("status") == "active" and _mine(j)]
 
 
 # ponytail: a field the model keeps returning empty stays empty and would be
@@ -320,7 +369,29 @@ def _new_record(batch_id: str, provider: str, items) -> dict:
 # Submit — dispatch to per-provider backends, one record per API batch
 # --------------------------------------------------------------------------
 
-def submit(items, config: dict) -> tuple:
+def submit(items, config: dict, col_id=None) -> tuple:
+    """Serialize manual/automatic submissions and deduplicate before HTTP.
+
+    The caller captures col_id before scheduling the worker. The lock covers
+    HTTP through persistence, so a second submit sees the first one's records.
+    """
+    owner = col_id or current_col_id()
+    if not owner:
+        return [], ["Brak kolekcji dla wysyłki batcha."]
+    with _SUBMIT_LOCK:
+        seen = {(m.get("nid"), m.get("field"))
+                for b in _all_pending() if b.get("col") == owner
+                for m in (b.get("map") or {}).values()}
+        unique_items = []
+        for item in items:
+            key = (item["nid"], item["field"])
+            if key not in seen:
+                seen.add(key)
+                unique_items.append(item)
+        return _submit_unique(unique_items, config, owner)
+
+
+def _submit_unique(items, config: dict, owner) -> tuple:
     """Create batches for all items. Returns (records, errors).
 
     Anthropic items go into one batch; OpenAI items are grouped by model (the
@@ -333,6 +404,7 @@ def submit(items, config: dict) -> tuple:
     if anthropic_items:
         rec, err = _submit_anthropic(anthropic_items, config)
         if rec:
+            rec["col"] = owner
             _append_record(rec)
             records.append(rec)
         else:
@@ -347,6 +419,7 @@ def submit(items, config: dict) -> tuple:
     for model, group in openrouter_by_model.items():
         rec, err = _submit_openrouter(group, config)
         if rec:
+            rec["col"] = owner
             _append_record(rec)
             records.append(rec)
         else:
@@ -383,6 +456,7 @@ def submit(items, config: dict) -> tuple:
                 continue
             rec, err = _submit_openai(chunk, config)
             if rec:
+                rec["col"] = owner
                 rec["enq_tokens"] = chunk_tok
                 _append_record(rec)
                 records.append(rec)
@@ -454,7 +528,7 @@ _POLLERS = {"anthropic": _poll_anthropic, "openai": _poll_openai,
 # Poll & apply (provider-agnostic — results are normalized)
 # --------------------------------------------------------------------------
 
-def poll_results(config: dict) -> tuple:
+def poll_results(config: dict, records=None) -> tuple:
     """Network-only (safe in a background thread). Returns (ended, still, errors):
 
       ended  = {batch_id: {"record": rec, "results": [normalized, ...]}}
@@ -465,7 +539,7 @@ def poll_results(config: dict) -> tuple:
     ended: dict = {}
     still = 0
     errors: list = []
-    for rec in pending_batches():
+    for rec in pending_batches() if records is None else records:
         poller = _POLLERS.get(rec.get("provider", "anthropic"))
         if poller is None:
             status, results = "error", None
@@ -531,8 +605,9 @@ def mark_applied(batch_ids) -> None:
 def apply_results(col, ended: dict) -> dict:
     """Apply ended batches to the collection (MAIN THREAD — touches col).
 
-    Writes a result only into a field that is still empty, so it never
-    overwrites edits made between submit and now. custom_ids present in the
+    Only batches belonging to the open collection ever reach here (see
+    pending_batches), and a result is written only into a field that is still
+    empty, so it never overwrites edits made between submit and now. custom_ids present in the
     record map but missing from the results (e.g. OpenAI expired requests) are
     counted as failures. Returns a summary with the mutated Note objects.
     Does NOT mark batches applied — the caller does that via mark_applied()
@@ -552,6 +627,8 @@ def apply_results(col, ended: dict) -> dict:
 
     for bid, payload in ended.items():
         rec = payload["record"]
+        if not rec.get("col") or rec["col"] != col.path:
+            continue
         imap = rec.get("map", {})
         seen: set = set()
         for r in payload["results"]:
