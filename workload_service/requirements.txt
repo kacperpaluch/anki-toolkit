@@ -1,0 +1,2 @@
+# Official headless Anki client; no Qt, no replacement sync protocol.
+anki==26.8.1

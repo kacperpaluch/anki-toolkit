@@ -144,3 +144,9 @@ python3 -m unittest discover -s tests
 python3 -m compileall -q -f .
 git diff --check
 ```
+
+## Automatyczne limity przez synchronizację
+
+[Workload Service](workload_service/README.md) to niezależny klient dla AnkiWeb lub własnego
+serwera Anki: codziennie analizuje historię i ustawia porcję nowych kart.
+Dodatek macOS pozostaje doradczy.

@@ -19,3 +19,7 @@ oraz `user_files/` danego dodatku i nie mogą trafić do Git.
 
 Przed zmianą czytaj `AGENTS.md`, a potem tylko `llm-context.md` właściwego
 dodatku. Nie przywracaj scalonego root loadera.
+
+`workload_service/` to osobny klient headless: przeczytaj jego `README.md` oraz
+kontekst Workload. Własna replika, oficjalny sync, tylko limity nowych;
+bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/`.

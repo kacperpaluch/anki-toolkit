@@ -1,0 +1,11 @@
+FROM python:3.13-slim-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY workload_service/requirements.txt /app/workload_service/requirements.txt
+RUN pip install --no-cache-dir -r workload_service/requirements.txt
+COPY anki_toolkit_workload/logic.py anki_toolkit_workload/snapshot.py anki_toolkit_workload/config.json /app/anki_toolkit_workload/
+COPY workload_service/worker.py /app/workload_service/worker.py
+ENV TZ=Europe/Warsaw PYTHONUNBUFFERED=1
+ENTRYPOINT ["python", "/app/workload_service/worker.py"]
+CMD ["serve"]

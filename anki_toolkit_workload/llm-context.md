@@ -48,10 +48,14 @@ obciążenia i terminy są szczegółami rozwijanymi w tym samym oknie.
   jest alarmem i dodatek nie proponuje obniżania limitów powtórek.
 - Brak klucza flagi kolekcji daje `None`; wyjątek daje wpis `flag_errors`.
 
-`__init__.py` zbiera dane i buduje okno, `settings.py` zawiera jeden dialog
+`snapshot.py` zbiera dane bez Qt; `__init__.py` buduje okno, `settings.py` zawiera jeden dialog
 ustawień. **Narzędzia → Anki Toolkit: Workload…** otwiera plan z przyciskami
 **Pokaż szczegóły raportu**, **Odśwież**, **Kopiuj raport**, **Ustawienia…**.
 Odświeżanie i zapis ustawień przeliczają plan w tym samym oknie.
 
 Testy: `tests/test_workload_standalone.py` — logika oraz odczyt na atrapach
 `aqt` z prawdziwym SQLite w pamięci. Zmiany UI sprawdzamy także w Anki.
+
+Osobny `../workload_service/worker.py` współdzieli `logic.py` i `snapshot.py`,
+ale sam zapisuje limity przez API Anki i synchronizuje własną replikę.
+Niezmiennik wyłącznie odczytu dotyczy dodatku GUI.

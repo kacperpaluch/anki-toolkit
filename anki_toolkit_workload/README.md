@@ -102,3 +102,9 @@ pokazuje talie, źródła oszacowań i już zaplanowane terminy.
 
 Zapis ustawień zachowuje nieznane klucze. Nie powstają dodatkowe pliki z historią
 ani nowe zależności produkcyjne.
+
+## Automatyczne limity przez synchronizację
+
+[Workload Service](../workload_service/README.md) to niezależny klient dla AnkiWeb lub własnego
+serwera Anki: codziennie analizuje historię i ustawia porcję nowych kart.
+Dodatek macOS pozostaje doradczy.

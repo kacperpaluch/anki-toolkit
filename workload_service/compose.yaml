@@ -1,0 +1,21 @@
+services:
+  workload:
+    build:
+      context: ..
+      dockerfile: workload_service/Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Warsaw
+      ANKI_SYNC_URL: ${ANKI_SYNC_URL:?Set ANKI_SYNC_URL in .env}
+      ANKI_SYNC_USERNAME: ${ANKI_SYNC_USERNAME:?Set ANKI_SYNC_USERNAME in .env}
+      ANKI_SYNC_PASSWORD_FILE: /run/secrets/anki_password
+    volumes:
+      - workload_data:/data/user_files
+      - ./config.json:/config/workload.json:ro
+    secrets:
+      - anki_password
+secrets:
+  anki_password:
+    file: ./user_files/anki_password.txt
+volumes:
+  workload_data:
