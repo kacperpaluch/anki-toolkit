@@ -126,3 +126,9 @@ wygaśnięcie dziennej porcji. AnkiWeb nie został przetestowany na rzeczywistym
 koncie; przed stałym użyciem sprawdź działanie na swoim koncie i aplikacjach.
 Wszystkie klienty i serwer muszą obsługiwać limity talii „tylko dziś” i zgodny
 protokół synchronizacji. Nie podmieniaj biblioteki Anki bez testu integracyjnego.
+
+Wynik JSON polecenia `run` zawiera też `card_costs`: czas odpowiedzi w sekundach
+z 7 zakończonych dni, koszt kohorty wprowadzonej w 14 zakończonych dniach oraz
+5 najbardziej czasochłonnych kart (ID, czas, odpowiedzi, Ponownie).
+Treść notatek nie trafia do logów. Ten pomiar nie zmienia decyzji o limitach;
+szczegóły interpretacji opisuje [Workload](../anki_toolkit_workload/README.md#co-zabiera-czas).

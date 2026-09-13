@@ -94,6 +94,7 @@ def _revlog_data(col, deck_ids):
     active_days, introduced = set(), set()
     daily_reviews = dict.fromkeys(range(today - _TREND_WINDOW_DAYS + 1, today + 1), 0)
     study_days = {}
+    first_seen, recent_costs = {}, {}
     learn_answers = reviews_done = 0
     for stamp, cid, kind, milliseconds, ease in rows:
         offset = int((cutoff - 1 - stamp) // 86400000)
@@ -102,6 +103,12 @@ def _revlog_data(col, deck_ids):
         seconds = max(0, milliseconds) / 1000
         if offset < _SECONDS_WINDOW_DAYS and seconds > 0:
             (learn_seconds if kind == 0 else review_seconds).append(seconds)
+        first_seen.setdefault(cid, (kind, offset))
+        if 1 <= offset <= 7:
+            cost = recent_costs.setdefault(cid, {"cid": cid, "seconds": 0, "answers": 0, "again": 0})
+            cost["seconds"] += seconds
+            cost["answers"] += 1
+            cost["again"] += int(ease == 1)
         first = kind == 0 and cid not in introduced
         if kind == 0:
             learn_answers += 1
@@ -120,7 +127,16 @@ def _revlog_data(col, deck_ids):
             entry["again"] += int(ease == 1)
             if kind in (0, 2):
                 entry["learning_seconds"] += seconds
+    cohort = {cid for cid, (kind, offset) in first_seen.items() if kind == 0 and 1 <= offset <= 14}
+    for cid, cost in recent_costs.items():
+        cost["recent"] = cid in cohort
+    cohort_seconds = sum(cost["seconds"] for cid, cost in recent_costs.items() if cid in cohort)
+    total_seconds = sum(cost["seconds"] for cost in recent_costs.values())
+    top = sorted(recent_costs.values(), key=lambda cost: (-cost["seconds"], cost["cid"]))[:5]
     return {
+        "card_costs": {"cohort_cards": len(cohort), "cohort_seconds": cohort_seconds,
+                       "total_seconds": total_seconds,
+                       "top": [cost for cost in top if cost["seconds"] > 0]},
         "today": date,
         "learn_seconds": learn_seconds,
         "review_seconds": review_seconds,

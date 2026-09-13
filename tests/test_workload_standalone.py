@@ -484,6 +484,30 @@ class SnapshotTests(unittest.TestCase):
         empty = self.addon.build_snapshot(self._col(cards), {"decks": ["nie ma takiej"]})
         self.assertEqual(empty["decks"], [])
 
+    def test_recent_card_costs_use_completed_days_and_preserve_plan(self):
+        rows = [(day_ms(86), 1, 0, 5000),  # first learning: cohort boundary
+                (day_ms(93), 1, 1, 60000),
+                (day_ms(99), 1, 2, 30000),
+                (day_ms(100), 1, 1, 900000),  # today excluded
+                (day_ms(85), 2, 0, 5000),  # older card
+                (day_ms(99) + 1, 2, 0, 20000),  # reset is not introduction
+                (day_ms(98), 3, 1, 10000),  # missing initial learning
+                (day_ms(99) + 2, 3, 4, 999000)]
+        col = self._col(revlog=rows)
+        col.connection.execute("update revlog set ease = 1 where type = 2")
+        data = self.addon.build_snapshot(col, {})
+        cost = data["card_costs"]
+        self.assertEqual(cost["cohort_cards"], 1)
+        self.assertEqual(cost["cohort_seconds"], 90)
+        self.assertEqual(cost["total_seconds"], 120)
+        self.assertEqual(cost["top"][0], {"cid": 1, "seconds": 90, "answers": 2,
+                                          "again": 1, "recent": True})
+        report = logic.analyze(data, SETTINGS)
+        self.assertIn("75%", logic.render_text(report))
+        self.assertIn("cid:1", logic.render_html(report))
+        self.assertEqual(report.plan, logic.analyze({**data, "card_costs": {}}, SETTINGS).plan)
+        self.assertEqual(self.addon.build_snapshot(col, {"decks": ["missing"]})["card_costs"]["top"], [])
+
     def test_learning_and_review_times_are_separated(self):
         revlog = [
             (day_ms(99), 1, 0, 12000), (day_ms(99) + 1, 1, 0, 14000),

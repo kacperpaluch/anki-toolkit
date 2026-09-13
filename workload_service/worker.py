@@ -291,6 +291,7 @@ def run(data_dir, settings, command):
                     proposals, report = prepare(col, settings, state)
                     print(json.dumps({"apply": apply, "day": dt.date.today().isoformat(), "minutes": report.plan.today_minutes,
                                       "new_remaining": report.plan.new_remaining,
+                                      "card_costs": report.card_costs,
                                       "reason": report.plan.reason,
                                       "pace_reason": report.plan.weekly_reason, "limits": [
                         {"deck": deck["name"], **limits(deck)} for deck in proposals

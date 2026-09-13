@@ -59,3 +59,8 @@ Testy: `tests/test_workload_standalone.py` — logika oraz odczyt na atrapach
 Osobny `../workload_service/worker.py` współdzieli `logic.py` i `snapshot.py`,
 ale sam zapisuje limity przez API Anki i synchronizuje własną replikę.
 Niezmiennik wyłącznie odczytu dotyczy dodatku GUI.
+
+`card_costs` w migawce/raporcie: czas typów revlog 0–3 z 7 zakończonych dni,
+kohorta z pierwszym dostępnym wpisem typu 0 w 14 zakończonych dniach; ranking
+5 kart ze wszystkich wybranych talii, bez treści notatek. Dzisiaj wykluczone.
+HTML, tekst i JSON usługi pokazują te dane; nie sterują limitami.

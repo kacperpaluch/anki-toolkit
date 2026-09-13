@@ -108,3 +108,22 @@ ani nowe zależności produkcyjne.
 [Workload Service](../workload_service/README.md) to niezależny klient dla AnkiWeb lub własnego
 serwera Anki: codziennie analizuje historię i ustawia porcję nowych kart.
 Dodatek macOS pozostaje doradczy.
+
+## Co zabiera czas?
+
+W szczegółach raportu i w **Kopiuj raport** znajdziesz pomiar z ostatnich
+7 zakończonych dni Anki (bez dzisiaj): łączny czas odpowiedzi oraz czas i udział
+kart wprowadzonych w ostatnich 14 zakończonych dniach. Liczymy ich naukę,
+powtórki i ponowną naukę, a nie tylko pierwsze pokazanie.
+
+Lista pięciu najbardziej czasochłonnych kart obejmuje wszystkie karty wybranych
+talii, także starsze. Pokazuje minuty, liczbę odpowiedzi, liczbę „Ponownie”
+i oznaczenie niedawno wprowadzonej karty. Wklej `cid:123…` z raportu do
+wyszukiwarki przeglądarki Anki, aby obejrzeć konkretną kartę. Przy częstym
+„Ponownie” rozważ uproszczenie pytania, dodanie kontekstu lub rozdzielenie znaczeń.
+
+To diagnostyka, nie nowy próg sterowania limitami. Ranking sam nie dowodzi, że
+karta wymaga poprawy. Mierzymy zapisany czas odpowiedzi, nie cały czas sesji
+ani przyszły koszt nowej karty. Karty mają różny czas obserwacji. Wprowadzenie
+rozpoznajemy, gdy pierwszy dostępny wpis odpowiedzi jest nauką; niepełna historia
+może zafałszować wynik. Reset nie odmładza karty z zachowaną starszą historią.

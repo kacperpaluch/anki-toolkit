@@ -113,6 +113,7 @@ class Report:
     roots: List[str]
     findings: List[Finding]
     plan: Optional[StudyPlan] = None
+    card_costs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 # ── Pomocnicze ─────────────────────────────────────────────────────────────
@@ -416,6 +417,7 @@ def analyze(snapshot: Dict[str, Any], settings: Dict[str, Any], today_minutes=No
         decks=rows,
         roots=roots,
         findings=[],
+        card_costs=snapshot.get("card_costs", {}),
     )
     report.plan = study_plan(snapshot, settings, report, today_minutes)
     weights = {row.name: min(row.new_left, max(0, row.new_per_day))
@@ -762,9 +764,33 @@ def forecast_marks(forecast: Sequence[Tuple[int, int]]) -> List[Tuple[int, int, 
     return rows
 
 
+def card_cost_lines(report):
+    cost = report.card_costs
+    total = cost.get("total_seconds", 0)
+    recent = cost.get("cohort_seconds", 0)
+    lines = ["Co zabiera czas? — 7 zakończonych dni"]
+    if total <= 0:
+        return lines + ["Brak zarejestrowanego czasu odpowiedzi w tym okresie."]
+    lines.append(f"Karty wprowadzone w ostatnich 14 zakończonych dniach: {cost.get('cohort_cards', 0)}. "
+                 f"Ich odpowiedzi w ostatnich 7 dniach zajęły {recent / 60:.1f} min "
+                 f"z {total / 60:.1f} min łącznie ({recent / total:.0%}).")
+    lines.append("Najwięcej czasu — wszystkie karty wybranych talii:")
+    for row in cost.get("top", []):
+        label = "niedawno wprowadzona" if row["recent"] else "pozostała / nieznana data wprowadzenia"
+        lines.append(f"cid:{row['cid']} — {row['seconds'] / 60:.1f} min, "
+                     f"{row['answers']} odpowiedzi, {row['again']} × Ponownie; {label}.")
+    lines.append("Wklej cid:… w wyszukiwarkę przeglądarki Anki, aby obejrzeć kartę. "
+                 "Przy częstym Ponownie rozważ prostsze pytanie, kontekst lub rozdzielenie znaczeń.")
+    lines.append("To zapisany czas odpowiedzi, nie prognoza kosztu jednej nowej karty. "
+                 "Karty mają różny czas obserwacji; niepełna historia może zafałszować datę wprowadzenia. "
+                 "Wysoki koszt sam w sobie nie oznacza złej karty i nie zmienia limitów automatycznie.")
+    return lines
+
+
 def render_html(report: Report) -> str:
     """Szczegóły opisują dane i założenia, nie obiecują bezpiecznego dopływu."""
     parts = ["<h3>Szczegóły raportu</h3>"]
+    parts.extend(f"<p>{escape(line)}</p>" for line in card_cost_lines(report))
     parts.append(
         f"<p>Zwykły czas: {report.minutes_per_day} min. Czas odpowiedzi powtórkowej: "
         f"{report.review_seconds:.1f} s ({escape(report.review_seconds_source)}). "
@@ -820,7 +846,7 @@ def render_text(report: Report) -> str:
              "Talie (propozycje dodatkowych nowych kart na dziś):"]
     for row in report.decks:
         lines.append(f"  {row.name}: {row.suggested_new_per_day}, zapas {row.new_left}")
-    lines += ["", "Uwagi:"]
+    lines += ["", *card_cost_lines(report), "", "Uwagi:"]
     lines.extend(f"  {finding.title}: {finding.detail}" for finding in report.findings)
     lines.append("Dodatek tylko czyta kolekcję — nie zmienia limitów Anki.")
     return "\n".join(lines)
