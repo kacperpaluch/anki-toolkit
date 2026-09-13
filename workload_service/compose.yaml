@@ -15,7 +15,7 @@ services:
          "max_minutes_per_day": 30, "new_cards_per_day": 3,
          "decks": ["angielski"], "split_strategy": "proportional"}
     volumes:
-      - workload_data:/data/user_files
+      - ../user_files:/data/user_files
   dashboard:
     image: anki-workload:local
     command: dashboard
@@ -24,6 +24,4 @@ services:
     ports:
       - '8070:8080' # panel w sieci lokalnej, bez logowania
     volumes:
-      - workload_data:/data/user_files
-volumes:
-  workload_data:
+      - ../user_files:/data/user_files

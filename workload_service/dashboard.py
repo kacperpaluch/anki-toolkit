@@ -10,7 +10,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-def render(history, token="", running=False, settings=None, connection=None):
+def render(history, token="", running=False, settings=None, connection=None, mail=None):
     parts = ['''<!doctype html><html lang="pl"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Workload — historia</title>
@@ -46,6 +46,23 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
                  '<p>Przed pierwszą inicjalizacją wyślij kolekcję z aplikacji Anki na serwer. '
                  'Zmiana konta wymaga osobnego wolumenu. Zmiana zakresu zarządzanych talii wymaga restore. '
                  'Hasło nie jest zapisywane w ustawieniach.</p></details>')
+    mail = mail or {}
+    parts.append(f'<details><summary>Powiadomienia e-mail</summary><form method="post" action="/mail">'
+                 f'<input type="hidden" name="token" value="{escape(token)}">'
+                 f'<p><label><input type="checkbox" name="enabled" {"checked" if mail.get("enabled") else ""}>Wysyłaj podsumowanie po zmianie limitów</label></p>')
+    for name, label, kind, default in [('host', 'Host SMTP', 'text', ''), ('port', 'Port SMTP', 'number', 587),
+                                     ('username', 'Login SMTP (pusty = bez logowania)', 'text', ''),
+                                     ('sender', 'Nadawca', 'email', ''), ('recipient', 'Odbiorca', 'email', '')]:
+        parts.append(f'<p><label>{label}<br><input name="{name}" type="{kind}" value="{escape(str(mail.get(name, default)), quote=True)}"></label></p>')
+    parts.append('<p><label>Szyfrowanie <select name="security">')
+    for value, label in [('starttls', 'STARTTLS (zwykle 587)'), ('ssl', 'TLS (zwykle 465)'), ('none', 'Brak (lokalny relay)')]:
+        parts.append(f'<option value="{value}" {"selected" if mail.get("security", "starttls") == value else ""}>{label}</option>')
+    parts.append('</select></label></p><p><label>Hasło SMTP (puste = zachowaj zapisane)<br>'
+                 '<input type="password" name="password" autocomplete="new-password"></label></p>'
+                 '<p><label><input type="checkbox" name="clear_password">Usuń zapisane hasło SMTP</label></p>'
+                 '<button>Zapisz powiadomienia</button></form>'
+                 '<p>Mail po potwierdzonej zmianie limitów; bez wiadomości dla symulacji i przebiegów bez zmian. '
+                 'Wynik wysyłki pojawi się w historii.</p></details>')
     if not history:
         parts.append('<article>Brak historii. Uruchom init, a następnie run.</article>')
     for event in reversed(history):
@@ -61,6 +78,8 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
         for key in ('reason', 'error'):
             if event.get(key):
                 parts.append(f'<p>{escape(event[key])}</p>')
+        if event.get('email') and event['email'] != 'not_needed':
+            parts.append('<p>E-mail: ' + escape('wysłano' if event['email'] == 'sent' else event['email']) + '</p>')
         changes = event.get('changes', [])
         if changes:
             parts.append('<p>Zmiany limitów' + (' potwierdzone synchronizacją' if ok and event.get('apply') else ' planowane') +
@@ -87,9 +106,10 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
 
 def serve(data_dir):
     try:
-        from . import worker
+        from . import worker, notifications
     except ImportError:
         import worker
+        import notifications
     import os
     token = secrets.token_urlsafe(32)
     process = None
@@ -108,7 +128,7 @@ def serve(data_dir):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             nonlocal process
-            if self.path not in ("/run", "/settings"):
+            if self.path not in ("/run", "/settings", "/mail"):
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -124,6 +144,16 @@ def serve(data_dir):
                 self.send_error(409, "Przebieg trwa; poczekaj na wynik")
                 return
             command, env = "run", os.environ.copy()
+            if self.path == "/mail":
+                try:
+                    config = notifications.settings_from(form, worker.read_json(data_dir / "mail.json", {}))
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    worker.write_json(data_dir / "mail.json", config)
+                    (data_dir / "mail.json").chmod(0o600)
+                    command = None
+                except ValueError as error:
+                    self.send_error(400, str(error))
+                    return
             if self.path == "/settings":
                 data_dir.mkdir(parents=True, exist_ok=True)
                 with (data_dir / "worker.lock").open("a") as lock:
@@ -171,7 +201,8 @@ def serve(data_dir):
             body = (json.dumps(history, ensure_ascii=False) if self.path == '/history.json'
                     else render(history, token, busy() or (process is not None and process.poll() is None),
                                 worker.settings_from(Path("/config/workload.json"), data_dir) if (data_dir / "settings.json").exists() else json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")),
-                                worker.read_json(data_dir / "connection.json", {"url": os.environ.get("ANKI_SYNC_URL", "ankiweb"), "username": os.environ.get("ANKI_SYNC_USERNAME", "")}))).encode()
+                                worker.read_json(data_dir / "connection.json", {"url": os.environ.get("ANKI_SYNC_URL", "ankiweb"), "username": os.environ.get("ANKI_SYNC_USERNAME", "")}),
+                                worker.read_json(data_dir / "mail.json", {}))).encode()
             self.send_response(200)
             self.send_header('Content-Type', ('application/json' if self.path == '/history.json' else 'text/html') + '; charset=utf-8')
             self.send_header('Cache-Control', 'no-store')

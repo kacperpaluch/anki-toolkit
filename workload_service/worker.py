@@ -357,6 +357,15 @@ def run(data_dir, settings, command):
     finally:
         event["finished"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
         data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            try:
+                from .notifications import send_summary
+            except ImportError:
+                from notifications import send_summary
+            event["email"] = send_summary(read_json(data_dir / "mail.json", {}), event)
+        except Exception as error:
+            # Delivery failure must not repeat a successful Anki mutation or expose SMTP credentials.
+            event["email"] = "error: " + type(error).__name__
         with (data_dir / "history.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             history = read_json(data_dir / "history.json", [])

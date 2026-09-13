@@ -19,6 +19,12 @@ with tempfile.TemporaryDirectory() as folder:
         settings=json.loads((Path(folder)/'settings.json').read_text())
         assert settings['run_at']=='06:30' and settings['decks']==['English']
         assert 'password' not in (Path(folder)/'connection.json').read_text()
+        mail={'token':token,'host':'smtp.test','port':'587','security':'starttls',
+              'sender':'a@example.test','recipient':'b@example.test','password':'mail-secret'}
+        urllib.request.urlopen('http://localhost:8080/mail',data=urllib.parse.urlencode(mail).encode()).read()
+        assert json.loads((Path(folder)/'mail.json').read_text())['password']=='mail-secret'
+        assert (Path(folder)/'mail.json').stat().st_mode & 0o777 == 0o600
+        assert 'mail-secret' not in urllib.request.urlopen('http://localhost:8080/').read().decode()
         urllib.request.urlopen('http://localhost:8080/run',data=('token='+token).encode()).read()
         for _ in range(50):
             if (Path(folder)/'history.json').exists(): break

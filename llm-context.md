@@ -27,3 +27,7 @@ bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/`.
 Usługa: `WORKLOAD_CONFIG` w Compose nadpisuje plik; `dashboard.py` czyta historię
 i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko
 w głównym wątku workera, chroniony flock. Panel nie udostępnia plików wolumenu.
+
+`notifications.py` wysyła przez SMTP podsumowanie potwierdzonych zmian limitów;
+błąd maila nie zmienia sukcesu sync. `mail.json` zawiera sekret SMTP i pozostaje
+w `user_files/`; Compose montuje katalog hosta zamiast nazwanego wolumenu.

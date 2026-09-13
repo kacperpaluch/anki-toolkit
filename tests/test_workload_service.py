@@ -45,6 +45,41 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("setInterval", html)
         self.assertNotIn('http-equiv="refresh"', html)
 
+    def test_email_only_for_confirmed_changes_and_secret_not_rendered(self):
+        from workload_service import notifications
+        from workload_service.dashboard import render
+        config = notifications.settings_from({"enabled": ["on"], "host": ["smtp.test"],
+            "sender": ["a@example.test"], "recipient": ["b@example.test"],
+            "password": ["smtp-secret"], "username": ["login"]}, {})
+        self.assertEqual(notifications.settings_from({"host": ["smtp.test"]}, config)["password"], "smtp-secret")
+        self.assertNotIn("smtp-secret", render([], mail=config))
+        event = {"status": "success", "apply": True, "command": "run", "finished": "2026-09-13",
+                 "changes": [{"deck": "English", "before": {"newLimit": 3}, "after": {"newLimit": 0}}]}
+        with patch.object(notifications.smtplib, "SMTP") as smtp:
+            client = smtp.return_value.__enter__.return_value
+            client.send_message.return_value = {}
+            for override in ({"status": "error"}, {"apply": False}, {"changes": []}):
+                self.assertEqual(notifications.send_summary(config, {**event, **override}), "not_needed")
+            smtp.assert_not_called()
+            self.assertEqual(notifications.send_summary(config, event), "sent")
+            client.starttls.assert_called_once()
+            client.login.assert_called_once_with("login", "smtp-secret")
+            message = client.send_message.call_args.args[0]
+            self.assertIn("English", message.get_content())
+            self.assertIn("bazowy: 0", message.get_content())
+            self.assertNotIn("smtp-secret", message.as_string())
+
+    def test_mail_failure_does_not_fail_successful_sync(self):
+        from workload_service import notifications
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            with patch.object(worker, "_run"), patch.object(notifications, "send_summary", side_effect=RuntimeError("secret")):
+                worker.run(data, {"apply": True}, "run")
+            history = worker.read_json(data / "history.json")
+            self.assertEqual(history[-1]["status"], "success")
+            self.assertEqual(history[-1]["email"], "error: RuntimeError")
+            self.assertNotIn("secret", (data / "history.json").read_text())
+
     def test_credentials_do_not_accept_a_url_with_embedded_password(self):
         with patch.dict(os.environ, {"ANKI_SYNC_URL": "https://user:secret@example.com/"}):
             with self.assertRaises(worker.WorkloadError):

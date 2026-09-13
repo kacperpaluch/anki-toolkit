@@ -7,3 +7,4 @@
 !anki_toolkit_workload/snapshot.py
 !anki_toolkit_workload/config.json
 !workload_service/dashboard.py
+!workload_service/notifications.py

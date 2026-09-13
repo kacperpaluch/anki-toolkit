@@ -168,3 +168,24 @@ nie trzeba restartować kontenera. Strefę `TZ` i port nadal ustawiasz w Compose
 Hasło z formularza jest przekazywane tylko do procesu logowania, nie jest zapisywane
 w plikach ani historii. Panel nie ma logowania. Token formularza chroni tylko
 przed przypadkowym wywołaniem przez obcą stronę, nie ogranicza dostępu w LAN.
+
+## Dane na dysku i e-mail
+
+Compose montuje `../user_files` do `/data/user_files` w obu kontenerach.
+Na RPi wszystkie trwałe dane są w **/root/aplikacje/anki-workload/user_files/**:
+kolekcja, token, ustawienia, historia i konfiguracja SMTP. Zrób kopię całego
+katalogu przy zatrzymanych kontenerach. Nie usuwaj go podczas aktualizacji.
+
+W panelu rozwiń **Powiadomienia e-mail**: podaj host, port, szyfrowanie,
+login/hasło (lub lokalny relay bez logowania), nadawcę i jednego odbiorcę.
+Włącz wysyłkę i zapisz. Puste hasło zachowuje poprzednie; checkbox pozwala je
+usunąć. Hasło SMTP jest zapisane w `mail.json` (uprawnienia 600), nigdy nie
+jest odsyłane do formularza ani umieszczane w historii.
+
+Mail jest wysyłany po udanym przebiegu z faktycznymi zmianami limitów i włączonym
+zapisem (także po `restore`). Zawiera czas, powód i wartości przed/po dla talii.
+Nowy dzienny przydział jest zmianą nawet przy takiej samej liczbie kart jak wczoraj.
+Symulacja, inicjalizacja, logowanie i przebieg bez zmian nie wysyłają wiadomości.
+Błąd SMTP pojawia się w historii, nie cofa synchronizacji i nie uruchamia jej ponownie.
+Nie ma kolejki ponowień maili; przerwanie procesu lub błąd dostarczenia może
+spowodować brak powiadomienia. `wysłano` oznacza przyjęcie przez serwer SMTP.
