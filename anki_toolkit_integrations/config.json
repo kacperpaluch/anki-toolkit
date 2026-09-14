@@ -29,5 +29,10 @@
   },
   "web_bridge": {
     "port": 8767
+  },
+  "local_dict": {
+    "label": "PL",
+    "fields": ["pol"],
+    "headword_field": "ang"
   }
 }

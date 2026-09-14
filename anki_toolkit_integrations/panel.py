@@ -25,6 +25,7 @@ import random
 from concurrent.futures import Future
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from aqt import mw
 from aqt.qt import (
@@ -51,7 +52,7 @@ from aqt.qt import (
 )
 from aqt.utils import askUser, tooltip
 
-from . import ai_senses
+from . import ai_senses, local_dict
 from .html import clean_html_normalized
 
 def get_full_config():
@@ -86,12 +87,26 @@ def _dict_profile() -> QWebEngineProfile:
     return _profile
 
 
+def local_dict_label() -> str:
+    """Etykieta zakładki czytnika; pusta = brak bazy albo wyłączony w konfiguracji."""
+    cfg = get_full_config().get("local_dict") or {}
+    return (cfg.get("label") or "") if local_dict.db_path().is_file() else ""
+
+
+def local_dict_url(word: str) -> str:
+    port = (get_full_config().get("web_bridge") or {}).get("port") or 8767
+    return f"http://127.0.0.1:{port}/dict?word={quote(word.strip())}"
+
+
 class _DictTabs(QTabWidget):
     """Zakładki ze słownikami. URL ładowany dopiero przy pierwszym wejściu w zakładkę."""
 
-    def __init__(self, labels: list[str], parent=None):
+    def __init__(self, labels: list[str], parent=None, no_text: frozenset[str] = frozenset()):
         super().__init__(parent)
         self._labels = list(labels)          # indeks zakładki → etykieta
+        # Lokalny czytnik jest po polsku i po naszej stronie — do promptu AI
+        # (który dopasowuje diki do Oxforda) nie wnosi nic poza szumem.
+        self._no_text = {i for i, label in enumerate(self._labels) if label in no_text}
         self._views: list[QWebEngineView] = []
         self._pending: dict[int, str] = {}   # indeks → URL czekający na pierwsze wejście
         self._loaded: dict[int, bool] = {}   # indeks → strona dojechała (AI czeka na to)
@@ -130,7 +145,8 @@ class _DictTabs(QTabWidget):
             self._views[index].load(QUrl(url))
 
     def _enabled(self) -> list[int]:
-        return [i for i in range(len(self._labels)) if self.isTabEnabled(i)]
+        """Zakładki, z których zbieramy tekst dla AI — bez lokalnego czytnika."""
+        return [i for i in range(len(self._labels)) if self.isTabEnabled(i) and i not in self._no_text]
 
     def texts(self, callback, timeout_ms: int = 20000) -> None:
         """{etykieta: tekst strony} dla włączonych zakładek — do promptu AI.
@@ -180,6 +196,8 @@ class _DictTabs(QTabWidget):
 
 class WordQueuePanel(QDockWidget):
     """Dok po prawej stronie okna „Dodaj". Żyje tak długo jak to okno."""
+
+    _local_label = ""  # ustawiane w _build_ui; atrybut klasy chroni przed sygnałem w trakcie budowy
 
     def __init__(self, addcards, cfg: dict, fetch_queue, mark_row_done):
         super().__init__("Kolejka słówek", addcards)
@@ -260,7 +278,9 @@ class WordQueuePanel(QDockWidget):
         self._list.itemChanged.connect(self._on_item_checked)
         split.addWidget(self._list)
 
-        self._tabs = _DictTabs(list(self._cfg["link_columns"]), split)
+        self._local_label = local_dict_label()
+        labels = list(self._cfg["link_columns"]) + ([self._local_label] if self._local_label else [])
+        self._tabs = _DictTabs(labels, split, frozenset([self._local_label] if self._local_label else []))
         split.addWidget(self._tabs)
         split.setStretchFactor(1, 1)  # zakładki zjadają całą nadmiarową szerokość
         split.setSizes([220, 880])
@@ -480,9 +500,10 @@ class WordQueuePanel(QDockWidget):
         word = row.get(self._cfg["word_column"]) or ""
         def ready(accepted):
             if accepted:
-                self._tabs.set_urls(
-                    {label: row.get(column) or "" for label, column in self._cfg["link_columns"].items()}
-                )
+                urls = {label: row.get(column) or "" for label, column in self._cfg["link_columns"].items()}
+                if self._local_label:
+                    urls[self._local_label] = local_dict_url(word)
+                self._tabs.set_urls(urls)
             else:
                 with self._silent():
                     self._list.setCurrentItem(previous if previous is not None and not sip.isdeleted(previous) else None)

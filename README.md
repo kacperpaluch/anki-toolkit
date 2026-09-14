@@ -17,7 +17,7 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 | [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
 | [Field Hider](anki_toolkit_field_hider/README.md) | Ukrywanie pomocniczych pól tylko w oknie Dodaj. | **Narzędzia → Anki Toolkit: Field Hider…** |
 | [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources…** |
-| [Integrations](anki_toolkit_integrations/README.md) | Kolejka słówek n8n, panel słowników, karty z AI i Web Bridge. | **Narzędzia → Anki Toolkit: Integrations** |
+| [Integrations](anki_toolkit_integrations/README.md) | Kolejka słówek n8n, panel słowników, czytnik StarDict, karty z AI i Web Bridge. | **Narzędzia → Anki Toolkit: Integrations** |
 
 ## Opis dodatków
 
@@ -89,6 +89,10 @@ Web Bridge przyjmuje dane z userscriptu słownika i wpisuje je do otwartego okna
 Dodaj. Przycisk **AI: znaczenia** robi z jednego hasła po jednej karcie na każde
 znaczenie: model dopasowuje polskie znaczenia z diki do angielskich definicji
 z otwartych zakładek, cytując je dosłownie.
+
+Osobno, niezależnie od kolejki n8n, działa **czytnik lokalnego słownika
+StarDict**: artykuł rozbity na znaczenia i zwroty, każde z własnym przyciskiem
+wstawiającym do notatki tylko to jedno znaczenie.
 
 ## Instalacja w wersji deweloperskiej
 

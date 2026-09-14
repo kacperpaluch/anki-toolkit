@@ -70,3 +70,36 @@ sekcja *AI: znaczenia*: dostawca i model z rozwijanek (lista pochodzi
 z dodatku **Content** — to on trzyma klucze, więc `claude_cli` / `codex_cli`
 jadą na Twojej subskrypcji), limit znaczeń, limit czasu, oba tagi i nazwy pól
 notatki. Pole angielskie to *Pole notatki* z sekcji n8n — nie duplikuje się.
+
+## Słownik lokalny (StarDict)
+
+Czytnik offline'owego słownika StarDict — **niezależny od kolejki n8n**.
+Otwierasz go z **Narzędzia → Anki Toolkit: Integrations → Słownik lokalny…**
+albo przyciskiem **📖** w edytorze (wtedy podpowiada hasłem z pola notatki).
+Kolejka, konfiguracja n8n ani panel 📚 nie są do niczego potrzebne.
+
+Artykuł jest rozbity na osobne znaczenia i zwroty; **każde ma własny przycisk**,
+który wysyła do otwartej notatki **tylko to jedno znaczenie** — nie cały artykuł.
+Do pola notatki idzie samo tłumaczenie: kwalifikatory (`pot.`, `tech.`),
+przykłady po ➤ i odsyłacze po `=` zostają na ekranie. Checkbox *dokleja do pola*
+decyduje, czy kolejne kliknięcie dopisuje znaczenie, czy nadpisuje pole.
+Odsyłacze w artykule są klikalne, a wyszukiwarka zna formy odmienione z `.syn`
+(`ran` → `run`). Samo czytanie działa zawsze; wstawianie wymaga otwartego okna
+„Dodaj", bo tam pisze mostek.
+
+Bazę budujesz raz, offline — pliki źródłowe słownika zostają nietknięte:
+
+```
+python anki_toolkit_integrations/local_dict.py ~/Słowniki/slownik/dictionary.ifo
+```
+
+Powstaje `user_files/stardict.sqlite` (czytany z dysku, nie ładowany do RAM).
+Bez tego pliku czytnik pokazuje instrukcję, a zakładka w panelu 📚 się nie pojawia.
+
+Konfiguracja w sekcji `local_dict`: `label` (etykieta zakładki w panelu),
+`fields` (pola notatki dostające znaczenie) i `headword_field` (pole na hasło
+oraz na zwrot — z nim jedno kliknięcie robi kartę idiomu).
+
+Strona czytnika jest serwowana przez mostek (`GET /dict`), więc ma jego origin.
+Mostek wpuszcza POST-y **dokładnie z tego portu**, a nie z całego localhosta.
+

@@ -8,6 +8,10 @@ Które pole dostaje jaką wartość decyduje strona wysyłająca (body: {"fields
 więc moduł jest uniwersalny. Dołączony userscript `dictionaries-to-anki.user.js`
 obsługuje diki.pl, Oxford Learner's i Longman (LDOCE). Okno „Dodaj" musi być
 otwarte, inaczej endpoint zwraca błąd.
+
+Drugi endpoint, GET /dict?word=X, serwuje czytnik lokalnego słownika StarDict
+(`local_dict.py`). To zwykła strona ładowana w zakładce panelu — jej przyciski
+wysyłają pojedyncze znaczenia tym samym POST-em co userscript.
 """
 
 import json
@@ -40,6 +44,7 @@ ALLOWED_ORIGIN_HOSTS = {
 }
 
 _server = None  # trzyma referencję, żeby przetrwał między przełączeniami profilu
+_bound_port = None  # port, na którym faktycznie stoimy — tylko ten origin wpuszczamy
 _target = None  # immutable snapshot published by the main thread
 
 
@@ -66,8 +71,12 @@ def _target_alive(target):
 def _origin_allowed(origin: str | None) -> bool:
     if not origin:
         return True  # GM_xmlhttpRequest / curl / lokalne skrypty
-    host = urllib.parse.urlparse(origin).hostname
-    return host in ALLOWED_ORIGIN_HOSTS
+    parsed = urllib.parse.urlparse(origin)
+    # Czytnik słownika serwujemy sami — wpuszczamy DOKŁADNIE nasz port, nie cały
+    # localhost. Inny lokalny serwer (dev, druga wtyczka) to obcy origin.
+    if _bound_port is not None and (parsed.hostname, parsed.port) == (HOST, _bound_port):
+        return True
+    return parsed.hostname in ALLOWED_ORIGIN_HOSTS
 
 
 def _join(existing: str, value: str, separator: str) -> str:
@@ -158,6 +167,26 @@ class _Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
 
+    def do_GET(self):
+        """Czytnik lokalnego słownika. Jedyna strona, jaką ten serwer wydaje."""
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.rstrip("/") not in ("/dict",):
+            self.send_response(404)
+            self.end_headers()
+            return
+        word = (urllib.parse.parse_qs(parsed.query).get("word") or [""])[0][:100]
+        try:
+            from . import local_dict
+            body = local_dict.render(word, _dict_config()).encode("utf-8")
+        except Exception as error:  # noqa: BLE001 — czytnik nie może ubić mostka
+            logger.exception("web_bridge: czytnik słownika")
+            body = f"<meta charset=utf-8><p>Błąd czytnika słownika: {error}".encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         if not _origin_allowed(self.headers.get("Origin")):
             self.send_response(403)
@@ -191,6 +220,10 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _dict_config() -> dict:
+    return (mw.addonManager.getConfig(__package__) or {}).get("local_dict") or {}
+
+
 def _port() -> int:
     config = (mw.addonManager.getConfig(__package__) or {}).get("web_bridge") or {}
     try:
@@ -214,6 +247,8 @@ def start_server(*_args, **_kwargs):
             f"przez inny dodatek ({e}).\n\nZmień „web_bridge.port” w konfiguracji "
             "Integrations i ten sam port w userscripcie.")
         return
+    global _bound_port
+    _bound_port = port
     threading.Thread(target=_server.serve_forever, daemon=True).start()
     logger.info("web_bridge: nasłuchuje na http://%s:%s", HOST, port)
 

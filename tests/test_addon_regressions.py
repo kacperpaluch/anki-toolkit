@@ -354,5 +354,103 @@ class OtherAddonsTests(unittest.TestCase):
         self.assertEqual(saved[0]["oxford"], {"future": 42, "match_field": "new"})
 
 
+def make_stardict(directory: Path) -> str:
+    """Minimalny słownik StarDict: hasło, alias w .syn, .dict spakowany jak dictzip."""
+    import gzip
+    import struct
+    base = directory / "mini"
+    entry = ('<div><span style="display:block;border-left:2px solid #000"><b style="font-size:1.18em">dog</b> '
+             '<span style="font-size:.9em;font-style:italic">/d\u0252\u0261/</span></span>'
+             '<b><sub>1</sub></b> <b><i>n</i></b> <b>1.</b> pies <b>2.</b> <small><i>pot.</i></small> go\u015b\u0107'
+             ' <i>=</i> <a  filepos=0009021894 ><b>gun dog</b></a></div> '
+             '<blockquote> <b>as sick as a dog</b> powa\u017cnie chory </blockquote>').encode("utf8")
+    blocks = [entry, b"kot"]
+    index, offset = b"", 0
+    for word, blob in zip(("Dog", "Cat"), blocks):
+        index += word.encode() + b"\x00" + struct.pack(">II", offset, len(blob))
+        offset += len(blob)
+    (base.parent / "mini.ifo").write_text(
+        "StarDict's dict ifo file\nversion=2.4.2\nwordcount=2\n"
+        f"idxfilesize={len(index)}\nsametypesequence=h\n")
+    (base.parent / "mini.idx").write_bytes(index)
+    (base.parent / "mini.dict.dz").write_bytes(gzip.compress(b"".join(blocks)))
+    (base.parent / "mini.syn").write_bytes(b"dogs\x00" + struct.pack(">I", 0))
+    return str(base.parent / "mini.ifo")
+
+
+class LocalDictTests(unittest.TestCase):
+    """Czytnik StarDict: konwersja, aliasy, rozbicie artykułu, escapowanie strony."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load("integrations", "local_dict.py")
+        cls.dir = tempfile.TemporaryDirectory()
+        folder = Path(cls.dir.name)
+        cls.db_file = folder / "out.sqlite"
+        cls.rows = cls.module.build_sqlite(make_stardict(folder), cls.db_file)
+        import sqlite3
+        cls.db = sqlite3.connect(str(cls.db_file))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.db.close()
+        cls.dir.cleanup()
+
+    def test_alias_shares_one_definition(self):
+        self.assertEqual(self.rows, 3)  # dog + cat + alias dogs
+        self.assertEqual(self.db.execute("select count(*) from defs").fetchone()[0], 2)
+        self.assertEqual(self.module.lookup("dogs", self.db), self.module.lookup("DOG", self.db))
+
+    def test_suggest_finds_prefix(self):
+        self.assertEqual(self.module.suggest("do", db=self.db), ["dog", "dogs"])
+
+    def test_parse_splits_senses_and_phrases(self):
+        parsed = self.module.parse(self.module.lookup("dog", self.db)[0])
+        self.assertEqual(parsed["headword"], "dog")
+        # na kartę idzie samo tłumaczenie — bez kwalifikatora i bez odsyłacza…
+        self.assertEqual([s["text"] for s in parsed["senses"]], ["pies", "go\u015b\u0107"])
+        # …ale na ekranie zostaje pełny artykuł
+        self.assertIn("pot.", parsed["senses"][1]["html"])
+        self.assertEqual([s["pos"] for s in parsed["senses"]], ["n", "n"])
+        self.assertEqual([p["title"] for p in parsed["phrases"]], ["as sick as a dog"])
+
+    def test_crossref_becomes_reader_link(self):
+        parsed = self.module.parse(self.module.lookup("dog", self.db)[0])
+        self.assertIn('href="/dict?word=gun%20dog"', parsed["senses"][1]["html"])
+
+    def test_page_escapes_word_from_url(self):
+        page = self.module.page("<script>x</script>", [], [], ["pol"])
+        self.assertNotIn("<script>x", page)
+        self.assertIn("&lt;script&gt;", page)
+
+    def test_button_carries_only_its_own_sense(self):
+        page = self.module.page("dog", self.module.lookup("dog", self.db), [], ["pol"])
+        self.assertIn('data-text="pies"', page)
+        self.assertEqual(page.count('data-field="pol"'), 3)  # 2 znaczenia + 1 zwrot
+
+
+class BridgeOriginTests(unittest.TestCase):
+    """Strona czytnika ma własny origin — wpuszczamy ją, ale nie całego localhosta."""
+
+    def setUp(self):
+        self.module = load("integrations", "bridge.py")
+        self.module._bound_port = 8767
+
+    def test_own_page_allowed(self):
+        self.assertTrue(self.module._origin_allowed("http://127.0.0.1:8767"))
+
+    def test_other_local_port_rejected(self):
+        self.assertFalse(self.module._origin_allowed("http://127.0.0.1:3000"))
+        self.assertFalse(self.module._origin_allowed("http://localhost:8767"))
+
+    def test_dictionary_sites_still_allowed(self):
+        self.assertTrue(self.module._origin_allowed("https://www.diki.pl"))
+        self.assertFalse(self.module._origin_allowed("https://evil.example"))
+
+    def test_before_bind_no_local_origin(self):
+        self.module._bound_port = None
+        self.assertFalse(self.module._origin_allowed("http://127.0.0.1:8767"))
+
+
 if __name__ == "__main__":
     unittest.main()

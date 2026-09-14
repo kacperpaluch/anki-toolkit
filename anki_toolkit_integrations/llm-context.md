@@ -46,3 +46,23 @@ migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
 - SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
   wymaga niepustego PL. Linki HTTP(S) pochodzą z przechwyconego wiersza n8n,
   nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji cytatów.
+
+- `local_dict.py` jest bez aqt: konwerter StarDict→SQLite (CLI), lookup, rozbicie
+  artykułu i render strony. Dzięki temu testuje się bez Anki i da się uruchomić
+  jako skrypt. Nie wciągaj tam Qt — od okna jest `reader.py`.
+- Baza: `defs` (definicja per offset bloku .dict) + `words` (hasła i aliasy .syn
+  wskazujące na `defs`). Aliasów jest więcej niż haseł, więc definicji NIE
+  duplikujemy per alias — inaczej baza puchnie z ~46 MB do ~276 MB.
+- `parse()` jest dostrojony do słownika z .mobi (`<b>N.</b>`, `<b><i>pos</i></b>`,
+  `<blockquote>`). Nierozpoznany artykuł ma wracać jako jeden blok, nie wyjątek.
+- `text` (na kartę) i `html` (na ekran) to różne rzeczy: z `text` lecą
+  kwalifikatory, przykłady po ➤ i odsyłacze. Nie zlewaj ich w jedno.
+- `word` z query trafia na stronę tylko przez `html.escape` — ta strona potrafi
+  pisać do notatki, więc odbite `<script>` byłoby realną dziurą.
+- Czytnik nie może zależeć od kolejki n8n: okno z `reader.py` i przycisk 📖
+  działają bez konfiguracji n8n. Zakładka w panelu to dodatek, nie wejście główne.
+- Zakładka czytnika jest wyłączona ze zbierania tekstu dla AI (`_DictTabs.no_text`)
+  — prompt dopasowuje diki do Oxforda, polski artykuł to tam szum.
+- `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
+  samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
+
