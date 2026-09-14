@@ -69,7 +69,6 @@ def _stub_aqt() -> None:
     anki = _module("anki")
     anki.notes = _module("anki.notes", Note=_Any)
     anki.collection = _module("anki.collection", Collection=_Any, OpChanges=_Any)
-    anki.hooks = _module("anki.hooks", addHook=lambda *a, **k: None)
 
 
 def _load(name: str, relative: str):

@@ -18,8 +18,7 @@ _batch_timer.timeout.connect(lambda:ai_generator.check_pending_batches(silent=Tr
 _batch_timer.start()
 def _context(browser,menu):
  sub=menu.addMenu('Anki Toolkit: Content');ai_generator.add_to_context_menu(browser,sub);dictionary.add_to_context_menu(browser,sub);tts.add_to_context_menu(browser,sub);field_splitter.add_to_context_menu(browser,sub)
-from anki.hooks import addHook
-addHook('browser.onContextMenu',_context)
+gui_hooks.browser_will_show_context_menu.append(_context)
 def _menu(*_):
  from .content_settings import open_settings
  a=QAction('Anki Toolkit: Content…',mw);a.triggered.connect(open_settings);mw.form.menuTools.addAction(a)
