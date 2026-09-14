@@ -45,7 +45,7 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("setInterval", html)
         self.assertNotIn('http-equiv="refresh"', html)
 
-    def test_email_only_for_confirmed_changes_and_secret_not_rendered(self):
+    def test_email_every_run_and_secret_not_rendered(self):
         from workload_service import notifications
         from workload_service.dashboard import render
         config = notifications.settings_from({"enabled": ["on"], "host": ["smtp.test"],
@@ -58,7 +58,7 @@ class ServiceTests(unittest.TestCase):
         with patch.object(notifications.smtplib, "SMTP") as smtp:
             client = smtp.return_value.__enter__.return_value
             client.send_message.return_value = {}
-            for override in ({"status": "error"}, {"apply": False}, {"changes": []}):
+            for override in ({"command": "init"}, {"command": "login"}):
                 self.assertEqual(notifications.send_summary(config, {**event, **override}), "not_needed")
             smtp.assert_not_called()
             self.assertEqual(notifications.send_summary(config, event), "sent")
@@ -68,6 +68,15 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("English", message.get_content())
             self.assertIn("bazowy: 0", message.get_content())
             self.assertNotIn("smtp-secret", message.as_string())
+            for override in ({"status": "error", "error": "Sync failed"}, {"apply": False}, {"changes": []}):
+                self.assertEqual(notifications.send_summary(config, {**event, **override}), "sent")
+                body = client.send_message.call_args.args[0].get_content()
+                self.assertNotIn("Zmiany zostały zsynchronizowane", body)
+                if override.get("status") == "error":
+                    self.assertIn("Sync failed", body)
+                if override.get("changes") == []:
+                    self.assertIn("Brak zmian limitów", body)
+            self.assertEqual(notifications.send_summary({**config, "enabled": False}, event), "not_needed")
 
     def test_mail_failure_does_not_fail_successful_sync(self):
         from workload_service import notifications

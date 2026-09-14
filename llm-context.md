@@ -28,6 +28,6 @@ Usługa: `WORKLOAD_CONFIG` w Compose nadpisuje plik; `dashboard.py` czyta histor
 i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko
 w głównym wątku workera, chroniony flock. Panel nie udostępnia plików wolumenu.
 
-`notifications.py` wysyła przez SMTP podsumowanie potwierdzonych zmian limitów;
+`notifications.py` wysyła przez SMTP raport każdego zakończonego run/restore (także bez zmian i po błędzie);
 błąd maila nie zmienia sukcesu sync. `mail.json` zawiera sekret SMTP i pozostaje
 w `user_files/`; Compose montuje katalog hosta zamiast nazwanego wolumenu.

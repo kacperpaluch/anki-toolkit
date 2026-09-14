@@ -1,4 +1,4 @@
-"""SMTP summaries for confirmed limit changes; no Anki or Qt dependencies."""
+"""SMTP reports for every completed run; no Anki or Qt dependencies."""
 from email.message import EmailMessage
 from email.utils import parseaddr
 import smtplib
@@ -36,17 +36,28 @@ def limit_text(value):
 
 
 def send_summary(config, event):
-    if not config.get('enabled') or event['status'] != 'success' or not event.get('apply') or not event.get('changes'):
+    if not config.get('enabled') or event['command'] not in ('run', 'restore'):
         return 'not_needed'
     message = EmailMessage()
-    message['Subject'] = 'Anki Workload — zmieniono limity nowych kart'
+    ok = event['status'] == 'success'
+    message['Subject'] = 'Anki Workload — ' + ('przebieg zakończony' if ok else 'błąd przebiegu')
     message['From'] = config['sender']
     message['To'] = config['recipient']
-    lines = [f"Zakończenie: {event['finished']}", f"Operacja: {event['command']}", event.get('reason', ''), '']
-    for change in event['changes']:
+    lines = [f"Zakończenie: {event['finished']}", f"Operacja: {event['command']}",
+             'Wynik: ' + ('sukces' if ok else 'błąd'),
+             'Tryb: ' + ('zapis limitów' if event.get('apply') else 'symulacja'),
+             event.get('reason', ''), '']
+    if not ok:
+        lines.extend([event.get('error', 'Nieznany błąd'),
+                      'Zmiany nie są potwierdzone; część mogła trafić na serwer.', ''])
+    elif not event.get('changes'):
+        lines.append('Brak zmian limitów. Usługa wykonała przebieg.')
+    lines.append('Zmiany potwierdzone:' if ok and event.get('apply') else 'Planowane zmiany:')
+    for change in event.get('changes', []):
         lines.extend([change['deck'], f"Przed: {limit_text(change['before'])}",
                       f"Po: {limit_text(change['after'])}", ''])
-    lines.append('Zmiany zostały zsynchronizowane. Zsynchronizuj Anki na swoim urządzeniu, aby je pobrać.')
+    if ok and event.get('apply') and event.get('changes'):
+        lines.append('Zmiany zostały zsynchronizowane. Zsynchronizuj Anki na swoim urządzeniu, aby je pobrać.')
     message.set_content('\n'.join(lines))
     context = ssl.create_default_context()
     smtp = smtplib.SMTP_SSL if config['security'] == 'ssl' else smtplib.SMTP

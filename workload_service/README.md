@@ -182,10 +182,13 @@ Włącz wysyłkę i zapisz. Puste hasło zachowuje poprzednie; checkbox pozwala 
 usunąć. Hasło SMTP jest zapisane w `mail.json` (uprawnienia 600), nigdy nie
 jest odsyłane do formularza ani umieszczane w historii.
 
-Mail jest wysyłany po udanym przebiegu z faktycznymi zmianami limitów i włączonym
-zapisem (także po `restore`). Zawiera czas, powód i wartości przed/po dla talii.
-Nowy dzienny przydział jest zmianą nawet przy takiej samej liczbie kart jak wczoraj.
-Symulacja, inicjalizacja, logowanie i przebieg bez zmian nie wysyłają wiadomości.
+Mail jest wysyłany po każdym zakończonym `run` i `restore`: także bez zmian
+limitów, w symulacji i po błędzie. Zawiera wynik, tryb, czas, powód oraz
+wartości przed/po; tylko udany zapis oznacza zmiany jako potwierdzone.
+Inicjalizacja i logowanie nie wysyłają wiadomości. Harmonogram uruchamia
+przebieg raz dziennie; ponowienia po błędzie też wysyłają raport.
+Zatrzymany kontener nie wyśle maila — brak codziennego raportu jest sygnałem
+do sprawdzenia usługi, a nie niezależnym monitoringiem jej dostępności.
 Błąd SMTP pojawia się w historii, nie cofa synchronizacji i nie uruchamia jej ponownie.
 Nie ma kolejki ponowień maili; przerwanie procesu lub błąd dostarczenia może
 spowodować brak powiadomienia. `wysłano` oznacza przyjęcie przez serwer SMTP.

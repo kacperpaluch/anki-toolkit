@@ -49,7 +49,7 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
     mail = mail or {}
     parts.append(f'<details><summary>Powiadomienia e-mail</summary><form method="post" action="/mail">'
                  f'<input type="hidden" name="token" value="{escape(token)}">'
-                 f'<p><label><input type="checkbox" name="enabled" {"checked" if mail.get("enabled") else ""}>Wysyłaj podsumowanie po zmianie limitów</label></p>')
+                 f'<p><label><input type="checkbox" name="enabled" {"checked" if mail.get("enabled") else ""}>Wysyłaj raport po każdym przebiegu</label></p>')
     for name, label, kind, default in [('host', 'Host SMTP', 'text', ''), ('port', 'Port SMTP', 'number', 587),
                                      ('username', 'Login SMTP (pusty = bez logowania)', 'text', ''),
                                      ('sender', 'Nadawca', 'email', ''), ('recipient', 'Odbiorca', 'email', '')]:
@@ -61,7 +61,7 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
                  '<input type="password" name="password" autocomplete="new-password"></label></p>'
                  '<p><label><input type="checkbox" name="clear_password">Usuń zapisane hasło SMTP</label></p>'
                  '<button>Zapisz powiadomienia</button></form>'
-                 '<p>Mail po potwierdzonej zmianie limitów; bez wiadomości dla symulacji i przebiegów bez zmian. '
+                 '<p>Mail po każdym run i restore, także bez zmian, w symulacji oraz po błędzie. '
                  'Wynik wysyłki pojawi się w historii.</p></details>')
     if not history:
         parts.append('<article>Brak historii. Uruchom init, a następnie run.</article>')
