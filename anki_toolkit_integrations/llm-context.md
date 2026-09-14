@@ -27,7 +27,7 @@ migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
 - Zapamiętany host musi należeć do adresów przekazanej konfiguracji.
 - `ai_senses.py` bierze tekst już otwartych zakładek panelu, nie scrapuje stron
   ponownie. Cytaty modelu (`en`, `example`) są weryfikowane substringiem wobec
-  tekstu strony — nie usuwaj tej kontroli, to jedyna bariera przed zmyśloną
+  wskazanego źródła EN, a polskie odpowiedniki wobec diki (tekst przycięty jak w prompcie) — nie usuwaj tej kontroli, to jedyna bariera przed zmyśloną
   definicją. Znaczenie bez definicji zostaje kartą EN-PL. Tagi są rozłączne:
   `ai_tag` wyłącznie dla `match == "exact"`, `ai_review_tag` dla całej reszty.
   Nie dokładaj `ai_tag` do wszystkich — filtr `tag:ai-review` ma być kompletną
@@ -36,3 +36,13 @@ migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
   bywa numerem). Integrations nie ma własnego klienta AI i nie powinno go dostać.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
+
+- AI przechwytuje generację zaznaczenia, ID wiersza, kolekcję i notatkę;
+  nieaktualne callbacki nie pokazują propozycji ani nie zapisują kart.
+- Zapis AI: przygotowanie całej paczki, jedno `col.add_notes` na głównym
+  wątku; zwrócone OpChanges trafiają do `on_op_finished`. Pola tekstowe są
+  escapowane jako HTML. `exact` to ocena modelu, nie walidacja semantyczna.
+
+- SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
+  wymaga niepustego PL. Linki HTTP(S) pochodzą z przechwyconego wiersza n8n,
+  nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji cytatów.

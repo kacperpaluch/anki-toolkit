@@ -1,5 +1,7 @@
 """ai_senses: weryfikacja cytatów i mapowanie znaczeń na pola. Bez Anki i sieci."""
 import importlib.util
+import json
+import tempfile
 import sys
 import types
 import unittest
@@ -20,9 +22,9 @@ def load():
     return module
 
 
-PAGE = ("=== diki ===\nrozległy, rozciągnięty; chaotyczny\n"
-        "=== Oxford ===\ncovering a large area\n"
-        "a sprawling city on the edge of the desert")
+PAGE = {"diki": "rozległy, rozciągnięty; chaotyczny " + " ".join(f"znaczenie {i}" for i in range(6)),
+        "Oxford": "covering a large area\na sprawling city on the edge of the desert"}
+
 
 
 class SenseParsingTests(unittest.TestCase):
@@ -30,6 +32,11 @@ class SenseParsingTests(unittest.TestCase):
         self.m = load()
 
     def parse(self, raw, **kwargs):
+        data = json.loads(raw) if raw.startswith('{"senses"') else None
+        if data:
+            for sense in data["senses"]:
+                sense.setdefault("src", "Oxford")
+            raw = json.dumps(data)
         return self.m.parse_senses(raw, PAGE, **kwargs)
 
     def test_verbatim_quote_survives(self):
@@ -77,6 +84,45 @@ class SenseParsingTests(unittest.TestCase):
             self.m.note_fields(sense, {"en": "ang", "pl": "pol", "definition": "def"}, "sprawling"),
             {"ang": "sprawling", "pol": "rozległy"})
 
+    def test_source_and_polish_validation_and_html(self):
+        sense = {"pl": "rozległy", "en": "covering a large area", "src": "Longman", "match": "exact"}
+        result, _ = self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)
+        self.assertEqual(result[0]["match"], "none")
+        sense.update(src="Oxford", pl="nie ma tego w diki")
+        self.assertEqual(self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)[0], [])
+        sense.update(pl="rozległy", example="rozciągnięty")
+        result, _ = self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)
+        self.assertEqual(result[0]["example"], "")
+        self.assertEqual(self.m.note_fields({"pl": "<b>&lt;</b>"}, {"pl": "pol"}, "x"),
+                         {"pol": "&lt;b&gt;&amp;lt;&lt;/b&gt;"})
+
+    def test_manual_edits_copy_and_downgrade_match(self):
+        original = {"pl": "rozległy", "en": "wide", "example": "", "src": "Oxford", "match": "exact"}
+        self.assertEqual(self.m.edited_sense(original, original), original)
+        edited = self.m.edited_sense(original, {**original, "pl": "obszerny"})
+        self.assertEqual(edited["match"], "approx")
+        self.assertEqual(original["pl"], "rozległy")
+        self.assertEqual(self.m.edited_sense(original, {**original, "en": ""})["match"], "none")
+        with self.assertRaises(ValueError):
+            self.m.edited_sense(original, {**original, "pl": "  "})
+        links = self.m.source_links(original, {"diki": "https://diki.pl/?a=1&b=2",
+                                               "Oxford": "javascript:alert(1)", "Other": "https://other.test"})
+        self.assertIn("&amp;b=2", links)
+        self.assertNotIn("javascript", links)
+        self.assertNotIn("Other", links)
+
+    def test_disabled_example_is_not_requested_or_returned(self):
+        provider = types.SimpleNamespace(call_api=lambda prompt: json.dumps({"senses": [{
+            "pl": "rozległy", "en": "covering a large area", "example": "a sprawling city",
+            "src": "Oxford", "match": "exact"}]}))
+        with patch.object(self.m, "_provider", return_value=(provider, None)):
+            senses, error = self.m.generate("sprawling", PAGE, {"ai_fields": {"example": ""}})
+            self.assertIsNone(error)
+            self.assertEqual(senses[0]["example"], "")
+            senses, _ = self.m.generate("sprawling", PAGE, {"ai_fields": {"example": "przyklad"}})
+            self.assertEqual(senses[0]["example"], "a sprawling city")
+        self.assertIn("Nie wybieraj ani nie generuj przykładów", self.m.build_prompt("x", PAGE, 3, False))
+
     def test_prompt_truncates_pages(self):
         prompt = self.m.build_prompt("sprawling", {"diki": "x" * 20000}, 3)
         self.assertLess(len(prompt), 20000)
@@ -104,13 +150,14 @@ class AddNotesTests(unittest.TestCase):
         self.added = []
         self.m.mw = types.SimpleNamespace(col=types.SimpleNamespace(
             new_note=lambda notetype: Note(self.FIELDS),
-            add_note=lambda note, deck_id: self.added.append((note, deck_id))))
+            add_notes=lambda requests: self.added.extend((r.note, r.deck_id) for r in requests)))
         self.addcards = types.SimpleNamespace(
             editor=types.SimpleNamespace(note=Note(self.FIELDS)),
             deck_chooser=types.SimpleNamespace(selected_deck_id=7))
 
     def add(self, senses, cfg=None):
-        return self.m.add_notes(self.addcards, "sprawling", senses, cfg or self.CFG)
+        with patch.dict(sys.modules, {"anki.collection": types.SimpleNamespace(AddNoteRequest=types.SimpleNamespace)}):
+            return self.m.add_notes(self.addcards, "sprawling", senses, cfg or self.CFG)
 
     def sense(self, **kwargs):
         return {"pl": "rozległy", "en": "covering a large area", "example": "",
@@ -134,10 +181,57 @@ class AddNotesTests(unittest.TestCase):
         self.add([self.sense(match="none", en="")], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})
         self.assertEqual(self.added[0][0].tags, [])
 
+    def test_prepare_failure_never_starts_batch(self):
+        with patch.object(self.m.mw.col, "new_note", side_effect=[Note(self.FIELDS), RuntimeError("prepare")]):
+            with self.assertRaises(RuntimeError):
+                self.add([self.sense(), self.sense()])
+        self.assertEqual(self.added, [])
+
+    def test_batch_returns_changes_and_is_called_once(self):
+        changes = object()
+        with patch.object(self.m.mw.col, "add_notes", return_value=changes) as batch:
+            self.assertEqual(self.add([self.sense(), self.sense()]), (2, changes))
+        self.assertEqual(len(batch.call_args.args[0]), 2)
+        batch.assert_called_once()
+
     def test_bad_field_map_aborts_before_any_note(self):
         added, error = self.add([self.sense()], {**self.CFG, "ai_fields": {"pl": "polski"}})
         self.assertEqual((added, self.added), (0, []))
         self.assertIn("polski", error)
+
+
+class RealBatchTests(unittest.TestCase):
+    def test_backend_batch_rolls_back_and_has_one_undo(self):
+        try:
+            from anki.collection import Collection
+        except ImportError:
+            self.skipTest("requires Anki Python environment")
+        if Collection.__module__ != "anki.collection":
+            self.skipTest("requires real Anki, not test stubs")
+        with tempfile.TemporaryDirectory() as folder:
+            col = Collection(str(Path(folder) / "collection.anki2"))
+            try:
+                m = load()
+                m.mw = types.SimpleNamespace(col=col)
+                nt = col.models.current()
+                fields = [field["name"] for field in nt["flds"]]
+                addcards = types.SimpleNamespace(
+                    editor=types.SimpleNamespace(note=col.new_note(nt)),
+                    deck_chooser=types.SimpleNamespace(selected_deck_id=1))
+                cfg = {"word_field": fields[0], "ai_fields": {"pl": fields[1]}}
+                senses = [{"pl": "pierwsze", "match": "none"}, {"pl": "drugie", "match": "none"}]
+                first, invalid = col.new_note(nt), col.new_note(nt)
+                invalid.mid = 999999999999
+                with patch.object(col, "new_note", side_effect=[first, invalid]):
+                    with self.assertRaises(Exception):
+                        m.add_notes(addcards, "test", senses, cfg)
+                self.assertEqual(col.note_count(), 0)
+                self.assertEqual(m.add_notes(addcards, "test", senses, cfg)[0], 2)
+                self.assertEqual(col.note_count(), 2)
+                col.undo()
+                self.assertEqual(col.note_count(), 0)
+            finally:
+                col.close()
 
 
 if __name__ == "__main__":

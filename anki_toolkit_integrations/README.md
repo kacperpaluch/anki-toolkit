@@ -30,20 +30,32 @@ używany wyłącznie, jeśli nadal znajduje się w aktualnej konfiguracji.
 Przycisk **AI: znaczenia** w pasku panelu robi z jednego hasła tyle kart, ile
 ma ono znaczeń. Bierze tekst otwartych zakładek (diki + Oxford/Longman),
 prosi model o dopasowanie polskich znaczeń do angielskich definicji i pokazuje
-listę propozycji z checkboxami. Zatwierdzone znaczenia lądują jako osobne
+listę propozycji z checkboxami oraz edytowalnymi polami polskiego znaczenia,
+definicji i przykładu. Linki do diki i wskazanego źródła otwierają przeglądarkę.
+Puste polskie znaczenie blokuje zatwierdzenie zaznaczonej propozycji. Ręczne
+poprawki trafiają do tagu do weryfikacji; nie są ponownie sprawdzane jako cytaty.
+Puste ustawienie „Pole przykładu” wyłącza przykłady w prompcie i podglądzie;
+ewentualny przykład zwrócony mimo to przez model jest pomijany.
+Anulowanie odrzuca poprawki. Zatwierdzone znaczenia lądują jako osobne
 notatki w talii i typie wybranym w oknie „Dodaj", a wiersz w n8n jest odhaczany.
 
-**Definicje są cytatami, nie tłumaczeniami.** Pola `en` i `example` muszą
-występować dosłownie w tekście strony słownikowej — co nie przechodzi tego
-sprawdzenia, jest kasowane. Model nie ma jak dopisać definicji, której słownik
-nie ma.
+**Cytaty są sprawdzane względem źródła.** Definicja i przykład muszą
+występować w tekście wskazanego angielskiego słownika; polskie odpowiedniki
+(rozdzielone przecinkami lub średnikami) w diki. Sprawdzany jest ten sam,
+przycięty tekst, który otrzymał model. Brak polskiego cytatu odrzuca znaczenie,
+brak angielskiego zostawia pustą definicję. To kontrola pochodzenia tekstu,
+nie gwarancja zgodności znaczeń — sprawdź propozycje przed zatwierdzeniem.
+
+Zmiana słowa lub notatki podczas oczekiwania unieważnia wynik AI. Paczka
+jest przygotowywana przed zapisem i dodawana jedną transakcją Anki, z jednym
+krokiem cofnięcia. Zwykły tekst jest zabezpieczony przed interpretacją jako HTML.
 
 **Brak dopasowania 1:1 nie blokuje karty.** Znaczenie bez angielskiej definicji
 dostaje pustą definicję, a nie zmyśloną. Każda karta z AI dostaje **dokładnie
 jeden** tag: pewne dopasowanie *Tag pewnych dopasowań* (domyślnie `ai-auto`),
 wszystko pozostałe *Tag do weryfikacji* (`ai-review`). Tagi się nie nakładają,
 więc `tag:ai-review` w Browserze to cała robota do przejrzenia, a `tag:ai-auto`
-to karty, których już nie musisz oglądać.
+oznacza dopasowania ocenione przez model jako pewne, nie niezależnie zweryfikowane.
 
 **Definicje pochodzą ze wszystkich zakładek naraz.** Do promptu idzie tekst
 każdej zakładki, która ma URL w wierszu n8n (`link_columns`); model sam

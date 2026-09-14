@@ -6,8 +6,8 @@ stron zmienia się częściej niż nasza chęć poprawiania parserów.
 
 Model DOPASOWUJE, nie tłumaczy — polskie znaczenia z diki do angielskich
 definicji z Oxforda/Longmana/Cambridge. `en` i `example` muszą być DOSŁOWNYM
-cytatem ze stron; sprawdzamy to zwykłym substringiem, więc zmyślona definicja
-po prostu nie przechodzi (jest czyszczona, znaczenie dostaje `match: none`).
+cytatem ze wskazanego źródła. Polskie odpowiedniki sprawdzamy w diki.
+Substring sprawdza pochodzenie tekstu, nie poprawność dopasowania znaczeń.
 
 Brak dopasowania nie jest błędem. Znaczenie bez angielskiej definicji dalej
 zasługuje na kartę EN-PL — wymuszanie 1:1 produkowałoby definicje UDAJĄCE
@@ -21,10 +21,12 @@ Dostawcę AI pożyczamy z dodatku Content (ten sam, który masz skonfigurowany,
 Konfiguracja: config.json → "word_queue" → klucze "ai_*".
 """
 
+from html import escape
 import importlib
 import json
 import logging
 import re
+from urllib.parse import urlsplit
 
 try:
     from aqt import mw
@@ -32,12 +34,14 @@ try:
         QCheckBox,
         QDialog,
         QDialogButtonBox,
+        QFormLayout,
+        QPlainTextEdit,
         QLabel,
         QScrollArea,
         QVBoxLayout,
         QWidget,
     )
-except ImportError:  # pozwala odpalić self-check i testy bez Anki
+except ImportError:  # pozwala odpalić testy bez Anki
     mw = None
     QCheckBox = QDialogButtonBox = QLabel = QScrollArea = QVBoxLayout = QWidget = None
     QDialog = object
@@ -68,7 +72,8 @@ Zasady:
 4. Brak angielskiej definicji dla znaczenia → "en": "", "example": "", "match": "none".
    Nie wymyślaj definicji i nie podpinaj cudzej.
 5. "match": "exact" gdy definicja pokrywa się ze znaczeniem, "approx" gdy z grubsza.
-6. "src" to nazwa słownika, z którego pochodzi "en".
+6. "src" to dokładna etykieta angielskiego słownika, z którego pochodzą "en" i "example".
+   Każdy polski odpowiednik w "pl" musi być cytatem z diki.
 7. Pomiń znaczenia dotyczące innego hasła niż {word}.
 
 {pages}
@@ -76,15 +81,18 @@ Zasady:
 
 
 # ---------------------------------------------------------------------------
-# czysta logika — bez Anki, bez sieci (self-check na dole pliku)
+# czysta logika — bez Anki, bez sieci
 # ---------------------------------------------------------------------------
 
-def build_prompt(word: str, texts: dict, max_senses: int) -> str:
+def build_prompt(word: str, texts: dict, max_senses: int, include_example: bool = True) -> str:
     pages = "\n\n".join(
         f"=== {label} ===\n{text[:MAX_PAGE_CHARS]}"
         for label, text in texts.items() if (text or "").strip()
     )
-    return _PROMPT.format(word=word, max_senses=max_senses, pages=pages)
+    prompt = _PROMPT.format(word=word, max_senses=max_senses, pages=pages)
+    if not include_example:
+        prompt += '\nPole przykładu jest wyłączone. Nie wybieraj ani nie generuj przykładów; zwróć "example": "".'
+    return prompt
 
 
 def _flat(value) -> str:
@@ -113,20 +121,24 @@ def _json_object(raw: str):
         return None
 
 
-def parse_senses(raw: str, page_text: str, max_senses: int = 3) -> tuple[list[dict], str | None]:
-    """Odpowiedź modelu → lista znaczeń. Cytaty spoza `page_text` są kasowane."""
+def parse_senses(raw: str, texts: dict, max_senses: int = 3) -> tuple[list[dict], str | None]:
+    """Odpowiedź modelu → lista znaczeń. Cytaty są sprawdzane w zadeklarowanym źródle."""
     data = _json_object(raw)
     if not isinstance(data, dict) or not isinstance(data.get("senses"), list):
         return [], "model nie zwrócił JSON-a ze znaczeniami"
 
-    haystack = _norm(page_text)
+    sources = {_norm(label): _norm(text[:MAX_PAGE_CHARS]) for label, text in texts.items()}
+    polish = sources.get("diki", "")
     senses = []
     for item in data["senses"][:max_senses]:
         if not isinstance(item, dict):
             continue
         pl = _flat(item.get("pl"))
-        if not pl:
+        if not pl or any(not _norm(part) or _norm(part) not in polish
+                         for part in re.split(r"[,;]", pl)):
             continue  # karta bez polskiego znaczenia nie ma czego uczyć
+        src = _flat(item.get("src"))
+        haystack = sources.get(_norm(src), "") if _norm(src) != "diki" else ""
         en = _flat(item.get("en"))
         example = _flat(item.get("example"))
         if en and _norm(en) not in haystack:
@@ -136,11 +148,12 @@ def parse_senses(raw: str, page_text: str, max_senses: int = 3) -> tuple[list[di
             example = ""
         match = _flat(item.get("match")).lower()
         if not en:
+            example = src = ""
             match = "none"
         elif match not in ("exact", "approx"):
             match = "approx"  # nieznana etykieta → traktuj jak niepewne, nie jak pewne
         senses.append({"pl": pl, "en": en, "example": example,
-                       "src": _flat(item.get("src")), "match": match})
+                       "src": src, "match": match})
 
     if not senses:
         return [], "model nie znalazł żadnego znaczenia"
@@ -161,7 +174,7 @@ def note_fields(sense: dict, mapping: dict, word: str) -> dict:
         mapping.get("definition"): sense.get("en", ""),
         mapping.get("example"): sense.get("example", ""),
     }
-    return {field: value for field, value in values.items() if field and value}
+    return {field: escape(value) for field, value in values.items() if field and value}
 
 
 # ---------------------------------------------------------------------------
@@ -205,40 +218,88 @@ def generate(word: str, texts: dict, cfg: dict) -> tuple[list[dict], str | None]
     provider, error = _provider(cfg)
     if error:
         return [], error
-    raw = provider.call_api(build_prompt(word, texts, cfg.get("ai_max_senses", 3)))
+    include_example = bool((cfg.get("ai_fields") or {}).get("example", "").strip())
+    raw = provider.call_api(build_prompt(word, texts, cfg.get("ai_max_senses", 3), include_example))
     if not raw:
         return [], provider.last_error or "brak odpowiedzi modelu"
-    return parse_senses(raw, "\n".join(texts.values()), cfg.get("ai_max_senses", 3))
+    senses, error = parse_senses(raw, texts, cfg.get("ai_max_senses", 3))
+    if not include_example:
+        for sense in senses:
+            sense["example"] = ""
+    return senses, error
 
 
 # ---------------------------------------------------------------------------
 # wybór znaczeń i zapis notatek — wątek główny
 # ---------------------------------------------------------------------------
 
+def edited_sense(original: dict, values: dict) -> dict:
+    result = {**original, **{key: values[key].strip() for key in ("pl", "en", "example")}}
+    if not result["pl"]:
+        raise ValueError("Polskie znaczenie jest wymagane")
+    if any(result[key] != original.get(key, "") for key in ("pl", "en", "example")):
+        result["match"] = "approx" if result["en"] else "none"
+    return result
+
+
+def source_links(sense: dict, urls: dict) -> str:
+    links = []
+    labels = {"diki", _norm(sense.get("src", ""))}
+    for label, url in urls.items():
+        if _norm(label) not in labels or not url:
+            continue
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            continue
+        if parsed.scheme not in ("https", "http") or not parsed.hostname:
+            continue
+        links.append(f'<a href="{escape(url, quote=True)}">{escape(label)}</a>')
+    return "Źródło: " + " · ".join(links) if links else ""
+
+
 class SensePicker(QDialog):
     """Podgląd przed zapisem: co pójdzie na karty i co model dopasował na siłę."""
 
     _MATCH = {"exact": "✓ dopasowane", "approx": "≈ przybliżone", "none": "✗ bez definicji"}
 
-    def __init__(self, senses: list[dict], word: str, parent):
+    def __init__(self, senses: list[dict], word: str, parent, urls=None, include_example=True):
         super().__init__(parent)
         self.setWindowTitle(f"AI: znaczenia „{word}”")
-        self.resize(720, 460)
+        self.resize(720, 640)
         self._boxes = []
 
         layout = QVBoxLayout(self)
-        hint = QLabel("Jedno znaczenie = jedna karta. Definicje są dosłownymi cytatami ze "
-                      "słownika; „przybliżone” i „bez definicji” dostaną tag do przejrzenia.")
+        hint = QLabel("Wybierz znaczenia i popraw treść przed zapisem. Polskie znaczenie jest wymagane. "
+                      "Ręczne poprawki nie są ponownie sprawdzane jako cytaty i dostają tag do weryfikacji.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        for sense in senses:
-            box = QCheckBox(self._describe(sense))
+        for index, sense in enumerate(senses, 1):
+            box = QCheckBox(f"{index}. Dodaj znaczenie — {self._MATCH.get(sense['match'], sense['match'])}")
             box.setChecked(True)
-            self._boxes.append((box, sense))
             inner_layout.addWidget(box)
+            form = QFormLayout()
+            fields = {}
+            for key, label in (("pl", "Polskie znaczenie"), ("en", "Definicja angielska"),
+                               ("example", "Przykład")):
+                if key == "example" and not include_example:
+                    continue
+                edit = QPlainTextEdit()
+                edit.setPlainText(sense.get(key, ""))
+                edit.setFixedHeight(64)
+                form.addRow(label, edit)
+                fields[key] = edit
+            inner_layout.addLayout(form)
+            links = source_links(sense, urls or {})
+            if links:
+                source = QLabel(links)
+                source.setOpenExternalLinks(True)
+                source.setWordWrap(True)
+                inner_layout.addWidget(source)
+            self._boxes.append((box, sense, fields))
         inner_layout.addStretch()
         area = QScrollArea()
         area.setWidgetResizable(True)
@@ -248,29 +309,31 @@ class SensePicker(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        self._error = QLabel()
+        self._error.setWordWrap(True)
+        layout.addWidget(self._error)
+        buttons.accepted.connect(self._accept_selected)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    @classmethod
-    def _describe(cls, sense: dict) -> str:
-        lines = [f"{sense['pl']}   [{cls._MATCH.get(sense['match'], sense['match'])}]"]
-        if sense["en"]:
-            lines.append(sense["en"] + (f"   ({sense['src']})" if sense["src"] else ""))
-        if sense["example"]:
-            lines.append(f"„{sense['example']}”")
-        return "\n".join(lines)
+    def _accept_selected(self):
+        if any(box.isChecked() and not fields["pl"].toPlainText().strip()
+               for box, _, fields in self._boxes):
+            self._error.setText("Uzupełnij polskie znaczenie lub odznacz tę propozycję.")
+            return
+        self.accept()
 
     def selected(self) -> list[dict]:
-        return [sense for box, sense in self._boxes if box.isChecked()]
+        return [edited_sense(sense, {"example": "", **{key: edit.toPlainText() for key, edit in fields.items()}})
+                for box, sense, fields in self._boxes if box.isChecked()]
 
 
-def pick_senses(senses: list[dict], word: str, parent) -> list[dict]:
-    dialog = SensePicker(senses, word, parent)
+def pick_senses(senses: list[dict], word: str, parent, urls=None, include_example=True) -> list[dict]:
+    dialog = SensePicker(senses, word, parent, urls, include_example)
     return dialog.selected() if dialog.exec() else []
 
 
-def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, str | None]:
+def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, object]:
     """Po jednej notatce na znaczenie, w talii i typie wybranym w oknie „Dodaj"."""
     notetype = addcards.editor.note.note_type()
     chooser = addcards.deck_chooser
@@ -287,82 +350,15 @@ def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, 
 
     exact = parse_tags(cfg.get("ai_tag"))            # tylko pewne dopasowanie
     review = parse_tags(cfg.get("ai_review_tag"))    # tylko niepewne dopasowanie
-    added = 0
+    from anki.collection import AddNoteRequest
+
+    requests = []
     for sense in senses:
         note = mw.col.new_note(notetype)
         for field, value in note_fields(sense, mapping, word).items():
             note[field] = value
         note.tags.extend(exact if sense["match"] == "exact" else review)
-        mw.col.add_note(note, deck_id)
-        added += 1
-    return added, None
-
-
-if __name__ == "__main__":  # self-check czystej logiki (bez Anki i bez sieci)
-    page = ("=== diki ===\nrozległy, rozciągnięty\n"
-            "=== Oxford ===\ncovering a large area\n"
-            "a sprawling city on the edge of the desert")
-
-    ok, error = parse_senses(
-        '{"senses":[{"pl":["rozległy","rozciągnięty"],"en":"covering a large area",'
-        '"example":"a sprawling city","src":"Oxford","match":"exact"}]}', page)
-    assert error is None
-    assert ok == [{"pl": "rozległy, rozciągnięty", "en": "covering a large area",
-                   "example": "a sprawling city", "src": "Oxford", "match": "exact"}], ok
-
-    # zmyślona definicja nie przechodzi — zostaje karta EN-PL do przejrzenia
-    faked, error = parse_senses(
-        '{"senses":[{"pl":"rozległy","en":"extending over a big region",'
-        '"example":"a sprawling city","match":"exact"}]}', page)
-    assert error is None
-    assert faked[0]["en"] == "" and faked[0]["example"] == "" and faked[0]["match"] == "none", faked
-
-    # sam przykład zmyślony → definicja zostaje, przykład leci
-    partial, _ = parse_senses(
-        '{"senses":[{"pl":"rozległy","en":"covering a large area",'
-        '"example":"a sprawling meadow","match":"exact"}]}', page)
-    assert partial[0]["en"] and partial[0]["example"] == "", partial
-
-    # cytat różniący się tylko spacjami/apostrofem to wciąż cytat
-    spaced, _ = parse_senses(
-        '{"senses":[{"pl":"rozległy","en":"Covering  a   large area","match":"exact"}]}', page)
-    assert spaced[0]["en"] == "Covering a large area", spaced
-
-    # kilka znaczeń: kolejność zachowana, limit przycina
-    many = json.dumps({"senses": [{"pl": f"z{i}", "en": "", "match": "none"} for i in range(5)]})
-    capped, _ = parse_senses(many, page, max_senses=3)
-    assert [s["pl"] for s in capped] == ["z0", "z1", "z2"], capped
-    assert all(s["match"] == "none" for s in capped)
-
-    # nieznana etykieta match traktowana jako niepewna, nie jako pewna
-    fuzzy, _ = parse_senses(
-        '{"senses":[{"pl":"rozległy","en":"covering a large area","match":"świetne"}]}', page)
-    assert fuzzy[0]["match"] == "approx", fuzzy
-
-    # znaczenie bez "pl" nie ma czego uczyć
-    empty, error = parse_senses('{"senses":[{"pl":"","en":"covering a large area"}]}', page)
-    assert empty == [] and error is not None
-
-    # model owinął JSON w markdown
-    fenced, error = parse_senses(
-        '```json\n{"senses":[{"pl":"rozległy","en":"","match":"none"}]}\n```', page)
-    assert error is None and fenced[0]["pl"] == "rozległy"
-
-    assert parse_senses("przepraszam, nie wiem", page)[0] == []
-    assert parse_senses("", page)[1] is not None
-
-    assert parse_tags(" ai-auto,  nowe ") == ["ai-auto", "nowe"]
-    assert parse_tags("") == [] and parse_tags(None) == []
-
-    fields = note_fields(ok[0], {"en": "ang", "pl": "pol", "definition": "def",
-                                 "example": "przyklad"}, "sprawling")
-    assert fields == {"ang": "sprawling", "pol": "rozległy, rozciągnięty",
-                      "def": "covering a large area", "przyklad": "a sprawling city"}, fields
-    # puste pola nie nadpisują niczego, brak mapowania nie wysadza zapisu
-    assert note_fields(faked[0], {"en": "ang", "pl": "pol"}, "x") == {"ang": "x", "pol": "rozległy"}
-
-    prompt = build_prompt("sprawling", {"diki": "x" * 9000, "pusta": "  "}, 3)
-    assert "sprawling" in prompt and "=== diki ===" in prompt and "pusta" not in prompt
-    assert len(prompt) < 9000, "strona musi być przycięta do MAX_PAGE_CHARS"
-
-    print("ai_senses self-check OK")
+        requests.append(AddNoteRequest(note=note, deck_id=deck_id))
+    # One backend transaction and one undo step; collection access stays on the main thread.
+    changes = mw.col.add_notes(requests)
+    return len(requests), changes

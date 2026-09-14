@@ -149,6 +149,27 @@ class PanelTests(unittest.TestCase):
         self.jobs = []
         self.module.mw.taskman = types.SimpleNamespace(run_in_background=lambda job, done: self.jobs.append((job, done)))
 
+    def test_ai_result_is_discarded_after_selection_change(self):
+        self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda enabled: None)
+        callbacks = []
+        self.panel._tabs = types.SimpleNamespace(texts=callbacks.append)
+        with patch.object(self.module.ai_senses, "pick_senses") as picker:
+            self.panel._ai_senses()
+            callbacks[0]({"diki": "tekst"})
+            self.panel._selection_generation += 1
+            self.finish(([{"pl": "test"}], None))
+            picker.assert_not_called()
+        self.assertFalse(self.panel._pending)
+
+    def test_ai_does_not_start_with_stale_pages(self):
+        self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda enabled: None)
+        callbacks = []
+        self.panel._tabs = types.SimpleNamespace(texts=callbacks.append)
+        self.panel._ai_senses()
+        self.panel._selection_generation += 1
+        callbacks[0]({"diki": "inne słowo"})
+        self.assertEqual(self.jobs, [])
+
     def finish(self, value):
         future = Future(); future.set_result(value)
         self.jobs[-1][1](future)

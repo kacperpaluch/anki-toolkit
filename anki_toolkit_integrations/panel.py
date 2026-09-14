@@ -524,16 +524,31 @@ class WordQueuePanel(QDockWidget):
             tooltip("AI: najpierw wybierz słówko z listy.", parent=mw)
             return
         self._ai_btn.setEnabled(False)
+        generation = self._selection_generation
+        row_id = row.get("id")
+        urls = {label: row.get(column) or "" for label, column in self._cfg.get("link_columns", {}).items()}
+        collection = mw.col
+        note = self._addcards.editor.note
+
+        def valid():
+            return (not sip.isdeleted(self) and mw.col is collection
+                    and generation == self._selection_generation
+                    and self.current_row_id() == row_id
+                    and self._addcards.editor.note is note)
+
 
         def with_texts(texts):
             if sip.isdeleted(self):
+                return
+            if not valid():
+                self._ai_failed("zmieniono wybrane słowo lub notatkę; uruchom ponownie")
                 return
             if not texts:
                 self._ai_failed("zakładki słownikowe się nie wczytały")
                 return
             mw.taskman.run_in_background(
                 lambda: ai_senses.generate(word, texts, self._cfg),
-                lambda future: self._on_senses(word, future),
+                lambda future: self._on_senses(word, future, valid, urls),
             )
 
         self._tabs.texts(with_texts)
@@ -542,7 +557,7 @@ class WordQueuePanel(QDockWidget):
         self._ai_btn.setEnabled(True)
         tooltip(f"AI: {message}", parent=mw, period=6000)
 
-    def _on_senses(self, word: str, future) -> None:
+    def _on_senses(self, word: str, future, valid, urls=None) -> None:
         try:
             senses, error = future.result()
         except Exception:  # noqa: BLE001 — błąd dostawcy nie może wysadzać okna „Dodaj"
@@ -550,26 +565,35 @@ class WordQueuePanel(QDockWidget):
             senses, error = [], "wyjątek (szczegóły w Logach)"
         if sip.isdeleted(self):
             return
+        if not valid():
+            self._ai_failed("zmieniono wybrane słowo lub notatkę; wynik pominięto")
+            return
         if error:
             self._ai_failed(error)
             return
         self._ai_btn.setEnabled(True)
 
-        chosen = ai_senses.pick_senses(senses, word, self)
-        if not chosen or sip.isdeleted(self):
+        chosen = ai_senses.pick_senses(
+            senses, word, self, urls,
+            include_example=bool((self._cfg.get("ai_fields") or {}).get("example", "").strip()),
+        )
+        if not chosen or not valid():
             return
         try:
-            added, error = ai_senses.add_notes(self._addcards, word, chosen, self._cfg)
+            added, result = ai_senses.add_notes(self._addcards, word, chosen, self._cfg)
         except Exception:  # noqa: BLE001
             log.exception("ai_senses: zapis notatek rzucił wyjątkiem")
             tooltip("AI: nie zapisano kart (szczegóły w Logach)", parent=mw, period=6000)
             return
-        if error:
-            tooltip(f"AI: {error}", parent=mw, period=8000)
         if not added:
+            if result:
+                tooltip(f"AI: {result}", parent=mw, period=8000)
             return
 
-        mw.reset()
+        from aqt.operations import on_op_finished
+        on_op_finished(mw, result, self)
+        if not valid():
+            return
         review = sum(1 for sense in chosen if sense["match"] != "exact")
         tag = self._cfg.get("ai_review_tag") or ""
         suffix = f", {review} do przejrzenia" + (f" (tag „{tag}”)" if tag else "") if review else ""
