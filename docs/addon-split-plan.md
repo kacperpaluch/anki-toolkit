@@ -16,7 +16,6 @@ funkcji, zanim ich zamiennik nie będzie gotowy do samodzielnego wydania.
 | `anki_toolkit_learning` | Anki Toolkit: Learning | `filtered_deck/` | Core |
 | `anki_toolkit_integrations` | Anki Toolkit: Integrations | `word_queue/`, `web_bridge/`, `supermemo/`, `oxford/` | Core |
 | `anki_toolkit_audio_normalizer` | Anki Toolkit: Audio Normalizer | `audio_normalizer/` | Core |
-| `anki_toolkit_audio_embed` | Anki Toolkit: Audio Embed | `audio_embed/` | Core |
 | `anki_toolkit_html_cleanup` | Anki Toolkit: HTML Cleanup | `nbsp_remover/` | Core |
 | `anki_toolkit_field_hider` | Anki Toolkit: Field Hider | `field_hider/` | Core |
 
@@ -49,7 +48,6 @@ profilu Anki. Klucze po migracji nie są już zagnieżdżone pod nazwą modułu:
 | Learning | `filtered_deck` | `deck_name` | brak |
 | Integrations | `word_queue`, `web_bridge`, `supermemo`, `oxford` | te same cztery sekcje | bazy SM i Oxford pozostają przy Integrations |
 | Audio Normalizer | `audio_normalizer` | zawartość sekcji | historia normalizacji → dane dodatku |
-| Audio Embed | `audio_embed` | zawartość sekcji | brak |
 | HTML Cleanup | `nbsp_remover` | zawartość sekcji | brak |
 | Field Hider | `field_hider` | zawartość sekcji | brak |
 
@@ -61,7 +59,7 @@ włączeniem odpowiednika, aby nie zarejestrować tych samych hooków podwójnie
 ## Kolejność wdrażania
 
 1. Utworzyć Core oraz testowalny adapter konfiguracji/migracji.
-2. Wydzielić: Field Hider, HTML Cleanup, Audio Embed i Audio Normalizer.
+2. Wydzielić: Field Hider, HTML Cleanup i Audio Normalizer.
 3. Wydzielić Learning (tylko Filtered Deck).
 4. Wydzielić Integrations.
 5. Wydzielić Content; dopiero wtedy wycofać scalony loader i Homograph Manager.

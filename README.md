@@ -13,7 +13,6 @@ się osobno — instalujesz tylko te funkcje, których używasz.
 | [Learning](anki_toolkit_learning/README.md) | Talie filtrowane z presetów szybkich powtórek. | **Narzędzia → Anki Toolkit: Learning…** |
 | [Workload](anki_toolkit_workload/README.md) | Elastyczny plan na dziś i spokojne tempo nowych kart. | **Narzędzia → Anki Toolkit: Workload…** |
 | [Audio Normalizer](anki_toolkit_audio_normalizer/README.md) | Normalizacja głośności mediów przez `ffmpeg`, ręcznie lub automatycznie. | **Narzędzia → Anki Toolkit: Audio Normalizer** |
-| [Audio Embed](anki_toolkit_audio_embed/README.md) | Zamiana `[sound:...]` na odtwarzacze HTML5 w wybranych polach. | **Narzędzia → Anki Toolkit: Audio Embed** |
 | [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
 | [Field Hider](anki_toolkit_field_hider/README.md) | Ukrywanie pomocniczych pól tylko w oknie Dodaj. | **Narzędzia → Anki Toolkit: Field Hider…** |
 | [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources…** |
@@ -52,12 +51,6 @@ Wyrównuje głośność plików w katalogu mediów Anki przez `ffmpeg`. Można u
 normalizację ręcznie dla całej kolekcji albo włączyć watcher, który po krótkim
 opóźnieniu normalizuje nowe pliki z TTS, słowników, synchronizacji lub ręcznego
 dodania.
-
-### Audio Embed
-
-Przepisuje znaczniki `[sound:plik.mp3]` w wybranych polach na elementy `<audio>`.
-To przydaje się zwłaszcza dla przykładów i pól pomocniczych, gdzie chcesz własny
-wygląd odtwarzacza CSS. Dodatek nie pobiera audio i nie zależy od jego źródła.
 
 ### HTML Cleanup
 

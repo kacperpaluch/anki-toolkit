@@ -44,5 +44,5 @@ cudzych notatek.
 
 ## Współpraca z pozostałymi dodatkami
 
-Content nie importuje innych dodatków Toolkit. Audio Normalizer i Audio Embed
-reagują na pliki mediów niezależnie — wystarczy, że są zainstalowane.
+Content nie importuje innych dodatków Toolkit. Audio Normalizer reaguje na
+pliki mediów niezależnie — wystarczy, że jest zainstalowany.

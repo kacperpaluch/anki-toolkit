@@ -255,24 +255,6 @@ class OtherAddonsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.clean_field("f", "x" * 1000, [{"find": "(.+)", "to": r"\1" * 2000, "regex": True}])
 
-    def test_sync_scan_rejects_closed_or_changed_collection(self):
-        module = load("audio_embed")
-        module._collection_note_ids = lambda _: self.fail("must not read collection")
-        module._run_sync_scan(None)
-        module._run_sync_scan(object())
-
-    def test_audio_has_controls_and_escaped_url(self):
-        module = load("audio_embed", "logic.py")
-        converted = module.convert_text('[sound:part#1.mp3]', 'class"quote')
-        self.assertIn("<audio controls ", converted)
-        self.assertIn('src="part%231.mp3"', converted)
-        self.assertIn("class&quot;quote", converted)
-        self.assertEqual(module.convert_text(converted), converted)
-        legacy = '<audio class="ex-audio" src="old.mp3" preload="none"></audio>'
-        self.assertIn('<audio controls ', module.convert_text(legacy))
-        foreign = legacy.replace('ex-audio', 'custom-player')
-        self.assertEqual(module.convert_text(foreign), foreign)
-
     def test_history_is_scoped_and_keeps_other_collection(self):
         module = load("audio_normalizer", "logic.py")
         with tempfile.TemporaryDirectory() as temp:

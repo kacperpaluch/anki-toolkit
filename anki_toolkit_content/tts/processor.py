@@ -27,9 +27,7 @@ from .config import get_tts_config, validate_config, get_tasks
 
 logger = logging.getLogger(__name__)
 
-# Audio in a field is either the raw Anki tag or an <audio> player left by
-# audio_embed — both mean "already generated".
-_AUDIO_RE = re.compile(r"\[sound:[^\]]*\]|<audio\b[^>]*>.*?</audio>", re.I | re.S)
+_AUDIO_RE = re.compile(r"\[sound:[^\]]*\]")
 
 
 def has_audio(text: str) -> bool:
@@ -386,7 +384,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
 # ---------------------------------------------------------------------------
 
 def _strip_sound_tags(text: str) -> str:
-    """Remove audio ([sound:...] or <audio>) from a copy of the text."""
+    """Remove audio ([sound:...]) from a copy of the text."""
     return _AUDIO_RE.sub("", text).strip()
 
 

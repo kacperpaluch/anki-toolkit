@@ -27,7 +27,7 @@ Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól 
 
 **PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio zostaje zastąpione nowym). **Stare nagranie znika dopiero wtedy, gdy nowe faktycznie powstanie**: gdy API padnie, pole zostaje nietknięte, a przy częściowym sukcesie segmenty, których nie udało się wygenerować, zachowują dotychczasowe audio. Działa też w oknie dodawania nowej karty (AddCards).
 
-Notatki które już mają audio w polu docelowym są pomijane — liczy się zarówno `[sound:...]`, jak i osadzony `<audio>` po konwersji przez Audio Embed. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
+Notatki które już mają audio w polu docelowym są pomijane — wykrywanie opiera się na `[sound:...]`. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
 
 Zmiana dowolnego pola podczas generowania w edytorze powoduje pominięcie wyniku bieżącego kroku, aby nie przypisać audio do zmienionego tekstu. Zamknięcie lub zmiana profilu przerywa zapis. W trybie `split` zapisującym do osobnego, już wypełnionego pola częściowa awaria pozostawia całe stare pole — zastępuje je dopiero pełny wynik.
 

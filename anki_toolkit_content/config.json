@@ -7,7 +7,6 @@
     "audio_normalizer": true,
     "nbsp_remover": true,
     "field_splitter": true,
-    "audio_embed": true,
     "homograph_manager": true,
     "field_hider": true,
     "web_bridge": true,
@@ -190,8 +189,7 @@
     "tts": true,
     "ai_fields": true,
     "ai_blocked": true,
-    "field_splitter": true,
-    "audio_embed": true
+    "field_splitter": true
   },
   "audio_normalizer": {
     "max_workers": 4,
@@ -213,13 +211,6 @@
     "separator": "<br><br>",
     "target_fields": "p1, p2, p3, p4, p5",
     "overwrite": true
-  },
-  "audio_embed": {
-    "note_types": ["angielski"],
-    "fields": ["przyklad", "p1", "p2", "p3", "p4", "p5"],
-    "css_class": "ex-audio",
-    "preload": "none",
-    "scan_on_sync": true
   },
   "homograph_manager": {
     "interval": 30,

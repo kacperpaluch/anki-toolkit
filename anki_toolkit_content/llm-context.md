@@ -39,8 +39,8 @@ Workflowy uruchamiają te kroki sekwencyjnie dla jednej notatki.
   są zachowane do ręcznego przypisania; nigdy nie zakładaj, że należą do aktualnego
   profilu. `submit()` serializuje wysyłki i ponownie deduplikuje pola pod blokadą.
 - Zapis konfiguracji musi zachować nieznane klucze i dane providerów.
-- Nie importuj innych dodatków Toolkit. Audio Normalizer i Audio Embed reagują
-  na pliki mediów niezależnie od Content.
+- Nie importuj innych dodatków Toolkit. Audio Normalizer reaguje na pliki
+  mediów niezależnie od Content.
 
 ## Interfejs
 

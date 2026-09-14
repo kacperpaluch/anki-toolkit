@@ -11,7 +11,6 @@ oraz `user_files/` danego dodatku i nie mogą trafić do Git.
 | `anki_toolkit_learning` | talie filtrowane |
 | `anki_toolkit_workload` | elastyczny plan dnia, spokojne tempo nowych kart, szczegóły obciążenia |
 | `anki_toolkit_audio_normalizer` | ffmpeg i watcher mediów |
-| `anki_toolkit_audio_embed` | `[sound:]` → `<audio>` |
 | `anki_toolkit_html_cleanup` | czyszczenie HTML |
 | `anki_toolkit_field_hider` | pola w Add Cards |
 | `anki_toolkit_local_sources` | Oxford 5000 i SuperMemo |
