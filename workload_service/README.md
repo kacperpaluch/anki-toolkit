@@ -185,6 +185,9 @@ jest odsyłane do formularza ani umieszczane w historii.
 Mail jest wysyłany po każdym zakończonym `run` i `restore`: także bez zmian
 limitów, w symulacji i po błędzie. Zawiera wynik, tryb, czas, powód oraz
 wartości przed/po; tylko udany zapis oznacza zmiany jako potwierdzone.
+Wersja HTML pokazuje wąską tabelę Talia / Przed / Po z zawijaniem nazw na
+telefonie. Wspólny limit bazowy 0 jest opisany pod tabelą; inne wartości są
+widoczne przy liczbach. Wiadomość zawiera również zapasową wersję tekstową.
 Inicjalizacja i logowanie nie wysyłają wiadomości. Harmonogram uruchamia
 przebieg raz dziennie; ponowienia po błędzie też wysyłają raport.
 Zatrzymany kontener nie wyśle maila — brak codziennego raportu jest sygnałem

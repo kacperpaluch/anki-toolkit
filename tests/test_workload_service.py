@@ -65,18 +65,40 @@ class ServiceTests(unittest.TestCase):
             client.starttls.assert_called_once()
             client.login.assert_called_once_with("login", "smtp-secret")
             message = client.send_message.call_args.args[0]
-            self.assertIn("English", message.get_content())
-            self.assertIn("bazowy: 0", message.get_content())
+            self.assertEqual(message.get_content_type(), "multipart/alternative")
+            self.assertIn("<table", message.get_body(preferencelist=("html",)).get_content())
+            self.assertIn("English", message.get_body(preferencelist=("plain",)).get_content())
+            self.assertIn("bazowy: 0", message.get_body(preferencelist=("plain",)).get_content())
             self.assertNotIn("smtp-secret", message.as_string())
             for override in ({"status": "error", "error": "Sync failed"}, {"apply": False}, {"changes": []}):
                 self.assertEqual(notifications.send_summary(config, {**event, **override}), "sent")
-                body = client.send_message.call_args.args[0].get_content()
+                body = client.send_message.call_args.args[0].get_body(preferencelist=("plain",)).get_content()
                 self.assertNotIn("Zmiany zostały zsynchronizowane", body)
                 if override.get("status") == "error":
                     self.assertIn("Sync failed", body)
                 if override.get("changes") == []:
                     self.assertIn("Brak zmian limitów", body)
             self.assertEqual(notifications.send_summary({**config, "enabled": False}, event), "not_needed")
+
+    def test_html_email_escapes_names_and_preserves_limit_details(self):
+        from workload_service.notifications import summary_html
+        event = {"status": "success", "apply": True, "command": "run",
+                 "finished": "2026-09-14T05:00:21+02:00", "reason": "<script>bad</script>",
+                 "changes": [{"deck": name, "before": {"newLimit": 0, "newLimitToday": {"limit": 7}},
+                              "after": {"newLimit": 0, "newLimitToday": {"limit": 9}}}
+                             for name in ("English", "English::<b>child</b>")]}
+        html = summary_html(event)
+        self.assertIn("↳ &lt;b&gt;child&lt;/b&gt;", html)
+        self.assertNotIn("<script>", html)
+        self.assertIn("14.09.2026 · 05:00", html)
+        self.assertIn("Limit bazowy wszystkich", html)
+        event["changes"][0]["after"] = {"newLimit": 5}
+        html = summary_html(event)
+        self.assertIn("Bazowy: 5", html)
+        self.assertNotIn("Limit bazowy wszystkich", html)
+        self.assertIn("brak<br>", html)
+        for override in ({"status": "error"}, {"apply": False}):
+            self.assertNotIn("Zmiany potwierdzone", summary_html({**event, **override}))
 
     def test_mail_failure_does_not_fail_successful_sync(self):
         from workload_service import notifications
