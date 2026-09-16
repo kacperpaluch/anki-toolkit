@@ -24,6 +24,7 @@ zakładkę, ale „AI: znaczenia" i tak czyta komplet, a przy przeglądaniu ręc
 nie czekasz na wczytanie po każdym kliknięciu w zakładkę.
 """
 
+import html
 import json
 import logging
 import random
@@ -259,6 +260,7 @@ class WordQueuePanel(QDockWidget):
         self._bound_row_id = None
         self._local_rows: list[dict] = self._state.data["local_rows"]  # hasła spoza n8n; ujemne id
         self._adding: set[str] = set()  # hasła w trakcie zapisu do n8n (casefold)
+        self._added: dict = {}  # id → wiersz zapisany w n8n, zanim zobaczy go odświeżenie
         self._next_local_id = min([0] + [row["id"] for row in self._local_rows])  # zapasowe, ujemne id; nigdy nie wraca do użytku
         self._busy = False  # paczka AI w toku — nic nie przebudowuje listy
 
@@ -280,10 +282,10 @@ class WordQueuePanel(QDockWidget):
             tooltip("Kolejka: nie zapisano pliku stanu — sprawdź Logi.", parent=mw)
             return False
 
-    def _owe(self, rows: dict) -> None:
+    def _owe(self, rows: dict) -> bool:
         """Cards for these rows are (about to be) in the collection; n8n must hear about it."""
         self._state.data["owed"].update({str(row_id): word for row_id, word in rows.items()})
-        self._save_state()
+        return self._save_state()
 
     def _settle_owed(self) -> None:
         """After a refill: finish PATCHes lost to a crash or a network error."""
@@ -470,6 +472,7 @@ class WordQueuePanel(QDockWidget):
         # słowa zapisałoby duplikat do tabeli.
         known = {clean_html_normalized(row.get(column) or "").casefold() for row in rows}
         known |= self._adding
+        known |= {clean_html_normalized(row.get(column) or "").casefold() for row in self._added.values()}
         fresh, skipped = [], []
         for word in words:
             if word.casefold() in known:
@@ -493,16 +496,18 @@ class WordQueuePanel(QDockWidget):
                 log.exception("word_queue: dopisywanie wierszy rzuciło wyjątkiem")
                 saved, error = [], "wyjątek (szczegóły w Logach)"
             self._adding -= {row[column].casefold() for row in fresh}
-            if sip.isdeleted(self):
-                return
             if error:
                 # Offline albo zła tabela: hasła zostają w panelu, żeby dało się
-                # z nimi pracować teraz i po ponownym otwarciu panelu.
+                # z nimi pracować teraz i po ponownym otwarciu panelu — także
+                # wtedy, gdy okno „Dodaj” zamknięto w trakcie zapisu.
                 tooltip(f"n8n: {error}. Hasła zachowano lokalnie.",
                         parent=mw, period=8000)
-                self._local_rows += fresh
-                self._save_state()
+                self._keep_local_rows(fresh)
                 saved = fresh
+            elif not sip.isdeleted(self):
+                self._added.update({row["id"]: row for row in saved})
+            if sip.isdeleted(self):
+                return
             def append_when_idle():
                 if sip.isdeleted(self) or mw.col is not self._collection:
                     return
@@ -515,6 +520,35 @@ class WordQueuePanel(QDockWidget):
         mw.taskman.run_in_background(
             lambda: word_queue.add_rows([row[column] for row in fresh], self._cfg), done,
             uses_collection=False)
+
+    def _keep_local_rows(self, fresh: list[dict]) -> None:
+        """Persist offline words into whichever panel owns this state file now.
+
+        A closed panel must not save its stale copy of the file over a panel
+        opened meanwhile — that one gets the rows (with its own ids) instead.
+        """
+        target = self
+        if sip.isdeleted(self):
+            live = word_queue._panel
+            alive = live is not None and not sip.isdeleted(live)
+            target = live if alive and live._state.path == self._state.path else None
+        if target is None:
+            state = QueueState("", {}, path=self._state.path)  # re-read: never save a stale copy
+            start = min([0] + [row["id"] for row in state.data["local_rows"]])
+            state.data["local_rows"] += [{**row, "id": start - n} for n, row in enumerate(fresh, 1)]
+            try:
+                state.save()
+            except Exception:
+                log.exception("word_queue: nie zapisano haseł lokalnych")
+            return
+        if target is not self:
+            for row in fresh:
+                target._next_local_id -= 1
+                row["id"] = target._next_local_id
+        target._local_rows += fresh
+        target._save_state()
+        if target is not self and not target._busy:  # busy: the next refill shows them
+            target._append_rows(fresh)
 
     def _append_rows(self, fresh: list[dict]) -> None:
         if not fresh:
@@ -566,12 +600,22 @@ class WordQueuePanel(QDockWidget):
             # wciąż są na liście (schowane), więc pomyłkę da się cofnąć.
             # Wyjątkiem są wiersze lokalne: n8n o nich nie wie, więc ich ptaszki
             # przenosimy przez odświeżenie sami, inaczej wracałyby jako do zrobienia.
-            remapped = self._state.resolve_local_rows(rows, self._cfg["word_column"])
+            flag = self._cfg["flag_column"]
+            done_local = {row_id for row_id in self._marked if row_id < 0}
+            remapped = self._state.resolve_local_rows(rows, self._cfg["word_column"], done_local)
             self._picked = {remapped.get(row_id, row_id) for row_id in self._picked}
-            self._marked = ({r["id"] for r in rows if r.get(self._cfg["flag_column"])}
-                            | {row_id for row_id in self._marked if row_id < 0})
+            self._marked = ({r["id"] for r in rows if r.get(flag)}
+                            | {row_id for row_id in done_local if row_id not in remapped})
+            # A GET that started before our POST does not know the new rows yet.
+            fetched = {row["id"] for row in rows}
+            for row_id in fetched & set(self._added):
+                del self._added[row_id]
+            late = [row for row_id, row in self._added.items() if row_id not in fetched]
             self._done_count = 0  # licznik jest per sesja, nie per tabela
-            self._rebuild(self._ordered(rows + self._local_rows))
+            self._rebuild(self._ordered(rows + late + self._local_rows))
+            for old, new in remapped.items():
+                if old in done_local:
+                    self._set_row(None, True, row_id=new)
             self._settle_owed()
 
         mw.taskman.run_in_background(lambda: self._fetch_queue(self._cfg), done,
@@ -1085,7 +1129,12 @@ class WordQueuePanel(QDockWidget):
         done_words = {p["row_id"]: p["word"] for p in proposals
                       if p["word"] in words and p.get("row_id") is not None}
         # Debt goes to disk BEFORE the transaction: a crash after commit still reaches n8n.
-        self._owe({row_id: word for row_id, word in done_words.items() if row_id not in self._marked})
+        if not self._owe({row_id: word for row_id, word in done_words.items() if row_id not in self._marked}):
+            for row_id in done_words:
+                self._state.data["owed"].pop(str(row_id), None)
+            tooltip("AI: nie zapisano stanu kolejki na dysku — karty nie zostały dodane. "
+                    "Propozycje czekają pod „Odzyskane propozycje”.", parent=mw, period=8000)
+            return
         try:
             added, result = ai_senses.add_notes(self._addcards, chosen, self._cfg)
         except Exception:  # noqa: BLE001
@@ -1175,7 +1224,7 @@ class WordQueuePanel(QDockWidget):
                     if after:
                         after(False)
                     return
-            note[field] = word
+            note[field] = html.escape(word, quote=False)  # n8n holds plain text
             self._bound_note = note
             self._bound_row_id = self.current_row_id()
             editor.loadNote()

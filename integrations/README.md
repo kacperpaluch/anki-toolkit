@@ -18,7 +18,10 @@ AnkiConnect i jego forków; gdy port jest zajęty, Anki pokazuje ostrzeżenie pr
 starcie profilu.
 
 Mostek przyjmuje wyłącznie POST-y z polami notatki (`{"fields": {...}}`)
-i zapisuje bufor edytora przed wypełnieniem pól. Żądanie jest związane
+i zapisuje bufor edytora przed wypełnieniem pól. Wartości są zwykłym tekstem —
+`<` czy `&` trafiają do pola jako znaki, nie znaczniki. Skrypt, który wysyła
+gotowy HTML, dodaje `"html": true`. Separator doklejania (`separator`, domyślnie
+`<br><br>`) jest zawsze HTML-em. Żądanie jest związane
 z konkretną notatką i profilem; timeout anuluje oczekującą zmianę. Okno „Dodaj”
 musi być otwarte, inaczej endpoint zwraca błąd.
 

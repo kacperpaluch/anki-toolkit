@@ -530,7 +530,7 @@ class AIGeneratorTab(QWidget):
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     # ------------------------------------------------------------------
     # Save

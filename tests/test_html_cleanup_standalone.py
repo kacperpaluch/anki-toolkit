@@ -26,14 +26,29 @@ class DefaultRuleTests(unittest.TestCase):
     def test_other_field_preserves_division_as_break(self):
         value, counts = cleaning.clean_field("def", "<div>one</div><div>two</div>", self.rules)
         self.assertEqual(value, "one<br>two")
-        self.assertEqual(counts, {1: 4, 3: 1, 4: 2})
+        self.assertEqual(counts, {1: 3, 4: 2})
 
     def test_nested_divs_collapse(self):
         value, _counts = cleaning.clean_field("def", "<div>a<div>b</div></div>", self.rules)
         self.assertEqual(value, "a<br>b")
 
 
+    def test_example_separator_survives_for_the_splitter(self):
+        spec = importlib.util.spec_from_file_location(
+            "standalone_splitting", _PATH.parents[1] / "field_splitter" / "splitting.py")
+        splitting = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(splitting)
+        value, _counts = cleaning.clean_field("przyklad", "ex one<br><br><br>ex two<br><br>", self.rules)
+        self.assertEqual(value, "ex one<br><br>ex two")
+        parts = splitting.split_field_value(value, "<br><br>", ["p1", "p2"])
+        self.assertEqual(parts, {"p1": "ex one", "p2": "ex two"})
+
+
 class RuleEngineTests(unittest.TestCase):
+    def test_unknown_group_in_replacement_skips_the_rule(self):
+        rules = [{"on": True, "find": "(a)", "to": r"\g<missing>", "regex": True, "fields": ""}]
+        self.assertEqual(cleaning.clean_field("f", "abc", rules), ("abc", {}))
+
     def test_plain_text_rule_is_not_a_pattern(self):
         rules = [{"on": True, "find": "a.c", "to": "X", "regex": False, "fields": ""}]
         value, counts = cleaning.clean_field("f", "abc a.c", rules)

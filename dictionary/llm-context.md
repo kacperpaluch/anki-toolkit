@@ -9,7 +9,7 @@ Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słownik
 | Plik | Rola |
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
-| `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
+| `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`, gdzie `safe_word` = czytelna część + 8 znaków SHA-1 dokładnego hasła) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
 | `editor_ui.py` | Hooki edytora — przyciski w toolbarze, odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; pobieranie leci na kopii z `detach_note()`, a wynik wraca przez `saveNow(apply)` → `merge_editor_note()` (pole zmienione w trakcie zostaje przy użytkowniku); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch; natywny pasek `mw.progress` przez `common.progress` (`start_progress`/`update_progress`/`finish_progress`); używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |

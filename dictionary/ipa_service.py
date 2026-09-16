@@ -17,6 +17,33 @@ from ..common.http import fetch_text
 IPASource = Literal["cambridge", "oxford", "wiktionary"]
 
 
+class _SpanText:
+    """Whole text of one span, nested markup included (`ˈwɔː.<span>t</span>ər`)."""
+
+    def __init__(self):
+        self.depth = 0
+        self.parts: list[str] = []
+
+    def start(self, tag: str, opens: bool) -> None:
+        if tag != "span":
+            return
+        if self.depth:
+            self.depth += 1
+        elif opens:
+            self.depth, self.parts = 1, []
+
+    def data(self, data: str) -> None:
+        if self.depth:
+            self.parts.append(data)
+
+    def end(self, tag: str) -> Optional[str]:
+        """The finished text when the outer span closes, else None."""
+        if tag != "span" or not self.depth:
+            return None
+        self.depth -= 1
+        return None if self.depth else "".join(self.parts).strip().strip("/").strip()
+
+
 @dataclass
 class IPAResult:
     """Container for IPA transcription results."""
@@ -36,7 +63,7 @@ class OxfordIPAExtractor(HTMLParser):
         self.us_ipa: Optional[str] = None
         self.current_variant: Optional[str] = None
         self.phonetics_depth = 0
-        self.capture_next_data = False
+        self.phon = _SpanText()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]):
         attrs_dict = dict(attrs)
@@ -52,24 +79,21 @@ class OxfordIPAExtractor(HTMLParser):
             elif self.phonetics_depth > 0:
                 self.phonetics_depth += 1
 
-        if tag == "span" and "class" in attrs_dict and self.phonetics_depth > 0:
-            classes = set(attrs_dict["class"].split())
-            if "phon" in classes:
-                self.capture_next_data = True
+        classes = set((attrs_dict.get("class") or "").split())
+        self.phon.start(tag, self.phonetics_depth > 0 and "phon" in classes)
 
     def handle_data(self, data: str):
-        if self.capture_next_data:
-            ipa_text = data.strip().strip('/')
-            if ipa_text and self.current_variant:
-                if self.current_variant == "uk" and not self.uk_ipa:
-                    self.uk_ipa = ipa_text
-                    logger.debug(f"Found Oxford UK IPA for '{self.word}': /{ipa_text}/")
-                elif self.current_variant == "us" and not self.us_ipa:
-                    self.us_ipa = ipa_text
-                    logger.debug(f"Found Oxford US IPA for '{self.word}': /{ipa_text}/")
-            self.capture_next_data = False
+        self.phon.data(data)
 
     def handle_endtag(self, tag: str):
+        ipa_text = self.phon.end(tag)
+        if ipa_text and self.current_variant:
+            if self.current_variant == "uk" and not self.uk_ipa:
+                self.uk_ipa = ipa_text
+                logger.debug(f"Found Oxford UK IPA for '{self.word}': /{ipa_text}/")
+            elif self.current_variant == "us" and not self.us_ipa:
+                self.us_ipa = ipa_text
+                logger.debug(f"Found Oxford US IPA for '{self.word}': /{ipa_text}/")
         if tag == "div" and self.phonetics_depth > 0:
             self.phonetics_depth -= 1
             if self.phonetics_depth == 0:
@@ -85,7 +109,7 @@ class CambridgeIPAExtractor(HTMLParser):
         self.uk_ipa: Optional[str] = None
         self.us_ipa: Optional[str] = None
         self.current_variant: Optional[str] = None
-        self.in_ipa_span = False
+        self.ipa = _SpanText()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]):
         attrs_dict = dict(attrs)
@@ -98,25 +122,21 @@ class CambridgeIPAExtractor(HTMLParser):
                 elif "us" in classes:
                     self.current_variant = "us"
 
-        if tag == "span" and "class" in attrs_dict and self.current_variant:
-            classes = set(attrs_dict["class"].split())
-            if "ipa" in classes and "dipa" in classes:
-                self.in_ipa_span = True
+        classes = set((attrs_dict.get("class") or "").split())
+        self.ipa.start(tag, bool(self.current_variant) and {"ipa", "dipa"} <= classes)
 
     def handle_data(self, data: str):
-        if self.in_ipa_span and self.current_variant:
-            ipa_text = data.strip().strip('/')
-            if ipa_text:
-                if self.current_variant == "uk" and not self.uk_ipa:
-                    self.uk_ipa = ipa_text
-                    logger.debug(f"Found Cambridge UK IPA for '{self.word}': /{ipa_text}/")
-                elif self.current_variant == "us" and not self.us_ipa:
-                    self.us_ipa = ipa_text
-                    logger.debug(f"Found Cambridge US IPA for '{self.word}': /{ipa_text}/")
+        self.ipa.data(data)
 
     def handle_endtag(self, tag: str):
-        if tag == "span":
-            self.in_ipa_span = False
+        ipa_text = self.ipa.end(tag)
+        if ipa_text and self.current_variant:
+            if self.current_variant == "uk" and not self.uk_ipa:
+                self.uk_ipa = ipa_text
+                logger.debug(f"Found Cambridge UK IPA for '{self.word}': /{ipa_text}/")
+            elif self.current_variant == "us" and not self.us_ipa:
+                self.us_ipa = ipa_text
+                logger.debug(f"Found Cambridge US IPA for '{self.word}': /{ipa_text}/")
 
 
 class WiktionaryIPAExtractor:

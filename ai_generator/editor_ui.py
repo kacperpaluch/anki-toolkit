@@ -91,7 +91,7 @@ def _run_editor_generation(editor: Editor, label: str, only_fields=None,
                 raise
 
         try:
-            mw.taskman.run_in_background(task, on_done)
+            mw.taskman.run_in_background(task, on_done, uses_collection=False)
         except Exception:
             finish_editor_operation(editor, token)
             raise

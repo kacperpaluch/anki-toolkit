@@ -5,9 +5,11 @@ import json
 import logging
 import os
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
-from .config import AUDIO_EXTENSIONS, LOUDNORM_OPTS, MAX_WORKERS
+from .config import AUDIO_EXTENSIONS, FFMPEG_TIMEOUT_S, LOUDNORM_OPTS, MAX_WORKERS
 
 log = logging.getLogger(__name__)
 
@@ -44,24 +46,52 @@ def needs_processing(path: str, filename: str, history: dict) -> bool:
         return True
 
 
+def _run_ffmpeg(args: list, should_cancel=None, timeout: float = FFMPEG_TIMEOUT_S) -> bool:
+    """Run ffmpeg; False when cancelled. Kills the process on cancel or deadline."""
+    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            _out, error = process.communicate(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            cancelled = bool(should_cancel and should_cancel())
+            if cancelled or time.monotonic() > deadline:
+                process.kill()
+                process.communicate()
+                if cancelled:
+                    return False
+                raise TimeoutError(f"ffmpeg przekroczył {int(timeout)} s")
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, args, stderr=error)
+    return True
+
+
 def normalize_file(path: str, ffmpeg_cmd: str, loudnorm_opts: str, should_cancel=None) -> tuple[bool, list | None]:
     extension = os.path.splitext(path)[1] or ".mp3"
-    temp_path = path + ".temp" + extension
+    temp_path = None
     try:
         if should_cancel and should_cancel():
             return False, None
         original = _stamp(path)
-        subprocess.run([ffmpeg_cmd, "-i", path, "-af", loudnorm_opts, "-y", temp_path], check=True, capture_output=True)
-        if (should_cancel and should_cancel()) or _stamp(path) != original:
-            os.remove(temp_path)
+        # Our own unique file, outside the scanned media folder but on the same
+        # filesystem (the profile folder), so os.replace stays atomic and no
+        # existing media file can be overwritten or removed by this operation.
+        fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(os.path.dirname(os.path.abspath(path))),
+                                         prefix=".atk-normalize-", suffix=extension)
+        os.close(fd)
+        finished = _run_ffmpeg([ffmpeg_cmd, "-i", path, "-af", loudnorm_opts, "-y", temp_path], should_cancel)
+        if not finished or (should_cancel and should_cancel()) or _stamp(path) != original:
             return False, None
         os.replace(temp_path, path)
+        temp_path = None
         return True, _stamp(path)
     except Exception as error:
         log.error("Audio normalizer failed for %s: %s", os.path.basename(path), error)
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         return False, None
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def process_media_dir(media_dir: str, progress_callback=None, max_workers: int = MAX_WORKERS,

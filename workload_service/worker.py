@@ -291,7 +291,7 @@ def download_replica(data_dir, identity, state, event):
     event["reason"] = "Pobrano kolekcję z serwera. Kopia bezpieczeństwa: " + backup.name
 
 
-def _run(data_dir, settings, command, event):
+def _run(data_dir, settings, command, event, config=None):
     from anki.collection import Collection
     data_dir.mkdir(parents=True, exist_ok=True)
     with (data_dir / "worker.lock").open("a") as lock:
@@ -299,6 +299,9 @@ def _run(data_dir, settings, command, event):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise WorkloadError("Another Workload process is running") from None
+        if config is not None:
+            settings = settings_from(config, data_dir)
+            event["apply"] = command == "restore" or (command == "run" and settings.get("apply", False))
         connection = read_json(data_dir / "connection.json", {})
         if connection:
             os.environ["ANKI_SYNC_URL"] = connection["url"]
@@ -391,12 +394,14 @@ def _run(data_dir, settings, command, event):
             print("Dry run: no limit changes uploaded.", flush=True)
 
 
-def run(data_dir, settings, command):
+def run(data_dir, settings, command, config=None):
+    """`config`: re-read the settings under the worker lock, so a change saved
+    by the dashboard meanwhile (e.g. apply switched off) is the one obeyed."""
     event = {"started": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
              "command": command, "apply": command == "restore" or (command == "run" and settings.get("apply", False)),
              "status": "running", "changes": []}
     try:
-        _run(data_dir, settings, command, event)
+        _run(data_dir, settings, command, event, config)
         event["status"] = "success"
     except Exception as error:
         event["status"] = "error"
@@ -456,10 +461,10 @@ def main():
     args = parser.parse_args()
     if args.command == "dashboard":
         from dashboard import serve
-        serve(args.data.resolve())
+        serve(args.data.resolve(), args.config)
         return
     if args.command != "serve":
-        run(args.data.resolve(), settings_from(args.config, args.data), args.command)
+        run(args.data.resolve(), settings_from(args.config, args.data), args.command, args.config)
         return
     last_run = None
     while True:
@@ -473,7 +478,7 @@ def main():
         already = stored.get("last_success") == today if settings.get("apply") else last_run == today
         if not already and now.strftime("%H:%M") >= settings.get("run_at", "05:00"):
             try:
-                run(args.data.resolve(), settings, "run")
+                run(args.data.resolve(), settings, "run", args.config)
                 last_run = today
             except Exception as error:
                 print(str(error) if isinstance(error, WorkloadError) else type(error).__name__, flush=True)

@@ -121,15 +121,24 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   wklejenie zapisałoby duplikat. Zapasowe ujemne `id` wydaje licznik
   `_next_local_id`, nigdy `min(_local_rows)` — inaczej równoległe zapisy dostają
   ten sam numer. Nieudany zapis degraduje się do wiersza lokalnego, nie do
-  wyjątku: hasło ma dać się przerobić także offline.
+  wyjątku: hasło ma dać się przerobić także offline — również gdy okno „Dodaj”
+  zamknięto w trakcie (`_keep_local_rows`: żywy panel tego samego pliku stanu
+  przejmuje wiersze z własnymi `id`, inaczej plik jest czytany na nowo i
+  uzupełniany; zamknięty panel nigdy nie zapisuje swojej nieaktualnej kopii).
+- `_added` trzyma wiersze zapisane w n8n, dopóki nie zobaczy ich odświeżenie:
+  GET rozpoczęty przed POST-em nie może ich usunąć z listy ani odblokować
+  ponownego zapisu tego samego hasła.
 - Wiersz lokalny (fallback) to zwykły wiersz listy z UJEMNYM `id` (`_local_rows`).
   `_set_row` zamiast PATCH-a domyka tę samą ścieżkę `finished` gotowym wynikiem.
   Wiersze lokalne są trwałe; pełny GET łączy je z pojedynczym pasującym hasłem
-  w n8n i przenosi ID w propozycjach, powiązaniach i oczekujących flagach. Nie
+  w n8n i przenosi ID w propozycjach, powiązaniach i oczekujących flagach;
+  odhaczony wiersz lokalny staje się długiem (`owed`) i PATCH-em na nowym `id`. Nie
   dokładaj drugiego trybu pracy panelu ani pola „to jest lokalne": znak `id`
   wystarcza, a `refill` musi te wiersze i ich ptaszki przenieść sam, bo n8n
   ich nie odtworzy.
 
+- Mostek i panel traktują wartości jako tekst i escapują je przed wpisaniem do
+  pola; surowy HTML tylko z `"html": true`. Separator zawsze jest HTML-em.
 - `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
   samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
 
@@ -148,7 +157,8 @@ Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany 
 - `drafts`: każdy ukończony wynik AI; stop kończy bieżące hasło, przycisk
   odzyskiwania otwiera propozycje bez modelu. Znikają po zapisie kart.
 - `owed` (id wiersza → hasło): karty są, PATCH „zrobione" jeszcze nie przeszedł.
-  Zapisywane PRZED `col.add_notes`, usuwane po udanym PATCH-u. Po każdym
+  Zapisywane PRZED `col.add_notes`, usuwane po udanym PATCH-u. Nieudany zapis
+  długu przerywa dodawanie kart (propozycje zostają w `drafts`). Po każdym
   odświeżeniu `_settle_owed` sprawdza kolekcję (`find_word_notes`): są karty →
   ponów PATCH; brak kart (crash przed commitem) → zapomnij dług, zostaw draft.
 - Undo NIE jest śledzone (świadomie, `ponytail:` w `queue_state.py`): cofnięcie

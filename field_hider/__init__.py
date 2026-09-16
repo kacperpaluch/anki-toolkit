@@ -70,6 +70,7 @@ def on_editor_buttons_init(buttons, editor):
             func=_toggle_hidden_fields,
             tip="Pokaż/ukryj schowane pola",
             label="👁",
+            disables=False,  # usable before any field has focus
         )
     )
     return buttons

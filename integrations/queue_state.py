@@ -18,11 +18,12 @@ log = logging.getLogger(__name__)
 
 
 class QueueState:
-    def __init__(self, collection_path, cfg, directory=None):
+    def __init__(self, collection_path, cfg, directory=None, path=None):
         scope = [str(Path(collection_path).resolve()), cfg.get("n8n_url", "").rstrip("/"),
                  cfg.get("table_id", ""), cfg.get("word_column", ""), cfg.get("flag_column", "")]
         key = hashlib.sha256(json.dumps(scope).encode()).hexdigest()[:24]
-        self.path = Path(directory or Path(__file__).resolve().parent.parent / "user_files") / f"word_queue_{key}.json"
+        self.path = Path(path) if path else (
+            Path(directory or Path(__file__).resolve().parent.parent / "user_files") / f"word_queue_{key}.json")
         self.data = {"drafts": [], "local_rows": [], "owed": {}}
         if not self.path.exists():
             return
@@ -57,8 +58,12 @@ class QueueState:
     def drop_drafts(self, row_ids):
         self.data["drafts"] = [p for p in self.data["drafts"] if p["row_id"] not in row_ids]
 
-    def resolve_local_rows(self, rows, column):
-        """An uncertain POST may have landed: move a local word onto its unique n8n row."""
+    def resolve_local_rows(self, rows, column, done=()):
+        """An uncertain POST may have landed: move a local word onto its unique n8n row.
+
+        A local row already ticked (`done` ids) becomes a debt on its n8n row,
+        so the tick is sent instead of silently reverting to "to do".
+        """
         matches = {}
         for row in rows:
             matches.setdefault(str(row.get(column, "")).strip().casefold(), []).append(row["id"])
@@ -70,6 +75,9 @@ class QueueState:
         for old, new in remapped.items():
             if str(old) in self.data["owed"]:
                 self.data["owed"][str(new)] = self.data["owed"].pop(str(old))
+            elif old in done:
+                local = next(r for r in self.data["local_rows"] if r["id"] == old)
+                self.data["owed"][str(new)] = str(local.get(column, "")).strip()
             for draft in self.data["drafts"]:
                 if draft["row_id"] == old:
                     draft["row_id"] = new

@@ -56,21 +56,31 @@ def _card_data(col, deck_ids):
     reciprocal = {did: 0.0 for did in deck_ids}
     due_counts = {did: {} for did in deck_ids}
     learning = dict(empty)
-    # odid wskazuje talię macierzystą karty wyciągniętej do talii filtrowanej.
-    for did, odid, queue, card_type, due, ivl in col.db.all(
-        "select did, odid, queue, type, due, ivl from cards where queue != -1"
+    # odid wskazuje talię macierzystą karty wyciągniętej do talii filtrowanej;
+    # jej `due` jest wtedy pozycją w tej talii (bywa ujemne), a prawdziwy
+    # termin leży w `odue`.
+    for did, odid, queue, card_type, due, odue, ivl in col.db.all(
+        "select did, odid, queue, type, due, odue, ivl from cards where queue != -1"
     ):
         home = odid or did
         if home not in new_left:
             continue
+        if odid and odue:
+            due = odue
         if queue == 0 or (queue in (-2, -3) and card_type == 0):
             new_left[home] += 1  # zakopane nowe karty wrócą, więc liczą się do zapasu
         elif queue == 1:
             learning[home] += 1
         elif queue in (2, 3):  # tylko tu `due` jest numerem dnia, nie znacznikiem czasu
             offset = int(due) - today
-            counts = due_counts[home]
-            counts[offset] = counts.get(offset, 0) + 1
+            if queue == 3 and offset <= 0:
+                # Nauka międzydniowa na dziś kosztuje jak nauka, nie jak powtórka.
+                learning[home] += 1
+            else:
+                counts = due_counts[home]
+                counts[offset] = counts.get(offset, 0) + 1
+            if queue == 3 and card_type == 1:
+                continue  # jeszcze nie powtórka: brak interwału do obciążenia
             review_cards[home] += 1
             # Karta z interwałem N dni kosztuje 1/N powtórki dziennie.
             reciprocal[home] += 1.0 / max(1, int(ivl or 0))

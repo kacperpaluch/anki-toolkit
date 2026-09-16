@@ -4,6 +4,8 @@ import json
 import logging
 import urllib.request
 
+from ...common.http import urlopen as safe_urlopen
+
 logger = logging.getLogger(__name__)
 
 _CACHE = {}
@@ -20,7 +22,7 @@ def _fetch_simple(cache_key, url, headers, keep, fallbacks, force):
     models = []
     try:
         req = urllib.request.Request(url, headers=headers or {})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with safe_urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         models = [
             mid for item in data.get("data", [])
@@ -76,7 +78,7 @@ def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
     models = []
     try:
         req = urllib.request.Request("https://openrouter.ai/api/v1/models")
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with safe_urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for item in data.get("data", []):
             pricing_raw = item.get("pricing", {})

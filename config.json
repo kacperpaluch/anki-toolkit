@@ -339,7 +339,7 @@
       {
         "on": true,
         "name": "Bloki <div> → <br>",
-        "find": "</?div\\b[^>]*>",
+        "find": "(?:\\s*</?div\\b[^>]*>)+",
         "to": "<br>",
         "regex": true,
         "fields": "!ang",
@@ -356,9 +356,9 @@
       },
       {
         "on": true,
-        "name": "Scal sąsiadujące <br>",
-        "find": "(?:<br>\\s*){2,}",
-        "to": "<br>",
+        "name": "Scal nadmiarowe <br> (akapit zostaje)",
+        "find": "(?:<br>\\s*){3,}",
+        "to": "<br><br>",
         "regex": true,
         "fields": "!ang",
         "repeat": false

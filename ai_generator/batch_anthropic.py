@@ -2,8 +2,11 @@
 
 import json
 import logging
+import urllib.parse
+from datetime import datetime
 
-from ..common import fetch_url, post_json
+from ..common import fetch_url
+from ..common.http import post_create
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,7 @@ def first_text(content):
 
 
 def submit_batch(items, config: dict) -> tuple:
-    """Submit one Anthropic batch and return (batch_id, error)."""
+    """Submit one Anthropic batch: ({"id"} | {"uncertain": True} | None, error)."""
     headers = _headers(config)
     if headers is None:
         return None, "Brak klucza API Anthropic — uzupełnij w Ustawieniach."
@@ -54,7 +57,7 @@ def submit_batch(items, config: dict) -> tuple:
         },
     } for item in items]
     body = json.dumps({"requests": requests}).encode("utf-8")
-    raw, err = post_json(
+    raw, err, uncertain = post_create(
         ANTHROPIC_BATCHES_URL,
         body,
         dict(headers, **{"content-type": "application/json"}),
@@ -63,15 +66,40 @@ def submit_batch(items, config: dict) -> tuple:
         log=logger,
     )
     if raw is None:
-        return None, err
+        return ({"uncertain": True} if uncertain else None), err
     try:
         batch_id = json.loads(raw.decode("utf-8")).get("id")
     except ValueError as e:
-        return None, f"Nieczytelna odpowiedź API: {e}"
+        return {"uncertain": True}, f"Nieczytelna odpowiedź API: {e}"
     if not batch_id:
-        return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
+        return {"uncertain": True}, "Nieoczekiwana odpowiedź API (brak id batcha)."
     logger.info(f"Batch Anthropic wysłany: {batch_id} ({len(items)} zapytań)")
-    return batch_id, None
+    return {"id": batch_id}, None
+
+
+def list_batches(config: dict, cursor=None):
+    """One page of batches, newest first: (batches, next cursor) or None."""
+    headers = _headers(config)
+    if headers is None:
+        return None
+    query = {"limit": 100, **({"after_id": cursor} if cursor else {})}
+    raw = fetch_url(f"{ANTHROPIC_BATCHES_URL}?{urllib.parse.urlencode(query)}",
+                    headers=headers, timeout=_timeout(config))
+    try:
+        page = json.loads(raw.decode("utf-8"))
+    except (AttributeError, ValueError):
+        return None
+    return page.get("data") or [], page.get("last_id") if page.get("has_more") else None
+
+
+def batch_created(batch: dict) -> float:
+    stamp = str(batch.get("created_at") or "").replace("Z", "+00:00")
+    return datetime.fromisoformat(stamp).timestamp()
+
+
+def batch_matches(batch: dict, record: dict) -> bool:
+    counts = batch.get("request_counts") or {}
+    return sum(int(v or 0) for v in counts.values()) == record.get("count")
 
 
 def poll_batch(record: dict, config: dict) -> tuple:

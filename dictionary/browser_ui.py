@@ -1,10 +1,10 @@
 from aqt import mw
-from aqt.operations import CollectionOp
 from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
 from ..common import ADDON_NAME, start_progress, update_progress, finish_progress, unique
+from ..common.editor_operation import save_detached_notes, snapshot_fields
 
 from .service import process_note_group
 
@@ -38,6 +38,10 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", parent=mw, period=5000)
         return
+    col = mw.col
+    before = snapshot_fields(notes)
+    for note in notes:
+        note._toolkit_collection = col  # media writes stay bound to this profile
 
     cancel_flag = start_progress("Pobieranie wymowy", len(notes), "Słownik")
 
@@ -82,17 +86,8 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
             parts.append("przerwano")
         summary = " · ".join(parts) if parts else "Brak zmian."
 
-        if not changed_notes:
-            tooltip(summary, parent=mw, period=4000)
-            return
-        # One undoable operation for the whole batch (collection write on
-        # the main thread, UI refresh handled by CollectionOp).
-        CollectionOp(
-            parent=browser,
-            op=lambda col: col.update_notes(changed_notes),
-        ).success(
-            lambda _changes: tooltip(summary, parent=mw, period=4000)
-        ).run_in_background()
+        # One undoable operation for the whole batch; fresh notes, same profile.
+        save_detached_notes(browser, col, changed_notes, before, summary)
 
     mw.taskman.run_in_background(task, on_done)
 

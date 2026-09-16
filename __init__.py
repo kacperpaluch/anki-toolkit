@@ -53,8 +53,11 @@ def _setup_menu(*_):
         # triggered(bool) nie może trafić do open_settings(page) jako nazwa strony.
         action.triggered.connect(lambda _checked=False, callback=callback: callback())
         menu.addAction(action)
-    # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd `None`.
-    mw.addonManager.setConfigAction(__name__, lambda: open_settings() and None)
+    # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`
+    # (`open_settings() and None` dawało False po „Anuluj”).
+    def config_action():
+        open_settings()
+    mw.addonManager.setConfigAction(__name__, config_action)
 
 
 if hasattr(gui_hooks, "main_window_did_init"):

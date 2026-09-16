@@ -69,7 +69,7 @@ def clean_field(name: str, value: str, rules: list[dict]) -> tuple[str, dict[int
             previous = value
             try:
                 value, replaced = _replace_bounded(value, find, to, rule.get("regex"))
-            except re.error:
+            except (re.error, IndexError):  # bad pattern or unknown group in the replacement
                 break
             total += replaced
             if not replaced or value == previous:

@@ -34,6 +34,7 @@ from typing import Optional
 from ..common import clean_html_normalized, safe_str
 # Keep these orchestration seams module-level and call them unqualified below:
 # tests patch batch_backfill._submit_* / _poll_* without reaching into backends.
+from . import batch_anthropic, batch_openai, batch_openrouter
 from .batch_anthropic import first_text as _first_text
 from .batch_anthropic import poll_batch as _anthropic_poll_batch
 from .batch_anthropic import submit_batch as _anthropic_submit_batch
@@ -58,6 +59,13 @@ _ELIGIBLE_PROVIDERS = ("anthropic", "openai", "openrouter")
 _OPENAI_TOKEN_BUDGET = 1_500_000   # per batch; stays under the common 2M org cap
 _OPENAI_OUTPUT_RESERVE = 1000      # est. output tokens counted toward the cap
 _ENQUEUED_LIMIT_HINT = "enqueued"  # substring of OpenAI's "Enqueued token limit" error
+# Prefix of every "sent later, not failed" message from submit().
+DEFERRED_NOTE = "OpenAI: limit kolejki tokenów org"
+
+
+def only_deferred(errors) -> bool:
+    """True when submit() postponed work but nothing actually failed."""
+    return bool(errors) and all(e.startswith(DEFERRED_NOTE) for e in errors)
 
 # OpenAI's enqueued-token counter can stay stuck for hours after a wave of
 # failed/completed batches (observed 2026-07-04: every create 400'd for 2h+
@@ -158,13 +166,19 @@ def unowned_records() -> int:
     store = _load_store()
     return sum(not entry.get("col") for entry in
                store["batches"] + store.get("jobs", [])
-               if entry.get("status") in ("in_progress", "active"))
+               if entry.get("status") in (*_PENDING_STATUSES, "active"))
+
+
+# `uncertain`: the create request may have reached the provider, but no id came
+# back. Its fields count as in flight until the batch is found or proven absent,
+# otherwise the next tick would pay for the same requests twice.
+_PENDING_STATUSES = ("in_progress", "uncertain")
 
 
 def _all_pending() -> list:
     """Every in-flight batch, including other profiles' — the OpenAI enqueued
     token cap is per organization, not per collection."""
-    return [b for b in _load_store()["batches"] if b.get("status") == "in_progress"]
+    return [b for b in _load_store()["batches"] if b.get("status") in _PENDING_STATUSES]
 
 
 def _pending_openai_tokens() -> int:
@@ -359,10 +373,27 @@ def _new_record(batch_id: str, provider: str, items) -> dict:
         "id": batch_id,
         "provider": provider,
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "submitted_at": time.time(),
         "count": len(items),
         "status": "in_progress",
         "map": _record_map(items),
     }
+
+
+def _from_backend(meta, provider: str, items, err):
+    """Backend result → (record | None, error). An uncertain create becomes a
+    placeholder record that blocks its fields until reconciled."""
+    if not meta:
+        return None, err
+    if meta.get("uncertain"):
+        record = _new_record("uncertain-" + uuid.uuid4().hex[:12], provider, items)
+        record["status"] = "uncertain"
+        record.update({k: v for k, v in meta.items() if k != "uncertain"})
+        logger.warning(f"Batch {provider}: wynik wysyłki niepewny ({err}) — sprawdzę u dostawcy")
+        return record, None
+    record = _new_record(meta["id"], provider, items)
+    record.update({k: v for k, v in meta.items() if k != "id"})
+    return record, None
 
 
 # --------------------------------------------------------------------------
@@ -468,7 +499,7 @@ def _submit_unique(items, config: dict, owner) -> tuple:
                 blocked = True
                 deferred += len(chunk)
                 errors.append(
-                    f"OpenAI: limit kolejki tokenów org — wstrzymuję wysyłkę na "
+                    f"{DEFERRED_NOTE} — wstrzymuję wysyłkę na "
                     f"{_OPENAI_BACKOFF_S // 60} min ({err})"
                 )
             else:
@@ -476,20 +507,17 @@ def _submit_unique(items, config: dict, owner) -> tuple:
                 errors.append(f"OpenAI ({model}): {err}")
     if deferred:
         errors.append(
-            f"OpenAI: limit kolejki tokenów org (~2M) — w locie ~{already + running:,} "
-            f"tok., odłożono {deferred} zapytań. Gdy bieżące batche się skończą "
-            f"(„Sprawdź batche” lub restart Anki), wyślij ten sam batch ponownie — "
-            f"dobierze tylko wciąż puste pola."
+            f"{DEFERRED_NOTE} (~2M) — w locie ~{already + running:,} "
+            f"tok., odłożono {deferred} zapytań. Wyślę je automatycznie, gdy "
+            f"bieżące batche się skończą (sprawdzanie batchy co minutę)."
         )
 
     return records, errors
 
 
 def _submit_anthropic(items, config: dict) -> tuple:
-    batch_id, err = _anthropic_submit_batch(items, config)
-    if not batch_id:
-        return None, err
-    return _new_record(batch_id, "anthropic", items), None
+    meta, err = _anthropic_submit_batch(items, config)
+    return _from_backend(meta, "anthropic", items, err)
 
 
 def _poll_anthropic(record: dict, config: dict) -> tuple:
@@ -497,12 +525,8 @@ def _poll_anthropic(record: dict, config: dict) -> tuple:
 
 
 def _submit_openai(items, config: dict) -> tuple:
-    metadata, err = _openai_submit_batch(items, config)
-    if not metadata:
-        return None, err
-    record = _new_record(metadata["id"], "openai", items)
-    record["input_file_id"] = metadata["input_file_id"]
-    return record, None
+    meta, err = _openai_submit_batch(items, config)
+    return _from_backend(meta, "openai", items, err)
 
 
 def _poll_openai(record: dict, config: dict) -> tuple:
@@ -510,18 +534,18 @@ def _poll_openai(record: dict, config: dict) -> tuple:
 
 
 def _submit_openrouter(items, config: dict) -> tuple:
-    batch_id, err = _openrouter_submit_batch(items, config)
-    if not batch_id:
-        return None, err
-    return _new_record(batch_id, "openrouter", items), None
+    meta, err = _openrouter_submit_batch(items, config)
+    return _from_backend(meta, "openrouter", items, err)
 
 
 def _poll_openrouter(record: dict, config: dict) -> tuple:
     return _openrouter_poll_batch(record, config)
 
 
-_POLLERS = {"anthropic": _poll_anthropic, "openai": _poll_openai,
-            "openrouter": _poll_openrouter}
+# Looked up at call time, so a patched _poll_* is the one that runs.
+_POLLERS = {"anthropic": lambda rec, cfg: _poll_anthropic(rec, cfg),
+            "openai": lambda rec, cfg: _poll_openai(rec, cfg),
+            "openrouter": lambda rec, cfg: _poll_openrouter(rec, cfg)}
 
 
 # --------------------------------------------------------------------------
@@ -540,41 +564,118 @@ def poll_results(config: dict, records=None) -> tuple:
     still = 0
     errors: list = []
     for rec in pending_batches() if records is None else records:
+        if rec.get("status") == "uncertain":
+            state = _reconcile(rec, config)
+            if state == "error":
+                errors.append(rec["id"])
+            else:
+                still += state in ("found", "pending")
+            continue
         poller = _POLLERS.get(rec.get("provider", "anthropic"))
         if poller is None:
             status, results = "error", None
         else:
             status, results = poller(rec, config)
+        if status == "error":
+            _poll_failed(rec)
+            errors.append(rec["id"])
+            continue
+        if rec.get("poll_errors"):
+            _update_record(rec["id"], poll_errors=0, error_since=None)
         if status == "ended":
             ended[rec["id"]] = {"record": rec, "results": results or []}
             logger.info(
                 f"Batch {rec.get('provider', 'anthropic')} zakończony: {rec['id']} "
                 f"({len(results or [])} wyników z {rec.get('count', '?')} zapytań)"
             )
-        elif status == "pending":
-            still += 1
-        elif _batch_expired(rec):
-            # Trwale nieodpytywalny (np. 404 po retencji wyników) — bez tego
-            # wisiałby w in_progress na zawsze i inflight_fields() blokowałoby
-            # jego pola dla wszystkich przyszłych batchy.
-            _set_status([rec["id"]], "expired")
-            logger.warning(f"Batch {rec['id']}: błąd odpytania od >{_BATCH_MAX_AGE_D} dni — porzucam")
         else:
-            errors.append(rec["id"])
+            still += 1
     return ended, still, errors
 
 
-# Anthropic trzyma wyniki 29 dni, batche OpenAI kończą się w 24h — błąd
-# odpytania utrzymujący się tydzień od utworzenia nie jest przejściowy.
-_BATCH_MAX_AGE_D = 7
+# A batch is given up only after the provider has been unreachable for a long,
+# continuously observed stretch — not because it is old. Anthropic keeps
+# results for 29 days, so an Anki left closed for a week must still collect them.
+_GIVE_UP_ERRORS = 60
+_GIVE_UP_AFTER_S = 3 * 86400
+_RESULTS_RETENTION_S = 30 * 86400
 
 
-def _batch_expired(rec: dict) -> bool:
+def _poll_failed(rec: dict) -> None:
+    now = time.time()
+    count = int(rec.get("poll_errors") or 0) + 1
+    since = rec.get("error_since") or now
+    _update_record(rec["id"], poll_errors=count, error_since=since)
+    if (count >= _GIVE_UP_ERRORS and now - since >= _GIVE_UP_AFTER_S) or _age_s(rec) > _RESULTS_RETENTION_S:
+        _set_status([rec["id"]], "expired")
+        logger.warning(f"Batch {rec['id']}: nieodpytywalny od {int((now - since) // 3600)} h "
+                       f"({count} prób) — porzucam")
+
+
+def _age_s(rec: dict) -> float:
+    if rec.get("submitted_at"):
+        return time.time() - float(rec["submitted_at"])
     try:
         created = datetime.strptime(rec.get("created_at", ""), "%Y-%m-%d %H:%M")
     except ValueError:
-        return True  # brak/zepsuta data — i tak nigdy się nie odblokuje
-    return datetime.now() - created > timedelta(days=_BATCH_MAX_AGE_D)
+        return 0.0
+    return (datetime.now() - created).total_seconds()
+
+
+def _update_record(batch_id: str, **fields) -> None:
+    with _LOCK:
+        store = _load_store()
+        for b in store["batches"]:
+            if b.get("id") == batch_id:
+                b.update(fields)
+        _save_store(store)
+
+
+_BACKENDS = {"anthropic": batch_anthropic, "openai": batch_openai, "openrouter": batch_openrouter}
+_MATCH_WINDOW_S = 300   # clock skew + request time between our stamp and the provider's
+_LIST_PAGES = 10
+_UNCERTAIN_GIVE_UP_S = 25 * 3600  # past the 24h window a lost batch is over either way
+
+
+def _reconcile(rec: dict, config: dict) -> str:
+    """Find the batch an uncertain create may have made. Returns
+    'found' / 'absent' (fields released) / 'pending' (not listed yet) / 'error'."""
+    backend = _BACKENDS.get(rec.get("provider"))
+    submitted = float(rec.get("submitted_at") or 0)
+    known = {b.get("id") for b in _load_store()["batches"]}
+    best, cursor, complete = None, None, False
+    for _ in range(_LIST_PAGES):
+        page = backend.list_batches(config, cursor) if backend else None
+        if page is None:
+            if _age_s(rec) > _UNCERTAIN_GIVE_UP_S:
+                _set_status([rec["id"]], "not_created")
+            return "error"
+        batches, cursor = page
+        for batch in batches:
+            try:
+                created = backend.batch_created(batch)
+            except (TypeError, ValueError):
+                continue
+            if created < submitted - _MATCH_WINDOW_S:
+                complete = True
+                break
+            if (batch.get("id") not in known and created <= submitted + _MATCH_WINDOW_S
+                    and backend.batch_matches(batch, rec)):
+                if best is None or abs(created - submitted) < abs(best[0] - submitted):
+                    best = (created, batch["id"])
+        if complete or not cursor:
+            complete = True
+            break
+    if best is not None:
+        _update_record(rec["id"], id=best[1], status="in_progress")
+        logger.info(f"Batch {rec['provider']}: niepewna wysyłka odnaleziona jako {best[1]}")
+        return "found"
+    if complete and time.time() - submitted > 60:
+        _set_status([rec["id"]], "not_created")
+        logger.info(f"Batch {rec['provider']}: niepewna wysyłka nie powstała — pola wracają do kolejki")
+        _cleanup_openai_files([rec], config)
+        return "absent"
+    return "pending"
 
 
 def cleanup_openai_files(records, config: dict) -> None:

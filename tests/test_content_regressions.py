@@ -79,7 +79,7 @@ def _load(name: str, relative: str):
         pkg = types.ModuleType(_PKG)
         pkg.__path__ = [str(ROOT)]
         sys.modules[_PKG] = pkg
-    for sub in ("common", "tts", "ai_generator", "field_splitter"):
+    for sub in ("common", "tts", "ai_generator", "field_splitter", "dictionary"):
         key = f"{_PKG}.{sub}"
         if key in sys.modules:
             continue
@@ -106,6 +106,8 @@ def _load(name: str, relative: str):
 processor = _load("tts.processor", "tts/processor.py")
 editor_operation = _load("common.editor_operation", "common/editor_operation.py")
 splitter = _load("field_splitter.splitting", "field_splitter/splitting.py")
+http = _load("common.http", "common/http.py")
+ipa = _load("dictionary.ipa_service", "dictionary/ipa_service.py")
 
 
 class FakeNote:
@@ -175,6 +177,31 @@ class TestTtsRegeneration(unittest.TestCase):
         items, _ctx = processor.build_note_work_items(complete, [task], ["v1"])
         self.assertEqual(items, [], "kompletne pole generowane po raz drugi")
 
+    def test_separate_split_target_is_not_regenerated(self):
+        task = {"source_field": "src", "target_field": "copy", "mode": "split",
+                "split_separator": "<br><br>"}
+        done = FakeNote({"src": "One<br><br>Two",
+                         "copy": "One[sound:a.mp3]<br><br>Two[sound:b.mp3]"})
+        self.assertEqual(processor.build_note_work_items(done, [task], ["v"])[0], [])
+        stale = FakeNote({"src": "One<br><br>Three", "copy": done["copy"]})
+        self.assertEqual(len(processor.build_note_work_items(stale, [task], ["v"])[0]), 2)
+
+    def test_split_audio_copies_audio_already_in_the_source(self):
+        task = {"source_field": "src", "target_field": "audio", "mode": "split_audio",
+                "split_separator": "|"}
+        note = FakeNote({"src": "one[sound:dict.mp3]|two", "audio": ""})
+        items, ctx = processor.build_note_work_items(note, [task], ["v"])
+        self.assertEqual([item["seg_i"] for item in items], [1])
+        self.assertTrue(processor.apply_results_to_note(note, items, ctx, {(0, 1): "new.mp3"}))
+        self.assertEqual(note["audio"], "[sound:dict.mp3][sound:new.mp3]")
+        self.assertEqual(processor.build_note_work_items(note, [task], ["v"])[0], [])
+
+    def test_speech_text_keeps_word_boundaries_and_drops_audio(self):
+        task = {"source_field": "ang", "target_field": "audio", "mode": "single"}
+        note = FakeNote({"ang": "<div>give</div><div>up</div>[sound:x.mp3] <b>c</b>at", "audio": ""})
+        items, _ctx = processor.build_note_work_items(note, [task], ["v"])
+        self.assertEqual(items[0]["text"], "give up cat")
+
     def test_partial_split_audio_retry_preserves_unmapped_old_recordings(self):
         task = {"source_field": "src", "target_field": "audio", "mode": "split_audio",
                 "split_separator": "|"}
@@ -219,6 +246,78 @@ class TestTtsRegeneration(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Edytor — wynik z tła nie nadpisuje tego, co user wpisał w międzyczasie
 # ---------------------------------------------------------------------------
+
+class TestIpaMarkup(unittest.TestCase):
+    def test_nested_markup_keeps_the_whole_transcription(self):
+        cambridge = ipa.CambridgeIPAExtractor("water")
+        cambridge.feed('<span class="uk dpron-i">/<span class="ipa dipa">ˈwɔː.'
+                       '<span class="sp dsp">t</span>ər</span>/</span>')
+        self.assertEqual(cambridge.uk_ipa, "ˈwɔː.tər")
+        oxford = ipa.OxfordIPAExtractor("water")
+        oxford.feed('<div class="phons_br"><span class="phon">/ˈwɔː<span>t</span>ə(r)/</span></div>')
+        self.assertEqual(oxford.uk_ipa, "ˈwɔːtə(r)")
+
+
+class TestSafeRedirects(unittest.TestCase):
+    def _follow(self, url):
+        import urllib.request
+        request = urllib.request.Request("https://n8n.example/rows", headers={
+            "X-N8N-API-KEY": "key", "CF-Access-Client-Secret": "secret", "User-Agent": "ua"})
+        new = http._SafeRedirectHandler().redirect_request(request, None, 302, "Found", {}, url)
+        return {k.lower(): v for k, v in new.header_items()}
+
+    def test_credentials_stay_with_their_origin(self):
+        self.assertEqual(self._follow("https://login.example/"), {"user-agent": "ua"})
+        self.assertIn("x-n8n-api-key", self._follow("https://n8n.example:443/other"))
+
+    def test_https_downgrade_is_refused(self):
+        import urllib.error
+        with self.assertRaises(urllib.error.HTTPError):
+            self._follow("http://n8n.example/rows")
+
+
+class TestBrowserBatchMerge(unittest.TestCase):
+    """Browser batches write only their own changes, into fresh notes."""
+
+    class Col:
+        def __init__(self, notes):
+            self.notes, self.updated = notes, None
+
+        def get_note(self, nid):
+            stored = self.notes[nid]
+            copy = FakeNote(dict(zip(stored.keys(), stored.fields)))
+            copy.id, copy.mid = nid, stored.mid
+            return copy
+
+        def update_notes(self, notes):
+            self.updated = notes
+            for note in notes:
+                self.notes[note.id].fields = list(note.fields)
+
+    def _note(self, nid, **fields):
+        note = FakeNote(fields)
+        note.id, note.mid = nid, 7
+        return note
+
+    def test_changed_note_is_skipped_and_others_saved(self):
+        stored = {1: self._note(1, ang="cat", audio=""), 2: self._note(2, ang="dog", audio="")}
+        col = self.Col(stored)
+        batch = [col.get_note(1), col.get_note(2)]
+        before = editor_operation.snapshot_fields(batch)
+        for note in batch:
+            note["audio"] = f"[sound:{note['ang']}.mp3]"
+        stored[2].fields[0] = "hound"  # another operation finished meanwhile
+        skipped = []
+        editor_operation.merge_detached_notes(col, col, batch, before, skipped)
+        self.assertEqual(stored[1]["audio"], "[sound:cat.mp3]")
+        self.assertEqual(stored[2].fields, ["hound", ""])
+        self.assertEqual(skipped, [2])
+
+    def test_other_profile_is_rejected(self):
+        col = self.Col({1: self._note(1, ang="cat")})
+        with self.assertRaises(RuntimeError):
+            editor_operation.merge_detached_notes(object(), col, [], {}, [])
+
 
 class TestDetachedMerge(unittest.TestCase):
     def test_user_edit_wins_over_generated_result(self):
@@ -400,6 +499,71 @@ class TestBatchStore(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(calls[0]), 1)
         self.assertEqual(records[0]["col"], owner)
+
+    def _item(self):
+        return {"custom_id": "i0", "nid": 1, "field": "def", "provider": "anthropic",
+                "model": "model", "prompt": "test", "temperature": None}
+
+    def test_uncertain_create_blocks_fields_until_found(self):
+        sent = []
+        def create(items, config):
+            sent.append(items)
+            return {"uncertain": True}, "timeout"
+        with patch.object(self.backfill, "_anthropic_submit_batch", create):
+            records, errors = self.backfill.submit([self._item()], {}, self.col)
+            self.backfill.submit([self._item()], {}, self.col)
+        self.assertEqual(len(sent), 1)                  # druga wysyłka nie płaci drugi raz
+        self.assertEqual(records[0]["status"], "uncertain")
+        self.assertEqual(self.backfill.inflight_fields(), {(1, "def")})
+
+        submitted = records[0]["submitted_at"]
+        page = ([{"id": "msgbatch_1", "created_at": "2026-01-01T00:00:00Z",
+                  "request_counts": {"processing": 1}}], None)
+        with patch.object(self.backfill.batch_anthropic, "list_batches", lambda cfg, cur: page), \
+                patch.object(self.backfill.batch_anthropic, "batch_created", lambda b: submitted + 2):
+            _ended, still, errors = self.backfill.poll_results({})
+        self.assertEqual((still, errors), (1, []))
+        self.assertEqual([(b["id"], b["status"]) for b in self.backfill.pending_batches()],
+                         [("msgbatch_1", "in_progress")])
+
+    def test_uncertain_create_that_never_happened_releases_fields(self):
+        record = self.backfill._new_record("uncertain-x", "anthropic", [self._item()])
+        record.update(status="uncertain", col=self.col, submitted_at=1000.0)
+        self._write({"batches": [record]})
+        page = ([{"id": "older", "created_at": "", "request_counts": {"processing": 1}}], "more")
+        with patch.object(self.backfill.batch_anthropic, "list_batches", lambda cfg, cur: page), \
+                patch.object(self.backfill.batch_anthropic, "batch_created", lambda b: 1.0):
+            self.backfill.poll_results({})
+        self.assertEqual(self.backfill.inflight_fields(), set())
+
+    def test_one_network_error_never_abandons_an_old_batch(self):
+        record = self.backfill._new_record("b1", "anthropic", [self._item()])
+        record.update(col=self.col, created_at="2020-01-01 00:00",
+                      submitted_at=__import__("time").time() - 8 * 86400)
+        self._write({"batches": [record]})
+        with patch.object(self.backfill, "_poll_anthropic", lambda rec, cfg: ("error", None)):
+            self.assertEqual(self.backfill.poll_results({})[2], ["b1"])
+        self.assertEqual([b["status"] for b in self.backfill.pending_batches()], ["in_progress"])
+        with patch.object(self.backfill, "_poll_anthropic", lambda rec, cfg: ("pending", None)):
+            self.backfill.poll_results({})
+        self.assertEqual(self.backfill.pending_batches()[0]["poll_errors"], 0)
+
+    def test_create_request_is_not_repeated_after_a_timeout(self):
+        import urllib.error
+        calls = []
+        def opener(request, timeout):
+            calls.append(request)
+            raise TimeoutError("read timed out")
+        with patch.object(http, "urlopen", opener):
+            self.assertEqual(http.post_create("https://x/batches", b"{}", {})[2], True)
+        self.assertEqual(len(calls), 1)
+        calls.clear()
+        def throttled(request, timeout):
+            calls.append(request)
+            raise urllib.error.HTTPError(request.full_url, 429, "slow down", {}, None)
+        with patch.object(http, "urlopen", throttled), patch.object(http.time, "sleep"):
+            body, error, uncertain = http.post_create("https://x/batches", b"{}", {}, max_retries=3)
+        self.assertEqual((len(calls), uncertain), (3, False))  # 429 = odrzucone, wolno ponowić
 
     def test_apply_rejects_other_collection_even_with_matching_note_id(self):
         col = types.SimpleNamespace(path=self.col, get_note=lambda nid: self.fail("read wrong note"))

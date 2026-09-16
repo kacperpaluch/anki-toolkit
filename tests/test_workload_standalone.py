@@ -371,7 +371,7 @@ class FakeCol:
         self._raising = raising
         connection = sqlite3.connect(":memory:")
         connection.execute(
-            "create table cards (id integer primary key, did int, odid int, queue int, type int, due int, ivl int)"
+            "create table cards (id integer primary key, did int, odid int, queue int, type int, due int, ivl int, odue int default 0)"
         )
         connection.executemany("insert into cards (did,odid,queue,type,due,ivl) values (?,?,?,?,?,?)", cards)
         connection.execute("create table revlog (id int, cid int, type int, time int, ease int default 3)")
@@ -432,6 +432,21 @@ class SnapshotTests(unittest.TestCase):
         row = self.addon.build_snapshot(self._col(cards), {})["decks"][-1]
         self.assertAlmostEqual(row["reciprocal_sum"], 0.6)
         self.assertEqual(row["review_cards"], 2)
+
+    def test_filtered_deck_card_uses_its_original_due_day(self):
+        col = self._col([(3, 2, 2, 2, -100000, 5)])
+        col.connection.execute("update cards set odue = 103")
+        row = self.addon.build_snapshot(col, {})["decks"][-1]
+        self.assertEqual(row["due_counts"], {3: 1})
+
+    def test_interday_learning_due_today_counts_as_learning(self):
+        cards = [(2, 0, 3, 1, 100, 0), (2, 0, 3, 3, 99, 4), (2, 0, 3, 3, 104, 4)]
+        snapshot = self.addon.build_snapshot(self._col(cards), {})
+        row = snapshot["decks"][-1]
+        self.assertEqual(snapshot["learning_cards"], 2)
+        self.assertEqual(row["due_counts"], {4: 1})
+        self.assertEqual(row["review_cards"], 2)          # tylko przeuczane mają interwał
+        self.assertAlmostEqual(row["reciprocal_sum"], 0.5)
 
     def test_due_offsets_are_relative_to_today(self):
         cards = [(2, 0, 2, 2, 95, 5), (2, 0, 2, 2, 100, 5), (2, 0, 2, 2, 107, 5)]

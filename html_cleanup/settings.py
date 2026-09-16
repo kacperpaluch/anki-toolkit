@@ -156,7 +156,7 @@ class HtmlCleanupTab(QWidget):
                 continue
             try:
                 re.compile(rule["find"]).sub(rule["to"], "")
-            except re.error as error:
+            except (re.error, IndexError) as error:  # IndexError: unknown group in the replacement
                 return (f"HTML Cleanup: wiersz {row} („{rule['name'] or rule['find']}”) "
                         f"ma niepoprawne wyrażenie regularne:\n\n{error}")
         return None

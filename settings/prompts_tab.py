@@ -552,6 +552,15 @@ class PromptsTab(QWidget):
             ),
         }
 
+        if new_key != old_key and (not new_field or new_key in self._data):
+            # Two prompts cannot share a key — the rename would silently drop
+            # one of them. Keep the old name and say so.
+            showWarning(f"Prompt „{new_field or '(pusta nazwa)'}” dla typu „{new_nt}” "
+                        f"już istnieje albo nazwa jest pusta — zostawiam „{old_key[1]}”.",
+                        parent=self)
+            new_key = old_key
+            self._ed_note_type.setCurrentText(old_key[0])
+            self._ed_field.setText(old_key[1])
         if new_key != old_key:
             # Rebuild in place so renaming keeps the entry's position —
             # generation order follows note_types key order (dependent fields).
@@ -587,6 +596,7 @@ class PromptsTab(QWidget):
             entry.get("fallback_provider", "") or entry["provider"],
             self._ed_fallback_model,
             entry.get("fallback_model", ""),
+            use_default=False,
         )
         temp = entry.get("temperature")
         self._ed_temperature.setValue(
@@ -616,10 +626,12 @@ class PromptsTab(QWidget):
         return values if isinstance(values, dict) else {}
 
     def _set_model_choices(self, provider: str, combo: QComboBox,
-                           current: str = "") -> None:
+                           current: str = "", use_default: bool = True) -> None:
+        """use_default=False keeps an empty value empty — an empty fallback
+        model means "no per-prompt fallback", not "the provider's model"."""
         provider_values = self._provider_values(provider)
         default = str(provider_values.get("model") or "").strip()
-        selected = str(current or "").strip() or default
+        selected = str(current or "").strip() or (default if use_default else "")
         choices = list(
             self._model_options.get(provider)
             or provider_values.get("models")
@@ -645,8 +657,10 @@ class PromptsTab(QWidget):
     def _on_fallback_provider_changed(self, _index: int = -1) -> None:
         fb_provider = self._ed_fallback_provider.currentData() or ""
         main_provider = self._ed_provider.currentData() or "openai"
+        # Picking a fallback provider suggests its model; clearing it clears the model.
         self._set_model_choices(
-            fb_provider or main_provider, self._ed_fallback_model
+            fb_provider or main_provider, self._ed_fallback_model,
+            use_default=bool(fb_provider),
         )
 
     def _fetch_models(self) -> None:
@@ -696,7 +710,7 @@ class PromptsTab(QWidget):
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     def _known_prompt_fields(self) -> set[str]:
         """Fields usable in the prompt: note type fields + targets of earlier tasks."""
@@ -838,6 +852,9 @@ class PromptsTab(QWidget):
         self._load_key_to_editor(key)
 
     def _on_add(self) -> None:
+        # The list is rebuilt below with signals blocked — commit the open
+        # editor first, or its unsaved edits vanish.
+        self._save_current_to_data(self._list.currentItem())
         default_note_type = (
             self._current_key[0] if self._current_key
             else self._filter_combo.currentData()

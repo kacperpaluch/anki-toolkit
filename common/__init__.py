@@ -1,5 +1,5 @@
 from .consts import ADDON_NAME
-from .html import clean_html, clean_html_normalized
+from .html import clean_html, clean_html_normalized, strip_sound_tags
 from .text import (
     unique, safe_str, unique_filename, normalize_float,
     split_separator_regex, plural_pl, apply_word_replacements,

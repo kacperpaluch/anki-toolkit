@@ -83,8 +83,10 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):
       → mw.progress.finish()                     # zamknąć nasz pasek PRZED CollectionOp (inaczej "already busy")
-      → _save_changed_notes(browser, changed_notes, summary)
-          → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
+      → save_detached_notes(browser, col, changed_notes, before, summary)   # common.editor_operation
+          → CollectionOp: notatki czytane na świeżo, zapis tylko pól zmienionych przez workery;
+            notatka zmieniona w trakcie batcha jest pomijana (jej pola mogły być wejściem),
+            inny profil niż przy starcie → nic nie zapisuje
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
 Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
@@ -92,7 +94,8 @@ Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
   → ThreadPoolExecutor(parallel_requests), chunki po batch_limit; per notatka:
       → gen = FieldGenerator(config)             # kroki w obrębie notatki sekwencyjne, notatki równolegle
       → dla każdego kroku: execute_step(note, step, ai_generator=gen)
-  → zapis i routing jak wyżej (_save_changed_notes)
+  → notatki dostają `_toolkit_collection`, więc kroki TTS/słownika zapisują media tylko do profilu ze startu
+  → zapis i routing jak wyżej (save_detached_notes)
 
 Przyciski workflowów w edytorze:
   → editor_ui.on_editor_buttons_init() dodaje po jednym przycisku na każdy workflow z `editor_button=true` i niepustymi `steps` (przed przyciskiem AI)

@@ -12,23 +12,12 @@ from aqt.qt import *
 from aqt.browser import Browser
 
 from ..common import start_progress, update_progress, finish_progress
+from ..common.editor_operation import save_detached_notes, snapshot_fields
 from . import batch_backfill
 from ._generator import get_config
 from .field_generator import FieldGenerator
 
 logger = logging.getLogger(__name__)
-
-
-def _save_changed_notes(browser: Browser, changed_notes: list, summary: str):
-    """Persist modified notes as one undoable operation, then show the summary."""
-    if not changed_notes:
-        tooltip(summary, period=8000)
-        return
-
-    CollectionOp(
-        parent=browser,
-        op=lambda col: col.update_notes(changed_notes),
-    ).success(lambda _changes: tooltip(summary, period=8000)).run_in_background()
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +60,7 @@ def _run_batch(browser: Browser, nids, config: dict,
     # Load notes on the main thread — the Anki collection is single-threaded,
     # so workers must never touch mw.col. Each note is read once here and only
     # mutated in memory by process_note(); collection writes happen on the main
-    # thread in _save_changed_notes(). note_type() is called to warm the models
+    # thread in save_detached_notes(). note_type() is called to warm the models
     # cache here too, so worker threads only do in-memory dict reads on it.
     nids = list(nids)
     try:
@@ -83,6 +72,8 @@ def _run_batch(browser: Browser, nids, config: dict,
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
+    col = mw.col
+    before = snapshot_fields(notes)
 
     cancel_flag = start_progress(label, len(notes), "AI Generator")
 
@@ -146,9 +137,9 @@ def _run_batch(browser: Browser, nids, config: dict,
             parts.append("przerwano")
         if state["last_error"]:
             parts.append(state["last_error"])
-        _save_changed_notes(browser, changed_notes, " · ".join(parts))
+        save_detached_notes(browser, col, changed_notes, before, " · ".join(parts))
 
-    mw.taskman.run_in_background(task, on_done)
+    mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
 
 # ---------------------------------------------------------------------------
@@ -226,20 +217,27 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         except Exception as e:
             tooltip(f"Błąd wysyłki batcha: {e}", period=6000)
             return
-        if not records:
+        deferred_only = batch_backfill.only_deferred(errors)
+        if not records and not deferred_only:
             tooltip("Batch nie wysłany: " + " · ".join(errors), period=8000)
             return
         # Remember the selection so the auto-poll cycle keeps sending the
         # remaining (deferred) slices until every field is filled — hands-off.
+        # A real failure (bad key, rejected request) creates no job: it would
+        # upload and fail again every minute for a day.
         sent = sum(r["count"] for r in records)
         batch_backfill.add_job(nids, only_fields, total=len(items), sent=sent,
                                col_id=col_id)
+        if not records:
+            tooltip("Kolejka OpenAI jest pełna — zaznaczenie wyślę automatycznie, "
+                    "gdy zwolni się miejsce.", period=8000)
+            return
         msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
         if errors:
             msg += " · błędy: " + " · ".join(errors)
         tooltip(msg, period=8000)
 
-    mw.taskman.run_in_background(task, on_done)
+    mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
 
 # One poll at a time — the timer tick, the manual button and profile-open all
@@ -515,7 +513,7 @@ def _advance_jobs(config: dict):
                 tooltip("Batch: " + errors[0], period=8000)
 
     try:
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
     except Exception:
         _advance_running = False
         raise
@@ -547,7 +545,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     # only mutate notes in memory; the one collection touch left in a worker is
     # mw.col.media.write_data() inside the TTS step, which the backend
     # serializes. Collection writes for the notes themselves happen on the main
-    # thread in _save_changed_notes().
+    # thread in save_detached_notes().
     try:
         notes = []
         for nid in nids:
@@ -557,6 +555,10 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
+    col = mw.col
+    before = snapshot_fields(notes)
+    for note in notes:
+        note._toolkit_collection = col  # TTS/dictionary steps write media to this profile only
 
     label = workflow.get("name", "Workflow")
     cancel_flag = start_progress(label, len(notes), "Workflow")
@@ -619,7 +621,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
             parts.append("przerwano")
         if state["last_error"]:
             parts.append(state["last_error"])
-        _save_changed_notes(browser, changed_notes, " · ".join(parts))
+        save_detached_notes(browser, col, changed_notes, before, " · ".join(parts))
 
     mw.taskman.run_in_background(task, on_done)
 

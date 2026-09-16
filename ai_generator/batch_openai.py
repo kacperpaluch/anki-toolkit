@@ -2,10 +2,12 @@
 
 import json
 import logging
+import urllib.parse
 import urllib.request
 import uuid
 
 from ..common import fetch_url, post_json
+from ..common.http import post_create, urlopen as safe_urlopen
 from .providers.openai_compat import (
     add_reasoning_effort_if_supported,
     add_temperature_if_supported,
@@ -62,7 +64,7 @@ def _delete_file(file_id: str, api_key: str, timeout: int) -> None:
             method="DELETE",
             headers={"Authorization": f"Bearer {api_key}"},
         )
-        urllib.request.urlopen(req, timeout=timeout).read()
+        safe_urlopen(req, timeout=timeout).read()
     except Exception:
         logger.warning(f"Nie udało się usunąć osieroconego pliku {file_id}")
 
@@ -126,7 +128,7 @@ def submit_batch(items, config: dict) -> tuple:
         "endpoint": "/v1/chat/completions",
         "completion_window": "24h",
     }).encode("utf-8")
-    raw, err = post_json(
+    raw, err, uncertain = post_create(
         OPENAI_BATCHES_URL,
         body,
         {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -135,19 +137,44 @@ def submit_batch(items, config: dict) -> tuple:
         log=logger,
     )
     if raw is None:
+        if uncertain:  # keep the file: it is how the batch is found again
+            return {"uncertain": True, "input_file_id": file_id}, err
         _delete_file(file_id, api_key, _timeout(config))
         return None, err
     try:
         batch_id = json.loads(raw.decode("utf-8")).get("id")
     except ValueError as e:
-        return None, f"Nieczytelna odpowiedź API: {e}"
+        return {"uncertain": True, "input_file_id": file_id}, f"Nieczytelna odpowiedź API: {e}"
     if not batch_id:
-        return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
+        return {"uncertain": True, "input_file_id": file_id}, "Nieoczekiwana odpowiedź API (brak id batcha)."
     logger.info(
         f"Batch OpenAI wysłany: {batch_id} "
         f"({len(items)} zapytań, model {items[0]['model']})"
     )
     return {"id": batch_id, "input_file_id": file_id}, None
+
+
+def list_batches(config: dict, cursor=None):
+    """One page of batches, newest first: (batches, next cursor) or None."""
+    api_key = _key(config)
+    if api_key is None:
+        return None
+    query = {"limit": 100, **({"after": cursor} if cursor else {})}
+    raw = fetch_url(f"{OPENAI_BATCHES_URL}?{urllib.parse.urlencode(query)}",
+                    headers={"Authorization": f"Bearer {api_key}"}, timeout=_timeout(config))
+    try:
+        page = json.loads(raw.decode("utf-8"))
+    except (AttributeError, ValueError):
+        return None
+    return page.get("data") or [], page.get("last_id") if page.get("has_more") else None
+
+
+def batch_created(batch: dict) -> float:
+    return float(batch.get("created_at") or 0)
+
+
+def batch_matches(batch: dict, record: dict) -> bool:
+    return bool(record.get("input_file_id")) and batch.get("input_file_id") == record["input_file_id"]
 
 
 def poll_batch(record: dict, config: dict) -> tuple:

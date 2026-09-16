@@ -7,7 +7,7 @@ import urllib.request
 import urllib.parse
 
 from ..common import normalize_float, apply_word_replacements
-from ..common.http import post_json
+from ..common.http import post_json, urlopen as safe_urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
     url = "https://openrouter.ai/api/v1/models?output_modalities=speech"
     req = urllib.request.Request(url)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with safe_urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         logger.warning(f"Failed to fetch OpenRouter TTS models: {e}")
@@ -146,7 +146,7 @@ def fetch_openrouter_tts_providers(model_id: str, api_key: str = "") -> list[dic
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with safe_urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         logger.warning(f"Failed to fetch OpenRouter TTS providers for {model_id}: {e}")

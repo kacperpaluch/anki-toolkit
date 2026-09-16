@@ -12,6 +12,9 @@ lub wyłączenie tej opcji działa po restarcie Anki.
 
 Historia plików jest w `user_files/audio_normalizer_<id>.json`, osobno dla
 każdego katalogu mediów, więc te same nagrania nie są normalizowane drugi raz.
-Przełączenie profilu odpina watcher i anuluje oczekujące podmiany plików.
+Przełączenie profilu odpina watcher i anuluje oczekujące podmiany plików,
+także przerywając działający ffmpeg. Plik roboczy powstaje poza katalogiem
+mediów (w folderze profilu), więc normalizacja nie nadpisze ani nie usunie
+innego nagrania. Pojedynczy plik ma limit 10 minut.
 Zmiany wykryte podczas normalizacji powodują dodatkowy skan po jej zakończeniu,
 więc nowe nagrania nie wymagają kolejnego ręcznego uruchomienia.

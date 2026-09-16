@@ -15,7 +15,7 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 |---|---|---|
 | `__init__.py` | import modułów, hooki edytora/profilu, timer batchy, menu Narzędzia i PPM Browsera | — |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`) | wszystkie |
-| `common/` | konfiguracja, HTTP, HTML, logi, progress, operacje edytora, widżety ustawień | — |
+| `common/` | konfiguracja, HTTP (bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`), widżety ustawień | — |
 | `settings/` | panele „Tworzenie kart”: workflowy, AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
@@ -55,7 +55,9 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   zostają na głównym wątku. Historia `user_files/audio_normalizer_<hash>.json`
   (mtime_ns + rozmiar, zapis atomowy). Jeden watcher z debounce 3 s, odpinany
   przy zamykaniu profilu; zdarzenia w trakcie pracy ustawiają ponowny skan.
-  Worker sprawdza anulowanie i niezmienność pliku przed podmianą.
+  Worker sprawdza anulowanie i niezmienność pliku przed podmianą. Plik roboczy
+  ffmpeg jest unikalny (`mkstemp`) i leży w folderze profilu, nie w mediach;
+  ffmpeg ma limit czasu i jest zabijany przy anulowaniu.
 - HTML Cleanup: `cleaning.clean_field()` jest jedynym silnikiem reguł (Dodaj
   i skan kolekcji); liczniki są kluczowane indeksem reguły z tej samej listy.
   Reguły domyślne są tylko w szablonie `config.json` (`default_rules()` je czyta);

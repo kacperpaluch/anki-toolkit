@@ -4,6 +4,7 @@ import shutil
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".ogg", ".flac")
 LOUDNORM_OPTS = "loudnorm=I=-14:TP=-1.5:LRA=8"
 MAX_WORKERS = 4
+FFMPEG_TIMEOUT_S = 600  # one clip; a hung ffmpeg must not hold the queue forever
 
 
 def find_ffmpeg() -> str:

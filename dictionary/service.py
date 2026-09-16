@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import re
@@ -6,7 +7,7 @@ from typing import Optional
 
 from aqt import mw
 
-from ..common import clean_html_normalized
+from ..common import clean_html_normalized, strip_sound_tags
 
 from .dictionary_service import dictionary_service
 from .ipa_service import ipa_service
@@ -46,7 +47,7 @@ def process_note_group(note, config: dict, dictionaries: list[str],
     if source_field not in note:
         return result
 
-    word = clean_html_normalized(note[source_field])
+    word = clean_html_normalized(strip_sound_tags(note[source_field]))
     if not word:
         return result
 
@@ -57,8 +58,10 @@ def process_note_group(note, config: dict, dictionaries: list[str],
     page_cache: dict = {}
     if target_field in note and not note[target_field].strip():
         result.audio_requested = True
-        # Strip path separators and other filename-unsafe characters
-        safe_word = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
+        # Filename-safe readable part; it drops characters and the media folder may ignore
+        # case ("Polish" vs "polish"), so a hash of the exact word keeps names unique.
+        readable = re.sub(r"[^\w-]+", "_", word).strip("_") or "audio"
+        safe_word = f"{readable}_{hashlib.sha1(word.encode('utf-8')).hexdigest()[:8]}"
         # Runs on a worker thread: the media write goes through the backend
         # (serialized), but the collection may be gone if the profile closed.
         col = getattr(note, "_toolkit_collection", mw.col)

@@ -30,8 +30,11 @@ Zmiany Compose wymagają odtworzenia kontenerów tym poleceniem.
 Token hkey pozostaje w prywatnym wolumenie; po inicjalizacji możesz wyczyścić
 hasło w Compose. Gdy token wygaśnie, wpisz hasło i wykonaj
 `docker compose run --rm workload login`. Starszy sposób z
-`ANKI_SYNC_PASSWORD_FILE` i `--config` nadal działa; `WORKLOAD_CONFIG` ma
-pierwszeństwo nad plikiem konfiguracyjnym.
+`ANKI_SYNC_PASSWORD_FILE` i `--config` nadal działa (także dla `dashboard`,
+który przekazuje tę ścieżkę uruchamianym przebiegom); `WORKLOAD_CONFIG` ma
+pierwszeństwo nad plikiem konfiguracyjnym. Przebieg czyta ustawienia ponownie
+pod blokadą workera, więc wyłączenie `apply` w panelu obowiązuje od najbliższego
+przebiegu.
 
 ## Godzina i cron
 

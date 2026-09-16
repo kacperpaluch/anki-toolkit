@@ -173,4 +173,8 @@ class SettingsDialog(QDialog):
 
 def open_settings(page: str | None = None) -> bool:
     """True, gdy zapisano — wywołujący może wtedy przeliczyć swój widok."""
-    return SettingsDialog(page).exec() == QDialog.DialogCode.Accepted
+    dialog = SettingsDialog(page)
+    try:
+        return dialog.exec() == QDialog.DialogCode.Accepted
+    finally:
+        dialog.deleteLater()  # parented to mw: without this every opening stays alive

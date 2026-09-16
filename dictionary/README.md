@@ -33,7 +33,7 @@ Moduł sprawdza stan pól przed pobraniem:
 
 ### Reużycie pobranych plików (cache)
 
-Nazwa pliku audio jest deterministyczna: `dict_{źródło}_{słowo}.mp3`. Przed pobraniem moduł sprawdza, czy taki plik **już jest w kolekcji media**. Jeśli tak — po prostu wstawia `[sound:…]` na istniejący plik i **pomija zapytanie do słownika**.
+Nazwa pliku audio jest deterministyczna: `dict_{źródło}_{słowo}_{skrót}.mp3`, gdzie skrót to 8 znaków SHA-1 dokładnego hasła — rozróżnia hasła różniące się wielkością liter lub znakami interpunkcyjnymi. Pliki zapisane pod starymi nazwami (bez skrótu) zostają przy swoich kartach, ale nie są już używane jako cache. Przed pobraniem moduł sprawdza, czy taki plik **już jest w kolekcji media**. Jeśli tak — po prostu wstawia `[sound:…]` na istniejący plik i **pomija zapytanie do słownika**.
 
 Dzięki temu, gdy masz wiele kart z tym samym słowem (np. kilka „above"), audio z danego źródła pobierane jest z sieci **tylko raz** — kolejne karty (dziś, jutro, z edytora czy z batcha) reużywają tego samego pliku. Pobierane są jedynie te źródła, których brakuje. Aby wymusić świeże pobranie, usuń plik z folderu media kolekcji.
 

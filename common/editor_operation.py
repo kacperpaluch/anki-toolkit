@@ -113,6 +113,70 @@ def merge_editor_note(editor, note, clone, before) -> list:
     return skipped
 
 
+# ---------------------------------------------------------------------------
+# Browser batches — the same rule for notes that are not open in an editor
+# ---------------------------------------------------------------------------
+
+def snapshot_fields(notes) -> dict:
+    """{note id: field values} taken on the main thread before the workers start."""
+    return {note.id: list(note.fields) for note in notes}
+
+
+def merge_detached_notes(col, expected_col, notes, before, skipped: list):
+    """CollectionOp body: write the workers' field changes into fresh notes.
+
+    A note that changed in the collection while the batch ran (another
+    operation finished meanwhile) is left untouched and its id is appended to
+    `skipped` — its fields may have been the inputs, so the result is stale.
+    """
+    if col is not expected_col:
+        raise RuntimeError("Profil zmienił się podczas operacji — nic nie zapisano")
+    fresh = []
+    for note in notes:
+        old = before[note.id]
+        try:
+            current = col.get_note(note.id)
+        except Exception:
+            skipped.append(note.id)  # deleted meanwhile
+            continue
+        if current.mid != note.mid or list(current.fields) != old:
+            skipped.append(note.id)
+            continue
+        changed = False
+        for i, value in enumerate(note.fields):
+            if value != old[i]:
+                current.fields[i] = value
+                changed = True
+        if changed:
+            fresh.append(current)
+    return col.update_notes(fresh)
+
+
+def save_detached_notes(parent, col, notes, before, summary: str) -> None:
+    """Persist a Browser batch as one undoable op, then show the summary."""
+    from aqt import mw
+    from aqt.operations import CollectionOp
+    from aqt.utils import tooltip
+    if mw.col is not col:
+        tooltip("Profil zmienił się podczas operacji — wyników nie zapisano.", period=8000)
+        return
+    if not notes:
+        tooltip(summary, period=8000)
+        return
+    skipped: list = []
+
+    def done(_changes):
+        text = summary
+        if skipped:
+            text += f" · pominięto {len(skipped)} notatek zmienionych w trakcie"
+        tooltip(text, period=8000)
+
+    CollectionOp(
+        parent=parent,
+        op=lambda active: merge_detached_notes(active, col, notes, before, skipped),
+    ).success(done).run_in_background()
+
+
 def editor_shows_note(editor, note) -> bool:
     """A closed webview must not receive saveNow/loadNote callbacks."""
     if getattr(editor, "note", None) is not note:

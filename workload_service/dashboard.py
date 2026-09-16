@@ -152,7 +152,7 @@ table{width:100%;border-collapse:collapse;table-layout:fixed;margin:12px 0 0}th,
     return ''.join(parts) + '</section></div><footer>Historia synchronizacji Workload, nie potwierdzenie synchronizacji telefonu. Ostatnie 200 przebiegów · odświeżanie ręczne.</footer></main></body></html>'
 
 
-def serve(data_dir):
+def serve(data_dir, config_path=Path("/config/workload.json")):
     try:
         from . import worker, notifications
     except ImportError:
@@ -218,7 +218,7 @@ def serve(data_dir):
                                        ("minutes_per_day", "max_minutes_per_day", "new_cards_per_day")})
                         config.update(run_at=get("run_at"), apply="apply" in form,
                                       decks=[name.strip() for name in get("decks").splitlines() if name.strip()])
-                        config = worker.settings_from(Path("/config/workload.json"), data_dir, config)
+                        config = worker.settings_from(config_path, data_dir, config)
                         endpoint, username = worker.credentials(get("url"), get("username"))
                         identity = worker.read_json(data_dir / "identity.json")
                         if identity and identity != {"endpoint": endpoint, "username": username}:
@@ -240,7 +240,7 @@ def serve(data_dir):
                         return
             if command:
                 process = subprocess.Popen([sys.executable, str(Path(__file__).with_name("worker.py")),
-                                            command, "--data", str(data_dir)], env=env)
+                                            command, "--data", str(data_dir), "--config", str(config_path)], env=env)
             self.send_response(303)
             self.send_header("Location", "/")
             self.end_headers()
@@ -253,7 +253,7 @@ def serve(data_dir):
             history = json.loads(path.read_text()) if path.exists() else []
             body = (json.dumps(history, ensure_ascii=False) if self.path == '/history.json'
                     else render(history, token, busy() or (process is not None and process.poll() is None),
-                                worker.settings_from(Path("/config/workload.json"), data_dir) if (data_dir / "settings.json").exists() else json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")),
+                                worker.settings_from(config_path, data_dir) if (data_dir / "settings.json").exists() else json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")),
                                 worker.read_json(data_dir / "connection.json", {"url": os.environ.get("ANKI_SYNC_URL", "ankiweb"), "username": os.environ.get("ANKI_SYNC_USERNAME", "")}),
                                 worker.read_json(data_dir / "mail.json", {}),
                                 worker.read_json(data_dir / "intervention.json"))).encode()

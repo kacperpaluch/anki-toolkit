@@ -14,8 +14,10 @@ there is no separate batch-model field in the config.
 
 import json
 import logging
+import urllib.parse
 
-from ..common import fetch_url, post_json
+from ..common import fetch_url
+from ..common.http import post_create
 from .providers.openai_compat import (
     add_reasoning_effort_if_supported,
     add_temperature_if_supported,
@@ -62,7 +64,9 @@ def _headers(config: dict):
 def submit_batch(items, config: dict) -> tuple:
     """Create one OpenRouter batch for items of a single model.
 
-    Return (batch_id, error). `endpoint` and `model` MUST be serialized before
+    Return ({"id"} | {"uncertain": True, "model"} | None, error) — uncertain
+    means the batch may exist and must be looked up before sending again.
+    `endpoint` and `model` MUST be serialized before
     `requests` — the API stream-parses the body and 400s otherwise.
     """
     headers = _headers(config)
@@ -92,7 +96,7 @@ def submit_batch(items, config: dict) -> tuple:
         "model": model,
         "requests": requests,
     }, ensure_ascii=False).encode("utf-8")
-    raw, err = post_json(
+    raw, err, uncertain = post_create(
         OPENROUTER_BATCHES_URL,
         payload,
         dict(headers, **{"Content-Type": "application/json"}),
@@ -101,18 +105,42 @@ def submit_batch(items, config: dict) -> tuple:
         log=logger,
     )
     if raw is None:
-        return None, err
+        return ({"uncertain": True, "model": model} if uncertain else None), err
     try:
         batch_id = json.loads(raw.decode("utf-8")).get("id")
     except ValueError as e:
-        return None, f"Nieczytelna odpowiedź API: {e}"
+        return {"uncertain": True, "model": model}, f"Nieczytelna odpowiedź API: {e}"
     if not batch_id:
-        return None, "Nieoczekiwana odpowiedź API (brak id batcha)."
+        return {"uncertain": True, "model": model}, "Nieoczekiwana odpowiedź API (brak id batcha)."
     logger.info(
         f"Batch OpenRouter wysłany: {batch_id} "
         f"({len(items)} zapytań, model {model})"
     )
-    return batch_id, None
+    return {"id": batch_id}, None
+
+
+def list_batches(config: dict, cursor=None):
+    """One page of batches, newest first: (batches, next cursor) or None."""
+    headers = _headers(config)
+    if headers is None:
+        return None
+    query = {"limit": 100, **({"after": cursor} if cursor else {})}
+    raw = fetch_url(f"{OPENROUTER_BATCHES_URL}?{urllib.parse.urlencode(query)}",
+                    headers=headers, timeout=_timeout(config))
+    try:
+        page = json.loads(raw.decode("utf-8"))
+    except (AttributeError, ValueError):
+        return None
+    return page.get("data") or [], page.get("last_id") if page.get("has_more") else None
+
+
+def batch_created(batch: dict) -> float:
+    return float(batch.get("created_at") or 0)
+
+
+def batch_matches(batch: dict, record: dict) -> bool:
+    return (batch.get("model") in (record.get("model"), _batch_model(record.get("model") or ""))
+            and (batch.get("request_counts") or {}).get("total") == record.get("count"))
 
 
 def _parse_result(entry: dict) -> dict:

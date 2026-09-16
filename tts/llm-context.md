@@ -40,10 +40,14 @@ _process_batch_async(browser, nids, tasks, label):
   → precollect (główny wątek): dla każdego nid:
       note = mw.col.get_note(nid)
       build_note_work_items(note, tasks, voices)  →  (work_items, split_contexts)
-      # split_contexts[task_i] = {target, sep, mode, segments, eligible, prev, prev_tags, require_complete}
-      # split_audio: pole uznane za gotowe dopiero gdy len(tagów) >= len(eligible)
-      # bez kompletnego starego mapowania zapisuj tylko pełny nowy zestaw;
-      # split do osobnego niepustego pola także wymaga pełnego wyniku
+      # split_contexts[task_i] = {target, sep, mode, segments, eligible, spoken, prev, old,
+      #                           source_audio, require_complete}
+      # tekst do syntezy = _speech_text(): bez HTML (granice bloków/<br> = spacja) i bez [sound:]
+      # split_audio: segment z audio w źródle jest KOPIOWANY na swoją pozycję w celu;
+      #   `old` mapuje istniejące tagi (układ bieżący: każdy segment, albo starszy:
+      #   tylko generowane); gotowe = każdy eligible ma stary tag; zapis tylko kompletny
+      # split do osobnego pola: pominięte, gdy cel już odwzorowuje źródło z audio
+      #   (_split_target_complete); niepusty cel wymaga pełnego wyniku
       all_items.extend(items)   # wszystkie zadania razem, jeden pool na notatkę
   → start_progress(label, len(all_items), "TTS")  # common.progress → natywny mw.progress (Anki „busy" → backup/sync się odkłada)
   → run_in_background(bg_task)
@@ -56,10 +60,10 @@ _process_batch_async(browser, nids, tasks, label):
           → results[(nid, task_i, seg_i)] = filename
   → on_done (główny wątek):
       → finish_progress()   # PRZED CollectionOp (dwa mw.progress = „already busy")
-      → grouped per nid → fresh note = mw.col.get_note(nid)
-      → apply_results_to_note(note, items, split_contexts, per_note)
-      → CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))
-            .success(tooltip z podsumowaniem).run_in_background()
+      → grouped per nid → apply_results_to_note() na notatkach, z których zbudowano plan
+      → common.editor_operation.save_detached_notes(browser, col, changed_notes, before, summary)
+            # CollectionOp: świeże notatki, tylko zmienione pola; notatka zmieniona
+            # w trakcie (inna operacja) jest pomijana; inny profil → nic nie zapisuje
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
 Przycisk edytora (toolbar)
@@ -187,6 +191,6 @@ Generowane losowo przez `unique_filename()` z `common.text`: `tts_` + 12 znaków
 
 - Stdlib: `urllib.request` (GET w `fetch_openrouter_tts_models`), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
 - Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.update_notes` (przez `CollectionOp`), `mw.col.media.write_data`, `mw.taskman`, `CollectionOp`
-- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_openrouter`)
+- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html_normalized, strip_sound_tags), `common.editor_operation` (save_detached_notes), `common.http` (post_json — POST z retry; używany przez `_generate_openrouter`)
 - OpenRouter: tylko klucz API, żadnych lokalnych zależności
 - Brak pip packages

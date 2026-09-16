@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest.mock import patch
 
@@ -126,6 +127,21 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(history[-1]["status"], "success")
             self.assertEqual(history[-1]["email"], "error: RuntimeError")
             self.assertNotIn("secret", (data / "history.json").read_text())
+
+    def test_settings_are_read_again_under_the_worker_lock(self):
+        from workload_service import notifications
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            anki = types.ModuleType("anki"); collection = types.ModuleType("anki.collection")
+            collection.Collection = object
+            with patch.dict(sys.modules, {"anki": anki, "anki.collection": collection}), \
+                    patch.object(worker, "settings_from", return_value={"apply": False}) as reread, \
+                    patch.object(worker, "credentials", side_effect=worker.WorkloadError("stop")), \
+                    patch.object(notifications, "send_summary", return_value="disabled"):
+                with self.assertRaises(worker.WorkloadError):
+                    worker.run(data, {"apply": True}, "run", data / "config.json")
+            reread.assert_called_once_with(data / "config.json", data)
+            self.assertFalse(worker.read_json(data / "history.json")[-1]["apply"])
 
     def test_repeated_error_is_suppressed_until_success_or_different_error(self):
         from workload_service import notifications

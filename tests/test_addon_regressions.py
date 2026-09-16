@@ -91,6 +91,13 @@ class BridgeTests(unittest.TestCase):
             self.assertIsNone(result.result(timeout=1))
         self.assertEqual(self.editor.web.fields, {"ang": "new", "def": "unsaved text"})
 
+    def test_plain_text_is_escaped_unless_html_is_requested(self):
+        target = self.module._target
+        self.module._apply_fields({"ang": "R&D <b>"}, target, append=True)
+        self.assertEqual(self.editor.note["ang"], "word<br><br>R&amp;D &lt;b&gt;")
+        self.module._apply_fields({"def": "<i>x</i>"}, target, is_html=True)
+        self.assertEqual(self.editor.note["def"], "<i>x</i>")
+
     def test_timeout_cancels_queued_start(self):
         self.assertIsNotNone(self.module._run_on_main_sync({"ang": "new"}, timeout=0))
         self.queue.get_nowait()()
@@ -162,6 +169,7 @@ class PanelTests(unittest.TestCase):
         self.panel._picked = set()
         self.panel._local_rows = []
         self.panel._adding = set()
+        self.panel._added = {}
         self.panel._next_local_id = 0
         self.panel._busy = False
         self.panel._pending = {}
@@ -663,6 +671,55 @@ class PanelTests(unittest.TestCase):
         self.panel._set_row(local, False)                # pomyłkę dalej da się cofnąć
         self.assertEqual(self.panel._marked, set())
 
+    def test_words_survive_closing_the_panel_during_a_failed_write(self):
+        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None)
+        self.panel._add_local_rows(["mother"])
+        self.panel.deleted = True                        # okno „Dodaj” zamknięte
+        self.module.word_queue._panel = None
+        self.finish(([], "Connection error"))
+        again = self.module.QueueState("/test/collection.anki2", {}, self.state_dir.name)
+        self.assertEqual([row["Slowko"] for row in again.data["local_rows"]], ["mother"])
+
+    def test_refill_started_before_a_write_keeps_the_new_row(self):
+        rebuilt = []
+        self.panel._rebuild = rebuilt.append
+        self.panel._settle_owed = lambda: None
+        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None)
+        self.panel.refill()
+        refill_done = self.jobs[-1][1]
+        self.panel._add_local_rows(["mother"])
+        self.finish(([{"id": 7, "Slowko": "mother"}], None))
+        future = Future(); future.set_result(([{"id": 5, "Slowko": "cat"}], None))
+        refill_done(future)                              # GET sprzed zapisu kończy się później
+        self.assertEqual([row["id"] for row in rebuilt[-1]], [5, 7])
+        self.jobs.clear()
+        self.panel._add_local_rows(["Mother"])           # nadal „już na liście”
+        self.assertEqual(self.jobs, [])
+
+    def test_ticked_local_row_is_ticked_on_its_n8n_row(self):
+        self.panel._local_rows[:] = [{"id": -1, "Slowko": "mother", "Anki": True}]
+        self.panel._state.data["local_rows"] = self.panel._local_rows
+        self.panel._marked = {-1}
+        self.panel._rebuild = lambda rows: None
+        self.panel._settle_owed = lambda: None
+        self.panel.refill()
+        future = Future(); future.set_result(([{"id": 9, "Slowko": "mother", "Anki": False}], None))
+        self.jobs[-1][1](future)
+        self.assertEqual(self.panel._pending, {9: True})  # PATCH „zrobione” wysłany
+        self.assertEqual(self.panel._state.data["owed"], {"9": "mother"})
+
+    def test_cards_are_not_added_when_the_debt_cannot_be_saved(self):
+        added = []
+        self.module.ai_senses.existing_senses = lambda *a: []
+        self.module.ai_senses.pick_senses = lambda *a: [("mother", {"reviewed": True})]
+        self.module.ai_senses.add_notes = lambda *a: added.append(a) or (1, None)
+        self.panel._addcards.editor.note = {}
+        self.panel._set_busy = lambda busy: None
+        self.panel._state.save = lambda: (_ for _ in ()).throw(OSError("disk"))
+        self.panel._finish_batch([{"word": "mother", "row_id": 3, "senses": []}], [], self.module.mw.col)
+        self.assertEqual(added, [])
+        self.assertEqual(self.panel._state.data["owed"], {})
+
     def test_refill_keeps_local_rows_and_their_ticks(self):
         self.panel._local_rows = [{"id": -1, "Slowko": "mother"}]
         self.panel._marked = {-1}
@@ -837,13 +894,38 @@ class OtherAddonsTests(unittest.TestCase):
         for cancel, stamps in ((lambda: False, [[1, 10], [2, 10]]), (None, [[1, 10]])):
             cancellation = iter((False, True))
             check = cancel or (lambda: next(cancellation))
-            with patch.object(module, "_stamp", side_effect=stamps), \
-                    patch.object(module.subprocess, "run"), \
-                    patch.object(module.os, "remove") as remove, \
-                    patch.object(module.os, "replace") as replace:
-                self.assertEqual(module.normalize_file("/tmp/audio.mp3", "ffmpeg", "filter", check), (False, None))
-                replace.assert_not_called()
-                remove.assert_called_once()
+            with tempfile.TemporaryDirectory() as temp:
+                media = Path(temp, "collection.media"); media.mkdir()
+                with patch.object(module, "_stamp", side_effect=stamps), \
+                        patch.object(module, "_run_ffmpeg", return_value=True), \
+                        patch.object(module.os, "replace") as replace:
+                    self.assertEqual(module.normalize_file(str(media / "audio.mp3"), "ffmpeg", "filter", check),
+                                     (False, None))
+                    replace.assert_not_called()
+                self.assertEqual(sorted(p.name for p in Path(temp).iterdir()), ["collection.media"])
+
+    def test_normalizer_temp_file_never_touches_other_media(self):
+        module = load("audio_normalizer", "logic.py")
+        def fake_ffmpeg(args, _cancel=None):
+            Path(args[-1]).write_bytes(b"normalized")
+            return True
+        with tempfile.TemporaryDirectory() as temp:
+            media = Path(temp, "collection.media"); media.mkdir()
+            (media / "clip.mp3").write_bytes(b"raw")
+            (media / "clip.mp3.temp.mp3").write_bytes(b"someone else's recording")
+            with patch.object(module, "_run_ffmpeg", side_effect=fake_ffmpeg):
+                ok, _stamp = module.normalize_file(str(media / "clip.mp3"), "ffmpeg", "filter")
+            self.assertTrue(ok)
+            self.assertEqual((media / "clip.mp3").read_bytes(), b"normalized")
+            self.assertEqual((media / "clip.mp3.temp.mp3").read_bytes(), b"someone else's recording")
+            self.assertEqual(sorted(p.name for p in Path(temp).iterdir()), ["collection.media"])
+
+    def test_ffmpeg_is_killed_on_cancel_and_deadline(self):
+        module = load("audio_normalizer", "logic.py")
+        sleeper = [sys.executable, "-c", "import time; time.sleep(30)"]
+        self.assertFalse(module._run_ffmpeg(sleeper, lambda: True))
+        with self.assertRaises(TimeoutError):
+            module._run_ffmpeg(sleeper, None, timeout=0.1)
 
 
 class BridgeOriginTests(unittest.TestCase):

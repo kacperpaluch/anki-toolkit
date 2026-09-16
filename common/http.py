@@ -1,7 +1,10 @@
+import http.client
 import json
 import logging
+import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -17,6 +20,42 @@ _DEFAULT_HEADERS = {
 }
 
 
+# Headers that may follow a redirect to another origin. Everything else
+# (API keys, Cloudflare Access secrets, Authorization) stays with the origin
+# the user configured — urllib would otherwise forward it anywhere.
+_CROSS_ORIGIN_HEADERS = {"user-agent", "accept", "accept-language"}
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin(url: str) -> tuple:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme, parts.hostname, parts.port or _DEFAULT_PORTS.get(parts.scheme)
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+        old, target = _origin(req.full_url), _origin(new.full_url)
+        if old[0] == "https" and target[0] != "https":
+            raise urllib.error.HTTPError(
+                req.full_url, code, f"odrzucono przekierowanie z HTTPS na {target[0]}", headers, fp)
+        if old != target:
+            new.headers = {k: v for k, v in new.headers.items()
+                           if k.lower() in _CROSS_ORIGIN_HEADERS}
+        return new
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
+
+
+def urlopen(request, timeout):
+    """urllib.request.urlopen that never carries credentials to another origin
+    and never follows a redirect from HTTPS down to plain HTTP."""
+    return _OPENER.open(request, timeout=timeout)
+
+
 def fetch_url(
     url: str,
     data: Optional[bytes] = None,
@@ -28,7 +67,7 @@ def fetch_url(
     for attempt in range(max_retries):
         try:
             req = urllib.request.Request(url, data=data, headers=effective_headers)
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with urlopen(req, timeout=timeout) as response:
                 return response.read()
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
@@ -91,6 +130,48 @@ def extract_http_error(error: urllib.error.HTTPError) -> str:
     return f"{error.code} - {msg}"
 
 
+def post_create(
+    url: str,
+    payload: bytes,
+    headers: dict,
+    *,
+    max_retries: int = 3,
+    timeout: int = 30,
+    log: Optional[logging.Logger] = None,
+) -> tuple[Optional[bytes], Optional[str], bool]:
+    """POST that creates a paid resource. Returns (body, error, uncertain).
+
+    Repeats only when the server certainly did nothing (429, refused
+    connection, unknown host). A timeout, reset or 5xx may hide a request the
+    server already accepted: it is reported as `uncertain` and never repeated.
+    """
+    log = log or logger
+    for attempt in range(max_retries):
+        last = attempt == max_retries - 1
+        try:
+            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            with urlopen(req, timeout=timeout) as response:
+                return response.read(), None, False
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and not last:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            err = extract_http_error(e)
+            log.error(f"POST {url} failed: {err}")
+            return None, err, e.code >= 500
+        except urllib.error.URLError as e:
+            unsent = isinstance(e.reason, (ConnectionRefusedError, socket.gaierror))
+            if unsent and not last:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            log.error(f"Connection error POST {url}: {e}")
+            return None, f"Connection error: {e}", not unsent
+        except (TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            log.error(f"Connection error POST {url}: {e}")
+            return None, f"Connection error: {e}", True
+    return None, "request failed after retries", False
+
+
 def post_json(
     url: str,
     payload: bytes,
@@ -115,7 +196,7 @@ def post_json(
     for attempt in range(max_retries):
         try:
             req = urllib.request.Request(url, data=payload, headers=headers, method=method)
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with urlopen(req, timeout=timeout) as response:
                 return response.read(), None
         except urllib.error.HTTPError as e:
             if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:

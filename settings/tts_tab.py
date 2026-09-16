@@ -1,11 +1,14 @@
 """TTS tab — OpenRouter settings, voices, tasks, performance."""
 
+import os
+import tempfile
+
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QDialog, QDialogButtonBox,
     Qt, QLineEdit, QCheckBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QToolButton,
+    QHeaderView, QToolButton, sip,
 )
 from aqt.utils import showWarning, tooltip
 from aqt import mw
@@ -387,7 +390,7 @@ class TTSTab(QWidget):
             except RuntimeError:
                 pass  # dialog was closed while fetching
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     def _on_or_model_changed(self, _text: str):
         self._update_voice_checklist()
@@ -445,10 +448,14 @@ class TTSTab(QWidget):
                         f"{provider['name']}  ({provider['pricing']})",
                         provider["id"],
                     )
+                if saved and self._or_provider.findData(saved) < 0:
+                    # Unknown right now (discovery failed or the list changed):
+                    # keep the user's forced provider instead of dropping it.
+                    self._or_provider.addItem(f"{saved}  (zapisany)", saved)
                 index = self._or_provider.findData(saved)
                 self._or_provider.setCurrentIndex(index if index >= 0 else 0)
                 self._or_provider.blockSignals(False)
-                self._or_provider.setEnabled(bool(providers))
+                self._or_provider.setEnabled(bool(providers) or bool(saved))
                 self._or_provider_hint.setText(
                     "Wybierz dostawcę, aby wymusić go bez fallbacku."
                     if providers else
@@ -457,7 +464,7 @@ class TTSTab(QWidget):
             except RuntimeError:
                 pass
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     def _update_voice_checklist(self):
         model_id = self._or_model.currentData()
@@ -515,7 +522,10 @@ class TTSTab(QWidget):
             )
 
         self._or_voice_list.blockSignals(False)
-        self._on_voice_checklist_changed(None)
+        if model_info and model_info.get("voices"):
+            # Without a known voice list the checklist is empty — syncing it
+            # would erase voices typed by hand.
+            self._on_voice_checklist_changed(None)
         self._update_voices_row_visibility()
 
     def _on_voice_checklist_changed(self, _item):
@@ -684,7 +694,7 @@ class TTSTab(QWidget):
             return generate_audio(self._PREVIEW_TEXT, config, voice)
 
         def on_done(fut):
-            if btn:
+            if btn is not None and not sip.isdeleted(btn):
                 btn.setEnabled(True)
                 btn.setText("▶")
             try:
@@ -693,12 +703,16 @@ class TTSTab(QWidget):
                 tooltip(f"Podgląd głosu ({voice}): błąd — {e}", period=8000)
                 return
 
-            # ponytail: one reusable media file, overwritten each preview
-            fname = mw.col.media.write_data("_tts_preview.mp3", audio_bytes)
-            av_player.play_file(fname)
+            # Outside the collection: a preview is not card media, and
+            # media.write_data() would keep a renamed copy of every sample.
+            path = os.path.join(tempfile.gettempdir(), "anki_toolkit_tts_preview.mp3")
+            with open(path + ".tmp", "wb") as file:
+                file.write(audio_bytes)
+            os.replace(path + ".tmp", path)
+            av_player.play_file(path)
             tooltip(f"Odtwarzanie: {voice}", period=3000)
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     # ------------------------------------------------------------------
     # Save

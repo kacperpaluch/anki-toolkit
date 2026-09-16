@@ -72,7 +72,7 @@ def run_normalization(automatic=False):
             if _rescan and _timer is not None and mw.col is not None:
                 _timer.start()
     try:
-        mw.taskman.run_in_background(task, done)
+        mw.taskman.run_in_background(task, done, uses_collection=False)
     except Exception:
         _normalizing = False
         raise

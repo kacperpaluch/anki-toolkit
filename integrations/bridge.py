@@ -10,6 +10,7 @@ obsługuje diki.pl, Oxford Learner's i Longman (LDOCE). Okno „Dodaj" musi być
 otwarte, inaczej endpoint zwraca błąd.
 """
 
+import html
 import json
 import logging
 import threading
@@ -83,11 +84,14 @@ def _join(existing: str, value: str, separator: str) -> str:
     return (base + separator + value) if base else value
 
 
-def _apply_fields(fields: dict, target, append: bool = False, separator: str = "<br><br>") -> str | None:
+def _apply_fields(fields: dict, target, append: bool = False, separator: str = "<br><br>",
+                  is_html: bool = False) -> str | None:
     """Na WĄTKU GŁÓWNYM: wpisz pola do otwartego okna „Dodaj". Zwraca błąd lub None.
 
     append=True → dokleja do istniejącej treści pola przez `separator` (puste pole
-    dostaje samą wartość). Inaczej nadpisuje.
+    dostaje samą wartość). Inaczej nadpisuje. Wartości to zwykły tekst i są
+    escapowane — pola Anki są HTML-em; is_html=True wpisuje je bez zmian.
+    Separator zawsze jest HTML-em.
     """
     if not _target_alive(target):
         return "Okno „Dodaj” lub notatka zmieniły się — wyślij dane ponownie."
@@ -98,16 +102,14 @@ def _apply_fields(fields: dict, target, append: bool = False, separator: str = "
         return "Żadne z podanych pól nie istnieje w tym typie notatki: " + ", ".join(fields)
 
     for name in written:
-        if append:
-            note[name] = _join(note[name], fields[name], separator)
-        else:
-            note[name] = fields[name]
+        value = fields[name] if is_html else html.escape(fields[name], quote=False)
+        note[name] = _join(note[name], value, separator) if append else value
     editor.loadNote()
     editor.parentWindow.activateWindow()
     return None
 
 
-def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5):
+def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5, is_html=False):
     """Save the captured editor before applying; timeout cancels pending callbacks."""
     box = {}
     done = threading.Event()
@@ -119,7 +121,7 @@ def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5):
             if done.is_set():
                 return
             try:
-                box["error"] = _apply_fields(fields, target, append, separator)
+                box["error"] = _apply_fields(fields, target, append, separator, is_html)
             except Exception as error:
                 box["error"] = str(error)
                 logger.exception("web_bridge: apply failed")
@@ -188,7 +190,7 @@ class _Handler(BaseHTTPRequestHandler):
                 separator = body.get("separator") or "<br><br>"
                 if not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) or not isinstance(separator, str):
                     raise ValueError("Nazwy pól, wartości i separator muszą być tekstem.")
-                error = _run_on_main_sync(fields, append, separator)
+                error = _run_on_main_sync(fields, append, separator, is_html=body.get("html") is True)
         except Exception as e:  # noqa: BLE001
             error = str(e)
             logger.exception("web_bridge: bad request")
