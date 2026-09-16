@@ -245,8 +245,11 @@ w talii i typie wybranym w oknie „Dodaj”.
 
 **Słowo, które już jest w Anki, nie trafia do AI.** Przed wysłaniem do modelu
 dodatek sprawdza pole angielskie (wielkość liter bez znaczenia) — jeśli masz już
-kartę z tym słowem, jest pomijane, a dymek mówi które. Liczy się wyłącznie słowo,
-nie znaczenia: kolejne znaczenie takiego słowa dodajesz ręcznie. Gdy sprawdzenie
+kartę z tym słowem, jest pomijane i znika z wyboru do AI. Jeśli któreś z nich
+nie jest jeszcze odhaczone, dodatek pyta, czy odhaczyć je w kolejce — **Tak**
+odhacza (z ponowieniem po **Odśwież**, gdy n8n nie odpowie), **Nie** tylko je
+pomija. Liczy się wyłącznie słowo, nie znaczenia: kolejne znaczenie takiego
+słowa dodajesz ręcznie. Gdy sprawdzenie
 się nie uda, paczka nie rusza. Przy odzyskanych propozycjach okno wyboru
 dodatkowo ostrzega na czerwono, jeśli karty z tym słowem powstały w międzyczasie.
 

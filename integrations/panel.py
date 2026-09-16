@@ -901,9 +901,20 @@ class WordQueuePanel(QDockWidget):
             tooltip("AI: nie udało się sprawdzić, czy słowa są już w Anki — sprawdź Logi.", parent=mw)
             return
         if in_anki:
-            names = [row.get(column) for row in in_anki]
-            tooltip("AI: pominięto, już są w Anki: " + ", ".join(names[:5])
-                    + (f" i {len(names) - 5} innych" if len(names) > 5 else ""), parent=mw, period=6000)
+            def listing(found):
+                names = [str(row.get(column)) for row in found]
+                return ", ".join(names[:10]) + (f" i {len(names) - 10} innych" if len(names) > 10 else "")
+            unmarked = [row for row in in_anki if row["id"] not in self._marked]
+            mark = bool(unmarked) and askUser(
+                f"Te słowa są już w Anki i nie pójdą do AI: {listing(in_anki)}.\n\n"
+                f"Odhaczyć w kolejce te, które nie są jeszcze zrobione ({len(unmarked)})?",
+                parent=self)
+            if mark:
+                # Cards exist, so this is the same debt as after adding them.
+                self._owe({row["id"]: clean_html_normalized(row.get(column) or "") for row in unmarked})
+            else:
+                tooltip(f"AI: pominięto, już są w Anki: {listing(in_anki)}", parent=mw, period=6000)
+            self._finish_rows({row["id"] for row in in_anki}, mark=mark)
             rows = [row for row in rows if row not in in_anki]
             if not rows:
                 return
@@ -1098,7 +1109,10 @@ class WordQueuePanel(QDockWidget):
 
         # Karty są w talii, więc wiersze są zrobione — hook add_cards_did_add_note
         # tu nie leci (to nie okno „Dodaj" je zapisało), odhaczamy wprost.
-        done = set(done_words)
+        self._finish_rows(set(done_words), mark=True)
+
+    def _finish_rows(self, done: set, mark: bool) -> None:
+        """Rows with cards leave the AI selection; with `mark`, n8n hears they are done."""
         self._picked -= done  # zrobione znika z wyboru, żeby nie poszło drugi raz
         for i in range(self._list.count()):
             item = self._list.item(i)
@@ -1108,7 +1122,7 @@ class WordQueuePanel(QDockWidget):
             with self._silent():
                 item.setCheckState(Qt.CheckState.Unchecked)
             self._style_item(item)
-            if row_id not in self._marked:
+            if mark and row_id not in self._marked:
                 self._set_row(item, True)
         self._update_ai_label()
 

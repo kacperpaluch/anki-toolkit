@@ -109,7 +109,8 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   cytatów.
 - Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
   `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd
-  wyszukiwania przerywa paczkę. `existing_senses` w podglądzie zostaje jako
+  wyszukiwania przerywa paczkę. Nieodhaczone z nich odhacza dopiero po `askUser`
+  (przez `_owe` + `_finish_rows`, jak po zapisie kart). `existing_senses` w podglądzie zostaje jako
   ostrzeżenie dla odzyskanych propozycji (karty mogły powstać w międzyczasie).
 - Dopisane hasła idą do tabeli (`add_rows`) i dostają prawdziwe `id`. Duplikaty
   odsiewa panel po zawartości listy — ma całą tabelę, więc osobne zapytanie

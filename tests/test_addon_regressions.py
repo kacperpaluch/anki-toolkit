@@ -323,12 +323,54 @@ class PanelTests(unittest.TestCase):
         self.module.ai_senses.find_word_notes = lambda word, cfg: [7] if word == "mother" else []
         shown = []
         self.module.tooltip = lambda text, **k: shown.append(text)
+        self.module.askUser = lambda *a, **k: False   # declined: nothing is ticked in n8n
         with patch.object(self.module.ai_senses, "pick_senses", return_value=[]):
             self.panel._ai_senses()
             self.answer("ojciec")
         self.assertEqual(self.loaded, ["father"])
         self.assertEqual(len(self.jobs), 1)
         self.assertIn("mother", shown[0])
+
+        self.assertEqual(self.panel._marked, set())
+        self.assertNotIn(-1, self.panel._picked)
+
+    def test_accepted_prompt_ticks_known_words_and_continues(self):
+        items = self.batch_panel(["mother", "father"])
+        self.panel._picked = {-1, -2}
+        self.module.ai_senses.find_word_notes = lambda word, cfg: [7] if word == "mother" else []
+        asked = []
+        self.module.askUser = lambda text, **k: asked.append(text) or True
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]):
+            self.panel._ai_senses()
+            self.answer("ojciec")
+        self.assertIn("mother", asked[0])
+        self.assertEqual(self.panel._marked, {-1})          # local row: ticked at once
+        self.assertEqual(self.panel._picked, {-2})          # known word left the AI selection
+        self.assertFalse(items[0].checked)
+        self.assertEqual(self.panel._state.data["owed"], {})
+        self.assertEqual(self.loaded, ["father"])
+
+    def test_accepted_n8n_row_stays_owed_until_patch_succeeds(self):
+        items = self.batch_panel(["mother"])
+        items[0].row["id"] = 5
+        self.module.ai_senses.find_word_notes = lambda word, cfg: [7]
+        self.module.askUser = lambda *a, **k: True
+        self.panel._ai_senses()
+        self.assertEqual(self.panel._state.data["owed"], {"5": "mother"})
+        self.finish((0, "offline"))
+        self.assertEqual(self.panel._state.data["owed"], {"5": "mother"})  # retried after refill
+        self.panel._set_row(items[0], True)
+        self.finish((1, None))
+        self.assertEqual(self.panel._state.data["owed"], {})
+        self.assertEqual(self.panel._marked, {5})
+
+    def test_already_ticked_known_word_is_not_asked_about(self):
+        self.batch_panel(["mother"])
+        self.panel._marked = {-1}
+        self.module.ai_senses.find_word_notes = lambda word, cfg: [7]
+        self.module.askUser = lambda *a, **k: self.fail("nothing to tick, nothing to ask")
+        self.panel._ai_senses()
+        self.assertEqual(self.jobs, [])
 
     def test_only_known_words_selected_means_no_batch(self):
         self.batch_panel(["mother"])
