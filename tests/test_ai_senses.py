@@ -115,18 +115,144 @@ class SenseParsingTests(unittest.TestCase):
         provider = types.SimpleNamespace(call_api=lambda prompt: json.dumps({"senses": [{
             "pl": "rozległy", "en": "covering a large area", "example": "a sprawling city",
             "src": "Oxford", "match": "exact"}]}))
-        with patch.object(self.m, "_provider", return_value=(provider, None)):
-            senses, error = self.m.generate("sprawling", PAGE, {"ai_fields": {"example": ""}})
-            self.assertIsNone(error)
-            self.assertEqual(senses[0]["example"], "")
-            senses, _ = self.m.generate("sprawling", PAGE, {"ai_fields": {"example": "przyklad"}})
-            self.assertEqual(senses[0]["example"], "a sprawling city")
+        senses, error = self.m.generate(provider, "sprawling", PAGE, {"ai_fields": {"example": ""}})
+        self.assertIsNone(error)
+        self.assertEqual(senses[0]["example"], "")
+        senses, _ = self.m.generate(provider, "sprawling", PAGE, {"ai_fields": {"example": "przyklad"}})
+        self.assertEqual(senses[0]["example"], "a sprawling city")
         self.assertIn("Nie wybieraj ani nie generuj przykładów", self.m.build_prompt("x", PAGE, 3, False))
 
     def test_prompt_truncates_pages(self):
         prompt = self.m.build_prompt("sprawling", {"diki": "x" * 20000}, 3)
         self.assertLess(len(prompt), 20000)
         self.assertIn("sprawling", prompt)
+
+
+class FourDictionaryTests(unittest.TestCase):
+    """Cambridge EN-PL jest źródłem PL i EN naraz — obie role na jednej stronie."""
+
+    PAGES = {"diki": "gęstwina",
+             "Cambridge": "your female parent matka, mama a single mother",
+             "Oxford": "a female parent of a child or an animal",
+             "LDoCE": "a woman who has a child"}
+    PL = ("diki", "Cambridge")
+    EN = ("Cambridge", "Oxford", "LDoCE")
+
+    def setUp(self):
+        self.m = load()
+
+    def parse(self, sense, **kwargs):
+        return self.m.parse_senses(json.dumps({"senses": [sense]}), self.PAGES, 3, **kwargs)
+
+    def test_polish_from_cambridge_counts_only_when_listed(self):
+        sense = {"pl": "matka, mama", "en": "", "match": "none"}
+        senses, error = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
+        self.assertIsNone(error)
+        self.assertEqual(senses[0]["pl"], "matka, mama")
+        self.assertEqual(self.parse(sense)[0], [])  # domyślnie tylko diki → brak w worku
+
+    def test_cambridge_may_be_the_english_source_too(self):
+        sense = {"pl": "matka", "en": "your female parent", "example": "a single mother",
+                 "src": "Cambridge", "match": "exact"}
+        senses, _ = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
+        self.assertEqual(senses[0]["en"], "your female parent")
+        self.assertEqual(senses[0]["example"], "a single mother")
+        # bez listy EN Cambridge jest tylko polski — definicja leci, karta zostaje
+        self.assertEqual(self.parse(sense, pl_sources=self.PL)[0][0]["en"], "")
+
+    def test_polish_source_cannot_pose_as_an_english_definition(self):
+        sense = {"pl": "matka", "en": "gęstwina", "src": "diki", "match": "exact"}
+        senses, _ = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
+        self.assertEqual((senses[0]["en"], senses[0]["match"]), ("", "none"))
+
+    def test_prompt_names_both_source_lists_and_forbids_duplicates(self):
+        prompt = self.m.build_prompt("mother", self.PAGES, 3, True, self.PL, self.EN)
+        self.assertIn("źródła PL: diki, Cambridge", prompt)
+        self.assertIn("źródła EN: Cambridge, Oxford, LDoCE", prompt)
+        self.assertIn("w kolejności z diki", prompt)
+        self.assertIn("zwróć RAZ", prompt)
+
+    def test_label_typo_is_named_instead_of_looking_like_an_empty_result(self):
+        called = []
+        provider = types.SimpleNamespace(call_api=lambda _prompt: called.append(1) or "{}")
+        _senses, error = self.m.generate(provider, "mother", self.PAGES, {"ai_pl_sources": ["Diki.pl"]})
+        self.assertIn("ai_pl_sources", error)
+        self.assertIn("Diki.pl", error)
+        self.assertFalse(called)  # zła etykieta wychodzi PRZED zapłaceniem za model
+
+    def test_source_links_follow_the_configured_polish_sources(self):
+        sense = {"pl": "matka", "en": "a female parent", "src": "Oxford", "match": "exact"}
+        urls = {"diki": "https://diki.test/x", "Cambridge": "https://cambridge.test/x",
+                "Oxford": "https://oxford.test/x", "LDoCE": "https://ldoce.test/x"}
+        links = self.m.source_links(sense, urls, self.PL)
+        self.assertIn("Cambridge", links)
+        self.assertIn("Oxford", links)
+        self.assertNotIn("LDoCE", links)
+
+
+class ProviderLookupTests(unittest.TestCase):
+    """Kandydata na Content wybieramy po plikach — import przeglądanego dodatku
+    wykonuje jego kod startowy (AnkiConnect startował serwer i ubijał Anki)."""
+
+    def setUp(self):
+        self.m = load()
+        self.m.mw = types.SimpleNamespace(addonManager=types.SimpleNamespace(
+            addonsFolder=lambda name: str(ROOT / name),
+            allAddons=lambda: ["anki_toolkit_integrations", "anki_toolkit_content"]))
+
+    def test_real_content_layout_is_recognised(self):
+        """Pin na FAKTYCZNY układ repo: `providers` jest pakietem, nie plikiem."""
+        self.assertTrue(self.m._has_providers("anki_toolkit_content"))
+        self.assertFalse(self.m._has_providers("anki_toolkit_integrations"))
+        self.assertFalse(self.m._has_providers("nie-ma-takiego-dodatku"))
+
+    def test_label_says_which_model_actually_ran(self):
+        """Dostawca Integrations jest jeden i własny — nie modele per pole z Contentu."""
+        module = types.SimpleNamespace(PROVIDER_LABELS={"claude_cli": "Claude CLI"})
+        self.m.mw.addonManager.getConfig = lambda _addon: {
+            "ai_generator": {"providers": {"claude_cli": {"model": "opus"}}}}
+        with patch.object(self.m, "providers_module", return_value=(module, "content")):
+            self.assertEqual(self.m.provider_label({"ai_provider": "claude_cli"}),
+                             "Claude CLI · opus")
+            self.assertEqual(  # własny model z Integrations bije domyślny dostawcy
+                self.m.provider_label({"ai_provider": "claude_cli", "ai_model": "sonnet"}),
+                "Claude CLI · sonnet")
+        self.assertEqual(self.m.provider_label({}), "")
+
+    def test_other_addons_are_never_imported(self):
+        imported = []
+        with patch.object(self.m.importlib, "import_module",
+                          side_effect=lambda name: imported.append(name) or object()):
+            _module, addon = self.m.providers_module()
+        self.assertEqual(addon, "anki_toolkit_content")
+        self.assertEqual(imported, ["anki_toolkit_content.ai_generator.providers"])
+
+
+class DuplicateWarningTests(unittest.TestCase):
+    """Notatki z add_notes omijają kontrolę duplikatów okna „Dodaj"."""
+
+    CFG = {"word_field": "ang", "ai_fields": {"pl": "pol"}}
+
+    def setUp(self):
+        self.m = load()
+        self.searches = []
+        self.notes = {1: {"ang": "mother", "pol": "matka"}, 2: {"ang": "mother", "pol": "macierz"}}
+        self.m.mw = types.SimpleNamespace(col=types.SimpleNamespace(
+            find_notes=lambda search: self.searches.append(search) or list(self.notes),
+            get_note=lambda nid: self.notes[nid]))
+
+    def test_existing_meanings_are_listed(self):
+        self.assertEqual(self.m.existing_senses("mother", self.CFG), ["matka", "macierz"])
+        self.assertEqual(self.searches, ['"ang:mother"'])
+
+    def test_quotes_and_wildcards_cannot_break_out_of_the_search(self):
+        self.m.existing_senses('a" OR *_x', self.CFG)
+        self.assertEqual(self.searches, ['"ang:a\\" OR \\*\\_x"'])
+
+    def test_broken_search_warns_instead_of_killing_the_picker(self):
+        self.m.mw.col.find_notes = lambda _search: (_ for _ in ()).throw(RuntimeError("zły filtr"))
+        with patch.object(self.m.log, "exception"):
+            self.assertEqual(self.m.existing_senses("mother", self.CFG), [])
 
 
 class Note(dict):
@@ -155,9 +281,10 @@ class AddNotesTests(unittest.TestCase):
             editor=types.SimpleNamespace(note=Note(self.FIELDS)),
             deck_chooser=types.SimpleNamespace(selected_deck_id=7))
 
-    def add(self, senses, cfg=None):
+    def add(self, senses, cfg=None, word="sprawling"):
+        chosen = [(word, sense) if isinstance(sense, dict) else sense for sense in senses]
         with patch.dict(sys.modules, {"anki.collection": types.SimpleNamespace(AddNoteRequest=types.SimpleNamespace)}):
-            return self.m.add_notes(self.addcards, "sprawling", senses, cfg or self.CFG)
+            return self.m.add_notes(self.addcards, chosen, cfg or self.CFG)
 
     def sense(self, **kwargs):
         return {"pl": "rozległy", "en": "covering a large area", "example": "",
@@ -186,6 +313,24 @@ class AddNotesTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.add([self.sense(), self.sense()])
         self.assertEqual(self.added, [])
+
+    def test_empty_selection_writes_nothing(self):
+        self.assertEqual(self.add([]), (0, None))
+        self.assertEqual(self.added, [])
+
+    def test_one_batch_covers_several_headwords(self):
+        """Paczka z „+ lista" to jedna transakcja, nie N transakcji po jednym haśle."""
+        added, error = self.add([("mother", self.sense(pl="matka")),
+                                 ("father", self.sense(pl="ojciec"))])
+        self.assertIsNone(error)
+        self.assertEqual(added, 2)
+        self.assertEqual([note["ang"] for note, _deck in self.added], ["mother", "father"])
+        self.assertEqual([note["pol"] for note, _deck in self.added], ["matka", "ojciec"])
+
+    def test_bad_field_map_aborts_before_any_note_of_any_word(self):
+        added, error = self.add([("mother", self.sense()), ("father", self.sense())],
+                                {**self.CFG, "ai_fields": {"pl": "polski"}})
+        self.assertEqual((added, self.added), (0, []))
 
     def test_batch_returns_changes_and_is_called_once(self):
         changes = object()
@@ -219,14 +364,19 @@ class RealBatchTests(unittest.TestCase):
                     editor=types.SimpleNamespace(note=col.new_note(nt)),
                     deck_chooser=types.SimpleNamespace(selected_deck_id=1))
                 cfg = {"word_field": fields[0], "ai_fields": {"pl": fields[1]}}
-                senses = [{"pl": "pierwsze", "match": "none"}, {"pl": "drugie", "match": "none"}]
+                chosen = [("test", {"pl": "pierwsze", "match": "none"}),
+                          ("inne", {"pl": "drugie", "match": "none"})]
+                # Sygnatura musi być aktualna: TypeError też spełniłby assertRaises
+                # i test „przechodziłby" nie sprawdzając wycofania zapisu.
+                self.assertEqual(m.add_notes(addcards, [], cfg), (0, None))
                 first, invalid = col.new_note(nt), col.new_note(nt)
                 invalid.mid = 999999999999
                 with patch.object(col, "new_note", side_effect=[first, invalid]):
-                    with self.assertRaises(Exception):
-                        m.add_notes(addcards, "test", senses, cfg)
+                    with self.assertRaises(Exception) as caught:
+                        m.add_notes(addcards, chosen, cfg)
+                self.assertNotIsInstance(caught.exception, TypeError)
                 self.assertEqual(col.note_count(), 0)
-                self.assertEqual(m.add_notes(addcards, "test", senses, cfg)[0], 2)
+                self.assertEqual(m.add_notes(addcards, chosen, cfg)[0], 2)
                 self.assertEqual(col.note_count(), 2)
                 col.undo()
                 self.assertEqual(col.note_count(), 0)

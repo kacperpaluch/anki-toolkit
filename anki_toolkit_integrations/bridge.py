@@ -8,10 +8,6 @@ Które pole dostaje jaką wartość decyduje strona wysyłająca (body: {"fields
 więc moduł jest uniwersalny. Dołączony userscript `dictionaries-to-anki.user.js`
 obsługuje diki.pl, Oxford Learner's i Longman (LDOCE). Okno „Dodaj" musi być
 otwarte, inaczej endpoint zwraca błąd.
-
-Drugi endpoint, GET /dict?word=X, serwuje czytnik lokalnego słownika StarDict
-(`local_dict.py`). To zwykła strona ładowana w zakładce panelu — jej przyciski
-wysyłają pojedyncze znaczenia tym samym POST-em co userscript.
 """
 
 import json
@@ -168,24 +164,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        """Czytnik lokalnego słownika. Jedyna strona, jaką ten serwer wydaje."""
-        parsed = urllib.parse.urlparse(self.path)
-        if parsed.path.rstrip("/") not in ("/dict",):
-            self.send_response(404)
-            self.end_headers()
-            return
-        word = (urllib.parse.parse_qs(parsed.query).get("word") or [""])[0][:100]
-        try:
-            from . import local_dict
-            body = local_dict.render(word, _dict_config()).encode("utf-8")
-        except Exception as error:  # noqa: BLE001 — czytnik nie może ubić mostka
-            logger.exception("web_bridge: czytnik słownika")
-            body = f"<meta charset=utf-8><p>Błąd czytnika słownika: {error}".encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+        """Mostek przyjmuje wyłącznie POST-y z polami notatki."""
+        self.send_response(404)
         self.end_headers()
-        self.wfile.write(body)
 
     def do_POST(self):
         if not _origin_allowed(self.headers.get("Origin")):
@@ -218,10 +199,6 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_message(self, *_):  # cisza w konsoli Anki
         pass
-
-
-def _dict_config() -> dict:
-    return (mw.addonManager.getConfig(__package__) or {}).get("local_dict") or {}
 
 
 def _port() -> int:

@@ -1,10 +1,9 @@
 """Anki Toolkit: Integrations — n8n Word Queue and local Web Bridge."""
 from aqt import gui_hooks,mw
 from aqt.qt import QAction,QTimer
-from . import word_queue,bridge,reader
+from . import word_queue,bridge
 gui_hooks.add_cards_did_add_note.append(word_queue.on_add_note)
 gui_hooks.editor_did_init_buttons.append(word_queue.on_editor_buttons_init)
-gui_hooks.editor_did_init_buttons.append(reader.on_editor_buttons_init)
 gui_hooks.profile_did_open.append(bridge.start_server)
 gui_hooks.editor_did_load_note.append(bridge.track_editor)
 gui_hooks.profile_will_close.append(bridge.forget_editor)
@@ -14,7 +13,6 @@ def _menu(*_):
  menu=mw.form.menuTools.addMenu('Anki Toolkit: Integrations')
  a=QAction('Ustawienia…',menu);a.triggered.connect(open_settings);menu.addAction(a)
  a=QAction('Kolejka słówek (n8n)…',menu);a.triggered.connect(word_queue.open_queue);menu.addAction(a)
- a=QAction('Słownik lokalny…',menu);a.triggered.connect(lambda:reader.open_reader());menu.addAction(a)
  mw.addonManager.setConfigAction(__name__,open_settings)
 if hasattr(gui_hooks,'main_window_did_init'):gui_hooks.main_window_did_init.append(_menu)
 else:QTimer.singleShot(0,_menu)

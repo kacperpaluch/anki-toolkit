@@ -14,7 +14,7 @@ oraz `user_files/` danego dodatku i nie mogą trafić do Git.
 | `anki_toolkit_html_cleanup` | czyszczenie HTML |
 | `anki_toolkit_field_hider` | pola w Add Cards |
 | `anki_toolkit_local_sources` | Oxford 5000 i SuperMemo |
-| `anki_toolkit_integrations` | Word Queue/n8n, karty z AI, Web Bridge, czytnik StarDict |
+| `anki_toolkit_integrations` | Word Queue/n8n, cztery słowniki, karty z AI, Web Bridge |
 
 Przed zmianą czytaj `AGENTS.md`, a potem tylko `llm-context.md` właściwego
 dodatku. Nie przywracaj scalonego root loadera.

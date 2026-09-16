@@ -21,6 +21,7 @@ Konfiguracja w config.json → "word_queue" (klucz API trzymaj w meta.json).
 
 import json
 import logging
+import re
 import urllib.parse
 
 try:
@@ -46,14 +47,22 @@ _DEFAULTS = {
     "word_field": "ang",       # pole notatki, do którego wpisujemy słówko
     "word_column": "Slowko",   # kolumna z hasłem
     "flag_column": "Anki",     # kolumna boolean: false = do zrobienia
-    "link_columns": {          # etykieta zakładki → kolumna z URL-em (kolejność ma znaczenie)
-        "diki": "URL",
-        "Longman": "Longman",
-        "Oxford": "Oxford",
+    # Zakładki biorą się z `link_templates` (kolejność ma znaczenie), a adres
+    # składa się z samego hasła. `link_columns` to tylko nadpisanie gotowym
+    # URL-em z wiersza n8n — nowy słownik NIE wymaga nowej kolumny w DataTable.
+    "link_templates": {
+        "diki": "https://www.diki.pl/slownik-angielskiego?q={q}",
+        "Cambridge EN-PL": "https://dictionary.cambridge.org/pl/dictionary/english-polish/{slug}",
+        "Oxford": "https://www.oxfordlearnersdictionaries.com/definition/english/{slug}",
+        "LDoCE": "https://www.ldoceonline.com/dictionary/{slug}",
     },
+    "link_columns": {"diki": "URL", "Oxford": "Oxford", "LDoCE": "Longman"},
     "page_size": 250,          # maksimum, jakie przyjmuje n8n
     "max_rows": 5000,          # bezpiecznik pętli stronicowania
-    "random_order": False,     # startowy stan checkboxa „Losowo"
+    # Kolejność listy: "id" (od początku tabeli), "new" (najnowsze u góry), "random".
+    # `id` rośnie z każdym dodanym wierszem, więc jest zarazem datą dodania —
+    # sortowanie po `createdAt` dałoby to samo, tylko zależne od nazwy kolumny.
+    "order": "id",
     # „AI: znaczenia" — dostawca pożyczany z dodatku Content (klucze trzyma on).
     "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
     "ai_model": "",            # puste = model domyślny dostawcy z Contentu
@@ -61,6 +70,11 @@ _DEFAULTS = {
     "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
     "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)
     "ai_review_tag": "ai-review",  # dodatkowo, gdy dopasowanie nie jest pewne
+    # Skąd model może cytować. Cambridge EN-PL jest na OBU listach: ta sama
+    # strona ma polskie odpowiedniki i angielskie definicje. Etykiety muszą się
+    # zgadzać z kluczami `link_templates`, inaczej nie ma czego sprawdzać.
+    "ai_pl_sources": ["diki", "Cambridge EN-PL"],
+    "ai_en_sources": ["Cambridge EN-PL", "Oxford", "LDoCE"],
     # Pole angielskie to `word_field` powyżej — tu tylko reszta.
     "ai_fields": {"pl": "pol", "definition": "def", "example": "przyklad"},
 }
@@ -129,16 +143,60 @@ def _get_json(url: str, cfg: dict):
         return None, f"zła odpowiedź n8n: {e}"
 
 
-def fetch_tables(cfg: dict) -> tuple[list[dict], str | None]:
-    """Lista tabel do rozwijanki w Ustawieniach: [{'id':…, 'name':…}, …]."""
-    def call(base):
-        data, error = _get_json(f"{base}/api/v1/data-tables?limit=250", cfg)
-        if error:
-            return None, error
-        return [{"id": t["id"], "name": t["name"]} for t in data.get("data", [])], None
+# ---------------------------------------------------------------------------
+# adresy słowników
+# ---------------------------------------------------------------------------
 
-    tables, error = _via_hosts(cfg, call)
-    return tables or [], error
+def _slug(word: str) -> str:
+    """Hasło → część ścieżki: „give up" → „give-up" (Cambridge, Oxford, LDoCE)."""
+    return urllib.parse.quote(" ".join(word.split()).casefold().replace(" ", "-"))
+
+
+def _from_template(template: str, word: str) -> str:
+    if not template or not word:
+        return ""
+    try:
+        return template.format(q=urllib.parse.quote(word), slug=_slug(word))
+    except (KeyError, IndexError, ValueError):
+        log.warning("word_queue: zły szablon adresu %r", template)
+        return ""
+
+
+def parse_words(text: str) -> list[str]:
+    """Wklejony tekst → lista haseł. Rozdziela nowa linia, przecinek i średnik.
+
+    Spacja NIE rozdziela: „give up" i „household income" to jedno hasło.
+    Powtórzenia w jednej wklejce lecą raz — dwa identyczne wiersze na liście
+    byłyby tylko podwójną robotą.
+    """
+    words, seen = [], set()
+    for part in re.split(r"[,;\n\r]", text or ""):
+        word = " ".join(part.split())
+        if word and word.casefold() not in seen:
+            seen.add(word.casefold())
+            words.append(word)
+    return words
+
+
+def dict_labels(cfg: dict) -> list[str]:
+    """Etykiety zakładek, w kolejności z `link_templates`."""
+    return list(cfg.get("link_templates") or {})
+
+
+def dict_urls(word: str, cfg: dict, row: dict | None = None) -> dict[str, str]:
+    """etykieta → URL. Niepusta kolumna wiersza wygrywa, reszta leci z szablonu.
+
+    Dzięki temu Cambridge i LDoCE działają bez dokładania kolumn w n8n, a hasło
+    wpisane z ręki (row=None) ma komplet zakładek. Etykieta spoza
+    `link_templates` nie dostaje zakładki, nawet jeśli siedzi w `link_columns` —
+    stara kolumna zostaje w tabeli, ale nie tworzy szóstej karty.
+    """
+    word = " ".join((word or "").split())
+    columns = cfg.get("link_columns") or {}
+    return {
+        label: ((row or {}).get(columns.get(label) or "") or "") or _from_template(template, word)
+        for label, template in (cfg.get("link_templates") or {}).items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +236,42 @@ def _set_flag(filters: list[dict], cfg: dict, value: bool) -> tuple[int, str | N
 
     matched, error = _via_hosts(cfg, call)
     return (matched or 0), error
+
+
+def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
+    """Dopisz hasła do DataTable i oddaj wiersze z prawdziwymi `id` z n8n.
+
+    Dzięki temu dopisane hasło jest pełnoprawną pozycją kolejki — widać je na
+    innym urządzeniu i da się je odhaczyć. Kontrola duplikatów siedzi w panelu:
+    ma on całą tabelę, więc „już jest" rozstrzyga bez dodatkowego zapytania.
+    """
+    rows = [{cfg["word_column"]: word, cfg["flag_column"]: False} for word in words]
+    payload = json.dumps({"data": rows, "returnData": True}).encode()
+
+    def call(base):
+        body, error = post_json(
+            _rows_url(base, cfg), payload, _headers(cfg),
+            max_retries=2,  # utrata zapisu to hasło, które przepadło — warte ponowienia
+            timeout=8,
+            log=log,
+        )
+        if error:
+            return None, error
+        try:
+            saved = json.loads(body)
+        except ValueError as e:
+            return None, f"zła odpowiedź n8n: {e}"
+        if isinstance(saved, dict):
+            saved = saved.get("data", saved)
+        if not isinstance(saved, list) or len(saved) != len(words):
+            got = len(saved) if isinstance(saved, list) else "?"
+            return None, f"zapisano {got} z {len(words)} haseł; odśwież kolejkę"
+        # Hasło bierzemy ze swojego zapytania: n8n oddaje `id`, ale nie ma
+        # obowiązku oddać reszty kolumn, a panel bez hasła pokazałby „—".
+        return [{**row, **entry} for row, entry in zip(rows, saved)], None
+
+    rows, error = _via_hosts(cfg, call)
+    return (rows or []), error
 
 
 def mark_row_done(row_id, cfg: dict, done: bool = True) -> tuple[int, str | None]:
@@ -386,5 +480,58 @@ if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez siec
     page2 = urllib.parse.parse_qs(_queue_query(250, "eyJsaW1pdCI6MjUwfQ=="))
     assert page2["cursor"] == ["eyJsaW1pdCI6MjUwfQ=="]
     assert page2["sortBy"] == ["id:asc"]
+
+    # --- adresy słowników ---------------------------------------------------
+    assert dict_labels(_DEFAULTS) == ["diki", "Cambridge EN-PL", "Oxford", "LDoCE"]
+
+    urls = dict_urls("mother", _DEFAULTS)
+    assert urls["diki"] == "https://www.diki.pl/slownik-angielskiego?q=mother"
+    assert urls["Cambridge EN-PL"].endswith("/english-polish/mother")
+    assert urls["Oxford"].endswith("/definition/english/mother")   # serwer sam dokleja _1
+    assert urls["LDoCE"].endswith("/dictionary/mother")
+
+    # fraza: ścieżka po myślniku, query po %20 — obie formy sprawdzone na żywych stronach
+    multi = dict_urls("  Give   Up ", _DEFAULTS)
+    assert multi["LDoCE"].endswith("/dictionary/give-up"), multi["LDoCE"]
+    assert multi["diki"].endswith("?q=Give%20Up"), multi["diki"]
+
+    # wiersz n8n nadpisuje szablon, ale tylko gdy kolumna jest niepusta
+    row = {"URL": "https://diki.example/curated", "Oxford": "", "Longman": "https://ldoce.example/x"}
+    over = dict_urls("mother", _DEFAULTS, row)
+    assert over["diki"] == "https://diki.example/curated"
+    assert over["Oxford"].endswith("/definition/english/mother")   # pusta kolumna → szablon
+    assert over["LDoCE"] == "https://ldoce.example/x"
+    assert "Longman" not in over                                   # stara etykieta nie robi zakładki
+
+    assert dict_urls("", _DEFAULTS)["diki"] == ""                  # brak hasła → brak adresu
+
+    # --- wklejona lista haseł -----------------------------------------------
+    assert parse_words("mother\nfather") == ["mother", "father"]
+    assert parse_words("mother, father; sister") == ["mother", "father", "sister"]
+    assert parse_words("give up\nhousehold income") == ["give up", "household income"]
+    assert parse_words("  mother \n\n , \n Mother ") == ["mother"]   # puste i powtórki znikają
+    assert parse_words("") == [] and parse_words(None) == []
+    assert _from_template("https://x/{nie_ma}", "mother") == ""    # zły szablon nie wysadza panelu
+
+    # --- dopisywanie wierszy ------------------------------------------------
+    sent = {}
+    def fake_post(url, payload, headers, **kwargs):
+        sent["url"], sent["body"] = url, json.loads(payload)
+        return json.dumps([{"id": 11}, {"id": 12}]).encode(), None
+
+    post_json = fake_post
+    rows, error = add_rows(["mother", "give up"], dict(cfg, api_key="k"))
+    assert error is None, error
+    assert sent["url"].endswith("/rows") and "/update" not in sent["url"]
+    assert sent["body"]["data"] == [{"Slowko": "mother", "Anki": False},
+                                    {"Slowko": "give up", "Anki": False}]
+    # id z n8n + hasło z naszego zapytania — panel nie może pokazać pustej pozycji
+    assert rows == [{"Slowko": "mother", "Anki": False, "id": 11},
+                    {"Slowko": "give up", "Anki": False, "id": 12}], rows
+
+    post_json = lambda *a, **k: (json.dumps([{"id": 11}]).encode(), None)
+    _active_url = None
+    rows, error = add_rows(["mother", "give up"], dict(cfg, api_key="k"))
+    assert rows == [] and "1 z 2" in error, (rows, error)  # połowa zapisu to błąd
 
     print("word_queue self-check OK")

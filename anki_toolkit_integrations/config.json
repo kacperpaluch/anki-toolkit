@@ -7,14 +7,20 @@
     "word_field": "ang",
     "word_column": "Slowko",
     "flag_column": "Anki",
+    "link_templates": {
+      "diki": "https://www.diki.pl/slownik-angielskiego?q={q}",
+      "Cambridge EN-PL": "https://dictionary.cambridge.org/pl/dictionary/english-polish/{slug}",
+      "Oxford": "https://www.oxfordlearnersdictionaries.com/definition/english/{slug}",
+      "LDoCE": "https://www.ldoceonline.com/dictionary/{slug}"
+    },
     "link_columns": {
       "diki": "URL",
-      "Longman": "Longman",
-      "Oxford": "Oxford"
+      "Oxford": "Oxford",
+      "LDoCE": "Longman"
     },
     "page_size": 250,
     "max_rows": 5000,
-    "random_order": false,
+    "order": "id",
     "ai_provider": "",
     "ai_model": "",
     "ai_max_senses": 3,
@@ -25,14 +31,18 @@
       "definition": "def",
       "example": "przyklad"
     },
-    "ai_review_tag": "ai-review"
+    "ai_review_tag": "ai-review",
+    "ai_pl_sources": [
+      "diki",
+      "Cambridge EN-PL"
+    ],
+    "ai_en_sources": [
+      "Cambridge EN-PL",
+      "Oxford",
+      "LDoCE"
+    ]
   },
   "web_bridge": {
     "port": 8767
-  },
-  "local_dict": {
-    "label": "PL",
-    "fields": ["pol"],
-    "headword_field": "ang"
   }
 }

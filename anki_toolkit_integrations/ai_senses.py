@@ -1,13 +1,18 @@
 """ai_senses — jedno hasło ze słowników → po jednej notatce na każde znaczenie.
 
-Panel trzyma już otwarte strony diki / Longman / Oxford w QWebEngineView, więc
+Panel trzyma już otwarte strony słowników w QWebEngineView (diki, Cambridge
+EN-PL, Oxford, LDoCE — komplet z `link_templates`), więc
 tekst bierzemy z nich (`toPlainText`), a nie z kolejnego scrapera: HTML tych
 stron zmienia się częściej niż nasza chęć poprawiania parserów.
 
-Model DOPASOWUJE, nie tłumaczy — polskie znaczenia z diki do angielskich
-definicji z Oxforda/Longmana/Cambridge. `en` i `example` muszą być DOSŁOWNYM
-cytatem ze wskazanego źródła. Polskie odpowiedniki sprawdzamy w diki.
+Model DOPASOWUJE, nie tłumaczy — polskie znaczenia ze źródeł PL do angielskich
+definicji ze źródeł EN. `en` i `example` muszą być DOSŁOWNYM cytatem ze
+wskazanego w `src` źródła EN, a każdy polski odpowiednik cytatem ze źródła PL.
 Substring sprawdza pochodzenie tekstu, nie poprawność dopasowania znaczeń.
+
+Które zakładki są PL, a które EN, mówi konfiguracja (`ai_pl_sources`,
+`ai_en_sources`) — Cambridge EN-PL jest na obu listach, bo ta sama strona niesie
+polskie odpowiedniki i angielskie definicje.
 
 Brak dopasowania nie jest błędem. Znaczenie bez angielskiej definicji dalej
 zasługuje na kartę EN-PL — wymuszanie 1:1 produkowałoby definicje UDAJĄCE
@@ -26,6 +31,7 @@ import importlib
 import json
 import logging
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 try:
@@ -54,27 +60,35 @@ log = logging.getLogger(__name__)
 # któryś słownik wypychał treść niżej, zwiększ limit — nie pisz parsera.
 MAX_PAGE_CHARS = 6000
 
+# Domyślne źródła PL — używane tylko wtedy, gdy konfiguracja milczy (stary
+# profil bez `ai_pl_sources`). Prawdziwe listy siedzą w config.json.
+_PL_SOURCES = ("diki",)
+
 _PROMPT = """Jesteś asystentem budującym fiszki angielsko-polskie.
 
 Hasło: {word}
 
-Poniżej surowy tekst stron słownikowych. Dopasuj polskie znaczenia (diki) do
-angielskich definicji (Oxford / Longman / Cambridge) TEGO hasła.
+Poniżej surowy tekst stron słownikowych. Dopasuj znaczenia TEGO hasła:
+polskie odpowiedniki (źródła PL: {pl_sources})
+do angielskich definicji (źródła EN: {en_sources}).
 
 Zwróć WYŁĄCZNIE JSON, bez markdown i komentarzy:
 {{"senses": [{{"pl": "...", "en": "...", "example": "...", "src": "...", "match": "exact"}}]}}
 
 Zasady:
-1. Jeden obiekt = jedno odrębne znaczenie. Maksymalnie {max_senses}, w kolejności z diki.
+1. Jeden obiekt = jedno odrębne znaczenie. Maksymalnie {max_senses}, w kolejności z {primary}.
 2. "en" oraz "example" MUSZĄ być skopiowane DOSŁOWNIE z tekstu poniżej — bez
    parafrazy, skracania i tłumaczenia. Cytat, którego nie ma w tekście, odrzucam.
 3. Kilka polskich odpowiedników tego samego znaczenia scal w "pl" po przecinku.
 4. Brak angielskiej definicji dla znaczenia → "en": "", "example": "", "match": "none".
    Nie wymyślaj definicji i nie podpinaj cudzej.
 5. "match": "exact" gdy definicja pokrywa się ze znaczeniem, "approx" gdy z grubsza.
-6. "src" to dokładna etykieta angielskiego słownika, z którego pochodzą "en" i "example".
-   Każdy polski odpowiednik w "pl" musi być cytatem z diki.
-7. Pomiń znaczenia dotyczące innego hasła niż {word}.
+6. "src" to dokładna etykieta źródła EN, z którego pochodzą "en" i "example" —
+   jedna z: {en_sources}. Każdy polski odpowiednik w "pl" musi być cytatem ze
+   źródła PL ({pl_sources}).
+7. To samo znaczenie opisane w kilku słownikach zwróć RAZ, z jedną definicją.
+   Nie rób osobnego obiektu dla każdego słownika.
+8. Pomiń znaczenia dotyczące innego hasła niż {word}.
 
 {pages}
 """
@@ -84,12 +98,20 @@ Zasady:
 # czysta logika — bez Anki, bez sieci
 # ---------------------------------------------------------------------------
 
-def build_prompt(word: str, texts: dict, max_senses: int, include_example: bool = True) -> str:
+def build_prompt(word: str, texts: dict, max_senses: int, include_example: bool = True,
+                 pl_sources=_PL_SOURCES, en_sources=()) -> str:
     pages = "\n\n".join(
         f"=== {label} ===\n{text[:MAX_PAGE_CHARS]}"
         for label, text in texts.items() if (text or "").strip()
     )
-    prompt = _PROMPT.format(word=word, max_senses=max_senses, pages=pages)
+    # Brak listy EN w konfiguracji → wszystko, co nie jest polskie. Model i tak
+    # dostaje etykiety z nagłówków stron, więc lista ma mu je tylko uporządkować.
+    polish = {_norm(label) for label in pl_sources}
+    en_sources = list(en_sources) or [label for label in texts if _norm(label) not in polish]
+    prompt = _PROMPT.format(word=word, max_senses=max_senses, pages=pages,
+                            pl_sources=", ".join(pl_sources) or "—",
+                            en_sources=", ".join(en_sources) or "—",
+                            primary=(list(pl_sources) or ["diki"])[0])
     if not include_example:
         prompt += '\nPole przykładu jest wyłączone. Nie wybieraj ani nie generuj przykładów; zwróć "example": "".'
     return prompt
@@ -121,14 +143,20 @@ def _json_object(raw: str):
         return None
 
 
-def parse_senses(raw: str, texts: dict, max_senses: int = 3) -> tuple[list[dict], str | None]:
+def parse_senses(raw: str, texts: dict, max_senses: int = 3,
+                 pl_sources=_PL_SOURCES, en_sources=()) -> tuple[list[dict], str | None]:
     """Odpowiedź modelu → lista znaczeń. Cytaty są sprawdzane w zadeklarowanym źródle."""
     data = _json_object(raw)
     if not isinstance(data, dict) or not isinstance(data.get("senses"), list):
         return [], "model nie zwrócił JSON-a ze znaczeniami"
 
     sources = {_norm(label): _norm(text[:MAX_PAGE_CHARS]) for label, text in texts.items()}
-    polish = sources.get("diki", "")
+    # Jeden worek na polskie cytaty: przy Cambridge EN-PL odpowiednik bywa tam,
+    # a nie w diki — sprawdzamy pochodzenie tekstu, nie to, która strona wygrała.
+    polish = " ".join(sources.get(_norm(label), "") for label in pl_sources)
+    # Bez listy EN: wszystko poza źródłami PL, czyli zachowanie sprzed Cambridge.
+    english = {_norm(label) for label in en_sources} or (
+        set(sources) - {_norm(label) for label in pl_sources})
     senses = []
     for item in data["senses"][:max_senses]:
         if not isinstance(item, dict):
@@ -138,7 +166,7 @@ def parse_senses(raw: str, texts: dict, max_senses: int = 3) -> tuple[list[dict]
                          for part in re.split(r"[,;]", pl)):
             continue  # karta bez polskiego znaczenia nie ma czego uczyć
         src = _flat(item.get("src"))
-        haystack = sources.get(_norm(src), "") if _norm(src) != "diki" else ""
+        haystack = sources.get(_norm(src), "") if _norm(src) in english else ""
         en = _flat(item.get("en"))
         example = _flat(item.get("example"))
         if en and _norm(en) not in haystack:
@@ -181,20 +209,57 @@ def note_fields(sense: dict, mapping: dict, word: str) -> dict:
 # dostawca AI — pożyczony z dodatku Content
 # ---------------------------------------------------------------------------
 
+def _has_providers(name: str) -> bool:
+    """Czy ten dodatek to Content — sprawdzone PLIKIEM, bez importu.
+
+    `import_module("<dodatek>.ai_generator.providers")` importuje najpierw pakiet
+    nadrzędny, czyli wykonuje `__init__.py` KAŻDEGO przeglądanego dodatku.
+    Tak właśnie generowanie AI potrafiło wystartować serwer AnkiConnect i zabić
+    Anki oknem błędu otwartym z wątku roboczego. Nie wracaj do ślepego importu.
+    """
+    try:
+        base = Path(mw.addonManager.addonsFolder(name)) / "ai_generator" / "providers"
+    except Exception:  # noqa: BLE001 — dodatek bez folderu po prostu nie jest Contentem
+        return False
+    # W Contencie `providers` jest PAKIETEM, ale moduł też musi przejść — inaczej
+    # jedna zmiana układu plików po tamtej stronie ucina tu dostawców bez śladu.
+    return (base / "__init__.py").is_file() or base.with_suffix(".py").is_file()
+
+
 def providers_module() -> tuple[object, str]:
     """(moduł providers, nazwa dodatku). Z AnkiWeb folder Contentu bywa numerem."""
-    names = ["anki_toolkit_content"]
-    if mw is not None:
-        names += [name for name in mw.addonManager.allAddons() if name not in names]
-    for name in names:
+    if mw is None:  # testy bez Anki
+        names = ["anki_toolkit_content"]
+    else:
+        names = [name for name in ["anki_toolkit_content", *mw.addonManager.allAddons()]
+                 if _has_providers(name)]
+    for name in dict.fromkeys(names):
         try:
             return importlib.import_module(f"{name}.ai_generator.providers"), name
         except ImportError:
-            continue
+            log.exception("ai_senses: dodatek %s ma providers.py, ale import się nie udał", name)
     return None, ""
 
 
-def _provider(cfg: dict):
+def provider_label(cfg: dict) -> str:
+    """„Claude CLI · opus" — czym policzone. Integrations ma JEDEN własny wybór
+    dostawcy; modele per pole z dodatku Content dotyczą tamtego generatora."""
+    name = (cfg.get("ai_provider") or "").strip()
+    if not name:
+        return ""
+    module, addon = providers_module()
+    settings = {}
+    if module is not None and mw is not None:
+        generator = (mw.addonManager.getConfig(addon) or {}).get("ai_generator", {})
+        settings = (generator.get("providers") or {}).get(name) or {}
+    label = getattr(module, "PROVIDER_LABELS", {}).get(name, name) if module else name
+    model = cfg.get("ai_model") or settings.get("model") or "model domyślny dostawcy"
+    return f"{label} · {model}"
+
+
+def prepare_provider(cfg: dict):
+    """(dostawca, błąd). WYŁĄCZNIE na głównym wątku — czyta konfigurację innego
+    dodatku i importuje moduły; jedno i drugie w tle bywa nieprzewidywalne."""
     providers, addon = providers_module()
     if providers is None:
         return None, "brak dodatku Anki Toolkit: Content (to on trzyma dostawców AI)"
@@ -213,16 +278,25 @@ def _provider(cfg: dict):
         return None, str(error)
 
 
-def generate(word: str, texts: dict, cfg: dict) -> tuple[list[dict], str | None]:
-    """Wątek roboczy: strony → model → zweryfikowane znaczenia."""
-    provider, error = _provider(cfg)
-    if error:
-        return [], error
+def generate(provider, word: str, texts: dict, cfg: dict) -> tuple[list[dict], str | None]:
+    """Wątek roboczy: strony → model → zweryfikowane znaczenia.
+
+    Dostawcę dostajemy gotowego z `prepare_provider` — w tle zostaje samo
+    wywołanie modelu i obróbka tekstu, bez importów i cudzych konfiguracji.
+    """
     include_example = bool((cfg.get("ai_fields") or {}).get("example", "").strip())
-    raw = provider.call_api(build_prompt(word, texts, cfg.get("ai_max_senses", 3), include_example))
+    pl_sources = cfg.get("ai_pl_sources") or _PL_SOURCES
+    en_sources = cfg.get("ai_en_sources") or ()
+    # Etykieta z konfiguracji musi pasować do etykiety zakładki, inaczej polski
+    # worek jest pusty i KAŻDE znaczenie wylatuje — z komunikatem o niczym.
+    if not any(_norm(label) in {_norm(tab) for tab in texts} for label in pl_sources):
+        return [], (f"żadna zakładka nie pasuje do źródeł PL ({', '.join(pl_sources)}) — "
+                    "popraw ai_pl_sources albo etykiety w link_templates")
+    limit = cfg.get("ai_max_senses", 3)
+    raw = provider.call_api(build_prompt(word, texts, limit, include_example, pl_sources, en_sources))
     if not raw:
         return [], provider.last_error or "brak odpowiedzi modelu"
-    senses, error = parse_senses(raw, texts, cfg.get("ai_max_senses", 3))
+    senses, error = parse_senses(raw, texts, limit, pl_sources, en_sources)
     if not include_example:
         for sense in senses:
             sense["example"] = ""
@@ -242,9 +316,9 @@ def edited_sense(original: dict, values: dict) -> dict:
     return result
 
 
-def source_links(sense: dict, urls: dict) -> str:
+def source_links(sense: dict, urls: dict, pl_sources=_PL_SOURCES) -> str:
     links = []
-    labels = {"diki", _norm(sense.get("src", ""))}
+    labels = {_norm(label) for label in pl_sources} | {_norm(sense.get("src", ""))}
     for label, url in urls.items():
         if _norm(label) not in labels or not url:
             continue
@@ -258,15 +332,49 @@ def source_links(sense: dict, urls: dict) -> str:
     return "Źródło: " + " · ".join(links) if links else ""
 
 
+# Wyszukiwarka Anki traktuje te znaki specjalnie także w cudzysłowie.
+_SEARCH_SPECIAL = re.compile(r'([\\"*_])')
+
+
+def existing_senses(word: str, cfg: dict) -> list[str]:
+    """Polskie znaczenia kart, które JUŻ masz z tym hasłem.
+
+    Notatki z `add_notes` omijają kontrolę duplikatów okna „Dodaj" (nie idą
+    przez nie), więc pytamy kolekcję sami i pokazujemy wynik w SensePickerze.
+    To ostrzeżenie, nie blokada: kilka znaczeń jednego hasła jest zamierzone.
+    """
+    field = cfg.get("word_field") or "ang"
+    pl_field = (cfg.get("ai_fields") or {}).get("pl") or ""
+    if not word or mw is None:
+        return []
+    try:
+        escaped = _SEARCH_SPECIAL.sub(r"\\\1", word)
+        notes = [mw.col.get_note(nid) for nid in mw.col.find_notes(f'"{field}:{escaped}"')]
+    except Exception:  # noqa: BLE001 — ostrzeżenie nie może wysadzić dodawania kart
+        log.exception("ai_senses: kontrola duplikatów nie powiodła się")
+        return []
+    return [_flat(note[pl_field]) if pl_field in note else "(bez tłumaczenia)" for note in notes]
+
+
 class SensePicker(QDialog):
-    """Podgląd przed zapisem: co pójdzie na karty i co model dopasował na siłę."""
+    """Podgląd przed zapisem: co pójdzie na karty i co model dopasował na siłę.
+
+    Przyjmuje PACZKĘ propozycji — jedno hasło albo kilkanaście. Każda pozycja to
+    `{"word", "senses", "urls", "existing"}`; hasła są sekcjami jednego okna,
+    więc listę z „+ lista" zatwierdzasz raz, a nie N razy.
+    """
 
     _MATCH = {"exact": "✓ dopasowane", "approx": "≈ przybliżone", "none": "✗ bez definicji"}
 
-    def __init__(self, senses: list[dict], word: str, parent, urls=None, include_example=True):
+    def __init__(self, proposals: list[dict], parent, cfg=None):
         super().__init__(parent)
-        self.setWindowTitle(f"AI: znaczenia „{word}”")
-        self.resize(720, 640)
+        cfg = cfg or {}
+        include_example = bool((cfg.get("ai_fields") or {}).get("example", "").strip())
+        pl_sources = cfg.get("ai_pl_sources") or _PL_SOURCES
+        words = [proposal["word"] for proposal in proposals]
+        self.setWindowTitle(f"AI: znaczenia „{words[0]}”" if len(words) == 1
+                            else f"AI: znaczenia — {len(words)} haseł")
+        self.resize(720, 700)
         self._boxes = []
 
         layout = QVBoxLayout(self)
@@ -275,35 +383,61 @@ class SensePicker(QDialog):
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
+        source = provider_label(cfg)
+        if source:
+            who = QLabel(f"Policzone przez: {escape(source)}")
+            who.setStyleSheet("color: gray;")
+            layout.addWidget(who)
+
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        for index, sense in enumerate(senses, 1):
-            box = QCheckBox(f"{index}. Dodaj znaczenie — {self._MATCH.get(sense['match'], sense['match'])}")
-            box.setChecked(True)
-            inner_layout.addWidget(box)
-            form = QFormLayout()
-            fields = {}
-            for key, label in (("pl", "Polskie znaczenie"), ("en", "Definicja angielska"),
-                               ("example", "Przykład")):
-                if key == "example" and not include_example:
-                    continue
-                edit = QPlainTextEdit()
-                edit.setPlainText(sense.get(key, ""))
-                edit.setFixedHeight(64)
-                form.addRow(label, edit)
-                fields[key] = edit
-            inner_layout.addLayout(form)
-            links = source_links(sense, urls or {})
-            if links:
-                source = QLabel(links)
-                source.setOpenExternalLinks(True)
-                source.setWordWrap(True)
-                inner_layout.addWidget(source)
-            self._boxes.append((box, sense, fields))
+        for proposal in proposals:
+            word = proposal["word"]
+            if len(proposals) > 1:
+                header = QLabel(f"<b>{escape(word)}</b>")
+                header.setWordWrap(True)
+                inner_layout.addWidget(header)
+            existing = proposal.get("existing") or ()
+            if existing:
+                # Ostrzeżenie, nie blokada — nowe znaczenie istniejącego hasła jest OK.
+                known = QLabel("⚠ Masz już {} kart(y) z hasłem „{}”: {}".format(
+                    len(existing), escape(word), escape(" · ".join(filter(None, existing)))))
+                known.setWordWrap(True)
+                known.setStyleSheet("color: #c0392b;")
+                inner_layout.addWidget(known)
+            for index, sense in enumerate(proposal["senses"], 1):
+                box = QCheckBox(f"{index}. Dodaj znaczenie — {self._MATCH.get(sense['match'], sense['match'])}")
+                box.setChecked(True)
+                inner_layout.addWidget(box)
+                form = QFormLayout()
+                fields = {}
+                for key, label in (("pl", "Polskie znaczenie"), ("en", "Definicja angielska"),
+                                   ("example", "Przykład")):
+                    if key == "example" and not include_example:
+                        continue
+                    edit = QPlainTextEdit()
+                    edit.setPlainText(sense.get(key, ""))
+                    edit.setFixedHeight(64)
+                    form.addRow(label, edit)
+                    fields[key] = edit
+                inner_layout.addLayout(form)
+                links = source_links(sense, proposal.get("urls") or {}, pl_sources)
+                if links:
+                    source = QLabel(links)
+                    source.setOpenExternalLinks(True)
+                    source.setWordWrap(True)
+                    inner_layout.addWidget(source)
+                self._boxes.append((box, word, sense, fields))
         inner_layout.addStretch()
         area = QScrollArea()
         area.setWidgetResizable(True)
         area.setWidget(inner)
+
+        if len(self._boxes) > 1:
+            self._all = QCheckBox(f"Zaznacz wszystkie ({len(self._boxes)})")
+            self._all.setChecked(True)
+            self._all.toggled.connect(self._toggle_all)
+            layout.addWidget(self._all)
         layout.addWidget(area)
 
         buttons = QDialogButtonBox(
@@ -316,25 +450,37 @@ class SensePicker(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _toggle_all(self, checked: bool) -> None:
+        for box, _word, _sense, _fields in self._boxes:
+            box.setChecked(checked)
+
     def _accept_selected(self):
         if any(box.isChecked() and not fields["pl"].toPlainText().strip()
-               for box, _, fields in self._boxes):
+               for box, _word, _sense, fields in self._boxes):
             self._error.setText("Uzupełnij polskie znaczenie lub odznacz tę propozycję.")
             return
         self.accept()
 
-    def selected(self) -> list[dict]:
-        return [edited_sense(sense, {"example": "", **{key: edit.toPlainText() for key, edit in fields.items()}})
-                for box, sense, fields in self._boxes if box.isChecked()]
+    def selected(self) -> list[tuple[str, dict]]:
+        """[(hasło, znaczenie)] — pary, bo jedno okno obsługuje kilka haseł."""
+        return [(word, edited_sense(sense, {"example": "", **{key: edit.toPlainText()
+                                                             for key, edit in fields.items()}}))
+                for box, word, sense, fields in self._boxes if box.isChecked()]
 
 
-def pick_senses(senses: list[dict], word: str, parent, urls=None, include_example=True) -> list[dict]:
-    dialog = SensePicker(senses, word, parent, urls, include_example)
+def pick_senses(proposals: list[dict], parent, cfg=None) -> list[tuple[str, dict]]:
+    dialog = SensePicker(proposals, parent, cfg)
     return dialog.selected() if dialog.exec() else []
 
 
-def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, object]:
-    """Po jednej notatce na znaczenie, w talii i typie wybranym w oknie „Dodaj"."""
+def add_notes(addcards, chosen: list[tuple[str, dict]], cfg: dict) -> tuple[int, object]:
+    """Po jednej notatce na znaczenie, w talii i typie wybranym w oknie „Dodaj".
+
+    `chosen` to pary (hasło, znaczenie) — cała paczka, także z kilku haseł,
+    idzie jedną transakcją i jednym krokiem cofania.
+    """
+    if not chosen:
+        return 0, None  # pusty wybór nie zasługuje na wpis w historii cofania
     notetype = addcards.editor.note.note_type()
     chooser = addcards.deck_chooser
     deck_id = getattr(chooser, "selected_deck_id", None) or chooser.selectedId()
@@ -344,7 +490,8 @@ def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, 
 
     # Sprawdzamy PRZED pętlą: inaczej zła mapa pól zostawia połowę kart dodanych.
     known = {field["name"] for field in notetype["flds"]}
-    unknown = sorted({name for sense in senses for name in note_fields(sense, mapping, word)} - known)
+    unknown = sorted({name for word, sense in chosen
+                      for name in note_fields(sense, mapping, word)} - known)
     if unknown:
         return 0, f"typ notatki nie ma pól: {', '.join(unknown)} — popraw ai_fields w config.json"
 
@@ -353,7 +500,7 @@ def add_notes(addcards, word: str, senses: list[dict], cfg: dict) -> tuple[int, 
     from anki.collection import AddNoteRequest
 
     requests = []
-    for sense in senses:
+    for word, sense in chosen:
         note = mw.col.new_note(notetype)
         for field, value in note_fields(sense, mapping, word).items():
             note[field] = value

@@ -110,6 +110,7 @@ class Item:
     def __init__(self, row_id):
         self.row = {"id": row_id, "Slowko": "word"}
         self.checked = False
+        self.roles = {}
         self._flags = 1
 
     def data(self, _role): return self.row
@@ -117,25 +118,34 @@ class Item:
     def setFlags(self, flags): self._flags = flags
     def setCheckState(self, checked): self.checked = checked
     def checkState(self): return self.checked
-    def setData(self, *args): pass
-    def setHidden(self, hidden): pass
+    def setData(self, role, value): self.roles[role] = value
+    def setText(self, text): self.text = text
+    def setHidden(self, hidden): self.hidden = hidden
+    def isHidden(self): return getattr(self, "hidden", False)
 
 
 class PanelTests(unittest.TestCase):
     def setUp(self):
         self.module = load("integrations", "panel.py")
         self.module.Qt = types.SimpleNamespace(
-            ItemDataRole=types.SimpleNamespace(UserRole=0, ForegroundRole=1),
+            ItemDataRole=types.SimpleNamespace(UserRole=0, ForegroundRole=1, FontRole=2),
             ItemFlag=types.SimpleNamespace(ItemIsUserCheckable=1),
             CheckState=types.SimpleNamespace(Checked=True, Unchecked=False),
             GlobalColor=types.SimpleNamespace(gray=0))
         self.module.QBrush = lambda x: x
+        self.module.QFont = lambda: types.SimpleNamespace(setBold=lambda _bold: None)
         self.module.tooltip = lambda *a, **k: None
         self.panel = self.module.WordQueuePanel.__new__(self.module.WordQueuePanel)
         self.item = Item(1)
         self.panel._list = types.SimpleNamespace(count=lambda: 1, item=lambda i: self.item,
-                                                currentItem=lambda: self.item)
+                                                currentItem=lambda: self.item,
+                                                selectedItems=lambda: [], setEnabled=lambda on: None)
         self.panel._marked = set()
+        self.panel._picked = set()
+        self.panel._local_rows = []
+        self.panel._adding = set()
+        self.panel._next_local_id = 0
+        self.panel._busy = False
         self.panel._pending = {}
         self.panel._done_count = 0
         self.panel._refill_generation = self.panel._selection_generation = 0
@@ -147,28 +157,185 @@ class PanelTests(unittest.TestCase):
         self.editor = Editor()
         self.panel._addcards = types.SimpleNamespace(editor=self.editor)
         self.jobs = []
+        self.timers = []
+        self.module.QTimer = types.SimpleNamespace(singleShot=lambda _ms, cb: self.timers.append(cb))
         self.module.mw.taskman = types.SimpleNamespace(run_in_background=lambda job, done: self.jobs.append((job, done)))
 
-    def test_ai_result_is_discarded_after_selection_change(self):
-        self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda enabled: None)
-        callbacks = []
-        self.panel._tabs = types.SimpleNamespace(texts=callbacks.append)
+    def test_choosing_a_word_starts_every_dictionary(self):
+        """Wszystkie słowniki naraz — „AI: znaczenia" i tak czyta komplet."""
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels = ["diki", "Cambridge", "Oxford", "LDoCE"]
+        loaded, enabled, current = [], {}, [0]
+        tabs._views = [types.SimpleNamespace(load=lambda url, i=i: loaded.append(i))
+                       for i in range(4)]
+        tabs.setTabEnabled = lambda i, on: enabled.__setitem__(i, on)
+        tabs.isTabEnabled = lambda i: enabled.get(i, False)
+        tabs.currentIndex = lambda: current[0]
+        tabs.setCurrentIndex = lambda i: current.__setitem__(0, i)
+        self.module.QUrl = lambda url: url
+
+        tabs.set_urls({"diki": "d", "Cambridge": "c", "Oxford": "o", "LDoCE": "l"})
+        self.assertEqual(sorted(loaded), [0, 1, 2, 3])
+        self.assertEqual(loaded[0], 0)          # widoczna zakładka rusza pierwsza
+        self.assertEqual(tabs._pending, {})     # nic nie czeka na kliknięcie
+
+        loaded.clear()
+        tabs.set_urls({"diki": "d", "Oxford": "", "Cambridge": "", "LDoCE": ""})
+        self.assertEqual(loaded.count(0), 1)    # tylko diki ma adres
+        self.assertFalse(enabled[2])            # reszta wyszarzona
+
+    def test_page_text_never_comes_back_inside_the_engine_callback(self):
+        """Wywołujący ładuje kolejną stronę albo otwiera okno — ze środka
+        callbacku QtWebEngine to natywny crash Anki, nie wyjątek Pythona."""
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels = ["diki", "Oxford"]
+        tabs._no_text = set()
+        tabs._loaded = {0: True, 1: True}
+        tabs.isTabEnabled = lambda _i: True
+        tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
+            toPlainText=lambda callback: callback(text))) for text in ("po polsku", "in english")]
+        got = []
+        tabs._collect(got.append)
+        self.assertFalse(got)                      # jeszcze nie — jesteśmy w callbacku silnika
+        self.timers.pop()()
+        self.assertEqual(got, [{"diki": "po polsku", "Oxford": "in english"}])
+
+        tabs._loaded = {}                          # nic się nie wczytało: ta ścieżka też odbija
+        got.clear()
+        tabs._collect(got.append)
+        self.assertFalse(got)
+        self.timers.pop()()
+        self.assertEqual(got, [{}])
+
+    def test_closed_panel_drops_deferred_page_text(self):
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels = ["diki"]
+        tabs._no_text = set()
+        tabs._loaded = {0: True}
+        tabs.isTabEnabled = lambda _i: True
+        tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
+            toPlainText=lambda callback: callback("tekst")))]
+        tabs._collect(lambda _result: self.fail("zamknięty panel nie może dostać tekstu"))
+        tabs.deleted = True                        # okno „Dodaj" zamknięte, zanim timer wystrzelił
+        self.timers.pop()()
+
+    def test_range_selection_does_not_prompt_to_replace_the_headword(self):
+        """Qt wysyła currentItemChanged przed selectionChanged — w tej chwili
+        zaznaczenie ma jeszcze jeden element i liczenie go tam nic nie daje."""
+        items = [Item(1), Item(2)]
+        selection = [items[0]]
+        current = [items[1]]
+        self.panel._list = types.SimpleNamespace(
+            count=lambda: 2, item=lambda i: items[i], currentItem=lambda: current[0],
+            selectedItems=lambda: selection, setEnabled=lambda on: None)
+        prefilled = []
+        self.panel._prefill = lambda word, *a, **k: prefilled.append(word)
+
+        self.panel._on_item_changed(items[1], items[0])
+        self.assertFalse(prefilled)          # decyzja odłożona, nic jeszcze nie pyta
+        selection = [items[0], items[1]]     # Shift dokłada resztę zakresu
+        self.timers.pop()()
+        self.assertFalse(prefilled)          # paczka: notatka i zakładki bez zmian
+
+        selection = [items[1]]               # zwykły klik w jedną pozycję
+        self.panel._on_item_changed(items[1], items[0])
+        self.timers.pop()()
+        self.assertEqual(prefilled, ["word"])
+
+    def test_stale_selection_callback_is_dropped(self):
+        items = [Item(1), Item(2)]
+        self.panel._list = types.SimpleNamespace(
+            count=lambda: 2, item=lambda i: items[i], currentItem=lambda: items[1],
+            selectedItems=lambda: [items[1]], setEnabled=lambda on: None)
+        self.panel._prefill = lambda *a, **k: self.fail("nieaktualna pozycja nie może wypełniać notatki")
+        self.panel._on_item_changed(items[0], None)  # zanim timer zdążył, wybór poszedł dalej
+        self.timers.pop()()
+
+    def batch_panel(self, words):
+        """Panel z listą N haseł, wszystkie zaznaczone — tak wygląda paczka."""
+        items = [Item(-(i + 1)) for i, _word in enumerate(words)]
+        for item, word in zip(items, words):
+            item.row["Slowko"] = word
+        self.panel._list = types.SimpleNamespace(
+            count=lambda: len(items), item=lambda i: items[i],
+            currentItem=lambda: items[0], selectedItems=lambda: items,
+            setEnabled=lambda on: None, setCurrentRow=lambda i: None)
+        self.panel._update_ai_label = lambda: None
+        self.enabled = []
+        # Kolekcja w tych testach jest atrapą — kontrola duplikatów ma własny test.
+        self.module.ai_senses.existing_senses = lambda word, cfg: []
+        self.module.ai_senses.prepare_provider = lambda cfg: ("provider", None)
+        self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda on: self.enabled.append(on),
+                                                   setText=lambda t: None)
+        self.panel._local_label = ""
+        self.loaded = []
+        self.panel._tabs = types.SimpleNamespace(
+            set_urls=lambda urls: None,
+            texts=lambda callback: (self.loaded.append(self.panel._shown_word),
+                                    callback({"diki": "tekst"}))[0])
+        return items
+
+    def test_batch_walks_words_one_at_a_time_and_shows_one_picker(self):
+        """Kolejno, nie równolegle: następne hasło rusza dopiero po wyniku poprzedniego."""
+        items = self.batch_panel(["mother", "father"])
+        picked = []
+        with patch.object(self.module.ai_senses, "pick_senses", side_effect=lambda *a: picked.append(a) or []):
+            self.panel._ai_senses()
+            self.assertEqual(self.loaded, ["mother"])             # drugie hasło jeszcze nie ruszyło
+            self.assertEqual(len(self.jobs), 1)
+            self.answer("matka")
+            self.assertEqual(self.loaded, ["mother", "father"])   # dopiero teraz
+            self.assertFalse(picked)                              # okno po ostatnim wyniku
+            self.answer("ojciec")
+        proposals = picked[0][0]
+        self.assertEqual([p["word"] for p in proposals], ["mother", "father"])
+        self.assertEqual([p["senses"][0]["pl"] for p in proposals], ["matka", "ojciec"])
+        self.assertEqual(self.enabled, [False, True])             # panel zablokowany na czas paczki
+        self.assertFalse(self.panel._busy)
+        self.assertEqual(self.panel._marked, set())               # anulowany wybór nic nie odhacza
+
+    def answer(self, meaning=None, error=None):
+        """Odpowiedź modelu na ostatnio wysłane zadanie."""
+        future = Future()
+        future.set_result(([] if error else [{"pl": meaning, "match": "none"}], error))
+        self.jobs[-1][1](future)
+
+    def test_batch_refuses_to_start_without_a_provider(self):
+        self.batch_panel(["mother"])
+        self.module.ai_senses.prepare_provider = lambda cfg: (None, "wybierz dostawcę AI")
+        self.panel._ai_senses()
+        self.assertEqual(self.jobs, [])          # żadnego pytania do modelu
+        self.assertFalse(self.panel._busy)       # i panel nie zostaje zablokowany
+
+    def test_batch_adds_one_transaction_and_ticks_only_the_added_words(self):
+        items = self.batch_panel(["mother", "father"])
+        chosen = [("mother", {"pl": "matka", "match": "none"})]
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=chosen), \
+             patch.object(self.module.ai_senses, "add_notes", return_value=(1, object())) as add, \
+             patch.dict(sys.modules, {"aqt.operations": types.SimpleNamespace(on_op_finished=lambda *a: None)}):
+            self.panel._ai_senses()
+            self.answer("matka")
+            self.answer("ojciec")
+        add.assert_called_once()
+        self.assertEqual(add.call_args.args[1], chosen)
+        self.assertEqual(self.panel._marked, {-1})   # „mother" dostało karty → zrobione
+        self.assertNotIn(-2, self.panel._marked)     # „father" odznaczone w oknie → zostaje
+
+    def test_failed_word_does_not_sink_the_rest_of_the_batch(self):
+        self.batch_panel(["mother", "father"])
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]) as picker:
+            self.panel._ai_senses()
+            self.answer(error="brak odpowiedzi modelu")
+            self.answer("ojciec")
+        self.assertEqual([p["word"] for p in picker.call_args.args[0]], ["father"])
+
+    def test_closed_panel_discards_the_batch(self):
+        self.batch_panel(["mother"])
         with patch.object(self.module.ai_senses, "pick_senses") as picker:
             self.panel._ai_senses()
-            callbacks[0]({"diki": "tekst"})
-            self.panel._selection_generation += 1
-            self.finish(([{"pl": "test"}], None))
+            self.panel.deleted = True
+            self.answer("matka")
             picker.assert_not_called()
-        self.assertFalse(self.panel._pending)
-
-    def test_ai_does_not_start_with_stale_pages(self):
-        self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda enabled: None)
-        callbacks = []
-        self.panel._tabs = types.SimpleNamespace(texts=callbacks.append)
-        self.panel._ai_senses()
-        self.panel._selection_generation += 1
-        callbacks[0]({"diki": "inne słowo"})
-        self.assertEqual(self.jobs, [])
 
     def finish(self, value):
         future = Future(); future.set_result(value)
@@ -176,26 +343,68 @@ class PanelTests(unittest.TestCase):
 
     def test_one_pending_write_and_zero_matches_roll_back(self):
         self.panel._set_row(self.item, True)
-        self.panel._set_row(self.item, False)
+        self.panel._set_row(self.item, False)   # drugi zapis czeka na pierwszy
         self.assertEqual(len(self.jobs), 1)
-        self.assertTrue(self.item.checked)
-        self.finish((0, None))
-        self.assertFalse(self.item.checked)
+        self.finish((0, None))                  # n8n nie trafił wiersza
         self.assertEqual(self.panel._marked, set())
         self.assertFalse(self.panel._pending)
 
     def test_callback_updates_rebuilt_item_and_allows_next_write(self):
         self.panel._set_row(self.item, True)
-        self.item = Item(1)
+        self.item = Item(1)                     # tasowanie przebudowało listę w trakcie
         self.finish((1, None))
-        self.assertTrue(self.item.checked)
+        self.assertEqual(self.panel._marked, {1})
         self.panel._set_row(self.item, False)
         self.finish((1, None))
-        self.assertFalse(self.item.checked)
         self.assertEqual(self.panel._marked, set())
 
+    def test_checkbox_picks_for_ai_and_never_writes_to_n8n(self):
+        """Ptaszek zbiera hasła do AI; stan „zrobione" siedzi w kolorze i n8n."""
+        self.item.checked = True
+        self.panel._update_ai_label = lambda: None
+        self.panel._on_item_checked(self.item)
+        self.assertEqual(self.panel._picked, {1})
+        self.assertEqual(self.jobs, [])          # nic nie poszło do tabeli
+        self.assertEqual(self.panel._marked, set())
+
+        self.item.checked = False
+        self.panel._on_item_checked(self.item)
+        self.assertEqual(self.panel._picked, set())
+
+    def test_picked_row_is_visible_without_hunting_for_the_checkbox(self):
+        """Przy kilkuset pozycjach sam checkbox ginie — wybór ma być widać w wierszu."""
+        self.item.checked = True
+        self.panel._update_ai_label = lambda: None
+        self.panel._on_item_checked(self.item)
+        self.assertIsNotNone(self.item.roles[2])          # FontRole: pogrubione
+        self.assertIsNone(self.item.roles[1])             # ForegroundRole: nie zrobione
+        # Wskaźnik checkboxa rysuje motyw i bywa niewidoczny — tekst renderuje się zawsze
+        self.assertEqual(self.item.text, "☑ word")
+        self.item.checked = False
+        self.panel._on_item_checked(self.item)
+        self.assertIsNone(self.item.roles[2])
+        self.assertEqual(self.item.text, "word")
+
+    def test_newest_first_puts_the_words_you_just_added_on_top(self):
+        """`id` rośnie z każdym dopisanym wierszem, a wiersz lokalny jest najnowszy."""
+        rows = [{"id": 3}, {"id": 1}, {"id": -1}, {"id": 7}]
+        self.panel._cfg["order"] = "id"
+        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [1, 3, 7, -1])
+        self.panel._cfg["order"] = "new"
+        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [-1, 7, 3, 1])
+        self.panel._cfg["order"] = "random"
+        self.assertEqual(sorted(r["id"] for r in self.panel._ordered(rows)), [-1, 1, 3, 7])
+
+    def test_picked_rows_win_over_the_highlight(self):
+        items = [Item(1), Item(2)]
+        self.panel._list = types.SimpleNamespace(
+            count=lambda: 2, item=lambda i: items[i], currentItem=lambda: items[0],
+            selectedItems=lambda: [items[0]], setEnabled=lambda on: None)
+        self.assertEqual([r["id"] for r in self.panel._selected_rows()], [1])  # bez ptaszków
+        self.panel._picked = {2}
+        self.assertEqual([r["id"] for r in self.panel._selected_rows()], [2])
+
     def test_old_refill_cannot_overwrite_new_refill(self):
-        self.panel._shuffle = types.SimpleNamespace(isChecked=lambda: False)
         self.panel._rebuild = lambda rows: self.assertEqual(rows, [{"id": 2}])
         self.panel.refill(); self.panel.refill()
         future = Future(); future.set_result(([{"id": 1}], None)); self.jobs[0][1](future)
@@ -210,12 +419,125 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.editor.web.fields["def"], "unsaved text")
         self.assertEqual(self.editor.note["ang"], "new")
 
+    def test_new_words_are_written_to_the_table(self):
+        rebuilt = []
+        self.panel._rebuild = rebuilt.append
+        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None,
+                                                 setCurrentRow=lambda i: None)
+        self.panel._select_word = lambda word: None
+        self.panel._add_local_rows(self.module.word_queue.parse_words("mother, give up"))
+        self.assertFalse(rebuilt)                    # najpierw zapis, potem lista
+        self.finish(([{"id": 7, "Slowko": "mother"}, {"id": 8, "Slowko": "give up"}], None))
+        self.assertEqual([row["id"] for row in rebuilt[0]], [7, 8])
+        self.assertEqual(self.panel._local_rows, [])  # prawdziwe wiersze, nie zastępcze
+
+    def test_word_being_written_is_not_written_again(self):
+        """Zapis trwa, hasła nie ma jeszcze na liście — drugie wklejenie musi je pominąć."""
+        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None,
+                                                 setCurrentRow=lambda i: None)
+        self.panel._rebuild = lambda rows: None
+        self.panel._select_word = lambda word: None
+        self.panel._add_local_rows(["mother"])
+        self.assertEqual(len(self.jobs), 1)
+        self.panel._add_local_rows(["Mother"])           # w trakcie zapisu, inna wielkość liter
+        self.assertEqual(len(self.jobs), 1)              # nadal jedno żądanie
+        self.finish(([{"id": 7, "Slowko": "mother"}], None))
+        self.assertEqual(self.panel._adding, set())      # po odpowiedzi blokada znika
+
+    def test_words_already_on_the_list_are_not_written_again(self):
+        """Panel trzyma całą tabelę, więc to jest zarazem kontrola duplikatów w n8n."""
+        existing = Item(3)
+        existing.row["Slowko"] = "Mother"
+        self.panel._list = types.SimpleNamespace(count=lambda: 1, item=lambda i: existing,
+                                                 currentItem=lambda: existing,
+                                                 setCurrentRow=lambda i: None)
+        self.panel._select_word = lambda word: None
+        self.panel._add_local_rows(["mother"])        # inna wielkość liter, to samo hasło
+        self.assertEqual(self.jobs, [])
+
+    def test_failed_write_leaves_the_words_usable_in_the_panel(self):
+        """Offline: hasła zostają jako wiersze lokalne (ujemne id), bez PATCH-a."""
+        rebuilt = []
+        self.panel._rebuild = rebuilt.append
+        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None,
+                                                 setCurrentRow=lambda i: None)
+        self.panel._select_word = lambda word: None
+        self.panel._add_local_rows(["mother", "give up"])
+        self.finish(([], "Connection error"))
+        self.assertEqual([row["id"] for row in rebuilt[0]], [-1, -2])
+        self.assertEqual([row["id"] for row in self.panel._local_rows], [-1, -2])
+
+        local = Item(-1)
+        self.panel._list = types.SimpleNamespace(count=lambda: 1, item=lambda i: local,
+                                                 currentItem=lambda: local)
+        self.jobs.clear()
+        self.panel._set_row(local, True)
+        self.assertEqual(self.jobs, [])                  # odhaczanie nie ma czego wysłać
+        self.assertEqual(self.panel._marked, {-1})
+        self.panel._set_row(local, False)                # pomyłkę dalej da się cofnąć
+        self.assertEqual(self.panel._marked, set())
+
+    def test_refill_keeps_local_rows_and_their_ticks(self):
+        self.panel._local_rows = [{"id": -1, "Slowko": "mother"}]
+        self.panel._marked = {-1}
+        rebuilt = []
+        self.panel._rebuild = rebuilt.append
+        self.panel.refill()
+        future = Future(); future.set_result(([{"id": 5, "Anki": True}], None)); self.jobs[0][1](future)
+        self.assertEqual([row["id"] for row in rebuilt[0]], [5, -1])
+        self.assertEqual(self.panel._marked, {5, -1})
+
+    def test_walking_the_list_does_not_ask_about_an_empty_note(self):
+        """Hasło w polu wpisał panel przy poprzednim kliknięciu — nie ma czego bronić."""
+        asked = []
+        self.module.askUser = lambda *a, **k: asked.append(a) or True
+        self.editor.note = {"ang": "curb", "def": "", "pol": ""}
+        self.editor.web = types.SimpleNamespace(fields=dict(self.editor.note))
+        self.panel._prefill("general election", confirm=True); self.editor.callback()
+        self.assertFalse(asked)
+        self.assertEqual(self.editor.note["ang"], "general election")
+
+        self.editor.note["pol"] = "ograniczać"   # zacząłeś pisać notatkę
+        self.editor.web.fields = dict(self.editor.note)
+        self.panel._prefill("curb", confirm=True); self.editor.callback()
+        self.assertTrue(asked)                   # teraz pytanie ma sens
+
     def test_unrelated_note_does_not_mark_current_row(self):
         self.panel._bound_note = self.editor.note
         self.panel._bound_row_id = 1
         self.editor.note["ang"] = "unrelated"
         self.panel.note_added(self.editor.note)
         self.assertFalse(self.jobs)
+
+
+class AttributeConsistencyTests(unittest.TestCase):
+    """Literówka w `self._cos` w kodzie Qt wychodzi dopiero przy otwarciu okna.
+
+    Testy nie budują widgetów, więc `_build_ui` i inne metody Qt nie mają żadnego
+    pokrycia. To najtańsza siatka: każdy czytany atrybut `self._x` musi być gdzieś
+    w tej samej klasie zapisany albo być jej metodą.
+    """
+
+    def test_every_private_attribute_is_assigned_somewhere_in_its_class(self):
+        unknown = {}
+        for path in sorted(ROOT.glob("anki_toolkit_*/*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for cls in [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]:
+                stored = {node.name for node in cls.body
+                          if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+                stored |= {target.id for node in cls.body if isinstance(node, ast.Assign)
+                           for target in node.targets if isinstance(target, ast.Name)}
+                stored |= {node.target.id for node in cls.body
+                           if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)}
+                loaded = set()
+                for node in ast.walk(cls):
+                    if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                            and node.value.id == "self"):
+                        (stored if isinstance(node.ctx, ast.Store) else loaded).add(node.attr)
+                missing = sorted(a for a in loaded - stored if a.startswith("_"))
+                if missing:
+                    unknown[f"{path.parent.name}/{path.name}::{cls.name}"] = missing
+        self.assertEqual(unknown, {})
 
 
 class OtherAddonsTests(unittest.TestCase):
@@ -334,81 +656,6 @@ class OtherAddonsTests(unittest.TestCase):
         exec(compile(tree, "local_sources", "exec"), env)
         env["save_config"]({"oxford": {"match_field": "new"}})
         self.assertEqual(saved[0]["oxford"], {"future": 42, "match_field": "new"})
-
-
-def make_stardict(directory: Path) -> str:
-    """Minimalny słownik StarDict: hasło, alias w .syn, .dict spakowany jak dictzip."""
-    import gzip
-    import struct
-    base = directory / "mini"
-    entry = ('<div><span style="display:block;border-left:2px solid #000"><b style="font-size:1.18em">dog</b> '
-             '<span style="font-size:.9em;font-style:italic">/d\u0252\u0261/</span></span>'
-             '<b><sub>1</sub></b> <b><i>n</i></b> <b>1.</b> pies <b>2.</b> <small><i>pot.</i></small> go\u015b\u0107'
-             ' <i>=</i> <a  filepos=0009021894 ><b>gun dog</b></a></div> '
-             '<blockquote> <b>as sick as a dog</b> powa\u017cnie chory </blockquote>').encode("utf8")
-    blocks = [entry, b"kot"]
-    index, offset = b"", 0
-    for word, blob in zip(("Dog", "Cat"), blocks):
-        index += word.encode() + b"\x00" + struct.pack(">II", offset, len(blob))
-        offset += len(blob)
-    (base.parent / "mini.ifo").write_text(
-        "StarDict's dict ifo file\nversion=2.4.2\nwordcount=2\n"
-        f"idxfilesize={len(index)}\nsametypesequence=h\n")
-    (base.parent / "mini.idx").write_bytes(index)
-    (base.parent / "mini.dict.dz").write_bytes(gzip.compress(b"".join(blocks)))
-    (base.parent / "mini.syn").write_bytes(b"dogs\x00" + struct.pack(">I", 0))
-    return str(base.parent / "mini.ifo")
-
-
-class LocalDictTests(unittest.TestCase):
-    """Czytnik StarDict: konwersja, aliasy, rozbicie artykułu, escapowanie strony."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.module = load("integrations", "local_dict.py")
-        cls.dir = tempfile.TemporaryDirectory()
-        folder = Path(cls.dir.name)
-        cls.db_file = folder / "out.sqlite"
-        cls.rows = cls.module.build_sqlite(make_stardict(folder), cls.db_file)
-        import sqlite3
-        cls.db = sqlite3.connect(str(cls.db_file))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.db.close()
-        cls.dir.cleanup()
-
-    def test_alias_shares_one_definition(self):
-        self.assertEqual(self.rows, 3)  # dog + cat + alias dogs
-        self.assertEqual(self.db.execute("select count(*) from defs").fetchone()[0], 2)
-        self.assertEqual(self.module.lookup("dogs", self.db), self.module.lookup("DOG", self.db))
-
-    def test_suggest_finds_prefix(self):
-        self.assertEqual(self.module.suggest("do", db=self.db), ["dog", "dogs"])
-
-    def test_parse_splits_senses_and_phrases(self):
-        parsed = self.module.parse(self.module.lookup("dog", self.db)[0])
-        self.assertEqual(parsed["headword"], "dog")
-        # na kartę idzie samo tłumaczenie — bez kwalifikatora i bez odsyłacza…
-        self.assertEqual([s["text"] for s in parsed["senses"]], ["pies", "go\u015b\u0107"])
-        # …ale na ekranie zostaje pełny artykuł
-        self.assertIn("pot.", parsed["senses"][1]["html"])
-        self.assertEqual([s["pos"] for s in parsed["senses"]], ["n", "n"])
-        self.assertEqual([p["title"] for p in parsed["phrases"]], ["as sick as a dog"])
-
-    def test_crossref_becomes_reader_link(self):
-        parsed = self.module.parse(self.module.lookup("dog", self.db)[0])
-        self.assertIn('href="/dict?word=gun%20dog"', parsed["senses"][1]["html"])
-
-    def test_page_escapes_word_from_url(self):
-        page = self.module.page("<script>x</script>", [], [], ["pol"])
-        self.assertNotIn("<script>x", page)
-        self.assertIn("&lt;script&gt;", page)
-
-    def test_button_carries_only_its_own_sense(self):
-        page = self.module.page("dog", self.module.lookup("dog", self.db), [], ["pol"])
-        self.assertIn('data-text="pies"', page)
-        self.assertEqual(page.count('data-field="pol"'), 3)  # 2 znaczenia + 1 zwrot
 
 
 class BridgeOriginTests(unittest.TestCase):
