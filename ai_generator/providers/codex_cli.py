@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -117,6 +118,7 @@ def app_server_call(methods: list[tuple[str, dict]], binary: str = "",
     )
     results: dict[int, dict] = {}
     wanted = set(range(2, 2 + len(methods)))
+    timer = threading.Timer(timeout, proc.kill)
     try:
         payload = [{
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -132,8 +134,10 @@ def app_server_call(methods: list[tuple[str, dict]], binary: str = "",
         proc.stdin.write("".join(json.dumps(m) + "\n" for m in payload))
         proc.stdin.flush()
 
-        deadline = time.monotonic() + timeout
-        while wanted and time.monotonic() < deadline:
+        # readline() blokuje, więc limit czasu egzekwuje timer: zabity proces
+        # zamyka stdout i pętla kończy się na EOF.
+        timer.start()
+        while wanted:
             line = proc.stdout.readline()
             if not line:
                 break
@@ -142,10 +146,14 @@ def app_server_call(methods: list[tuple[str, dict]], binary: str = "",
             except ValueError:
                 continue  # zdarzenia serwera, nie odpowiedzi
             msg_id = message.get("id")
-            if msg_id in wanted and "result" in message:
-                results[msg_id] = message["result"]
+            if msg_id in wanted and ("result" in message or "error" in message):
+                # Błąd JSON-RPC też jest odpowiedzią — inaczej czekalibyśmy na nią
+                # do końca, a serwer na zamknięcie stdin.
                 wanted.discard(msg_id)
+                if "result" in message:
+                    results[msg_id] = message["result"]
     finally:
+        timer.cancel()
         try:
             proc.stdin.close()
         except OSError:

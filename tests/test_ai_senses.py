@@ -257,7 +257,14 @@ class DuplicateWarningTests(unittest.TestCase):
 
     def test_quotes_and_wildcards_cannot_break_out_of_the_search(self):
         self.m.existing_senses('a" OR *_x', self.CFG)
-        self.assertEqual(self.searches, ['"ang:a\\" OR \\*\\_x"'])
+        self.assertEqual(self.searches, ['"ang:a\\" OR \\*\\_x" OR "ang:a&quot; OR \\*\\_x"'])
+
+    def test_search_matches_the_html_the_field_is_stored_as(self):
+        self.m.existing_senses("rock & roll", self.CFG)
+        self.m.existing_senses("don't", self.CFG)
+        self.assertEqual(self.searches, ['"ang:rock &amp; roll"',
+                                         '"ang:don\'t" OR "ang:don&#x27;t"'])
+        self.assertEqual(self.m.note_fields({}, {"en": "ang"}, "don't"), {"ang": "don't"})
 
     def test_broken_search_warns_instead_of_killing_the_picker(self):
         self.m.mw.col.find_notes = lambda _search: (_ for _ in ()).throw(RuntimeError("zły filtr"))
@@ -401,6 +408,12 @@ class RealBatchTests(unittest.TestCase):
                 with patch.object(m, "mw", types.SimpleNamespace(col=col)):
                     self.assertEqual(len(m.find_word_notes("test", cfg)), 1)
                     self.assertEqual(m.find_word_notes("tes", cfg), [])
+                    # Znaki, które zapis zamienia na encje HTML, też muszą się znaleźć.
+                    tricky = ["don't", "rock & roll"]
+                    m.add_notes(addcards, [(w, {"pl": "x", "match": "none"}) for w in tricky], cfg)
+                    for word in tricky:
+                        self.assertEqual(len(m.find_word_notes(word, cfg)), 1, word)
+                    col.undo()
                 col.undo()
                 self.assertEqual(col.note_count(), 0)
                 with patch.object(m, "mw", types.SimpleNamespace(col=col)):

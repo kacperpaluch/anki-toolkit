@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -157,6 +158,29 @@ class ProviderContractTests(unittest.TestCase):
         p = _provider(binary_path="/nie/ma/takiej/codex")
         self.assertIsNone(p.call_api("cokolwiek"))
         self.assertIn("codex", p.last_error)
+
+    def _fake_server(self, folder, body):
+        path = Path(folder) / "codex"
+        path.write_text(f"#!{sys.executable}\nimport json, sys, time\n{body}\n")
+        path.chmod(0o755)
+        return str(path)
+
+    def test_app_server_error_reply_ends_the_session(self):
+        # Serwer odpowiada błędem i czeka na zamknięcie stdin — nie wolno czekać w nieskończoność.
+        body = ("for line in sys.stdin:\n"
+                "    msg = json.loads(line)\n"
+                "    if msg['id'] == 2:\n"
+                "        print(json.dumps({'id': 2, 'error': {'message': 'no login'}}), flush=True)")
+        with tempfile.TemporaryDirectory() as folder:
+            binary = self._fake_server(folder, body)
+            self.assertEqual(cx.app_server_call([("x", {})], binary, Path(folder), timeout=30), {})
+
+    def test_app_server_timeout_kills_a_silent_server(self):
+        with tempfile.TemporaryDirectory() as folder:
+            binary = self._fake_server(folder, "time.sleep(60)")
+            started = time.monotonic()
+            self.assertEqual(cx.app_server_call([("x", {})], binary, Path(folder), timeout=1), {})
+            self.assertLess(time.monotonic() - started, 10)
 
     def test_timeout_floor_is_respected(self):
         # request_timeout 30 s jest liczony pod HTTP; rozumowanie trwa dłużej.

@@ -513,7 +513,8 @@ class WordQueuePanel(QDockWidget):
             append_when_idle()
 
         mw.taskman.run_in_background(
-            lambda: word_queue.add_rows([row[column] for row in fresh], self._cfg), done)
+            lambda: word_queue.add_rows([row[column] for row in fresh], self._cfg), done,
+            uses_collection=False)
 
     def _append_rows(self, fresh: list[dict]) -> None:
         if not fresh:
@@ -573,7 +574,8 @@ class WordQueuePanel(QDockWidget):
             self._rebuild(self._ordered(rows + self._local_rows))
             self._settle_owed()
 
-        mw.taskman.run_in_background(lambda: self._fetch_queue(self._cfg), done)
+        mw.taskman.run_in_background(lambda: self._fetch_queue(self._cfg), done,
+                                     uses_collection=False)
 
     def _rebuild(self, rows: list[dict]) -> None:
         """Przebuduj listę z podanych wierszy, zachowując wygląd odhaczonych.
@@ -760,7 +762,8 @@ class WordQueuePanel(QDockWidget):
 
         try:
             mw.taskman.run_in_background(
-                lambda: self._mark_row_done(row_id, self._cfg, done), finished
+                lambda: self._mark_row_done(row_id, self._cfg, done), finished,
+                uses_collection=False,
             )
         except Exception as error:
             failed = Future()
@@ -981,6 +984,7 @@ class WordQueuePanel(QDockWidget):
                 mw.taskman.run_in_background(
                     lambda: ai_senses.generate(provider, word, texts, self._cfg),
                     lambda future: collected(index, word, future),
+                    uses_collection=False,  # minuty czekania na model nie mogą blokować kolekcji
                 )
 
             self._tabs.texts(with_texts)

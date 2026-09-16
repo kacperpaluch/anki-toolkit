@@ -311,7 +311,7 @@ class TestDetachedMerge(unittest.TestCase):
         def load():
             web_fields[:] = note.fields
         editor = types.SimpleNamespace(note=note, saveNow=save, loadNote=load)
-        taskman = types.SimpleNamespace(run_in_background=lambda task, done: pending.append((task, done)))
+        taskman = types.SimpleNamespace(run_in_background=lambda task, done, **_: pending.append((task, done)))
         manager = types.SimpleNamespace(getConfig=lambda name: {})
         with patch.object(aqt.mw, "col", object()), patch.object(aqt.mw, "taskman", taskman), \
                 patch.object(aqt.mw, "addonManager", manager), patch.object(
@@ -412,7 +412,7 @@ class TestBatchStore(unittest.TestCase):
         browser = _load("ai_generator.browser_ui", "ai_generator/browser_ui.py")
         original = types.SimpleNamespace(path=self.col)
         tasks = []
-        taskman = types.SimpleNamespace(run_in_background=lambda task, done: tasks.append((task, done)))
+        taskman = types.SimpleNamespace(run_in_background=lambda task, done, **_: tasks.append((task, done)))
         self._write({"batches": [{"id": "b", "col": self.col, "status": "in_progress"}]})
         with patch.object(browser, "get_config", lambda: {}), patch.object(browser.mw, "col", original), \
                 patch.object(browser.mw, "taskman", taskman), patch.object(
@@ -433,7 +433,7 @@ class TestBatchStore(unittest.TestCase):
         def submit(items, config, **kwargs):
             sent.extend(items)
             return [], []
-        def background(task, done):
+        def background(task, done, **_):
             future = Future()
             future.set_result(task())
             done(future)

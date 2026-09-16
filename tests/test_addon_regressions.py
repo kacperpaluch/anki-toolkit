@@ -178,7 +178,7 @@ class PanelTests(unittest.TestCase):
         self.jobs = []
         self.timers = []
         self.module.QTimer = types.SimpleNamespace(singleShot=lambda _ms, cb: self.timers.append(cb))
-        self.module.mw.taskman = types.SimpleNamespace(run_in_background=lambda job, done: self.jobs.append((job, done)))
+        self.module.mw.taskman = types.SimpleNamespace(run_in_background=lambda job, done, **_: self.jobs.append((job, done)))
 
     def test_choosing_a_word_starts_every_dictionary(self):
         """Wszystkie słowniki naraz — „AI: znaczenia" i tak czyta komplet."""
@@ -819,7 +819,7 @@ class OtherAddonsTests(unittest.TestCase):
         original = types.SimpleNamespace(media=types.SimpleNamespace(dir=lambda: "/original"))
         module.mw.col = original
         jobs, syncs, scans = [], [], []
-        module.mw.taskman = types.SimpleNamespace(run_in_background=lambda task, done: jobs.append(done))
+        module.mw.taskman = types.SimpleNamespace(run_in_background=lambda task, done, **_: jobs.append(done))
         module.which = lambda _: "/ffmpeg"
         module._sync_media = lambda *args: syncs.append(args)
         module._timer = types.SimpleNamespace(start=lambda: scans.append(True))

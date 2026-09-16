@@ -206,7 +206,8 @@ def note_fields(sense: dict, mapping: dict, word: str) -> dict:
         mapping.get("definition"): sense.get("en", ""),
         mapping.get("example"): sense.get("example", ""),
     }
-    return {field: escape(value) for field, value in values.items() if field and value}
+    # quote=False: tak zapisuje edytor Anki; `'` jako &#x27; psułby wyszukiwanie hasła.
+    return {field: escape(value, quote=False) for field, value in values.items() if field and value}
 
 
 # ---------------------------------------------------------------------------
@@ -312,8 +313,11 @@ _SEARCH_SPECIAL = re.compile(r'([\\"*_])')
 def find_word_notes(word: str, cfg: dict) -> list:
     """Note ids whose English field is exactly `word`. Raises on collection errors."""
     field = cfg.get("word_field") or "ang"
-    escaped = _SEARCH_SPECIAL.sub(r"\\\1", word)
-    return list(mw.col.find_notes(f'"{field}:{escaped}"'))
+    # Wyszukiwarka porównuje surowy HTML pola: „&" leży tam jako &amp;, a starsze
+    # notatki z AI miały też cudzysłowy jako &#x27;/&quot;.
+    values = dict.fromkeys((escape(word, quote=False), escape(word)))
+    terms = ['"%s:%s"' % (field, _SEARCH_SPECIAL.sub(r"\\\1", value)) for value in values]
+    return list(mw.col.find_notes(" OR ".join(terms)))
 
 
 def existing_senses(word: str, cfg: dict) -> list[str]:

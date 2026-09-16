@@ -101,13 +101,15 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - Błąd jednego hasła nie przerywa paczki: wypada z wyników i ląduje w dymku.
 - Zapis AI: przygotowanie całej paczki, jedno `col.add_notes` na głównym
   wątku; zwrócone OpChanges trafiają do `on_op_finished`. Pola tekstowe są
-  escapowane jako HTML. `exact` to ocena modelu, nie walidacja semantyczna.
+  escapowane jako HTML bez cudzysłowów (`quote=False`, jak edytor Anki), bo
+  wyszukiwarka porównuje surowy HTML pola. `exact` to ocena modelu, nie walidacja semantyczna.
 
 - SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
   wymaga niepustego PL i cofa potwierdzenie weryfikacji. Linki HTTP(S) pochodzą z adresów zakładek (wiersz n8n
   albo szablon), nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji
   cytatów.
 - Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
+  Szukamy też wariantu z encjami (`&amp;`, a dla starszych notatek `&#x27;`/`&quot;`).
   `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd
   wyszukiwania przerywa paczkę. Nieodhaczone z nich odhacza dopiero po `askUser`
   (przez `_owe` + `_finish_rows`, jak po zapisie kart). `existing_senses` w podglądzie zostaje jako

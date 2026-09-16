@@ -336,7 +336,8 @@ def check_pending_batches(silent: bool = True):
                     batch_backfill.mark_applied(applied_ids)
                     applied_records = [p["record"] for p in ended.values()]
                     mw.taskman.run_in_background(
-                        lambda: batch_backfill.cleanup_openai_files(applied_records, config)
+                        lambda: batch_backfill.cleanup_openai_files(applied_records, config),
+                        uses_collection=False,
                     )
                 if should_advance:
                     _advance_jobs(config)
@@ -373,7 +374,7 @@ def check_pending_batches(silent: bool = True):
             tooltip(f"Batch: błąd zapisu wyników: {exc}", period=8000)
 
     try:
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
     except Exception:
         release()
         raise

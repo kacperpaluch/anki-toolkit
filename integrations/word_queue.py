@@ -402,7 +402,8 @@ def on_add_note(note) -> None:
         else:
             log.info('word_queue: odhaczono „%s" (%d wiersz(e))', word, matched)
 
-    mw.taskman.run_in_background(lambda: mark_word_done(word, cfg), on_done)
+    mw.taskman.run_in_background(lambda: mark_word_done(word, cfg), on_done,
+                                 uses_collection=False)
 
 
 def _toggle_panel(addcards) -> None:

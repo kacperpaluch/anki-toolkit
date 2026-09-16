@@ -22,6 +22,9 @@ and routes to domain context. Keep this file focused on working agreements.
   `editor.note` from a worker, and never overwrite a field the user edited
   while the operation was running.
 - Background workers may perform HTTP, AI, TTS, parsing, and ffmpeg work.
+  Tasks that never touch the collection pass `uses_collection=False` to
+  `mw.taskman.run_in_background`, otherwise a slow call blocks Anki's
+  single collection executor.
 - Prefer `CollectionOp` for collection changes initiated from the UI.
 - Return appropriate `OpChanges` after manual collection mutations.
 - The Tools menu, the Browser context menu and the config action are registered
