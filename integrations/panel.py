@@ -889,6 +889,24 @@ class WordQueuePanel(QDockWidget):
             tooltip(f"AI: {error}", parent=mw, period=6000)
             return
         rows = [row for row in self._selected_rows() if str(row["id"]) not in self._state.data["owed"]]
+        # Duplicates are decided by the English word only: a word that already has
+        # cards never reaches the model. More senses for it are added by hand.
+        column = self._cfg["word_column"]
+        try:
+            in_anki = [row for row in rows
+                       if (word := clean_html_normalized(row.get(column) or ""))
+                       and ai_senses.find_word_notes(word, self._cfg)]
+        except Exception:
+            log.exception("ai_senses: kontrola duplikatów nie powiodła się")
+            tooltip("AI: nie udało się sprawdzić, czy słowa są już w Anki — sprawdź Logi.", parent=mw)
+            return
+        if in_anki:
+            names = [row.get(column) for row in in_anki]
+            tooltip("AI: pominięto, już są w Anki: " + ", ".join(names[:5])
+                    + (f" i {len(names) - 5} innych" if len(names) > 5 else ""), parent=mw, period=6000)
+            rows = [row for row in rows if row not in in_anki]
+            if not rows:
+                return
         if not rows:
             tooltip("AI: wybierz słówko z listy albo dopisz własne hasło.", parent=mw)
             return

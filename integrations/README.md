@@ -243,10 +243,12 @@ cytaty. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
 interpretacją jako HTML. Zatwierdzone znaczenia lądują jako osobne notatki
 w talii i typie wybranym w oknie „Dodaj”.
 
-**Duplikaty są pokazywane, nie blokowane.** Okno ostrzega na czerwono, gdy masz
-już karty z tym hasłem, i wypisuje ich polskie znaczenia. Notatki z AI powstają
-poza oknem „Dodaj”, więc jego własna kontrola duplikatów ich nie widzi — kolejne
-znaczenie istniejącego hasła jest zamierzone, powtórzenie tego samego nie.
+**Słowo, które już jest w Anki, nie trafia do AI.** Przed wysłaniem do modelu
+dodatek sprawdza pole angielskie (wielkość liter bez znaczenia) — jeśli masz już
+kartę z tym słowem, jest pomijane, a dymek mówi które. Liczy się wyłącznie słowo,
+nie znaczenia: kolejne znaczenie takiego słowa dodajesz ręcznie. Gdy sprawdzenie
+się nie uda, paczka nie rusza. Przy odzyskanych propozycjach okno wyboru
+dodatkowo ostrzega na czerwono, jeśli karty z tym słowem powstały w międzyczasie.
 
 **Brak dopasowania 1:1 nie blokuje karty.** Znaczenie bez angielskiej definicji
 dostaje pustą definicję, a nie zmyśloną. Każda karta dostaje **Tag kart z AI**

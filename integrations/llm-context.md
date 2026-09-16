@@ -106,8 +106,11 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
   wymaga niepustego PL i cofa potwierdzenie weryfikacji. Linki HTTP(S) pochodzą z adresów zakładek (wiersz n8n
   albo szablon), nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji
-  cytatów. `existing_senses` tylko OSTRZEGA o istniejących kartach z tym hasłem —
-  kilka znaczeń jednego hasła jest zamierzone, więc nie rób z tego blokady.
+  cytatów.
+- Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
+  `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd
+  wyszukiwania przerywa paczkę. `existing_senses` w podglądzie zostaje jako
+  ostrzeżenie dla odzyskanych propozycji (karty mogły powstać w międzyczasie).
 - Dopisane hasła idą do tabeli (`add_rows`) i dostają prawdziwe `id`. Duplikaty
   odsiewa panel po zawartości listy — ma całą tabelę, więc osobne zapytanie
   „czy już jest" byłoby zbędnym żądaniem przed każdą wklejką. Do porównania wchodzi też `_adding`

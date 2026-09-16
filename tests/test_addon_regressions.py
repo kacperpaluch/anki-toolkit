@@ -304,6 +304,7 @@ class PanelTests(unittest.TestCase):
         self.enabled = []
         # Kolekcja w tych testach jest atrapą — kontrola duplikatów ma własny test.
         self.module.ai_senses.existing_senses = lambda word, cfg: []
+        self.module.ai_senses.find_word_notes = lambda word, cfg: []
         self.module.ai_senses.prepare_provider = lambda cfg: ("provider", None)
         self.panel._ai_btn = types.SimpleNamespace(setEnabled=lambda on: self.enabled.append(on),
                                                    setText=lambda t: None)
@@ -316,6 +317,33 @@ class PanelTests(unittest.TestCase):
             texts=lambda callback: (self.loaded.append(self.panel._shown_word),
                                     callback({"diki": "tekst"}))[0])
         return items
+
+    def test_word_already_in_anki_never_reaches_the_model(self):
+        self.batch_panel(["mother", "father"])
+        self.module.ai_senses.find_word_notes = lambda word, cfg: [7] if word == "mother" else []
+        shown = []
+        self.module.tooltip = lambda text, **k: shown.append(text)
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]):
+            self.panel._ai_senses()
+            self.answer("ojciec")
+        self.assertEqual(self.loaded, ["father"])
+        self.assertEqual(len(self.jobs), 1)
+        self.assertIn("mother", shown[0])
+
+    def test_only_known_words_selected_means_no_batch(self):
+        self.batch_panel(["mother"])
+        self.module.ai_senses.find_word_notes = lambda word, cfg: [7]
+        self.panel._ai_senses()
+        self.assertEqual((self.loaded, self.jobs, self.enabled), ([], [], []))
+
+    def test_failed_duplicate_check_stops_the_batch(self):
+        self.batch_panel(["mother"])
+        def broken(word, cfg):
+            raise RuntimeError("db")
+        self.module.ai_senses.find_word_notes = broken
+        with self.assertLogs(level="ERROR"):
+            self.panel._ai_senses()
+        self.assertEqual((self.loaded, self.jobs), ([], []))
 
     def test_batch_walks_words_one_at_a_time_and_shows_one_picker(self):
         """Kolejno, nie równolegle: następne hasło rusza dopiero po wyniku poprzedniego."""
