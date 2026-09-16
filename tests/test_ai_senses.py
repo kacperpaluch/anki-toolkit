@@ -308,11 +308,20 @@ class AddNotesTests(unittest.TestCase):
         self.assertEqual(self.added[0][0]["ang"], "sprawling")
         self.assertEqual(self.added[0][0]["def"], "covering a large area")
 
-    def test_tags_are_mutually_exclusive(self):
-        """Pewne dopasowanie dostaje ai_tag, reszta ai_review_tag — nigdy oba."""
+    def test_review_is_independent_of_model_confidence(self):
+        """Model confidence never substitutes for the human review checkbox."""
         self.add([self.sense(), self.sense(match="approx"), self.sense(match="none", en="")])
         self.assertEqual([note.tags for note, _ in self.added],
-                         [["ai-auto"], ["ai-review"], ["ai-review"]])
+                         [["ai-auto", "ai-review"], ["ai-auto", "ai-review"], ["ai-auto", "ai-review"]])
+
+    def test_only_human_confirmation_removes_review_tag(self):
+        self.add([self.sense(match="approx", reviewed=True)])
+        self.assertEqual(self.added[0][0].tags, ["ai-auto"])
+
+    def test_duplicate_field_map_never_reaches_collection(self):
+        added, error = self.add([self.sense()], {**self.CFG, "ai_fields": {"pl": "ang"}})
+        self.assertEqual((added, self.added), (0, []))
+        self.assertIn("innego pola", error)
 
     def test_empty_tags_add_nothing(self):
         self.add([self.sense(match="none", en="")], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})
@@ -388,8 +397,14 @@ class RealBatchTests(unittest.TestCase):
                 self.assertEqual(col.note_count(), 0)
                 self.assertEqual(m.add_notes(addcards, chosen, cfg)[0], 2)
                 self.assertEqual(col.note_count(), 2)
+                # Recovery asks the real search whether a word already has cards.
+                with patch.object(m, "mw", types.SimpleNamespace(col=col)):
+                    self.assertEqual(len(m.find_word_notes("test", cfg)), 1)
+                    self.assertEqual(m.find_word_notes("tes", cfg), [])
                 col.undo()
                 self.assertEqual(col.note_count(), 0)
+                with patch.object(m, "mw", types.SimpleNamespace(col=col)):
+                    self.assertEqual(m.find_word_notes("test", cfg), [])
             finally:
                 col.close()
 

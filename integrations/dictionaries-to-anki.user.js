@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.5
+// @version      4.6
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -30,6 +30,46 @@
 
   // normalizacja białych znaków + obcięcie końcowego dwukropka (Cambridge kończy definicje na ":")
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().replace(/\s*:$/, '');
+
+  // Shared extraction for AI: only the requested entry; the whole page only when the markup changed.
+  window.ankiDictionaryText = (word) => {
+    const norm = (s) => clean(s).normalize('NFKC').toLocaleLowerCase()
+      .replace(/[‘’ʼ]/g, "'").replace(/\s+/g, ' ');
+    const rules = {
+      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li'],
+      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense'],
+      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense'],
+      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block'],
+    };
+    const rule = rules[location.hostname];
+    if (!rule) return '';
+    const [entrySelector, headSelector, senseSelector] = rule;
+    const entries = [...document.querySelectorAll(entrySelector)];
+    if (!entries.length) {
+      // No entry at all = the site changed its markup (or a CAPTCHA/error page).
+      // Hand over the whole page, flagged, so the preview warns instead of the source vanishing.
+      const page = clean(document.body ? document.body.innerText : '');
+      return norm(page).includes(norm(word)) ? { text: page, whole: true } : '';
+    }
+    let matched = entries.filter((entry) =>
+      [...entry.querySelectorAll(headSelector)].some((head) => norm(head.textContent) === norm(word)));
+    // Inflected single words (went → go): dictionaries redirect to the lemma, so trust the
+    // first entry. Never for phrases: "give up" must not fall back to "give".
+    if (!matched.length && !/\s/.test(word.trim())) matched = entries.slice(0, 1);
+    return matched.map((entry) => {
+      const senses = [...entry.querySelectorAll(senseSelector)].map((sense) => {
+        const copy = sense.cloneNode(true);
+        copy.querySelectorAll('.ankiBtn, script, style, .asset, .propform, .tail, .xref, .runon, '
+          + '.dwl, .epp-xref, .sensenum, .ACTIV, .FIELD, .speaker, .symbols, .box_title')
+          .forEach((el) => el.remove());
+        // textContent glues blocks ("childI want"), which breaks word-boundary quote checks.
+        copy.querySelectorAll('li, div, p, ul, ol, br, h1, h2, h3, .EXAMPLE, .def, .DEF')
+          .forEach((el) => el.append(' '));
+        return clean(copy.textContent);
+      }).filter(Boolean);
+      return senses.length ? word + '\n' + senses.join('\n') : '';
+    }).filter(Boolean).join('\n');
+  };
 
   // Menedżery userscriptów: GM_xmlhttpRequest (Tampermonkey) lub GM.xmlHttpRequest
   // (Userscripts na Safari). Obie omijają CORS i mixed content (https→http://127.0.0.1).
@@ -111,8 +151,10 @@
   // ── Oxford / LDOCE — przycisk przy każdym elemencie pasującym do selektora ───
   // Oxford: definicja .def (w .sensetop), przykład .x; LDOCE: definicja .DEF, przykład .EXAMPLE.
   // opts.append=true dla przykładów → doklejane z separatorem po stronie mostka.
+  // selector: CSS string or a ready list of elements.
   function injectButtons(selector, label, field, opts, getText) {
-    document.querySelectorAll(selector).forEach((el) => {
+    const els = typeof selector === 'string' ? document.querySelectorAll(selector) : selector;
+    els.forEach((el) => {
       if (el.dataset.ankiDone) return;      // dataset = pewny znacznik, niezależny od sąsiadów
       el.dataset.ankiDone = '1';
       const text = getText ? getText(el) : clean(el.textContent);
@@ -135,11 +177,15 @@
       });
       injectButtons('.x', '+ przykład', FIELDS.example, { append: true });
     } else if (host.includes('ldoceonline.com')) {
-      injectButtons('.HWD', '→ hasło', FIELDS.headword);
+      injectButtons('.HWD, .PHRVBHWD', '→ hasło', FIELDS.headword);  // PHRVBHWD = phrasal verb (give up)
       injectButtons('.DEF', '→ def', FIELDS.definition);
       injectButtons('.EXAMPLE', '+ przykład', FIELDS.example, { append: true });
     } else if (host.includes('dictionary.cambridge.org')) {
-      injectButtons('.hw.dhw', '→ hasło', FIELDS.headword);
+      // One headword per entry: phrasal verbs sit in .di-title ("give up"), and the page
+      // also carries a bare .hw.dhw ("give") that must not get the button.
+      const heads = [...document.querySelectorAll('.entry-body__el')]
+        .map((entry) => entry.querySelector('.di-title.dhw, .hw.dhw')).filter(Boolean);
+      injectButtons(heads, '→ hasło', FIELDS.headword);
       injectButtons('.def', '→ def', FIELDS.definition);           // Cambridge: definicja + końcowy ":" ucinany w clean()
       injectButtons('.eg', '+ przykład', FIELDS.example, { append: true });
       injectButtons('.dtrans-se', '→ pol', FIELDS.meaning);        // tłumaczenie PL (tylko wersja EN-PL)

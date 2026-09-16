@@ -71,7 +71,7 @@ _DEFAULTS = {
     "ai_max_senses": 3,        # ile kart maksymalnie z jednego hasła
     "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
     "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)
-    "ai_review_tag": "ai-review",  # dodatkowo, gdy dopasowanie nie jest pewne
+    "ai_review_tag": "ai-review",  # dodatkowo, dopóki użytkownik nie potwierdzi weryfikacji
     # Skąd model może cytować. Cambridge EN-PL jest na OBU listach: ta sama
     # strona ma polskie odpowiedniki i angielskie definicje. Etykiety muszą się
     # zgadzać z kluczami `link_templates`, inaczej nie ma czego sprawdzać.
@@ -269,7 +269,7 @@ def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
         url = _rows_url(base, cfg)
         body, error = post_json(
             url, payload, _headers(cfg, url),
-            max_retries=2,  # utrata zapisu to hasło, które przepadło — warte ponowienia
+            max_retries=1,  # POST nie jest idempotentny: utrata odpowiedzi nie oznacza braku zapisu
             timeout=8,
             log=log,
         )
@@ -283,12 +283,33 @@ def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
         if not isinstance(saved, list) or len(saved) != len(words):
             got = len(saved) if isinstance(saved, list) else "?"
             return None, f"zapisano {got} z {len(words)} haseł; odśwież kolejkę"
+        if any(not isinstance(entry, dict) or type(entry.get("id")) is not int or entry["id"] <= 0
+               for entry in saved):
+            return None, "odpowiedź zapisu nie zawiera poprawnych ID wierszy"
         # Hasło bierzemy ze swojego zapytania: n8n oddaje `id`, ale nie ma
         # obowiązku oddać reszty kolumn, a panel bez hasła pokazałby „—".
         return [{**row, **entry} for row, entry in zip(rows, saved)], None
 
-    rows, error = _via_hosts(cfg, call)
-    return (rows or []), error
+    # Probe with a GET so an unavailable primary can still use the fallback.
+    def probe(base):
+        _data, error = _get_json(_rows_url(base, cfg, "?" + _queue_query(1)), cfg)
+        return base, error
+    base, error = _via_hosts(cfg, probe)
+    if error:
+        return [], error
+    rows, error = call(base)
+    if error:
+        # A lost response may hide a committed POST. Read back, NEVER repeat it.
+        recovered, read_error = fetch_queue(cfg)
+        by_word = {}
+        for row in recovered:
+            key = str(row.get(cfg["word_column"], "")).strip().casefold()
+            by_word.setdefault(key, []).append(row)
+        matches = [by_word.get(word.strip().casefold(), []) for word in words]
+        if not read_error and all(len(found) == 1 for found in matches):
+            return [found[0] for found in matches], None
+        return [], f"wynik zapisu niepewny; nie ponowiono POST — {error}"
+    return rows, None
 
 
 def mark_row_done(row_id, cfg: dict, done: bool = True) -> tuple[int, str | None]:
@@ -335,8 +356,10 @@ def fetch_queue(cfg: dict) -> tuple[list[dict], str | None]:
                 return None, error  # cała paczka od nowa na kolejnym hoście
             rows.extend(page.get("data", []))
             cursor = page.get("nextCursor")
-            if not cursor or not page.get("data") or len(rows) >= cfg["max_rows"]:
+            if not cursor or not page.get("data"):
                 break
+            if len(rows) >= cfg["max_rows"]:
+                return None, f"tabela przekracza max_rows={cfg['max_rows']}; zwiększ limit, aby pobrać pełną kolejkę"
         return rows, None
 
     rows, error = _via_hosts(cfg, call)
@@ -538,6 +561,8 @@ if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez siec
         sent["url"], sent["body"] = url, json.loads(payload)
         return json.dumps([{"id": 11}, {"id": 12}]).encode(), None
 
+    _get_json = lambda *a, **k: ({"data": []}, None)
+    fetch_queue = lambda cfg: ([], None)
     post_json = fake_post
     rows, error = add_rows(["mother", "give up"], dict(cfg, api_key="k"))
     assert error is None, error

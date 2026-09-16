@@ -85,14 +85,14 @@ class IntegrationsTab(QWidget):
         for label, widget in (("Dostawca AI:", self._provider), ("Model:", self._model),
                               ("Maks. znaczeń z hasła:", self._senses),
                               ("Limit czasu:", self._timeout),
-                              ("Tag pewnych dopasowań:", self._tag),
+                              ("Tag kart z AI:", self._tag),
                               ("Tag do weryfikacji:", self._review_tag),
                               ("Pole polskie:", self._pl), ("Pole definicji:", self._definition),
                               ("Pole przykładu:", self._example)):
             form.addRow(label, widget)
         form.addRow(hint_label(
             "Pole angielskie to „Pole notatki” z kolejki. Tagi rozdzielaj spacją lub "
-            "przecinkiem; karta dostaje dokładnie jeden z dwóch — nigdy oba.", small=True))
+            "przecinkiem; tag do weryfikacji znika tylko po ręcznym potwierdzeniu w podglądzie.", small=True))
         layout.addWidget(ai)
 
         bridge = QGroupBox("Web Bridge")
@@ -118,8 +118,17 @@ class IntegrationsTab(QWidget):
         self._model.addItems(sorted(m for m in known if m))
         self._model.setCurrentText(current or "")
 
+    def validate(self):
+        return ai_senses.validate_mapping({
+            "word_field": self._field.text().strip(),
+            "ai_fields": {"pl": self._pl.text().strip(),
+                          "definition": self._definition.text().strip(),
+                          "example": self._example.text().strip()},
+        })
+
     def apply(self, cfg: dict) -> None:
-        cfg.setdefault("word_queue", {}).update({
+        fields = cfg.setdefault("word_queue", {}).setdefault("ai_fields", {})
+        cfg["word_queue"].update({
             "n8n_url": self._url.text().strip(),
             "fallback_url": self._fallback.text().strip(),
             "api_key": self._key.text().strip(),
@@ -135,7 +144,7 @@ class IntegrationsTab(QWidget):
             "ai_timeout": self._timeout.value(),
             "ai_tag": " ".join(ai_senses.parse_tags(self._tag.text())),
             "ai_review_tag": " ".join(ai_senses.parse_tags(self._review_tag.text())),
-            "ai_fields": {"pl": self._pl.text().strip(),
+            "ai_fields": {**fields, "pl": self._pl.text().strip(),
                           "definition": self._definition.text().strip(),
                           "example": self._example.text().strip()},
         })

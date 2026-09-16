@@ -50,18 +50,28 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   rozłączne zbiory, i nie wracaj do zaszytego `"diki"`. Etykiety muszą się zgadzać
   z `link_templates`; `generate` sprawdza to z góry, bo inaczej pusty worek PL
   odrzuca wszystkie znaczenia bez wskazania przyczyny.
-- `ai_senses.py` bierze tekst już otwartych zakładek panelu, nie scrapuje stron
-  ponownie. Cytaty modelu (`en`, `example`) są weryfikowane substringiem wobec
-  wskazanego źródła z `ai_en_sources`, a polskie odpowiedniki wobec sumy tekstów
-  z `ai_pl_sources` (tekst przycięty jak w prompcie) — nie usuwaj tej kontroli,
-  to jedyna bariera przed zmyśloną definicją. Substring dowodzi tylko, że tekst
-  JEST na stronie — nie, że należy do hasła; reklamy, „podobne słówka" i sąsiednie
-  hasła przeszłyby go, więc odcina je reguła 8 promptu. Podobnie `match` to
-  deklaracja modelu, a `exact` wyłącza kartę z `tag:ai-review` — dlatego prompt
-  każe wybierać `approx` przy wątpliwości, a szkielet JSON nie pokazuje `"exact"`. Znaczenie bez definicji zostaje kartą EN-PL. Tagi są rozłączne:
-  `ai_tag` wyłącznie dla `match == "exact"`, `ai_review_tag` dla całej reszty.
-  Nie dokładaj `ai_tag` do wszystkich — filtr `tag:ai-review` ma być kompletną
-  listą do weryfikacji, a nie podzbiorem.
+- `ai_senses.py` bierze wyłącznie bloki znaczeń pasującego nagłówka. Ekstrakcja
+  `window.ankiDictionaryText(word)` jest w tym samym userscripcie co przyciski.
+  Brak reguły/CAPTCHA = brak źródła. Zero wpisów na stronie z hasłem w tekście =
+  zmieniony HTML: userscript zwraca `{text, whole: true}` (cała strona), a podgląd
+  pokazuje ostrzeżenie (`whole_page`). Kanarek: `tests/live_selectors.py` (sieć, ręcznie).
+  Wyjątek: pojedyncze słowo bez pasującego nagłówka (went → go) bierze PIERWSZY
+  wpis strony; frazy nigdy (give up nie może spaść do give). Bloki dostają spację
+  na granicach — `textContent` skleja „childI want" i psuje granice słów w cytatach.
+  Selektory sprawdzone na żywych stronach (09.2026): Cambridge `.dhw`, LDOCE `.PHRVBHWD`.
+  Przycisk „→ hasło" na Cambridge: jeden na wpis (`.di-title.dhw, .hw.dhw`), bo
+  strona frazy ma też goły `.hw.dhw` z samym czasownikiem („give" przy „give up").
+  `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
+  sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
+  i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.
+- Cytaty są sprawdzane z granicami Unicode wyrazów względem wskazanego źródła
+  EN lub poszczególnych źródeł PL (bez sklejenia granic stron). Prompt i walidator
+  używają tego samego limitu tekstu. `match` jest wyłącznie oceną modelu.
+- `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki AI; `ai_review_tag`
+  jest dodatkowy, chyba że użytkownik potwierdził `reviewed` w podglądzie.
+  Każda edycja cofa checkbox weryfikacji. Nie wnioskuj weryfikacji z `exact`.
+- `validate_mapping` obsługuje ustawienia i zapis: wymagane EN/PL, różne pola,
+  a przed transakcją sprawdzenie wszystkich skonfigurowanych pól w typie notatki.
 - Dostawcę AI bierzemy z `..ai_generator.providers` (import leniwy w
   `_providers()`, bo testy logiki ładują `ai_senses.py` bez aqt). Integrations
   nie ma własnego klienta AI i nie powinno go dostać. `prepare_provider` należy
@@ -76,7 +86,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   listę haseł, nie jedno. Nie cofaj tego do jednego hasła — okno na hasło przy
   wklejonej liście to tyle klików, ile haseł.
 - `_DictTabs._collect` oddaje tekst stron przez `QTimer.singleShot(0, …)`, nigdy
-  wprost. `toPlainText` woła nas ze środka QtWebEngine, a paczka w tym callbacku
+  wprost. `runJavaScript` woła nas ze środka QtWebEngine, a paczka w tym callbacku
   ładuje kolejne hasło i potrafi otworzyć modalne okno — to natywny crash Anki,
   nie wyjątek Pythona. Nie „upraszczaj" tego z powrotem do bezpośredniego wywołania.
 - Paczka jest SEKWENCYJNA: jedno hasło naraz, następne rusza po wyniku
@@ -94,21 +104,22 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   escapowane jako HTML. `exact` to ocena modelu, nie walidacja semantyczna.
 
 - SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
-  wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów zakładek (wiersz n8n
+  wymaga niepustego PL i cofa potwierdzenie weryfikacji. Linki HTTP(S) pochodzą z adresów zakładek (wiersz n8n
   albo szablon), nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji
   cytatów. `existing_senses` tylko OSTRZEGA o istniejących kartach z tym hasłem —
   kilka znaczeń jednego hasła jest zamierzone, więc nie rób z tego blokady.
 - Dopisane hasła idą do tabeli (`add_rows`) i dostają prawdziwe `id`. Duplikaty
   odsiewa panel po zawartości listy — ma całą tabelę, więc osobne zapytanie
-  „czy już jest" byłoby zbędnym żądaniem. Do porównania wchodzi też `_adding`
+  „czy już jest" byłoby zbędnym żądaniem przed każdą wklejką. Do porównania wchodzi też `_adding`
   (hasła w locie): przed odpowiedzią n8n nie ma ich na liście, a bez tego drugie
   wklejenie zapisałoby duplikat. Zapasowe ujemne `id` wydaje licznik
   `_next_local_id`, nigdy `min(_local_rows)` — inaczej równoległe zapisy dostają
   ten sam numer. Nieudany zapis degraduje się do wiersza lokalnego, nie do
   wyjątku: hasło ma dać się przerobić także offline.
 - Wiersz lokalny (fallback) to zwykły wiersz listy z UJEMNYM `id` (`_local_rows`).
-  Cała reszta panelu nie musi o nim wiedzieć — jedyny guard siedzi w `_set_row`
-  i zamiast PATCH-a domyka tę samą ścieżkę `finished` gotowym wynikiem. Nie
+  `_set_row` zamiast PATCH-a domyka tę samą ścieżkę `finished` gotowym wynikiem.
+  Wiersze lokalne są trwałe; pełny GET łączy je z pojedynczym pasującym hasłem
+  w n8n i przenosi ID w propozycjach, powiązaniach i oczekujących flagach. Nie
   dokładaj drugiego trybu pracy panelu ani pola „to jest lokalne": znak `id`
   wystarcza, a `refill` musi te wiersze i ich ptaszki przenieść sam, bo n8n
   ich nie odtworzy.
@@ -116,3 +127,24 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
   samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
 
+
+## Odzyskiwanie
+
+`queue_state.py` to mały plik JSON w `user_files/`, zapisywany atomowo.
+Zakres = ścieżka kolekcji + adres główny + tabela + kolumny; nie zapisuje sekretów.
+Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany na
+`.broken` i panel startuje z pustym stanem — nie może blokować okna „Dodaj".
+
+- `add_rows`: wybór hosta przez GET, jeden POST bez retry/failover zapisu.
+  Niepewny wynik sprawdzamy pełnym GET; brak pewności daje lokalny wiersz
+  (`local_rows`), który `resolve_local_rows` przepina na jednoznaczny wiersz n8n.
+  Przekroczenie `max_rows` to błąd, nie udane pobranie części tabeli.
+- `drafts`: każdy ukończony wynik AI; stop kończy bieżące hasło, przycisk
+  odzyskiwania otwiera propozycje bez modelu. Znikają po zapisie kart.
+- `owed` (id wiersza → hasło): karty są, PATCH „zrobione" jeszcze nie przeszedł.
+  Zapisywane PRZED `col.add_notes`, usuwane po udanym PATCH-u. Po każdym
+  odświeżeniu `_settle_owed` sprawdza kolekcję (`find_word_notes`): są karty →
+  ponów PATCH; brak kart (crash przed commitem) → zapomnij dług, zostaw draft.
+- Undo NIE jest śledzone (świadomie, `ponytail:` w `queue_state.py`): cofnięcie
+  paczki zostawia wiersz odhaczony w n8n — odznacza się go ręcznie.
+- `_set_row` pozostaje jedynym wejściem do PATCH.

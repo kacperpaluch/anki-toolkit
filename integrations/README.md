@@ -25,7 +25,9 @@ musi być otwarte, inaczej endpoint zwraca błąd.
 ## Lista słówek
 
 Panel pobiera **całą** tabelę i sam chowa zrobione, żeby „Odśwież” nie gubił
-pozycji odhaczonych w tej sesji. Na liście działają dwa niezależne stany:
+pozycji odhaczonych w tej sesji. Przekroczenie `max_rows` (domyślnie 5000)
+zgłasza błąd zamiast pokazywać niepełną listę; zwiększ limit w konfiguracji.
+Na liście działają dwa niezależne stany:
 
 | Sygnał | Znaczenie | Gdzie żyje |
 |---|---|---|
@@ -101,8 +103,15 @@ wklejenia tego samego słowa nie zrobią dwóch wierszy. Pominięte hasła pokaz
 dymek, a panel skacze na tę pozycję, która już istnieje.
 
 Gdy n8n nie przyjmie zapisu (offline, zła tabela), dostajesz dymek z powodem,
-a hasła zostają jako pozycje **tylko w panelu**: działa na nich wszystko poza
-odhaczaniem, którego nie ma dokąd wysłać, i znikają z zamknięciem okna „Dodaj”.
+a hasła zostają jako pozycje **lokalne** w `user_files/`, także po zamknięciu Anki.
+Działa na nich generowanie i lokalne odhaczanie. Przy odświeżeniu lokalna
+pozycja zostaje połączona z n8n, jeśli tabela zawiera dokładnie jedno takie hasło.
+
+POST dopisujący hasła ma **jedną próbę**. Dostępny host jest wybierany przez
+GET przed zapisem. Przy utracie odpowiedzi dodatek sprawdza tabelę, ale nie
+powtarza POST-a na drugim adresie. Jeśli nie da się ustalić wyniku, pokazuje
+komunikat o niepewnym zapisie i zachowuje hasła lokalnie. Nie jest to blokada
+równoczesnego dopisania tego samego słowa z dwóch różnych urządzeń.
 
 ## Słowniki w zakładkach
 
@@ -164,13 +173,28 @@ edytora zostają takie, jakie były.
 
 ### Skąd biorą się definicje
 
-**Do promptu idzie tekst wszystkich czterech zakładek naraz.** Model sam wybiera,
+**Do promptu idzie treść pasującego hasła z poprawnie wczytanych zakładek.**
+Userscript wybiera bloki znaczeń we wpisie z nagłówkiem zgodnym z hasłem,
+usuwając przyciski i elementy poboczne. Błąd ładowania, CAPTCHA lub brak obsługi
+słownika oznaczają pominięcie źródła. Gdy słownik zmieni układ strony i żaden wpis
+nie zostanie rozpoznany, model dostaje całą stronę, a podgląd pokazuje ostrzeżenie
+**⚠ Cała strona** — cytaty mogą wtedy pochodzić z sąsiednich haseł. Czy reguły
+nadal pasują, sprawdzisz poleceniem (wymaga sieci):
+`QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py`.
+Gdy pojedyncze słowo przekierowuje na formę podstawową (np. *went* → *go*),
+brany jest pierwszy wpis strony; dla fraz (*give up*) nigdy — tam inny nagłówek
+oznacza pominięcie źródła. Oczekiwanie na ładowanie ma limit 20 sekund, a odczyt
+treści z silnika przeglądarki osobny limit 5 sekund. Dodanie nowego słownika do zakładek nie wystarcza do AI;
+potrzebna jest reguła ekstrakcji w userscripcie.
+
+Postęp i podgląd wskazują wykorzystane źródła; podgląd wymienia też pominięte.
+Model sam wybiera,
 z którego słownika wziąć definicję, i zapisuje to w polu `src` widocznym w oknie
 wyboru jako link do źródła. Nie ma stałego pierwszeństwa słownika, a znaczenie
 opisane w kilku słownikach ma wrócić raz. Kolejność znaczeń bierze się
 z pierwszego źródła PL.
 
-**Cytaty są sprawdzane względem źródła.** Definicja i przykład muszą występować
+**Cytaty są sprawdzane względem źródła, z granicami wyrazów** (`kot` nie pasuje do `kotlet`). Definicja i przykład muszą występować
 w tekście słownika wskazanego w `src` (lista `ai_en_sources`); polskie
 odpowiedniki — rozdzielone przecinkami lub średnikami — w dowolnym słowniku
 z `ai_pl_sources`. Cambridge EN-PL jest na obu listach; poza nim źródło polskie
@@ -181,16 +205,40 @@ model. Brak polskiego cytatu odrzuca znaczenie, brak angielskiego zostawia pust�
 definicję. To kontrola pochodzenia tekstu, nie gwarancja zgodności znaczeń —
 sprawdź propozycje przed zatwierdzeniem.
 
-Kontrola dowodzi tylko, że cytat **jest na stronie**, a nie że należy do hasła:
-reklamy, listy „podobne słówka" i sąsiednie hasła też są w pobranym tekście.
-Zabrania ich prompt, nie walidator. Z tego samego powodu prompt każe wybierać
-*approx* w razie wątpliwości — `exact` wyłącza kartę z listy do przejrzenia,
-więc niepewność ma kosztować przegląd, a nie cichą akceptację.
+Weryfikacja dowodzi obecności cytatu we wpisie, ale nie zgodności znaczeń.
+`exact` oznacza **AI: dopasowane**, a nie ręczne sprawdzenie. Prompt nadal
+preferuje `approx` przy wątpliwości.
+
+### Przerwanie i odzyskiwanie
+
+**Zatrzymaj po bieżącym haśle** kończy bieżące zapytanie i otwiera wybór dla
+wyników już uzyskanych. Każde ukończone hasło jest zapisywane na dysku.
+**Odzyskane propozycje** pozwalają wrócić do wyników po anulowaniu podglądu,
+zamknięciu okna lub restarcie Anki. Ponowna paczka wykorzystuje zachowane
+propozycje tych samych haseł bez ponownego pytania modelu.
+Niezakończone zapytanie trzeba uruchomić ponownie. Robocze edycje w podglądzie
+nie są zapisywane przy anulowaniu. Po zapisie kart propozycje danego hasła
+znikają z odzyskiwania.
+
+### Zapis kart i potwierdzenie n8n
+
+Dopisek **karty są, czeka n8n** oznacza, że notatki już istnieją, ale n8n
+nie potwierdził odhaczenia (brak sieci, restart). Po każdym **Odśwież** dodatek
+sprawdza, czy karty z tym hasłem są w kolekcji, i ponawia samo odhaczenie.
+Takie hasło nie jest ponownie wysyłane do AI.
+
+**Cofnij** (Undo) po zapisie paczki nie cofa odhaczenia w n8n — zrób to ręcznie
+przez **Cofnij odhaczenie** w menu pozycji.
+
+Pliki `user_files/word_queue_<hash>.json` przechowują propozycje AI, lokalne
+hasła i oczekujące odhaczenia osobno dla kolekcji, głównego adresu i tabeli n8n.
+Nie zawierają kluczy API. Uszkodzony plik jest odkładany jako `.broken`, a panel
+startuje od zera.
 
 ### Okno wyboru
 
 Puste polskie znaczenie blokuje zatwierdzenie zaznaczonej propozycji. Ręczne
-poprawki trafiają do tagu do weryfikacji; nie są ponownie sprawdzane jako
+poprawki cofają potwierdzenie ręcznej weryfikacji; nie są ponownie sprawdzane jako
 cytaty. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
 interpretacją jako HTML. Zatwierdzone znaczenia lądują jako osobne notatki
 w talii i typie wybranym w oknie „Dodaj”.
@@ -201,11 +249,16 @@ poza oknem „Dodaj”, więc jego własna kontrola duplikatów ich nie widzi �
 znaczenie istniejącego hasła jest zamierzone, powtórzenie tego samego nie.
 
 **Brak dopasowania 1:1 nie blokuje karty.** Znaczenie bez angielskiej definicji
-dostaje pustą definicję, a nie zmyśloną. Każda karta z AI dostaje **dokładnie
-jeden** tag: pewne dopasowanie *Tag pewnych dopasowań* (domyślnie `ai-auto`),
-wszystko pozostałe *Tag do weryfikacji* (`ai-review`). Tagi się nie nakładają,
-więc `tag:ai-review` w Browserze to cała robota do przejrzenia, a `tag:ai-auto`
-oznacza dopasowania ocenione przez model jako pewne, nie niezależnie zweryfikowane.
+dostaje pustą definicję, a nie zmyśloną. Każda karta dostaje **Tag kart z AI**
+(`ai_tag`, domyślnie `ai-auto`). Dodatkowo dostaje **Tag do weryfikacji**
+(`ai_review_tag`, domyślnie `ai-review`), chyba że zaznaczysz przy niej
+**Sprawdziłem znaczenie i zgodność ze źródłem**. Samo zatwierdzenie okna ani
+ocena `exact` nie zastępują tej czynności. Puste ustawienie tagu wyłącza go.
+Zmiana nie retaguje wcześniejszych notatek.
+
+Pole angielskie i polskie są wymagane. Wszystkie niepuste przypisania muszą
+być różne i istnieć w docelowym typie notatki — sprawdzenie przed zapisem
+obejmuje również konfigurację zmienioną ręcznie.
 
 Puste ustawienie *Pole przykładu* wyłącza przykłady w prompcie i podglądzie;
 ewentualny przykład zwrócony mimo to przez model jest pomijany.

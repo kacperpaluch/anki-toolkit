@@ -149,6 +149,15 @@ class PanelTests(unittest.TestCase):
         self.panel._list = types.SimpleNamespace(count=lambda: 1, item=lambda i: self.item,
                                                 currentItem=lambda: self.item,
                                                 selectedItems=lambda: [], setEnabled=lambda on: None)
+        from tempfile import TemporaryDirectory
+        self.state_dir = TemporaryDirectory()
+        self.addCleanup(self.state_dir.cleanup)
+        self.panel._state = self.module.QueueState("/test/collection.anki2", {}, self.state_dir.name)
+        self.panel._collection = self.module.mw.col
+        self.panel._stop_requested = False
+        self.panel._progress = types.SimpleNamespace(setText=lambda text: None)
+        self.panel._stop_btn = types.SimpleNamespace(setEnabled=lambda on: None)
+        self.panel._resume_btn = types.SimpleNamespace(setEnabled=lambda on: None)
         self.panel._marked = set()
         self.panel._picked = set()
         self.panel._local_rows = []
@@ -159,7 +168,8 @@ class PanelTests(unittest.TestCase):
         self.panel._done_count = 0
         self.panel._refill_generation = self.panel._selection_generation = 0
         self.panel._suspend = False
-        self.panel._cfg = {"word_field": "ang", "word_column": "Slowko", "flag_column": "Anki"}
+        self.panel._cfg = {"word_field": "ang", "word_column": "Slowko", "flag_column": "Anki",
+                            "ai_fields": {"pl": "pol"}}
         self.panel._hide_done = types.SimpleNamespace(isChecked=lambda: False)
         self.panel._counter = types.SimpleNamespace(setText=lambda _: None)
         self.panel._mark_row_done = lambda *a: (1, None)
@@ -173,6 +183,7 @@ class PanelTests(unittest.TestCase):
     def test_choosing_a_word_starts_every_dictionary(self):
         """Wszystkie słowniki naraz — „AI: znaczenia" i tak czyta komplet."""
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._generation = 0
         tabs._labels = ["diki", "Cambridge", "Oxford", "LDoCE"]
         loaded, enabled, current = [], {}, [0]
         tabs._views = [types.SimpleNamespace(load=lambda url, i=i: loaded.append(i))
@@ -198,11 +209,12 @@ class PanelTests(unittest.TestCase):
         callbacku QtWebEngine to natywny crash Anki, nie wyjątek Pythona."""
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
         tabs._labels = ["diki", "Oxford"]
-        tabs._no_text = set()
+        tabs._generation = 1
+        tabs._word = "word"
         tabs._loaded = {0: True, 1: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
-            toPlainText=lambda callback: callback(text))) for text in ("po polsku", "in english")]
+            runJavaScript=lambda script, callback: callback(text))) for text in ("po polsku", "in english")]
         got = []
         tabs._collect(got.append)
         self.assertFalse(got)                      # jeszcze nie — jesteśmy w callbacku silnika
@@ -219,14 +231,33 @@ class PanelTests(unittest.TestCase):
     def test_closed_panel_drops_deferred_page_text(self):
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
         tabs._labels = ["diki"]
-        tabs._no_text = set()
+        tabs._generation = 1
+        tabs._word = "word"
         tabs._loaded = {0: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
-            toPlainText=lambda callback: callback("tekst")))]
+            runJavaScript=lambda script, callback: callback("tekst")))]
         tabs._collect(lambda _result: self.fail("zamknięty panel nie może dostać tekstu"))
         tabs.deleted = True                        # okno „Dodaj" zamknięte, zanim timer wystrzelił
         self.timers.pop()()
+
+    def test_stalled_renderer_times_out_once_and_keeps_available_source(self):
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels, tabs._word, tabs._generation = ["diki", "Oxford"], "mother", 1
+        tabs._loaded = {0: True, 1: True}
+        tabs.isTabEnabled = lambda _i: True
+        pending = []
+        tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
+            runJavaScript=lambda script, cb: cb("matka"))),
+            types.SimpleNamespace(page=lambda: types.SimpleNamespace(
+                runJavaScript=lambda script, cb: pending.append(cb)))]
+        got = []
+        tabs._collect(got.append)
+        self.assertFalse(got)
+        self.timers.pop()()  # extraction deadline
+        self.assertEqual(got, [{"diki": "matka"}])
+        pending[0]("late English")
+        self.assertEqual(got, [{"diki": "matka"}])
 
     def test_range_selection_does_not_prompt_to_replace_the_headword(self):
         """Qt wysyła currentItemChanged przed selectionChanged — w tej chwili
@@ -279,7 +310,9 @@ class PanelTests(unittest.TestCase):
         self.panel._local_label = ""
         self.loaded = []
         self.panel._tabs = types.SimpleNamespace(
-            set_urls=lambda urls: None,
+            set_urls=lambda urls, word="": None,
+            setEnabled=lambda on: None,
+            whole_page=set(),
             texts=lambda callback: (self.loaded.append(self.panel._shown_word),
                                     callback({"diki": "tekst"}))[0])
         return items
@@ -308,6 +341,80 @@ class PanelTests(unittest.TestCase):
         future = Future()
         future.set_result(([] if error else [{"pl": meaning, "match": "none"}], error))
         self.jobs[-1][1](future)
+
+    def test_stop_keeps_completed_word_and_skips_next_request(self):
+        self.batch_panel(["mother", "father"])
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]) as picker:
+            self.panel._ai_senses()
+            self.panel._stop_batch()
+            self.answer("matka")
+        self.assertEqual(self.loaded, ["mother"])
+        self.assertEqual(len(self.jobs), 1)
+        self.assertEqual(picker.call_args.args[0][0]["word"], "mother")
+        recovered = self.module.QueueState("/test/collection.anki2", {}, self.state_dir.name)
+        self.assertEqual(recovered.data["drafts"][0]["senses"][0]["pl"], "matka")
+        self.assertFalse(self.panel._busy)
+
+    def test_failed_patch_is_owed_and_settled_after_refill(self):
+        self.panel._owe({1: "word"})
+        self.panel._set_row(self.item, True)
+        self.finish((0, "offline"))
+        recovered = self.module.QueueState("/test/collection.anki2", {}, self.state_dir.name)
+        self.assertEqual(recovered.data["owed"], {"1": "word"})
+        with patch.object(self.module.ai_senses, "find_word_notes", return_value=[42]):
+            self.panel._settle_owed()           # cards exist → PATCH again, no AI
+        self.finish((1, None))
+        self.assertEqual(self.panel._state.data["owed"], {})
+        self.assertEqual(self.panel._marked, {1})
+
+    def test_owed_row_without_cards_is_dropped_but_keeps_its_draft(self):
+        self.panel._state.data["drafts"] = [{"row_id": 1, "word": "word"}]
+        self.panel._owe({1: "word"})
+        with patch.object(self.module.ai_senses, "find_word_notes", return_value=[]):
+            self.panel._settle_owed()           # crash before commit: nothing to report
+        self.assertEqual(self.jobs, [])
+        self.assertEqual(self.panel._state.data["owed"], {})
+        self.assertEqual(len(self.panel._state.data["drafts"]), 1)
+
+    def test_owed_row_deleted_in_n8n_is_dropped_without_patch(self):
+        self.panel._owe({99: "gone"})           # row 99 is no longer in the queue
+        with patch.object(self.module.ai_senses, "find_word_notes", return_value=[42]) as find:
+            self.panel._settle_owed()
+        find.assert_not_called()
+        self.assertEqual(self.jobs, [])
+        self.assertEqual(self.panel._state.data["owed"], {})
+
+    def test_whole_page_fallback_is_flagged(self):
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels, tabs._word, tabs._generation = ["diki", "Oxford"], "mother", 1
+        tabs._loaded = {0: True, 1: True}
+        tabs.isTabEnabled = lambda _i: True
+        answers = ["matka", {"text": "MENU mother a female parent", "whole": True}]
+        tabs._views = [types.SimpleNamespace(page=lambda a=a: types.SimpleNamespace(
+            runJavaScript=lambda script, cb: cb(a))) for a in answers]
+        got = []
+        tabs._collect(got.append)
+        self.timers.pop()()
+        self.assertEqual(got, [{"diki": "matka", "Oxford": "MENU mother a female parent"}])
+        self.assertEqual(tabs.whole_page, {"Oxford"})
+
+    def test_failed_load_and_empty_entry_are_excluded(self):
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels = ["diki", "Oxford", "Cambridge"]
+        tabs._generation = 1
+        tabs._word = "mother"
+        tabs._loaded = {0: False, 1: True, 2: True}
+        tabs.isTabEnabled = lambda _i: True
+        tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
+            runJavaScript=lambda script, callback: callback(text))) for text in ("error", "", "matka")]
+        got = []
+        tabs._collect(got.append)
+        self.timers.pop()()
+        self.assertEqual(got, [{"Cambridge": "matka"}])
+        tabs._collect(got.append)
+        tabs._generation += 1
+        self.timers.pop()()
+        self.assertEqual(len(got), 1)  # stale extraction cannot advance the next word
 
     def test_batch_refuses_to_start_without_a_provider(self):
         self.batch_panel(["mother"])
