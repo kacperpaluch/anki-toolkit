@@ -1,8 +1,0 @@
-# LLM Context — Anki Toolkit: Local Sources
-
-Łączy bezsieciowe bazy Oxford i SuperMemo. `logic.py` zawiera czyste mapowanie,
-`__init__.py` obsługę edytora/cache JSON, a `settings.py` ustawienia. Nie
-nagrywaj ani nie nadpisuj niepustych pól, pola dopasowania ani kluczy Oxford
-zaczynających się od `_`. Przy wielu znaczeniach zawsze pokaż wybór użytkownika.
-`user_files/` i `meta.json` są prywatne.
-Zapis konfiguracji scala sekcje Oxford/SuperMemo, zachowując nieznane klucze wewnętrzne.

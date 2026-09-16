@@ -2,19 +2,18 @@
 __pycache__/
 *.py[cod]
 *.pyo
+.pytest_cache/
 
-# Anki runtime — zawierają klucze API i dane użytkownika, NIE commitować
+# Anki runtime (także workload_service/user_files) — klucze API i dane użytkownika, NIE commitować
 meta.json
-**/meta.json
 *.bak
+*.log
 user_files/
-**/user_files/
 *.key
 *.pem
 *.secret
 .env
 .env.*
-audio_normalizer/processed_history.json
 
 # Claude Code
 .claude/
@@ -38,3 +37,6 @@ Thumbs.db
 .mcp.json
 opencode.json
 opencode.jsonc
+
+# Kopia danych sprzed scalenia dodatków
+.legacy-backup/

@@ -13,7 +13,7 @@ import types
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent / "anki_toolkit_content"
+ROOT = Path(__file__).parent.parent
 
 
 def _load():

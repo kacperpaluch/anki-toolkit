@@ -1,137 +1,108 @@
-# Anki Toolkit Add-ons
+# Anki Toolkit
 
-Anki Toolkit to zestaw niezależnych dodatków do Anki, wspierających cały proces
-tworzenia kart: od pobrania słowa, przez wypełnienie treści i wymowę, po
-organizację powtórek oraz utrzymanie mediów. Każdy dodatek działa i aktualizuje
-się osobno — instalujesz tylko te funkcje, których używasz.
+Anki Toolkit to jeden dodatek do Anki, wspierający cały proces tworzenia kart:
+od pobrania słowa, przez wypełnienie treści i wymowę, po plan powtórek oraz
+utrzymanie mediów. Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia
+w jednym oknie.
 
-## Dodatki
+## Menu
 
-| Dodatek | Do czego służy | Gdzie zacząć |
-|---|---|---|
-| [Content](anki_toolkit_content/README.md) | AI Generator, Batch API, workflowy, słowniki, TTS i dzielenie pól. | **Narzędzia → Anki Toolkit: Content** |
-| [Learning](anki_toolkit_learning/README.md) | Talie filtrowane z presetów szybkich powtórek. | **Narzędzia → Anki Toolkit: Learning…** |
-| [Workload](anki_toolkit_workload/README.md) | Elastyczny plan na dziś i spokojne tempo nowych kart. | **Narzędzia → Anki Toolkit: Workload…** |
-| [Audio Normalizer](anki_toolkit_audio_normalizer/README.md) | Normalizacja głośności mediów przez `ffmpeg`, ręcznie lub automatycznie. | **Narzędzia → Anki Toolkit: Audio Normalizer** |
-| [HTML Cleanup](anki_toolkit_html_cleanup/README.md) | Reguły „znajdź → zamień” dla HTML w polach notatek, definiowane w tabeli. | **Narzędzia → Anki Toolkit: HTML Cleanup** |
-| [Field Hider](anki_toolkit_field_hider/README.md) | Ukrywanie pomocniczych pól tylko w oknie Dodaj. | **Narzędzia → Anki Toolkit: Field Hider…** |
-| [Local Sources](anki_toolkit_local_sources/README.md) | Lokalne bazy Oxford 5000 i SuperMemo; przyciski **OX** i **SM**. | **Narzędzia → Anki Toolkit: Local Sources…** |
-| [Integrations](anki_toolkit_integrations/README.md) | Kolejka słówek n8n, cztery słowniki w panelu, karty z AI i Web Bridge. | **Narzędzia → Anki Toolkit: Integrations** |
+| Pozycja | Co robi |
+|---|---|
+| **Ustawienia…** | Jedno okno z paskiem bocznym dla wszystkich modułów (ten sam dialog otwiera **Config** w **Narzędzia → Dodatki**) |
+| **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
+| **Plan nauki…** | Elastyczny plan na dziś i spokojne tempo nowych kart |
+| **Sprawdź batche AI** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
+| **Rozdziel pola w kolekcji…** | Field Splitter dla wszystkich notatek |
+| **Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
+| **Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
 
-## Opis dodatków
+W Browserze PPM → **Anki Toolkit** zawiera workflowy, generowanie AI, wymowę,
+TTS i rozdzielanie pól dla zaznaczonych notatek. W oknie **Dodaj** są przyciski
+AI, słownika, TTS, 📚 i 👁.
 
-### Content
+## Moduły
 
-Główne narzędzie do budowania treści kart. Pozwala generować wybrane pola przez
-modele AI, pobierać nagrania i IPA ze słowników, tworzyć audio przez TTS oraz
-dzielić dłuższe pole z przykładami na kolejne pola notatki. Konfigurujesz tu
-prompty, dostawców AI, zadania TTS i akcje dostępne w edytorze albo Browserze.
-Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI** i
-**Claude CLI** — które generują przez zainstalowanego, zalogowanego klienta
+Okno ustawień grupuje moduły tak samo jak poniżej.
+
+**Tworzenie kart**
+
+| Moduł | Do czego służy |
+|---|---|
+| [AI Generator](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, workflowy, Batch API i fallback modeli |
+| [Słownik](dictionary/README.md) | Audio MP3 z wymową oraz IPA z czterech słowników online |
+| [TTS](tts/README.md) | Audio z lokalnego Kokoro albo OpenRouter |
+| [Rozdzielanie pól](field_splitter/README.md) | Części pola źródłowego (po separatorze) w kolejnych polach |
+
+Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
+i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
 
-### Learning
+**Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
+Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
+cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
+wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje
+adres domowy n8n i zapasowy przez Tailscale. Web Bridge przyjmuje dane
+z userscriptu słownika. **AI: znaczenia** robi z jednego hasła po jednej karcie
+na każde znaczenie, cytując definicje dosłownie z otwartych zakładek.
 
-Tworzy lub odświeża talie filtrowane z gotowych presetów: karty uczone ostatnio,
-trudne, wszystkie nie-nowe albo losowe. Wybierasz preset i limit kart, a oceny
-w takiej talii nie zmieniają zwykłego harmonogramu powtórek.
+**Nauka** — [Plan nauki](workload/README.md). Domyślnie 15 minut
+jako punkt odniesienia, 30 minut jako górna granica i 3 nowe karty dziennie
+łącznie. Uwzględnia dzisiejszą naukę, zaległości i częste „Ponownie”. Doradza —
+nie zmienia limitów Anki ani harmonogramu.
 
-### Workload
+**Porządki**
 
-Pomaga spokojnie rozpocząć i utrzymać naukę: domyślnie 15 minut jako punkt
-odniesienia, 30 minut jako górna granica i 3 nowe karty dziennie łącznie. Czas na dziś można zmienić w oknie;
-krótszy dzień wstrzymuje nowe, dłuższy nie zwiększa tempa. Uwzględnia dzisiejszą
-naukę, zaległości i częste odpowiedzi „Ponownie”, proponując ostrożne zmiany tempa.
-Szczegółowy raport można rozwinąć. Dodatek doradza — nie zmienia limitów Anki
-ani harmonogramu i nie zatrzymuje sesji.
+| Moduł | Do czego służy |
+|---|---|
+| [Normalizacja audio](audio_normalizer/README.md) | `ffmpeg` loudnorm ręcznie albo automatycznie dla nowych plików |
+| [Czyszczenie HTML](html_cleanup/README.md) | Reguły „znajdź → zamień” w tabeli, stosowane przy dodawaniu notatki |
+| [Ukrywanie pól](field_hider/README.md) | Pola pomocnicze schowane tylko w oknie Dodaj |
 
-### Audio Normalizer
-
-Wyrównuje głośność plików w katalogu mediów Anki przez `ffmpeg`. Można uruchomić
-normalizację ręcznie dla całej kolekcji albo włączyć watcher, który po krótkim
-opóźnieniu normalizuje nowe pliki z TTS, słowników, synchronizacji lub ręcznego
-dodania.
-
-### HTML Cleanup
-
-Czyści artefakty z wklejanego HTML według listy reguł „znajdź → zamień”,
-które definiujesz w tabeli w ustawieniach: zwykły tekst albo regex, z
-zakresem pól i opcją powtarzania. Domyślnie zamienia `&nbsp;` na spacje i
-normalizuje tagi `<div>`. Działa automatycznie przy dodawaniu notatek, a na
-żądanie może przeskanować całą kolekcję jednym krokiem cofania.
-
-### Field Hider
-
-Pozwala ukryć pola pomocnicze tylko w oknie Dodaj, bez zmiany modelu notatki i
-bez ukrywania ich w Browserze. Jest przydatny, gdy część pól ma być później
-wypełniana przez inne dodatki, ale nie powinna rozpraszać przy ręcznym wpisie.
-
-### Local Sources
-
-Wykorzystuje lokalne eksporty Oxford 5000 i SuperMemo przechowywane poza
-kolekcją. Przyciski **OX** i **SM** znajdują hasło, pozwalają wybrać znaczenie
-i uzupełniają wyłącznie puste pola; nie wymagają sieci ani nie nadpisują Twojej
-treści.
-
-### Integrations
-
-Łączy Anki z kolejką słówek w n8n DataTable. Panel 📚 pobiera wiersze, wpisuje
-hasło do notatki, pokazuje cztery słowniki w zakładkach (diki, Cambridge EN-PL,
-Oxford, LDoCE) i odhaczą wiersz po dodaniu karty. Adresy składają się z samego
-hasła, więc własne słowa spoza tabeli (pojedynczo albo wklejoną listą) działają
-tak samo — tylko nic nie odhaczają.
-Obsługuje adres domowy n8n oraz adres zapasowy przez Tailscale.
-Web Bridge przyjmuje dane z userscriptu słownika i wpisuje je do otwartego okna
-Dodaj. Przycisk **AI: znaczenia** robi z jednego hasła po jednej karcie na każde
-znaczenie: model dopasowuje polskie znaczenia z diki do angielskich definicji
-z otwartych zakładek, cytując je dosłownie.
+**Diagnostyka** pokazuje bufor logów wszystkich modułów i przełącza tryb debug.
 
 ## Instalacja w wersji deweloperskiej
 
-Każdy katalog `anki_toolkit_*` jest samodzielnym dodatkiem Anki. W środowisku
-deweloperskim utwórz dowiązanie symboliczne z katalogu `addons21` swojego
-profilu Anki do wybranego katalogu w tym repozytorium. Przykład dla Content na
-macOS:
+Katalog główny repozytorium jest dodatkiem. Utwórz dowiązanie symboliczne
+z katalogu `addons21` swojego profilu Anki do repozytorium i uruchom Anki
+ponownie. Na macOS:
 
 ```bash
-ln -s "/ścieżka/do/anki-toolkit/anki_toolkit_content" \
-  "$HOME/Library/Application Support/Anki2/addons21/anki-toolkit-content"
+ln -s "/ścieżka/do/anki-toolkit" \
+  "$HOME/Library/Application Support/Anki2/addons21/anki-toolkit"
 ```
 
-Po dodaniu, usunięciu lub przełączeniu dodatku uruchom Anki ponownie. Nie
-instaluj równocześnie starego, scalonego Anki Toolkit ani dwóch dodatków,
-które realizują tę samą funkcję.
+Nie instaluj równocześnie dawnych osobnych dodatków `anki-toolkit-*` — rejestrują
+te same hooki.
 
 ## Konfiguracja i dane prywatne
 
-Każdy dodatek ma własne ustawienia dostępne z menu **Narzędzia**. Ten sam
-dialog otwiera przycisk **Config** przy dodatku w **Narzędzia → Dodatki** —
-żaden dodatek nie pokazuje już surowego edytora JSON. `config.json` jest
-bezpiecznym szablonem domyślnym, a rzeczywiste ustawienia profilu Anki są
-zapisywane w `meta.json` dodatku.
+`config.json` jest bezpiecznym szablonem z sekcją dla każdego modułu;
+rzeczywiste ustawienia profilu są w `meta.json`. Stan Batch API i historia
+normalizacji audio są w `user_files/`. `meta.json`, `user_files/`, klucze API,
+pliki `.env`, logi i certyfikaty są ignorowane przez Git.
 
-Pliki trwałe, takie jak lokalne bazy Oxford/SuperMemo, stan Batch API czy
-historia normalizacji audio, należą do `user_files/` odpowiedniego dodatku.
-`meta.json`, `user_files/`, klucze API, pliki `.env`, logi i certyfikaty są
-ignorowane przez Git i nie powinny trafiać do repozytorium.
+Przy wielu profilach Anki ustawienia i stan Batch API są wspólne, ale każdy
+batch zna swoją kolekcję — po przełączeniu profilu czeka na powrót do swojego.
 
 ## Struktura repozytorium
 
 ```text
-anki_toolkit_*/       samodzielne dodatki Anki
-tests/                testy czystej logiki dodatków
-docs/                 plan podziału i notatki architektoniczne
+__init__.py           punkt wejścia dodatku: hooki i menu Narzędzia → Anki Toolkit
+settings_dialog.py    wspólne okno ustawień
+manifest.json         manifest dodatku; config.json — szablon ustawień
+common/ settings/     współdzielone narzędzia i panele ustawień tworzenia kart
+ai_generator/ …       moduły dodatku (każdy z własnym README.md)
+workload_service/     niezależny klient headless dla limitów nowych kart (nie ładuje go Anki)
+tests/                testy czystej logiki (nie ładuje ich Anki)
 AGENTS.md             zasady pracy w repozytorium
-llm-context.md        mapa dodatków dla modeli AI
+llm-context.md        mapa modułów dla modeli AI
 ```
-
-Każdy dodatek zawiera własne `README.md` oraz `llm-context.md`: README opisuje
-użycie, a context dokumentuje granice techniczne, hooki i niezmienniki.
 
 ## Dla deweloperów
 
 Przed zmianą przeczytaj [AGENTS.md](AGENTS.md), a następnie
-[llm-context.md](llm-context.md) oraz context tylko właściwego dodatku.
+[llm-context.md](llm-context.md) oraz kontekst tylko właściwego modułu.
 
 Po zmianach w Pythonie uruchom:
 
@@ -145,4 +116,4 @@ git diff --check
 
 [Workload Service](workload_service/README.md) to niezależny klient dla AnkiWeb lub własnego
 serwera Anki: codziennie analizuje historię i ustawia porcję nowych kart.
-Dodatek macOS pozostaje doradczy.
+Moduł w Anki pozostaje doradczy.

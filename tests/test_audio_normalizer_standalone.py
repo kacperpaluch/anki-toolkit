@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-ROOT = Path(__file__).parent.parent / "anki_toolkit_audio_normalizer"
+ROOT = Path(__file__).parent.parent / "audio_normalizer"
 spec = importlib.util.spec_from_file_location("normalizer_config", ROOT / "config.py")
 config = importlib.util.module_from_spec(spec); spec.loader.exec_module(config)
 

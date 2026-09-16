@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def load_core(name):
     spec = importlib.util.spec_from_file_location(
-        "workload_service_" + name, ROOT / "anki_toolkit_workload" / (name + ".py"))
+        "workload_service_" + name, ROOT / "workload" / (name + ".py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -49,8 +49,12 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def default_settings():
+    return read_json(ROOT / "config.json")["workload"]
+
+
 def settings_from(path, data_dir=None, overrides=None):
-    settings = read_json(ROOT / "anki_toolkit_workload/config.json")
+    settings = default_settings()
     settings.update(read_json(path, {}))
     settings.update(json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")))
     if data_dir is not None:

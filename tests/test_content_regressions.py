@@ -20,7 +20,7 @@ from unittest.mock import patch
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent / "anki_toolkit_content"
+ROOT = Path(__file__).parent.parent
 # Own package alias — inne moduły testowe rejestrują własne, uboższe "atc.*".
 _PKG = "atc_regr"
 

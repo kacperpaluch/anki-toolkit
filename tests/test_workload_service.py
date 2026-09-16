@@ -222,7 +222,7 @@ class OfficialServerTests(unittest.TestCase):
         self.client.full_upload_or_download(auth=self.auth, server_usn=None, upload=True)
         self.client.reopen(after_full_sync=True)
         self.data = self.folder / "worker"
-        self.settings = {**worker.read_json(worker.ROOT / "anki_toolkit_workload/config.json"),
+        self.settings = {**worker.default_settings(),
                          "decks": ["English"], "apply": True}
 
     def stop_server(self):

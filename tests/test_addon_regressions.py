@@ -1,4 +1,4 @@
-"""Regression checks for the standalone add-ons; no Anki, network or user data."""
+"""Regression checks for the add-on modules; no Anki, network or user data."""
 import ast
 import importlib.util
 import json
@@ -19,9 +19,14 @@ class Widget:
 
 
 def load(addon, filename="__init__.py"):
-    """Import complete modules with narrow Qt/Anki stubs, isolated from other tests."""
-    package = "review_" + addon
-    folder = ROOT / ("anki_toolkit_" + addon)
+    """Import complete modules with narrow Qt/Anki stubs, isolated from other tests.
+
+    The add-on root is a bare package (its __init__ would wire every hook), but
+    `common` is imported for real — modules read their config section through it.
+    """
+    root = "review_" + addon
+    package = root + "." + addon
+    folder = ROOT / addon
     modules = {}
     for name in ("aqt", "aqt.qt", "aqt.utils", "aqt.operations", "aqt.browser", "anki", "anki.collection"):
         modules[name] = types.ModuleType(name)
@@ -38,8 +43,12 @@ def load(addon, filename="__init__.py"):
     modules["aqt.browser"].Browser = Widget
     modules["anki.collection"].Collection = Widget
     modules["anki.collection"].OpChanges = Widget
+    top = types.ModuleType(root)
+    top.__path__ = [str(ROOT)]
+    modules[root] = top
     parent = types.ModuleType(package)
     parent.__path__ = [str(folder)]
+    parent.__package__ = package
     modules[package] = parent
     name = package if filename == "__init__.py" else package + "." + Path(filename).stem
     spec = importlib.util.spec_from_file_location(name, folder / filename)
@@ -520,7 +529,9 @@ class AttributeConsistencyTests(unittest.TestCase):
 
     def test_every_private_attribute_is_assigned_somewhere_in_its_class(self):
         unknown = {}
-        for path in sorted(ROOT.glob("anki_toolkit_*/*.py")):
+        # Two levels: providers/ inherits helpers from a base class this check cannot see.
+        paths = [*ROOT.glob("*.py"), *ROOT.glob("*/*.py")]
+        for path in sorted(p for p in paths if p.parent.name not in ("tests", "workload_service")):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for cls in [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]:
                 stored = {node.name for node in cls.body
@@ -536,7 +547,7 @@ class AttributeConsistencyTests(unittest.TestCase):
                         (stored if isinstance(node.ctx, ast.Store) else loaded).add(node.attr)
                 missing = sorted(a for a in loaded - stored if a.startswith("_"))
                 if missing:
-                    unknown[f"{path.parent.name}/{path.name}::{cls.name}"] = missing
+                    unknown[f"{path.relative_to(ROOT)}::{cls.name}"] = missing
         self.assertEqual(unknown, {})
 
 
@@ -548,12 +559,13 @@ class OtherAddonsTests(unittest.TestCase):
 
     def test_empty_rules_stay_empty_and_old_defaults_migrate(self):
         module = load("html_cleanup")
-        module.mw.addonManager.getConfig = lambda _: {"rules": []}
+        module.mw.addonManager.getConfig = lambda _: {"html_cleanup": {"rules": []}}
         self.assertEqual(module.get_config()["rules"], [])
-        module.mw.addonManager.getConfig = lambda _: {"rules": module.legacy_default_rules()}
+        module.mw.addonManager.getConfig = lambda _: {
+            "html_cleanup": {"rules": module.legacy_default_rules()}}
         self.assertEqual(module.get_config()["rules"], module.default_rules())
-        template = json.loads((ROOT / "anki_toolkit_html_cleanup/config.json").read_text())
-        self.assertEqual(template["rules"], module.default_rules())
+        template = json.loads((ROOT / "config.json").read_text())
+        self.assertEqual(template["html_cleanup"]["rules"], module.default_rules())
 
     def test_cleaning_before_add_has_no_collection_write(self):
         module = load("html_cleanup")
@@ -576,6 +588,19 @@ class OtherAddonsTests(unittest.TestCase):
         module = load("html_cleanup", "cleaning.py")
         with self.assertRaises(ValueError):
             module.clean_field("f", "x" * 1000, [{"find": "(.+)", "to": r"\1" * 2000, "regex": True}])
+
+    def test_field_hider_indices_follow_note_type_order(self):
+        module = load("field_hider")
+        self.assertEqual(module.indices_to_hide(["front", "back", "audio"], ["back", "audio"]), [1, 2])
+        self.assertEqual(module.indices_to_hide(["front"], ["missing"]), [])
+
+    def test_section_config_keeps_unknown_keys(self):
+        module = load("field_hider")
+        mw = module.get_module_config.__globals__["mw"]  # common.config reads the profile
+        mw.addonManager.getConfig = lambda _: {
+            "field_hider": {"hidden_fields": {"Basic": ["Back"]}, "future_option": True}}
+        self.assertEqual(module.get_config()["future_option"], True)
+        self.assertEqual(module.get_config()["hidden_fields"], {"Basic": ["Back"]})
 
     def test_history_is_scoped_and_keeps_other_collection(self):
         module = load("audio_normalizer", "logic.py")
@@ -631,31 +656,6 @@ class OtherAddonsTests(unittest.TestCase):
                 self.assertEqual(module.normalize_file("/tmp/audio.mp3", "ffmpeg", "filter", check), (False, None))
                 replace.assert_not_called()
                 remove.assert_called_once()
-
-    def test_learning_reuses_suffixed_filtered_deck(self):
-        module = load("learning")
-        base = module.get_config()["deck_name"] + " — " + module.PRESETS[0][0]
-        filtered = {"id": 2, "dyn": 1, "terms": [["", 0, 0]]}
-        module.mw.col = types.SimpleNamespace(decks=types.SimpleNamespace(
-            by_name=lambda name: {"id": 1, "dyn": 0} if name == base else filtered,
-            get=lambda _: filtered, save=lambda _: None, select=lambda _: None,
-            new_filtered=lambda _: self.fail("must reuse")),
-            sched=types.SimpleNamespace(rebuild_filtered_deck=lambda _: None))
-        module.mw.reset = lambda: None
-        module.showInfo = lambda msg: self.fail(msg)
-        module.create_filtered_deck(0)
-        self.assertFalse(filtered["resched"])
-
-    def test_local_sources_preserves_nested_unknown_keys(self):
-        tree = ast.parse((ROOT / "anki_toolkit_local_sources/__init__.py").read_text())
-        tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "save_config"]
-        saved = []
-        env = {"_name": lambda: "test", "mw": types.SimpleNamespace(addonManager=types.SimpleNamespace(
-            getConfig=lambda _: {"oxford": {"future": 42, "match_field": "old"}},
-            writeConfig=lambda _, cfg: saved.append(cfg)))}
-        exec(compile(tree, "local_sources", "exec"), env)
-        env["save_config"]({"oxford": {"match_field": "new"}})
-        self.assertEqual(saved[0]["oxford"], {"future": 42, "match_field": "new"})
 
 
 class BridgeOriginTests(unittest.TestCase):

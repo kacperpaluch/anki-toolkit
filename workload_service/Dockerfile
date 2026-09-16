@@ -4,7 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certi
 WORKDIR /app
 COPY workload_service/requirements.txt /app/workload_service/requirements.txt
 RUN pip install --no-cache-dir -r workload_service/requirements.txt
-COPY anki_toolkit_workload/logic.py anki_toolkit_workload/snapshot.py anki_toolkit_workload/config.json /app/anki_toolkit_workload/
+COPY config.json /app/
+COPY workload/logic.py workload/snapshot.py /app/workload/
 COPY workload_service/worker.py workload_service/dashboard.py workload_service/notifications.py /app/workload_service/
 ENV TZ=Europe/Warsaw PYTHONUNBUFFERED=1
 ENTRYPOINT ["python", "/app/workload_service/worker.py"]

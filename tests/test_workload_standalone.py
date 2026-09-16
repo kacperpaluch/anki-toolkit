@@ -1,24 +1,28 @@
-"""Testy dodatku Workload.
+"""Testy modułu Workload.
 
-Czysta logika jest importowana bezpośrednio z pliku. Warstwa odczytu z Anki
-(`build_snapshot`) jest testowana na atrapach `aqt` i na prawdziwej bazie
-SQLite w pamięci — dzięki temu zapytania SQL wykonują się naprawdę.
+Czysta logika i warstwa odczytu (`build_snapshot`) są importowane bezpośrednio
+z plików. Odczyt jest testowany na prawdziwej bazie SQLite w pamięci — dzięki
+temu zapytania SQL wykonują się naprawdę.
 """
 
 import datetime
 import importlib.util
 import sqlite3
-import sys
 import types
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent
-_spec = importlib.util.spec_from_file_location(
-    "workload_logic", ROOT / "anki_toolkit_workload/logic.py"
-)
-logic = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(logic)
+WORKLOAD = Path(__file__).parent.parent / "workload"
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location("workload_" + name, WORKLOAD / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+logic = _load("logic")
 
 SETTINGS = {
     "minutes_per_day": 30,
@@ -348,25 +352,6 @@ class AncestorTests(unittest.TestCase):
 
 # ── Warstwa odczytu z Anki ─────────────────────────────────────────────────
 
-def _stub_aqt():
-    """Minimalne atrapy `aqt`, żeby dało się zaimportować pakiet dodatku."""
-    if "aqt" in sys.modules:
-        return
-    qt = types.ModuleType("aqt.qt")
-    for name in ("QAction", "QApplication", "QDialog", "QDialogButtonBox",
-                 "QPushButton", "QTextBrowser", "QVBoxLayout", "QComboBox",
-                 "QDoubleSpinBox", "QFormLayout", "QLabel", "QLineEdit", "QSpinBox"):
-        setattr(qt, name, type(name, (), {}))
-    utils = types.ModuleType("aqt.utils")
-    utils.tooltip = lambda *args, **kwargs: None
-    aqt = types.ModuleType("aqt")
-    aqt.mw = types.SimpleNamespace(col=None, addonManager=None, form=None)
-    aqt.gui_hooks = types.SimpleNamespace()
-    aqt.qt = qt
-    aqt.utils = utils
-    sys.modules.update({"aqt": aqt, "aqt.qt": qt, "aqt.utils": utils})
-
-
 class FakeDecks:
     def __init__(self, decks): self.decks = decks
     def all_names_and_ids(self, skip_empty_default=False):
@@ -419,10 +404,7 @@ def day_ms(day, crt=0): return (crt + day * 86400) * 1000 + 1
 class SnapshotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _stub_aqt()
-        sys.path.insert(0, str(ROOT))
-        import anki_toolkit_workload
-        cls.addon = anki_toolkit_workload
+        cls.addon = _load("snapshot")
 
     def _col(self, cards=(), revlog=(), **kwargs):
         decks = {

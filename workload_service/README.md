@@ -1,7 +1,7 @@
 # Workload — codzienny klient synchronizacji
 
 Samodzielny proces bez GUI, uruchamiany na własnej maszynie. Korzysta z oficjalnej
-biblioteki `anki==26.8.1` i wspólnej logiki dodatku Workload. Obsługuje AnkiWeb
+biblioteki `anki==26.8.1` i wspólnej logiki modułu Workload z Anki Toolkit. Obsługuje AnkiWeb
 oraz własny serwer zgodny z protokołem Anki (w tym oficjalny self-hosted server).
 Nie montuje ani nie edytuje bazy serwera: ma własną kopię kolekcji, jak kolejna
 aplikacja. Nie wymaga włączonego macOS ani dodatku.
@@ -94,8 +94,8 @@ Panel i worker współdzielą ustawienia przez kotwicę YAML oraz prywatny wolum
 | `split_strategy` | `proportional` lub `heaviest_first`. |
 
 Pozostałe parametry obliczeń i ich domyślne wartości opisuje
-[Workload](../anki_toolkit_workload/README.md#ustawienia).
-Ustawienia dodatku macOS i usługi są niezależne. Usługa może zmniejszać porcję
+[Workload](../workload/README.md#ustawienia).
+Ustawienia modułu w Anki i usługi są niezależne. Usługa może zmniejszać porcję
 albo wrócić do skonfigurowanego pułapu; nie stosuje automatycznie sugestii +1.
 Nie gwarantuje 15–30 minut: czas odpowiedzi jest przybliżeniem, istniejące
 powtórki nadal trzeba wykonać. Ogranicza dopływ nowych kart.
@@ -165,7 +165,7 @@ Wynik JSON polecenia `run` zawiera też `card_costs`: czas odpowiedzi w sekundac
 z 7 zakończonych dni, koszt kohorty wprowadzonej w 14 zakończonych dniach oraz
 5 najbardziej czasochłonnych kart (ID, czas, odpowiedzi, Ponownie).
 Treść notatek nie trafia do logów. Ten pomiar nie zmienia decyzji o limitach;
-szczegóły interpretacji opisuje [Workload](../anki_toolkit_workload/README.md#co-zabiera-czas).
+szczegóły interpretacji opisuje [Workload](../workload/README.md#co-zabiera-czas).
 
 ### Konfiguracja w panelu
 

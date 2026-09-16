@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 
-_PATH = Path(__file__).parent.parent / "anki_toolkit_html_cleanup" / "cleaning.py"
+_PATH = Path(__file__).parent.parent / "html_cleanup" / "cleaning.py"
 _SPEC = importlib.util.spec_from_file_location("standalone_html_cleanup", _PATH)
 cleaning = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None

@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-ROOT = Path(__file__).parent.parent / "anki_toolkit_content"
+ROOT = Path(__file__).parent.parent
 
 
 def _load():

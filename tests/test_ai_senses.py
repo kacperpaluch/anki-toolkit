@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def load():
     """Moduł sam w sobie — bez aqt, bo cała logika parsowania jest czysta."""
     spec = importlib.util.spec_from_file_location(
-        "ai_senses_under_test", ROOT / "anki_toolkit_integrations" / "ai_senses.py"
+        "ai_senses_under_test", ROOT / "integrations" / "ai_senses.py"
     )
     module = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, {"aqt": None, "aqt.qt": None}):
@@ -204,41 +204,38 @@ class FourDictionaryTests(unittest.TestCase):
 
 
 class ProviderLookupTests(unittest.TestCase):
-    """Kandydata na Content wybieramy po plikach — import przeglądanego dodatku
-    wykonuje jego kod startowy (AnkiConnect startował serwer i ubijał Anki)."""
+    """Dostawca i jego model pochodzą z sekcji `ai_generator` tej samej wtyczki."""
+
+    PROVIDERS = types.SimpleNamespace(PROVIDER_LABELS={"claude_cli": "Claude CLI"},
+                                      get_provider=lambda name, cfg, timeout: (name, cfg, timeout))
 
     def setUp(self):
         self.m = load()
-        self.m.mw = types.SimpleNamespace(addonManager=types.SimpleNamespace(
-            addonsFolder=lambda name: str(ROOT / name),
-            allAddons=lambda: ["anki_toolkit_integrations", "anki_toolkit_content"]))
-
-    def test_real_content_layout_is_recognised(self):
-        """Pin na FAKTYCZNY układ repo: `providers` jest pakietem, nie plikiem."""
-        self.assertTrue(self.m._has_providers("anki_toolkit_content"))
-        self.assertFalse(self.m._has_providers("anki_toolkit_integrations"))
-        self.assertFalse(self.m._has_providers("nie-ma-takiego-dodatku"))
+        self.settings = {"claude_cli": {"model": "opus"}}
+        for name, value in (("_providers", lambda: self.PROVIDERS),
+                            ("_provider_settings", lambda n: dict(self.settings.get(n, {})))):
+            patcher = patch.object(self.m, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_label_says_which_model_actually_ran(self):
-        """Dostawca Integrations jest jeden i własny — nie modele per pole z Contentu."""
-        module = types.SimpleNamespace(PROVIDER_LABELS={"claude_cli": "Claude CLI"})
-        self.m.mw.addonManager.getConfig = lambda _addon: {
-            "ai_generator": {"providers": {"claude_cli": {"model": "opus"}}}}
-        with patch.object(self.m, "providers_module", return_value=(module, "content")):
-            self.assertEqual(self.m.provider_label({"ai_provider": "claude_cli"}),
-                             "Claude CLI · opus")
-            self.assertEqual(  # własny model z Integrations bije domyślny dostawcy
-                self.m.provider_label({"ai_provider": "claude_cli", "ai_model": "sonnet"}),
-                "Claude CLI · sonnet")
+        """Dostawca kolejki jest jeden i własny — nie modele per pole z AI Generatora."""
+        self.assertEqual(self.m.provider_label({"ai_provider": "claude_cli"}), "Claude CLI · opus")
+        self.assertEqual(  # własny model kolejki bije domyślny dostawcy
+            self.m.provider_label({"ai_provider": "claude_cli", "ai_model": "sonnet"}),
+            "Claude CLI · sonnet")
         self.assertEqual(self.m.provider_label({}), "")
 
-    def test_other_addons_are_never_imported(self):
-        imported = []
-        with patch.object(self.m.importlib, "import_module",
-                          side_effect=lambda name: imported.append(name) or object()):
-            _module, addon = self.m.providers_module()
-        self.assertEqual(addon, "anki_toolkit_content")
-        self.assertEqual(imported, ["anki_toolkit_content.ai_generator.providers"])
+    def test_prepare_uses_own_model_and_timeout(self):
+        provider, error = self.m.prepare_provider(
+            {"ai_provider": "claude_cli", "ai_model": "sonnet", "ai_timeout": 30})
+        self.assertIsNone(error)
+        self.assertEqual(provider, ("claude_cli", {"model": "sonnet"}, 30))
+        self.assertEqual(self.settings["claude_cli"], {"model": "opus"})  # zapisany model nietknięty
+
+    def test_prepare_reports_missing_or_unconfigured_provider(self):
+        self.assertIn("wybierz", self.m.prepare_provider({})[1])
+        self.assertIn("nie jest skonfigurowany", self.m.prepare_provider({"ai_provider": "openai"})[1])
 
 
 class DuplicateWarningTests(unittest.TestCase):

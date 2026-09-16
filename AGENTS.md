@@ -6,8 +6,8 @@ Before changing code:
 
 1. Read `llm-context.md`.
 2. Follow its routing table and read only the context relevant to the task.
-3. Use the add-on's own `README.md` plus its `config.json` template as the
-   configuration reference — each add-on documents its own keys.
+3. Use the module's `README.md` plus its section of the root `config.json`
+   as the configuration reference.
 4. Do not load every module context unless the task genuinely spans them.
 
 `README.md` is user-facing documentation. `llm-context.md` describes architecture
@@ -24,7 +24,8 @@ and routes to domain context. Keep this file focused on working agreements.
 - Background workers may perform HTTP, AI, TTS, parsing, and ffmpeg work.
 - Prefer `CollectionOp` for collection changes initiated from the UI.
 - Return appropriate `OpChanges` after manual collection mutations.
-- Browser context-menu registration is centralized in root `__init__.py`.
+- Menu, Browser context-menu and config-action registration is centralized in
+  the root `__init__.py`; modules only expose callables.
 - Preserve unknown configuration keys when saving a section.
 - Runtime-generated persistent data belongs in `user_files/`.
 - Never commit `meta.json`, API keys, user data, logs, or generated media.
@@ -32,19 +33,22 @@ and routes to domain context. Keep this file focused on working agreements.
 
 ## UI architecture
 
-Each add-on owns exactly one settings dialog and registers one Tools-menu entry
-for it. Content assembles its tabs in `content_settings.py` from
-`settings/*.py`; the single-module add-ons keep theirs in `settings.py`.
+The repository root is the add-on. There is one **Tools → Anki Toolkit** submenu and
+one settings window (`settings_dialog.py`). Its grouped sidebar lists panels
+from `settings/*.py` and each module's `settings.py`; a panel reads the full
+config in `__init__`, writes only its own sections in `apply(cfg)` and may veto
+saving with `validate()`.
 
-Do not add a top-level tab for a small feature — extend the tab of the module it
-belongs to. Do not reintroduce a cross-add-on dashboard: an add-on's dialog only
-configures that add-on.
+Do not add a sidebar page for a small feature — extend the panel of the module it
+belongs to. Do not give a module its own dialog or Tools-menu entry.
 
 ## Implementation guidance
 
 - Separate pure, testable logic from Qt and Anki glue.
-- Avoid new cross-domain imports; use a local soft import for optional integration.
-- Do not register a second global Anki Toolkit menu from a module.
+- Modules share `common/`; do not copy helpers between modules.
+- Read and write config through `common` (`get_module_config`,
+  `update_module_config`, or `ADDON_NAME`). Never pass `__package__`/`__name__`
+  to `mw.addonManager` — inside a module they are not the add-on name.
 - Qt callbacks that may outlive their widgets must guard against deleted objects.
 - Keep batch and sync operations idempotent where they may be retried.
 - Preserve unrelated user changes and avoid broad stylistic rewrites.
@@ -68,7 +72,7 @@ that environment is available.
 When behavior changes:
 
 - update the relevant module README for user-visible behavior,
-- update the add-on's `README.md` and `config.json` template when configuration changes,
+- update the module's `README.md` and its section of the root `config.json` when configuration changes,
 - update the relevant domain context when an invariant changes,
 - keep root `llm-context.md` compact and architectural,
 - document non-obvious constraints instead of copying implementation details,
