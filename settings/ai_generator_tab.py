@@ -12,7 +12,7 @@ from aqt.utils import showWarning
 
 from ..common.ui import (
     _expanding_line_edit, _filterable_combo, _api_key_widget, _scrollable,
-    hint_label, collapsible_section,
+    hint_label, collapsible_section, set_special_value,
 )
 from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS
 from .prompts_tab import PromptsTab
@@ -113,12 +113,7 @@ class AIGeneratorTab(QWidget):
         gen_form = QFormLayout(gen_group)
         gen_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._label = _expanding_line_edit(ai.get("button_label", "AI"))
-        _skip_tags_raw = ai.get("skip_tags", ai.get("skip_tag", ["skip-ai"]))
-        if isinstance(_skip_tags_raw, list):
-            _skip_tags_str = ", ".join(_skip_tags_raw)
-        else:
-            _skip_tags_str = str(_skip_tags_raw)
-        self._skip_tag = _expanding_line_edit(_skip_tags_str)
+        self._skip_tag = _expanding_line_edit(", ".join(ai.get("skip_tags", ["skip-ai"])))
         self._skip_tag.setToolTip(
             "Tagi wykluczające — oddziel przecinkami (np. skip-ai, pomin). "
             "Zostaw puste żeby wyłączyć."
@@ -254,27 +249,24 @@ class AIGeneratorTab(QWidget):
             prov_form.addRow("Model zapasowy:", fallback_model)
 
             # --- Rate limit (per provider) -------------------------------
-            # Back-compat: openrouter prefills from the old global :free knobs.
             _is_or = name == "openrouter"
             rpm = QSpinBox()
             rpm.setRange(0, 1000)
-            rpm.setSpecialValueText("bez limitu")
+            set_special_value(rpm, "bez limitu")
             rpm.setValue(int(p.get(
-                "rpm", ai.get("free_model_rate_limit", 20) if _is_or else 0)))
+                "rpm", 20 if _is_or else 0)))
             rpm.setToolTip(
                 "Maks. żądań na minutę dla tego dostawcy. Żądania są rozkładane "
                 "równomiernie (60/RPM s odstępu), więc batch nie burstuje.\n"
                 "0 = bez limitu.\n"
-                "Jeśli dostawca podaje limit jako RPS (żądania/s), pomnóż ×60:\n"
-                "  Mistral free 0.83 RPS → 50 RPM (40 zostawia margines)\n"
-                "  OpenRouter 20 RPM → wpisz 20."
+                "Jeśli dostawca podaje limit jako RPS (żądania/s), pomnóż ×60\n"
+                "(OpenRouter :free: 20 RPM → wpisz 20)."
             )
             max_conc = QSpinBox()
             max_conc.setRange(0, 16)
-            max_conc.setSpecialValueText("bez limitu")
+            set_special_value(max_conc, "bez limitu")
             max_conc.setValue(int(p.get(
-                "max_concurrent",
-                ai.get("free_model_max_concurrent", 1) if _is_or else 0)))
+                "max_concurrent", 1 if _is_or else 0)))
             max_conc.setToolTip(
                 "Maks. równoległych żądań do tego dostawcy.\n"
                 "0 = bez limitu. Darmowe API zwykle wymagają 1."
@@ -305,7 +297,7 @@ class AIGeneratorTab(QWidget):
                 )
                 prov_form.addRow("", free_only)
                 widgets["rate_limit_free_only"] = free_only
-            if name in ("openai", "cometapi", "openrouter"):
+            if name in ("openai", "openrouter"):
                 reasoning_effort = QComboBox()
                 reasoning_effort.addItems(_OPENAI_REASONING_EFFORTS)
                 current_effort = p.get("reasoning_effort", "medium")
@@ -356,17 +348,6 @@ class AIGeneratorTab(QWidget):
                 prov_form.addRow("System prompt:", system_prompt)
                 widgets["system_prompt"] = system_prompt
                 refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
-            elif name == "opencode_go":
-                reasoning_line = _expanding_line_edit(p.get("reasoning_effort", ""))
-                reasoning_line.setPlaceholderText("np. max (DeepSeek V4), high, medium — puste = wyłączone")
-                reasoning_line.setToolTip(
-                    "Wartość reasoning_effort wysyłana do API. Każdy model może używać innych wartości:\n"
-                    "DeepSeek V4: max\n"
-                    "Pozostałe modele: sprawdź dokumentację modelu.\n"
-                    "Puste pole = reasoning_effort nie jest wysyłane."
-                )
-                prov_form.addRow("Poziom reasoning:", reasoning_line)
-                widgets["reasoning_effort"] = reasoning_line
             self._provider_widgets[name] = widgets
 
             item = QListWidgetItem()
@@ -566,8 +547,6 @@ class AIGeneratorTab(QWidget):
         ai["max_retries"] = self._ai_max_retries.value()
         ai["request_timeout"] = self._request_timeout.value()
         ai["openai_batch_token_budget"] = self._openai_batch_budget.value()
-        ai.pop("free_model_rate_limit", None)  # migrated to per-provider rpm
-        ai.pop("free_model_max_concurrent", None)
         ai.setdefault("providers", {})
         for name, w in self._provider_widgets.items():
             ai["providers"].setdefault(name, {})

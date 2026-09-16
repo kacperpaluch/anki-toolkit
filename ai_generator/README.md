@@ -1,17 +1,19 @@
-# AI Generator — generowanie pól kart przez AI
+# AI Generator (`ai_generator/`)
 
 Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje wielu dostawców AI — każde pole karty może korzystać z innego modelu.
+
+Ścieżki „**Ustawienia → …**” w tym pliku oznaczają **Narzędzia → Anki Toolkit → Ustawienia…**, grupa „Tworzenie kart”.
 
 ## Jak używać
 
 ### Edytor kart
-Główna akcja w toolbarze to zwykle **Generuj fiszkę** z workflow AI → Słownik → TTS. Przycisk **AI** zostaje jako akcja pomocnicza: generuje wszystkie skonfigurowane puste pola AI dla aktualnie otwartej karty.
+Toolbar edytora ma najpierw przyciski workflowów oznaczonych „Pokaż jako przycisk w edytorze” (w szablonie: **Generuj fiszkę** = AI → Słownik → TTS), a potem przycisk **AI**, który wypełnia wszystkie skonfigurowane **puste** pola AI aktualnie otwartej karty.
 
 Dodatkowo: **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
 
 Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
 - Edytor odświeża się automatycznie po zakończeniu generowania
-- **Pola docelowe AI** są nadpisywane wynikiem — kliknięcie przycisku AI to wyraźna intencja wypełnienia tych pól
+- Przycisk **AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem workflow „zablokowane”. PPM → „Regeneruj” nadpisuje pełne pole
 - **To, co wpiszesz w trakcie generowania, wygrywa** — generowanie pracuje na kopii notatki. Jeśli zmienisz dowolne pole, wynik bieżącej operacji/kroku zostanie pominięty: mógł korzystać z nieaktualnego źródła. Tooltip wymieni pominięte pola wynikowe. Ta sama zasada obowiązuje w TTS, słowniku i workflow; kolejny krok workflow widzi już aktualne dane.
 - Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd — **także wtedy, gdy część pól się udała, a część nie**; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
 - Gdy na tej samej notatce trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest ignorowana z krótkim komunikatem. Inne okno edytora może pracować równolegle.
@@ -24,15 +26,13 @@ Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Ka�
 - Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / zablokowane / konkretne)
 - Zmieniaj kolejność ▲▼, usuwaj kroki
 
-Przed startem workflow sprawdza, czy wszystkie wymagane moduły są włączone; brakujący moduł zatrzymuje cały przebieg zamiast wykonywać tylko część kroków. W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
-
-Dawny wbudowany pipeline **„Generuj wszystko: puste → TTS → rozdziel → zablokowane”** jest teraz zwykłym, edytowalnym workflowem seedowanym przy migracji starszej konfiguracji.
+W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
 
 Submenu zawiera:
-- **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (obecne zachowanie)
+- **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (bez pól „Tylko na żądanie”)
 - **AI: `def`**, **AI: `cz_mowy`** itd. — generuje tylko wybrane pole docelowe, pomija wypełnione
 
 Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
@@ -46,9 +46,9 @@ Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnyc
 
 Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Batch API (Anthropic/OpenAI/OpenRouter, tańszy) ▸**:
 
-- **Wyślij zaznaczone — wszystkie pola** / **Batch: `<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (CometAPI/Mistral/NVIDIA — brak zgodnego endpointu) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
+- **Wyślij zaznaczone — wszystkie pola** / **Batch: `<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
 - **Wyślij zaznaczone — wszystkie zablokowane** / **Batch (zablokowane): `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje pojawiają się tylko gdy takie pola istnieją w konfiguracji promptów.
-- **Sprawdź batche i zastosuj wyniki** — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
+- **Sprawdź batche i zastosuj wyniki** (także **Narzędzia → Anki Toolkit → Sprawdź batche AI**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
 
 Szczegóły:
 - Starsze rekordy i zadania **bez `col` pozostają zachowane, ale są wstrzymane** — nie można bezpiecznie zgadnąć, do którego profilu należą. Po ustaleniu właściwego profilu, przy zamkniętym Anki i po zrobieniu kopii `user_files/ai_batches.json`, przypisz jego pełną ścieżkę `collection.anki2` jako `col` wyłącznie do należących do niego rekordów i zadań. Tak samo postępuj po przeniesieniu lub zmianie nazwy profilu. Nie przypisuj automatycznie całego pliku do aktualnego profilu.
@@ -88,13 +88,13 @@ Szczegóły:
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
 | `openai_batch_token_budget` | Budżet tokenów kolejki OpenAI Batch (domyślnie `1_500_000`) |
-| `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter `20`, Mistral `40` |
+| `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter domyślnie `20` |
 | `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (semafor); `0` = bez limitu; darmowe API zwykle `1` |
 | `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: `true` = limit dotyczy tylko modeli `:free`, `false` = wszystkich żądań |
 
 ### Konfiguracja dostawców
 
-W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma własną podzakładkę z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
+W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma pozycję na liście (✓ = gotowy do użycia) i własny formularz z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
 
 ```json
 "providers": {
@@ -107,23 +107,10 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
     },
     "anthropic": {
         "api_key": "sk-ant-...",
-        "model": "claude-3-5-haiku-20241022",
+        "model": "claude-haiku-4-5-20251001",
         "temperature": 0.2,
         "max_tokens": 2048,
         "fallback_model": ""
-    },
-    "google": {
-        "api_key": "AIza...",
-        "model": "gemini-2.0-flash",
-        "temperature": 0.2,
-        "fallback_model": ""
-    },
-    "opencode_go": {
-        "api_key": "ocg-...",
-        "model": "deepseek-v4-pro",
-        "temperature": 0.6,
-        "reasoning_effort": "max",
-        "fallback_model": "deepseek-v4-flash"
     },
     "codex_cli": {
         "api_key": "",
@@ -151,12 +138,11 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 
 `reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
-- **openai / cometapi / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
-- **opencode_go** — wolny tekst (QLineEdit). Wartości różnią się per model: `max` dla DeepSeek V4 Pro, inne modele mają inne wartości lub nie obsługują reasoning. Puste pole = parametr nie jest wysyłany. Fallback automatyczny jeśli API zwróci błąd.
-- **mistral / nvidia** — nie obsługują `reasoning_effort`.
-- **anthropic / google** — nie mają pola `reasoning_effort` w UI.
+- **openai / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
+- **codex_cli** — dropdown; wysyłany jako `-c model_reasoning_effort`, puste = domyślna wartość modelu.
+- **anthropic / claude_cli** — nie mają pola `reasoning_effort` w UI.
 
-`max_tokens` jest używany przez Anthropic oraz modele OpenCode Go korzystające z formatu Messages. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
+`max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
 ### Dostępni dostawcy
 
@@ -164,12 +150,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 |---|---|---|
 | `openai` | `api.openai.com` | platform.openai.com |
 | `anthropic` | `api.anthropic.com` | console.anthropic.com |
-| `google` | `generativelanguage.googleapis.com` | aistudio.google.com |
 | `openrouter` | `openrouter.ai` | openrouter.ai/keys |
-| `cometapi` | `api.cometapi.com` | cometapi.com |
-| `mistral` | `api.mistral.ai` | console.mistral.ai |
-| `nvidia` | `integrate.api.nvidia.com` | build.nvidia.com |
-| `opencode_go` | `opencode.ai/zen/go/v1` | opencode.ai/auth |
 | `codex_cli` | lokalna binarka `codex` | **bez klucza** — `codex login` |
 | `claude_cli` | lokalna binarka `claude` | **bez klucza** — `claude auth login` |
 
@@ -251,12 +232,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 |---|---|---|
 | `openai` | `GET /v1/models` | tak |
 | `anthropic` | `GET /v1/models` | tak |
-| `google` | `GET /v1beta/models` | tak |
 | `openrouter` | `GET /v1/models` | nie (publiczne) |
-| `cometapi` | `GET /api/models` | nie (publiczne) |
-| `mistral` | `GET /v1/models` | tak |
-| `nvidia` | `GET /v1/models` | nie (publiczne) |
-| `opencode_go` | `GET /zen/go/v1/models` | tak |
 | `codex_cli` | `model/list` przez `codex app-server` | nie (lokalne logowanie) |
 | `claude_cli` | aliasy rodzin modeli (CLI nie wystawia listy) | nie (lokalne logowanie) |
 
@@ -268,19 +244,10 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 |---|---|---|
 | `openai` | `gpt-4o` | Silny, droższy |
 | `openai` | `gpt-4o-mini` | Szybki, tani |
-| `anthropic` | `claude-3-5-haiku-20241022` | Szybki, tani |
-| `anthropic` | `claude-3-5-sonnet-20241022` | Silniejszy |
-| `google` | `gemini-2.0-flash` | Szybki, tani |
-| `google` | `gemini-1.5-pro` | Silniejszy |
-| `openrouter` | `anthropic/claude-3.5-haiku` | Dostęp do wielu modeli |
-| `cometapi` | `grok-4-1-fast-non-reasoning` | Alternatywny dostęp |
-| `mistral` | `mistral-small-latest` | Szybki, tani |
-| `mistral` | `mistral-medium-latest` | Silniejszy |
-| `nvidia` | `meta/llama-3.3-70b-instruct` | Darmowe kredyty na start |
-| `opencode_go` | `deepseek-v4-pro` | Reasoning, tani w subskrypcji Go |
-| `opencode_go` | `deepseek-v4-flash` | Bardzo tani, szybki |
-| `opencode_go` | `kimi-k2.6` | Dobry do kodowania |
-| `opencode_go` | `glm-5.1` | Alternatywa |
+| `anthropic` | `claude-haiku-4-5-20251001` | Szybki, tani |
+| `anthropic` | `claude-sonnet-5` | Silniejszy |
+| `anthropic` | `claude-opus-5` | Najmocniejszy, najdroższy |
+| `openrouter` | `openai/gpt-oss-120b:free` | Darmowy wariant `:free` (limit 20 RPM) |
 | `codex_cli` | `gpt-5.4-mini` | Najtańszy w limicie planu — dobry do fiszek |
 | `codex_cli` | `gpt-5.5` | Silniejszy, szybciej zjada limit |
 | `claude_cli` | `haiku` | Najtańszy w limicie planu — dobry do fiszek |
@@ -293,8 +260,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
     "angielski": {
         "cz_mowy": {
             "target": "cz_mowy",
-            "provider": "cometapi",
-            "model": "grok-4-1-fast-non-reasoning",
+            "provider": "claude_cli",
+            "model": "haiku",
             "prompt": "Classify: EN: {{ang}} PL: {{pol}}"
         },
         "def": {
@@ -339,7 +306,7 @@ Przykład per-prompt (cross-provider fallback):
     "provider": "openai",
     "model": "gpt-4o",
     "fallback_provider": "openrouter",
-    "fallback_model": "anthropic/claude-3.5-haiku",
+    "fallback_model": "openai/gpt-oss-120b:free",
     "prompt": "Write a definition for: {{ang}}"
 }
 ```
@@ -363,18 +330,16 @@ Właściwości:
 
 ## Rate limiter per dostawca
 
-Darmowe tiery API mają limity łatwe do przekroczenia w batchu (Mistral free: 0.83 req/s + 25k tokenów/min; OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → AI Generator → Dostawcy**:
+Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → AI Generator → Dostawcy**:
 
-- **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (Mistral 0.83 RPS → ~50; domyślnie `40` z marginesem, OpenRouter `20`)
+- **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (OpenRouter domyślnie `20`)
 - **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
 - **Limit tylko dla modeli `:free`** (`providers.openrouter.rate_limit_free_only`, tylko OpenRouter) — zaznaczone: limit obejmuje wyłącznie modele `:free`, płatne lecą bez dławienia; u innych dostawców limit zawsze obejmuje wszystkie żądania
 - Dotyczy modelu głównego i fallbackowego; TPM (tokeny/min) nie jest egzekwowane wprost — łapie je retry przy HTTP 429
-- Back-compat: stare `free_model_rate_limit`/`free_model_max_concurrent` (usunięte z szablonu config.json) są nadal czytane dla OpenRoutera, gdy w zapisanej konfiguracji brak per-provider `rpm`
 
 ```json
 "providers": {
-    "openrouter": { "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true },
-    "mistral":    { "rpm": 40, "max_concurrent": 1 }
+    "openrouter": { "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true }
 }
 ```
 
@@ -410,7 +375,6 @@ Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć 
 class MojProvider(OpenAICompatProvider):
     API_URL = "https://api.example.com/v1/chat/completions"
     LABEL = "Moj Provider"
-    # SUPPORTS_REASONING_EFFORT = False  # jeśli API odrzuca reasoning_effort
 ```
 `OpenAICompatProvider` (z `base.py`) dostarcza gotowe `call_api()`: auth Bearer, `temperature`/`reasoning_effort` wg modelu, retry z fallbackiem i rozbiór przez `_parse_chat_completion()`.
 
@@ -431,9 +395,11 @@ class MojProvider(BaseProvider):
         return self._parse_messages(raw, "Moj Provider")
 ```
 
-2. Zarejestruj klasę w słownikach `PROVIDERS` (i `PROVIDER_LABELS`) w `providers/__init__.py` — `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` jest auto-derivowane z `PROVIDERS`, a `settings/prompts_tab.py` iteruje po `PROVIDER_LABELS` (żadnej manualnej listy do aktualizacji).
+**Potem, w obu wariantach:**
 
-3. Dodaj w `config.json`:
+1. Zarejestruj klasę w słownikach `PROVIDERS` i `PROVIDER_LABELS` w `providers/__init__.py` — `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` jest auto-derivowane z `PROVIDERS`, a `settings/prompts_tab.py` iteruje po `PROVIDER_LABELS`.
+2. Jeśli przycisk **Pobierz** ma działać, dodaj gałąź w `fetch_models()` w `providers/model_discovery.py`.
+3. Dodaj sekcję dostawcy w szablonie `config.json`:
 ```json
 "providers": {
     "moj_provider": {
@@ -444,4 +410,4 @@ class MojProvider(BaseProvider):
 }
 ```
 
-`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne i używane przez API w formacie Messages (Anthropic oraz wybrane modele OpenCode Go). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).
+`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne i używane przez API w formacie Messages (Anthropic). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).

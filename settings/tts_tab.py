@@ -1,8 +1,8 @@
-"""TTS tab — provider selection, Kokoro/OpenRouter settings, voices, tasks, performance."""
+"""TTS tab — OpenRouter settings, voices, tasks, performance."""
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
-    QSpinBox, QDoubleSpinBox, QComboBox, QStackedWidget, QPushButton,
+    QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QDialog, QDialogButtonBox,
     Qt, QLineEdit, QCheckBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QToolButton,
@@ -15,9 +15,6 @@ from ..common.ui import (
     _expanding_line_edit, _api_key_widget, _scrollable, hint_label,
     collapsible_section, _filterable_combo, get_all_field_names,
 )
-
-_PROVIDERS = {"kokoro": "Kokoro (lokalny Docker)", "openrouter": "OpenRouter (API)"}
-
 
 # ---------------------------------------------------------------------------
 # Task editor dialog
@@ -97,42 +94,7 @@ class TTSTab(QWidget):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(12, 12, 12, 12)
 
-        # -- Provider selector --
-        provider_form = QFormLayout()
-        provider_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._provider = QComboBox()
-        for key, label in _PROVIDERS.items():
-            self._provider.addItem(label, key)
-        current_provider = t.get("tts_provider", "kokoro")
-        idx = self._provider.findData(current_provider)
-        if idx >= 0:
-            self._provider.setCurrentIndex(idx)
-        provider_form.addRow("Dostawca TTS:", self._provider)
-        layout.addLayout(provider_form)
-        layout.addSpacing(8)
-
-        # -- Stacked widget: Kokoro vs OpenRouter --
-        self._stack = QStackedWidget()
-
-        # Page 0: Kokoro
-        kokoro_page = QWidget()
-        kf = QFormLayout(kokoro_page)
-        kf.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._api_url = _expanding_line_edit(
-            t.get("api_url", "http://localhost:8880/v1/audio/speech")
-        )
-        self._model = _expanding_line_edit(t.get("model", "kokoro"))
-        kf.addRow("URL API:", self._api_url)
-        kf.addRow("Model:", self._model)
-        kf.addRow(hint_label(
-            "Przykładowe głosy Kokoro:\n"
-            "  EN (F): af_bella, af_heart, af_nova, af_sky, af_sarah\n"
-            "  EN (M): am_adam, am_echo, am_michael, bm_lewis, bm_george\n"
-            "Pełna lista głosów w tts/README.md"
-        ))
-        self._stack.addWidget(kokoro_page)
-
-        # Page 1: OpenRouter
+        # -- OpenRouter --
         or_page = QWidget()
         orl = QVBoxLayout(or_page)
         orl.setContentsMargins(0, 0, 0, 0)
@@ -218,14 +180,11 @@ class TTSTab(QWidget):
 
         orl.addLayout(orf)
         orl.addStretch()
-        self._stack.addWidget(or_page)
 
-        provider_group = QGroupBox("Ustawienia dostawcy")
+        provider_group = QGroupBox("OpenRouter")
         pg_layout = QVBoxLayout(provider_group)
-        pg_layout.addWidget(self._stack)
+        pg_layout.addWidget(or_page)
         layout.addWidget(provider_group)
-        self._provider.currentIndexChanged.connect(self._on_provider_changed)
-        self._on_provider_changed()
 
         # -- Shared voices field (hidden for OpenRouter once the checklist
         #    has entries — then the checklist is the editor) --
@@ -354,27 +313,10 @@ class TTSTab(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(_scrollable(inner))
 
-    # ------------------------------------------------------------------
-    # Provider switching
-    # ------------------------------------------------------------------
-
-    def _on_provider_changed(self):
-        provider = self._provider.currentData()
-        if provider == "openrouter":
-            self._stack.setCurrentIndex(1)
-        else:
-            self._stack.setCurrentIndex(0)
-        # Called once during __init__ before the voices row exists.
-        if hasattr(self, "_voices_label"):
-            self._update_voices_row_visibility()
-
     def _update_voices_row_visibility(self):
-        """Text field is the editor for Kokoro / manual OpenRouter models;
-        once the OpenRouter checklist has voices, the checklist takes over."""
-        manual = (
-            self._provider.currentData() != "openrouter"
-            or self._or_voice_list.rowCount() == 0
-        )
+        """Text field is the editor until the model's voice checklist is
+        loaded; then the checklist takes over."""
+        manual = self._or_voice_list.rowCount() == 0
         self._voices_label.setVisible(manual)
         self._voices.setVisible(manual)
 
@@ -587,8 +529,6 @@ class TTSTab(QWidget):
         self._voices.blockSignals(False)
 
     def _on_voices_text_changed(self, _text: str):
-        if self._provider.currentData() != "openrouter":
-            return
         selected = set(
             v.strip() for v in self._voices.text().split(",") if v.strip()
         )
@@ -705,9 +645,6 @@ class TTSTab(QWidget):
     def _build_preview_config(self) -> dict:
         """Build a TTS config dict from current (unsaved) UI state."""
         config = {
-            "tts_provider": self._provider.currentData(),
-            "api_url": self._api_url.text().strip(),
-            "model": self._model.text().strip(),
             "openrouter_api_key": self._or_key.text().strip(),
             "use_ai_openrouter_key": self._or_use_ai_key.isChecked(),
             "openrouter_provider": self._or_provider.currentData() or "",
@@ -770,9 +707,6 @@ class TTSTab(QWidget):
     def apply(self, cfg: dict) -> None:
         cfg.setdefault("tts", {})
         t = cfg["tts"]
-        t["tts_provider"] = self._provider.currentData()
-        t["api_url"] = self._api_url.text().strip()
-        t["model"] = self._model.text().strip()
         t["openrouter_api_key"] = self._or_key.text().strip()
         t["use_ai_openrouter_key"] = self._or_use_ai_key.isChecked()
         t["openrouter_provider"] = self._or_provider.currentData() or ""

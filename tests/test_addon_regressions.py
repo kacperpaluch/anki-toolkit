@@ -557,15 +557,26 @@ class OtherAddonsTests(unittest.TestCase):
         module._active_url = "https://old.example"
         self.assertEqual(module._base_urls({"n8n_url": "https://new.example/", "fallback_url": ""}), ["https://new.example"])
 
-    def test_empty_rules_stay_empty_and_old_defaults_migrate(self):
+    def test_cloudflare_access_token_goes_only_to_https(self):
+        module = load("integrations", "word_queue.py")
+        cfg = {"api_key": "k", "cf_client_id": "id", "cf_client_secret": "sec"}
+        https = module._headers(cfg, "https://n8n.example.com/api")
+        self.assertEqual((https["CF-Access-Client-Id"], https["CF-Access-Client-Secret"]), ("id", "sec"))
+        self.assertNotIn("CF-Access-Client-Secret", module._headers(cfg, "http://192.168.1.5:5678/api"))
+        self.assertNotIn("CF-Access-Client-Id", module._headers({**cfg, "cf_client_secret": ""}, "https://x"))
+
+    def test_cloudflare_login_page_gets_a_clear_error(self):
+        module = load("integrations", "word_queue.py")
+        self.assertIn("Cloudflare Access", module._json(b"<!DOCTYPE html>")[1])
+        self.assertEqual(module._json(b'[{"id": 1}]'), ([{"id": 1}], None))
+
+    def test_empty_rules_stay_empty_and_missing_rules_use_template(self):
         module = load("html_cleanup")
         module.mw.addonManager.getConfig = lambda _: {"html_cleanup": {"rules": []}}
         self.assertEqual(module.get_config()["rules"], [])
-        module.mw.addonManager.getConfig = lambda _: {
-            "html_cleanup": {"rules": module.legacy_default_rules()}}
-        self.assertEqual(module.get_config()["rules"], module.default_rules())
+        module.mw.addonManager.getConfig = lambda _: {}
         template = json.loads((ROOT / "config.json").read_text())
-        self.assertEqual(template["html_cleanup"]["rules"], module.default_rules())
+        self.assertEqual(module.get_config()["rules"], template["html_cleanup"]["rules"])
 
     def test_cleaning_before_add_has_no_collection_write(self):
         module = load("html_cleanup")

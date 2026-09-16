@@ -7,7 +7,6 @@ from . import audio_normalizer, field_hider, html_cleanup, integrations, workloa
 from .common import setup_logging
 
 setup_logging()
-ai_generator.migrate_workflows()
 gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
 gui_hooks.editor_did_init_buttons.append(dictionary.on_editor_buttons_init)
 gui_hooks.editor_did_init_buttons.append(tts.on_editor_buttons_init)

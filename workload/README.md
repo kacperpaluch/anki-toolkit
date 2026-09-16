@@ -1,4 +1,4 @@
-# Workload
+# Plan nauki (`workload/`)
 
 Pomaga utrzymać spokojne tempo nauki, także w słabsze dni. Otwórz
 **Narzędzia → Anki Toolkit → Plan nauki…**: na początku zobaczysz plan na dziś,
@@ -24,9 +24,10 @@ nie gwarancja przyszłego obciążenia ani obowiązek wykorzystania całego czas
 - Podział porcji między talie może wynosić zero. Jego suma nie przekracza porcji
   na dziś. Nadal obowiązują limity i dostępność kart w Anki.
 
-**Dodatek tylko doradza. Nie zatrzymuje sesji, nie zmienia limitów, presetów,
+**Moduł tylko doradza. Nie zatrzymuje sesji, nie zmienia limitów, presetów,
 harmonogramu ani kart.** Po osiągnięciu swojego czasu kończysz naukę sam.
-Tempo można zmienić w **Ustawienia… → Spokojne tempo nowych/dzień (łącznie)**;
+Tempo zmienisz w ustawieniach Planu nauki (pole **Spokojne tempo nowych/dzień
+(łącznie)**);
 limity Anki pozostają osobnymi ustawieniami w Opcjach talii.
 
 ## Propozycja tempa na tydzień
@@ -46,7 +47,7 @@ powrót zaczyna się od najwyżej trzech nowych dziennie. Są to ostrożne heury
 
 Historia odpowiedzi nie dowodzi, że kończyłeś należne powtórki. Dlatego propozycja
 zwiększenia jest warunkowa: skorzystaj z niej tylko, jeśli rzeczywiście kończyłeś
-kolejkę bez wysiłku. Dodatek nie przechowuje historycznych stanów zaległości.
+kolejkę bez wysiłku. Moduł nie przechowuje historycznych stanów zaległości.
 
 ## Gdy słówka trudno wchodzą
 
@@ -88,7 +89,10 @@ pokazuje talie, źródła oszacowań i już zaplanowane terminy.
 ## Ustawienia
 
 Ustawienia zmienisz w **Narzędzia → Anki Toolkit → Ustawienia… → Plan nauki**
-(albo przyciskiem **Ustawienia…** w oknie planu).
+(albo przyciskiem **Ustawienia…** w oknie planu). Na wierzchu są czas zwykły,
+górna granica, tempo nowych i talie; pola pomiarowe, okno prognozy i podział
+limitów są pod rozwijanym **Zaawansowane**. Wartość `0` w polach pomiarowych
+okno pokazuje jako „auto (z historii)”.
 
 | Klucz sekcji `workload` | Znaczenie |
 |---|---|

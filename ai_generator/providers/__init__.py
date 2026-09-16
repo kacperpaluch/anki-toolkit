@@ -1,14 +1,11 @@
 from .base import BaseProvider, OpenAICompatProvider
 from .anthropic import AnthropicProvider
-from .google import GoogleProvider
-from .opencode_go import OpenCodeGoProvider
 from .codex_cli import CodexCLIProvider
 from .claude_cli import ClaudeCLIProvider
 
 
-# The Bearer-auth chat-completions providers differ only in endpoint, label
-# and (for Mistral) reasoning_effort support — declared inline rather than in
-# four near-identical files.
+# The Bearer-auth chat-completions providers differ only in endpoint and
+# label — declared inline rather than in near-identical files.
 class OpenAIProvider(OpenAICompatProvider):
     API_URL = "https://api.openai.com/v1/chat/completions"
     LABEL = "OpenAI"
@@ -24,31 +21,10 @@ class OpenRouterProvider(OpenAICompatProvider):
     }
 
 
-class CometAPIProvider(OpenAICompatProvider):
-    API_URL = "https://api.cometapi.com/v1/chat/completions"
-    LABEL = "CometAPI"
-
-
-class MistralProvider(OpenAICompatProvider):
-    API_URL = "https://api.mistral.ai/v1/chat/completions"
-    LABEL = "Mistral"
-    SUPPORTS_REASONING_EFFORT = False
-
-
-class NvidiaProvider(OpenAICompatProvider):
-    API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-    LABEL = "NVIDIA NIM"
-    SUPPORTS_REASONING_EFFORT = False
-
 PROVIDERS = {
     "openai": OpenAIProvider,
-    "cometapi": CometAPIProvider,
     "openrouter": OpenRouterProvider,
     "anthropic": AnthropicProvider,
-    "google": GoogleProvider,
-    "mistral": MistralProvider,
-    "nvidia": NvidiaProvider,
-    "opencode_go": OpenCodeGoProvider,
     "codex_cli": CodexCLIProvider,
     "claude_cli": ClaudeCLIProvider,
 }
@@ -56,13 +32,8 @@ PROVIDERS = {
 # Display names for the UI — keys stay as config identifiers.
 PROVIDER_LABELS = {
     "openai": "OpenAI",
-    "cometapi": "CometAPI",
     "openrouter": "OpenRouter",
     "anthropic": "Anthropic",
-    "google": "Google Gemini",
-    "mistral": "Mistral",
-    "nvidia": "NVIDIA NIM",
-    "opencode_go": "OpenCode Go",
     "codex_cli": "Codex CLI (ChatGPT)",
     "claude_cli": "Claude CLI (subskrypcja)",
 }

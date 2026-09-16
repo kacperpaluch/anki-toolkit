@@ -1,4 +1,4 @@
-# Field Hider
+# Ukrywanie pól (`field_hider/`)
 
 Ukrywa wybrane pola tylko w oknie **Dodaj**. Podczas edycji istniejących
 notatek i w przeglądarce pola pozostają widoczne.

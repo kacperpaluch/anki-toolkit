@@ -37,6 +37,3 @@ Thumbs.db
 .mcp.json
 opencode.json
 opencode.jsonc
-
-# Kopia danych sprzed scalenia dodatków
-.legacy-backup/

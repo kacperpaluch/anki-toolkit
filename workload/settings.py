@@ -1,6 +1,6 @@
 from aqt.qt import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLineEdit, QSpinBox, QWidget
 
-from ..common.ui import collapsible_section, hint_label, scroll_panel
+from ..common.ui import collapsible_section, hint_label, scroll_panel, set_special_value
 from .logic import SPLIT_HEAVIEST_FIRST, SPLIT_PROPORTIONAL
 
 _STRATEGIES = (
@@ -18,7 +18,7 @@ def _spin(low, high, value, suffix, auto=False):
     spin.setValue(int(value))
     spin.setSuffix(suffix)
     if auto:
-        spin.setSpecialValueText(_AUTO)
+        set_special_value(spin, _AUTO)
     return spin
 
 
@@ -60,7 +60,7 @@ class WorkloadTab(QWidget):
         self._learn_answers.setSingleStep(0.5)
         self._learn_answers.setDecimals(1)
         self._learn_answers.setSuffix("×")
-        self._learn_answers.setSpecialValueText(_AUTO)
+        set_special_value(self._learn_answers, _AUTO)
         self._learn_answers.setValue(float(config["learn_answers_per_new_card"]))
         form.addRow("Odpowiedzi na nową kartę:", self._learn_answers)
         self._ratio = _spin(0, 40, config["reviews_per_new_card"], "×", auto=True)

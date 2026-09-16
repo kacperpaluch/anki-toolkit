@@ -24,8 +24,9 @@ and routes to domain context. Keep this file focused on working agreements.
 - Background workers may perform HTTP, AI, TTS, parsing, and ffmpeg work.
 - Prefer `CollectionOp` for collection changes initiated from the UI.
 - Return appropriate `OpChanges` after manual collection mutations.
-- Menu, Browser context-menu and config-action registration is centralized in
-  the root `__init__.py`; modules only expose callables.
+- The Tools menu, the Browser context menu and the config action are registered
+  only in the root `__init__.py`; modules expose callables for them. Modules
+  register their own editor, Add Cards and profile hooks when imported.
 - Preserve unknown configuration keys when saving a section.
 - Runtime-generated persistent data belongs in `user_files/`.
 - Never commit `meta.json`, API keys, user data, logs, or generated media.

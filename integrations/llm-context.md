@@ -1,16 +1,18 @@
 # LLM Context — Integrations
 
-Łączy Word Queue (n8n DataTable, panel i fallback Tailscale) z Web Bridge
-(lokalny endpoint dla userscriptu). `word_queue.py` i `panel.py` obsługują
-kolejkę; `bridge.py` endpoint, a `dictionaries-to-anki.user.js` jest jednym
+Łączy Word Queue (n8n DataTable, panel, adres zapasowy i Cloudflare Access) z Web Bridge
+(lokalny endpoint dla userscriptu). `word_queue.py` (HTTP n8n, konfiguracja,
+przycisk 📚) i `panel.py` (Qt) obsługują kolejkę; `ai_senses.py` — „AI:
+znaczenia” (prompt, walidacja cytatów, okno wyboru, zapis notatek); `bridge.py`
+endpoint; `settings.py` — panel „Kolejka słówek” we wspólnym oknie ustawień;
+`__init__.py` tylko rejestruje hooki. `dictionaries-to-anki.user.js` jest jednym
 źródłem przycisków dla przeglądarki i panelu. Nie rozdzielaj userscriptu na
 dwie wersje.
 
 Operacje HTTP n8n działają w tle, a kolekcja/edytor tylko na głównym wątku.
 Bridge nasłuchuje wyłącznie na `127.0.0.1`; handler HTTP przekazuje zmianę do
 głównego wątku i zachowuje protokół `{"fields": {...}}`. Panel odhacza wiersz
-po `id`, a fallback bez panelu może odhaczyć go po słowie. Nie ma automatycznej
-migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
+po `id`, a fallback bez panelu może odhaczyć go po słowie.
 
 - Bridge przechwytuje sesję edytora przez `editor_did_load_note`. Zmiana wymaga
   `saveNow`, żywego celu i niewygasłego żądania; timeout obejmuje także callback zapisu.
@@ -35,6 +37,10 @@ migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
 - Automatyczne odhaczenie wymaga powiązanej notatki, ID i zgodnego hasła;
   zmienioną formę hasła użytkownik zatwierdza przez „Zrobione →”.
 - Zapamiętany host musi należeć do adresów przekazanej konfiguracji.
+- Nagłówki `CF-Access-Client-*` dokleja wyłącznie `_headers(cfg, url)` i tylko dla
+  `https://` z kompletem id+secret — sekret nie może iść otwartym tekstem do
+  hosta w LAN. Wszystkie odpowiedzi n8n przechodzą przez `_json()`, które stronę
+  HTML (logowanie Access po przekierowaniu) zamienia na czytelny błąd tokenu.
 - Zakładki biorą się z `link_templates` (etykieta → szablon adresu z `{q}`/`{slug}`),
   a nie z kolumn n8n. `link_columns` to tylko nadpisanie gotowym URL-em z wiersza;
   etykieta bez szablonu nie dostaje zakładki. Nowy słownik = jeden wpis w configu,

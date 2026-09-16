@@ -19,7 +19,7 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 | `settings/` | panele „Tworzenie kart”: workflowy, AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
-| `tts/` | Kokoro / OpenRouter — `tts/llm-context.md` | `tts` |
+| `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
 | `integrations/` | kolejka n8n, panel słowników, AI: znaczenia, Web Bridge — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
 | `workload/` | plan nauki (tylko odczyt kolekcji) — `workload/llm-context.md` | `workload` |
@@ -31,12 +31,18 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 
 ## Konfiguracja
 
-- Moduły czytają swoją sekcję przez `common.get_module_config(klucz, domyślne)`.
+- Moduły czytają swoją sekcję przez `common.get_module_config(klucz, domyślne)`
+  (starszy kod AI Generatora i Słownika czyta pełny config przez `ADDON_NAME`).
   Zapis poza oknem ustawień idzie przez `update_module_config`, który scala
   zmiany i zachowuje nieznane klucze.
 - Panel ustawień: `__init__(cfg)` czyta pełny config, `apply(cfg)` zapisuje
   tylko własne sekcje, opcjonalne `validate() -> str | None` blokuje zapis.
-  Okno zapisuje całość jednym `writeConfig`.
+  Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny
+  nagłówek (ikona, tytuł, opis z `PAGES`).
+- `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
+  formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
+  Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
+  ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
 - `setConfigAction` musi zwracać `None` — `False` otwiera w Anki edytor JSON.
 - `logic.py` i `snapshot.py` Workloadu nie mogą mieć importów względnych ani
   aqt: `workload_service/` ładuje je po ścieżce, a domyślne wartości bierze
@@ -52,8 +58,8 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   Worker sprawdza anulowanie i niezmienność pliku przed podmianą.
 - HTML Cleanup: `cleaning.clean_field()` jest jedynym silnikiem reguł (Dodaj
   i skan kolekcji); liczniki są kluczowane indeksem reguły z tej samej listy.
-  `with_rules()` uzupełnia brakujące reguły, zachowuje pustą listę i aktualizuje
-  tylko dokładny stary zestaw domyślny. `MAX_PASSES`/`MAX_FIELD_CHARS` ograniczają
+  Reguły domyślne są tylko w szablonie `config.json` (`default_rules()` je czyta);
+  `with_rules()` uzupełnia brakujący klucz i zachowuje pustą listę. `MAX_PASSES`/`MAX_FIELD_CHARS` ograniczają
   rozrost; `_clean_note` zbiera zmiany przed mutacją. Skan kolekcji przez
   `CollectionOp` (jeden krok undo). Regex jest walidowany tylko w `validate()` panelu.
 - Field Hider: hook `editor_did_load_note` działa wyłącznie przy `editor.addMode`;
@@ -63,7 +69,10 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 
 `workload_service/` to osobny klient headless: przeczytaj jego `README.md` oraz
 kontekst Workload. Własna replika, oficjalny sync, tylko limity nowych;
-bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/`.
+bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/` —
+Compose montuje `../user_files`, czyli ten sam katalog co dane dodatku; nie
+nadawaj plikom usługi nazw używanych przez dodatek (`ai_batches.json`,
+`audio_normalizer_*.json`) i odwrotnie.
 
 Usługa: `WORKLOAD_CONFIG` w Compose nadpisuje plik; `dashboard.py` czyta historię
 i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko

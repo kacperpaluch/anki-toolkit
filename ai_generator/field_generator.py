@@ -17,10 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _collect_skip_tags(config: dict) -> list:
-    raw = config.get("skip_tags", config.get("skip_tag", []))
-    if isinstance(raw, str):
-        return [t.strip() for t in raw.split(",") if t.strip()]
-    return [t for t in raw if isinstance(t, str) and t.strip()]
+    return [t for t in config.get("skip_tags") or [] if isinstance(t, str) and t.strip()]
 
 
 def iter_note_fields(note: Note, config: dict,
@@ -59,18 +56,18 @@ class RateLimiter:
     """Per-provider request pacing: even RPM spacing + a concurrency cap.
 
     Singleton with one bucket per provider. A bucket spaces request *starts* by
-    60/rpm so requests don't burst past an RPS/RPM cap (e.g. Mistral free tier's
-    0.83 req/s), and caps how many run at once. rpm<=0 disables pacing,
+    60/rpm so requests don't burst past an RPS/RPM cap (e.g. OpenRouter :free
+    at 20 RPM), and caps how many run at once. rpm<=0 disables pacing,
     max_concurrent<=0 disables the cap. Thread-safe — the browser batch hits
     this from a ThreadPoolExecutor.
 
     free_only=True applies the bucket only to models whose id contains ':free'
     (OpenRouter free variants); paid models on the same provider pass straight
-    through. free_only=False throttles every request for the provider — used by
-    free-tier API keys (e.g. Mistral) where the whole key is rate-limited.
+    through. free_only=False throttles every request for the provider — for keys
+    where the whole account is rate-limited.
 
     ponytail: paces request *starts*, not tokens. A tokens-per-minute cap
-    (Mistral free = 25k TPM) can't be known before the call returns; the 429
+    can't be known before the call returns; the 429
     backoff in post_json() absorbs the occasional overflow. Add token
     accounting only if TPM 429s actually persist.
     """
@@ -246,21 +243,10 @@ class FieldGenerator:
     def _configure_rate_limit(self, provider_name: str, provider_cfg: dict) -> None:
         """Register this provider's rate-limit bucket from its config.
 
-        Reads per-provider `rpm`, `max_concurrent`, `rate_limit_free_only`.
-        Back-compat: if openrouter has no per-provider `rpm`, fall back to the
-        legacy global `free_model_rate_limit`/`free_model_max_concurrent`
-        (which only ever throttled :free models)."""
+        Reads per-provider `rpm`, `max_concurrent`, `rate_limit_free_only`."""
         rpm = int(provider_cfg.get("rpm", 0) or 0)
         max_concurrent = int(provider_cfg.get("max_concurrent", 0) or 0)
         free_only = bool(provider_cfg.get("rate_limit_free_only", False))
-        if not rpm and provider_name == "openrouter":
-            rpm = int(self._config.get("free_model_rate_limit", 0) or 0)
-            if rpm:
-                free_only = True
-                if not max_concurrent:
-                    max_concurrent = int(
-                        self._config.get("free_model_max_concurrent", 1) or 1
-                    )
         RateLimiter().configure(
             provider_name, rpm=rpm,
             max_concurrent=max_concurrent, free_only=free_only,

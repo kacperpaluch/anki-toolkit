@@ -4,10 +4,7 @@ from ..common import get_module_config, unique, normalize_float
 
 
 _DEFAULTS = {
-    "tts_provider":          "kokoro",
     "button_label":          "TTS",
-    "api_url":               "http://localhost:8880/v1/audio/speech",
-    "model":                 "kokoro",
     "openrouter_api_key":    "",
     "use_ai_openrouter_key": False,
     "openrouter_model":      "openai/gpt-4o-mini-tts-2025-12-15",
@@ -49,20 +46,13 @@ def _warn(msg: str) -> None:
 
 
 def validate_config(config: dict) -> bool:
-    provider = config.get("tts_provider", "kokoro")
-    if provider == "openrouter":
-        api_key = resolve_openrouter_key(config)
-        if not api_key:
-            _warn(
-                "Brak klucza API OpenRouter.\n"
-                "Wpisz klucz w ustawieniach TTS lub zaznacz "
-                "\"Użyj klucza z AI Generatora\"."
-            )
-            return False
-    else:
-        if not config.get("api_url", "").strip():
-            _warn("Brak adresu API Kokoro w ustawieniach TTS.")
-            return False
+    if not resolve_openrouter_key(config):
+        _warn(
+            "Brak klucza API OpenRouter.\n"
+            "Wpisz klucz w ustawieniach TTS lub zaznacz "
+            "\"Użyj klucza z AI Generatora\"."
+        )
+        return False
     voices = unique(config.get("voices", []))
     if not voices:
         _warn("Nie zaznaczono żadnego głosu w ustawieniach TTS.")
@@ -71,28 +61,8 @@ def validate_config(config: dict) -> bool:
 
 
 def get_tasks(config: dict) -> list[dict]:
+    """Configured TTS tasks; an explicitly empty list means "no tasks"."""
     tasks = config.get("tasks")
-    if isinstance(tasks, list):
-        # An explicitly saved empty list means "no tasks" — don't fall back
-        # to legacy fields, or removed tasks would silently reappear.
-        return [t for t in tasks if isinstance(t, dict) and t.get("label")]
-    result = []
-    ang_src = config.get("ang_source_field", "ang")
-    ang_dst = config.get("ang_target_field", "audio")
-    if ang_src and ang_dst:
-        result.append({
-            "label": "Generuj audio dla ang",
-            "source_field": ang_src,
-            "target_field": ang_dst,
-            "mode": "single",
-        })
-    przykl = config.get("przyklad_target_field", "przyklad")
-    if przykl:
-        result.append({
-            "label": "Generuj audio dla przykładów",
-            "source_field": przykl,
-            "target_field": przykl,
-            "mode": "split",
-            "split_separator": "<br><br>",
-        })
-    return result
+    if not isinstance(tasks, list):
+        return list(_DEFAULTS["tasks"])
+    return [t for t in tasks if isinstance(t, dict) and t.get("label")]

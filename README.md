@@ -13,13 +13,14 @@ w jednym oknie.
 | **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
 | **Plan nauki…** | Elastyczny plan na dziś i spokojne tempo nowych kart |
 | **Sprawdź batche AI** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
-| **Rozdziel pola w kolekcji…** | Field Splitter dla wszystkich notatek |
+| **Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
 | **Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
 | **Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
 
 W Browserze PPM → **Anki Toolkit** zawiera workflowy, generowanie AI, wymowę,
-TTS i rozdzielanie pól dla zaznaczonych notatek. W oknie **Dodaj** są przyciski
-AI, słownika, TTS, 📚 i 👁.
+TTS i rozdzielanie pól dla zaznaczonych notatek. Edytor notatki ma przyciski
+workflowów, AI, słowników (np. **Diki**, **Oxford**) i TTS; okno **Dodaj** ma
+dodatkowo 📚 (kolejka słówek) i 👁 (ukryte pola).
 
 ## Moduły
 
@@ -31,7 +32,7 @@ Okno ustawień grupuje moduły tak samo jak poniżej.
 |---|---|
 | [AI Generator](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, workflowy, Batch API i fallback modeli |
 | [Słownik](dictionary/README.md) | Audio MP3 z wymową oraz IPA z czterech słowników online |
-| [TTS](tts/README.md) | Audio z lokalnego Kokoro albo OpenRouter |
+| [TTS](tts/README.md) | Audio z API TTS OpenRoutera |
 | [Rozdzielanie pól](field_splitter/README.md) | Części pola źródłowego (po separatorze) w kolejnych polach |
 
 Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
@@ -42,7 +43,7 @@ i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klien
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
 wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje
-adres domowy n8n i zapasowy przez Tailscale. Web Bridge przyjmuje dane
+adres główny i zapasowy n8n oraz Cloudflare Access (service token). Web Bridge przyjmuje dane
 z userscriptu słownika. **AI: znaczenia** robi z jednego hasła po jednej karcie
 na każde znaczenie, cytując definicje dosłownie z otwartych zakładek.
 
@@ -80,7 +81,8 @@ te same hooki.
 `config.json` jest bezpiecznym szablonem z sekcją dla każdego modułu;
 rzeczywiste ustawienia profilu są w `meta.json`. Stan Batch API i historia
 normalizacji audio są w `user_files/`. `meta.json`, `user_files/`, klucze API,
-pliki `.env`, logi i certyfikaty są ignorowane przez Git.
+pliki `.env`, logi i certyfikaty są ignorowane przez Git. Workload Service
+uruchomiony z tego samego checkoutu też zapisuje swoje dane do `user_files/`.
 
 Przy wielu profilach Anki ustawienia i stan Batch API są wspólne, ale każdy
 batch zna swoją kolekcję — po przełączeniu profilu czeka na powrót do swojego.

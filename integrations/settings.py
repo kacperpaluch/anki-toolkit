@@ -2,7 +2,7 @@
 
 Lista dostawców i modeli pochodzi z sekcji `ai_generator` — tam są klucze.
 """
-from aqt.qt import QComboBox, QFormLayout, QGroupBox, QLineEdit, QSpinBox, QWidget
+from aqt.qt import QComboBox, QFormLayout, QGroupBox, QLineEdit, QSizePolicy, QSpinBox, QWidget
 
 from ..common.ui import _api_key_widget, hint_label, scroll_panel
 from . import ai_senses
@@ -17,20 +17,31 @@ class IntegrationsTab(QWidget):
         queue = QGroupBox("Połączenie z n8n")
         form = QFormLayout(queue)
         form.addRow(hint_label(
-            "Panel 📚 w oknie „Dodaj” pobiera DataTable z n8n; adres zapasowy może być "
-            "domeną Tailscale. Zmiany działają po ponownym otwarciu panelu.", small=True))
+            "Panel 📚 w oknie „Dodaj” pobiera DataTable z n8n. Najpierw próbuje adresu "
+            "głównego, potem zapasowego. Zmiany działają po ponownym otwarciu panelu.",
+            small=True))
         self._url = QLineEdit(q.get("n8n_url", ""))
         self._fallback = QLineEdit(q.get("fallback_url", ""))
         key_widget, self._key = _api_key_widget(q.get("api_key", ""))
+        self._cf_id = QLineEdit(q.get("cf_client_id", ""))
+        self._cf_id.setPlaceholderText("puste = bez Cloudflare Access")
+        cf_secret_widget, self._cf_secret = _api_key_widget(q.get("cf_client_secret", ""))
         self._table = QLineEdit(q.get("table_id", ""))
         self._field = QLineEdit(q.get("word_field", "ang"))
         self._word = QLineEdit(q.get("word_column", "Slowko"))
         self._flag = QLineEdit(q.get("flag_column", "Anki"))
-        for label, widget in (("Adres n8n:", self._url), ("Adres zapasowy:", self._fallback),
-                              ("Klucz API:", key_widget), ("ID tabeli:", self._table),
+        for label, widget in (("Adres główny:", self._url), ("Adres zapasowy:", self._fallback),
+                              ("Klucz API n8n:", key_widget),
+                              ("CF Access Client ID:", self._cf_id),
+                              ("CF Access Client Secret:", cf_secret_widget),
+                              ("ID tabeli:", self._table),
                               ("Pole notatki:", self._field), ("Kolumna słowa:", self._word),
                               ("Kolumna flagi:", self._flag)):
             form.addRow(label, widget)
+        form.addRow(hint_label(
+            "Token Cloudflare Access (service token) jest wysyłany tylko na adresy "
+            "https — adres w sieci lokalnej go nie dostaje. Reguła Access dla domeny "
+            "musi mieć akcję „Service Auth”.", small=True))
         layout.addWidget(queue)
 
         ai = QGroupBox("AI: znaczenia")
@@ -53,6 +64,8 @@ class IntegrationsTab(QWidget):
         self._model.lineEdit().setPlaceholderText("puste = model domyślny dostawcy")
         self._provider.currentIndexChanged.connect(lambda _i: self._fill_models())
         self._fill_models(q.get("ai_model", ""))
+        for combo in (self._provider, self._model):
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._senses = QSpinBox()
         self._senses.setRange(1, 10)
         self._senses.setValue(int(q.get("ai_max_senses", 3) or 3))
@@ -110,6 +123,8 @@ class IntegrationsTab(QWidget):
             "n8n_url": self._url.text().strip(),
             "fallback_url": self._fallback.text().strip(),
             "api_key": self._key.text().strip(),
+            "cf_client_id": self._cf_id.text().strip(),
+            "cf_client_secret": self._cf_secret.text().strip(),
             "table_id": self._table.text().strip(),
             "word_field": self._field.text().strip(),
             "word_column": self._word.text().strip(),

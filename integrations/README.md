@@ -1,17 +1,18 @@
-# Integrations
+# Kolejka słówek (`integrations/`)
 
 Panel 📚 przy oknie **Dodaj**: kolejka słówek z n8n DataTable, cztery słowniki
 w zakładkach, tworzenie kart przez AI i lokalny Web Bridge, który wpisuje dane
 ze stron słownikowych do otwartej notatki.
 
 Panel otwiera przycisk 📚 w oknie **Dodaj** albo **Narzędzia → Anki Toolkit →
-Kolejka słówek (n8n)…**. Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… →
-Kolejka słówek i Web Bridge**.
+Kolejka słówek (n8n)…**. Ustawienia (połączenie z n8n, AI: znaczenia, Web
+Bridge): **Narzędzia → Anki Toolkit → Ustawienia… → Kolejka słówek**.
 
 ## Web Bridge
 
-Mostek słucha na `127.0.0.1:8767` (klucz `web_bridge.port`). Ten sam port musi
-być w stałej `ENDPOINT` userscriptu (port zmienisz też w ustawieniach; działa po restarcie Anki) — po zmianie przeładuj
+Mostek słucha na `127.0.0.1:8767` (pole **Port** w ustawieniach, klucz
+`web_bridge.port`; zmiana działa po restarcie Anki). Ten sam port musi być
+w stałej `ENDPOINT` userscriptu — po zmianie przeładuj
 `dictionaries-to-anki.user.js` w menedżerze userscriptów. 8765 i 8766 należą do
 AnkiConnect i jego forków; gdy port jest zajęty, Anki pokazuje ostrzeżenie przy
 starcie profilu.
@@ -62,9 +63,19 @@ a przebudowa listy zachowuje zaznaczoną pozycję, jeśli nadal istnieje.
 
 ### Adres n8n
 
-Adres domowy z adresem zapasowym (np. Tailscale MagicDNS). Host, który
-odpowiedział, jest zapamiętywany i próbowany pierwszy, ale tylko jeśli nadal
-figuruje w aktualnej konfiguracji. Po zmianie ustawień zamknij całe okno „Dodaj”
+Adres główny (np. domena za Cloudflare) i opcjonalny zapasowy (np. IP w sieci
+domowej). Host, który odpowiedział, jest zapamiętywany i próbowany pierwszy, ale
+tylko jeśli nadal figuruje w aktualnej konfiguracji.
+
+**Cloudflare Access.** Gdy n8n stoi za Cloudflare Access, utwórz w Zero Trust
+*service token*, a w aplikacji Access dla tej domeny dodaj regułę z akcją
+**Service Auth** (zwykła reguła „Allow” przekierowuje na stronę logowania).
+Client ID i Client Secret wpisz w ustawieniach Kolejki — trafiają do nagłówków
+`CF-Access-Client-Id` / `CF-Access-Client-Secret`, wyłącznie na adresy `https`,
+więc adres lokalny ich nie dostaje. Klucz API n8n nadal jest wymagany. Jeśli
+zamiast danych przyjdzie strona HTML, panel zgłasza błąd tokenu Access. Gdy w
+Cloudflare jest włączony Bot Fight Mode, dodaj wyjątek dla ścieżki
+`/api/v1/data-tables/`. Po zmianie ustawień zamknij całe okno „Dodaj”
 i otwórz panel ponownie — konfigurację czyta przy otwarciu.
 
 ## Własne hasła
@@ -201,9 +212,10 @@ ewentualny przykład zwrócony mimo to przez model jest pomijany.
 
 ### Model
 
-Ustawienia → sekcja *AI: znaczenia*: **Dostawca AI** (rozwijanka) i **Model**
-(rozwijanka edytowalna — możesz wpisać dowolną nazwę). Puste pole *Model*
-oznacza model domyślny wybranego dostawcy, ustawiony w Contencie.
+Ustawienia → Kolejka słówek → sekcja *AI: znaczenia*: **Dostawca AI**
+(rozwijanka) i **Model** (rozwijanka edytowalna — możesz wpisać dowolną nazwę).
+Puste pole *Model* oznacza model domyślny wybranego dostawcy z **Ustawienia →
+AI Generator → Dostawcy**.
 
 **Dostawca jest jeden, własny i osobny od AI Generatora.** Z zakładki AI
 Generator brane są tylko klucze API i lista dostawców — dzięki temu `claude_cli`
@@ -220,8 +232,14 @@ Reszta pól (audio, IPA, TTS, przykłady) to zadanie dla workflowu: zaznacz
 
 ## Konfiguracja
 
-Sekcja `word_queue`: adresy n8n i klucz API, `table_id`, nazwy kolumn
-(`word_column`, `flag_column`), pole notatki (`word_field`), `link_templates`
-i `link_columns`, ustawienia `ai_*` (dostawca, model, limity, tagi, pola, listy
-źródeł PL/EN) oraz `order`. Sekcja `web_bridge` trzyma `port`. Klucz API i pozostałe dane prywatne trafiają do
-`meta.json`, które nie jest wersjonowane.
+Sekcja `word_queue`: adresy n8n (`n8n_url` główny, `fallback_url` zapasowy),
+klucz API, token Cloudflare Access (`cf_client_id`, `cf_client_secret`),
+`table_id`, nazwy kolumn (`word_column`, `flag_column`), pole notatki
+(`word_field`), `link_templates` i `link_columns`, ustawienia `ai_*` (dostawca,
+model, limity, tagi, pola, listy źródeł PL/EN), `order` oraz `page_size`
+i `max_rows` (stronicowanie). Sekcja `web_bridge` trzyma `port`.
+`link_templates`, `link_columns`, `ai_pl_sources`, `ai_en_sources`, `page_size`
+i `max_rows` nie mają pól w oknie ustawień — zmienisz je, edytując `meta.json`
+dodatku przy zamkniętym Anki (przycisk **Config** w menedżerze dodatków otwiera
+okno ustawień, a nie edytor JSON). Klucze, token i pozostałe
+dane prywatne trafiają do `meta.json`, które nie jest wersjonowane.

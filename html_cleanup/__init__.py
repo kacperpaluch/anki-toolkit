@@ -9,27 +9,26 @@ from aqt.qt import QMessageBox
 from aqt.utils import tooltip
 
 from ..common import get_module_config
-from .cleaning import clean_field, default_rules, legacy_default_rules
+from .cleaning import clean_field, default_rules
 
 
 _DEFAULTS = {
     "show_tooltip": True,
     "auto_run_startup": False,
-    "skip_field": "ang",
 }
 _add_cards_ref = None
 
 
-def get_config() -> dict:
-    return with_rules(get_module_config("html_cleanup", _DEFAULTS))
-
-
 def with_rules(config: dict) -> dict:
+    """Section with defaults; an explicitly empty rule list stays empty."""
     config = {**_DEFAULTS, **config}
-    # Configs written before rules were editable carry only skip_field.
-    if "rules" not in config or config["rules"] == legacy_default_rules(config.get("skip_field", "ang")):
-        config["rules"] = default_rules(config.get("skip_field", "ang"))
+    if "rules" not in config:
+        config["rules"] = default_rules()
     return config
+
+
+def get_config() -> dict:
+    return with_rules(get_module_config("html_cleanup"))
 
 
 def _tooltip(parent, counts: dict, rules: list) -> None:

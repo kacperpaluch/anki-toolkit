@@ -27,21 +27,24 @@ import urllib.parse
 try:
     import aqt
     from aqt import mw
-    from aqt.qt import QAction
     from aqt.utils import tooltip
 
     from ..common import clean_html_normalized, fetch_url, get_module_config, post_json
 except ImportError:  # pozwala odpalić self-check (__main__) bez Anki
-    aqt = mw = QAction = tooltip = None
+    aqt = mw = tooltip = None
     clean_html_normalized = fetch_url = get_module_config = post_json = None
 
 log = logging.getLogger(__name__)
 
 _MODULE_KEY = "word_queue"
 _DEFAULTS = {
-    "n8n_url": "",             # adres w sieci domowej (próbowany pierwszy)
-    "fallback_url": "",        # np. Tailscale MagicDNS — gdy jesteś poza domem
+    "n8n_url": "",             # adres główny, np. domena za Cloudflare Access
+    "fallback_url": "",        # zapasowy, np. IP w sieci domowej
     "api_key": "",
+    # Service token Cloudflare Access — wysyłany wyłącznie na adresy https,
+    # żeby sekret nie szedł otwartym tekstem do hosta w sieci lokalnej.
+    "cf_client_id": "",
+    "cf_client_secret": "",
     "table_id": "",
     "word_field": "ang",       # pole notatki, do którego wpisujemy słówko
     "word_column": "Slowko",   # kolumna z hasłem
@@ -91,7 +94,7 @@ def _configured(cfg: dict) -> bool:
 
 
 def _base_urls(cfg: dict) -> list[str]:
-    """Adresy do wypróbowania: ostatni działający, potem domowy, potem fallback."""
+    """Adresy do wypróbowania: ostatni działający, potem główny, potem zapasowy."""
     urls = []
     configured = [(cfg.get(key) or "").rstrip("/") for key in ("n8n_url", "fallback_url")]
     remembered = _active_url if _active_url in configured else None
@@ -107,8 +110,8 @@ def _via_hosts(cfg: dict, call):
 
     ponytail: nie rozróżniamy „host padł" od „żądanie było złe" — przy 4xx
     pukamy niepotrzebnie do drugiego hosta i dostajemy ten sam błąd. Tanie.
-    Zapamiętany host trzyma się do pierwszej porażki, więc wróciwszy do domu
-    jedziesz przez Tailscale aż coś się wywali. Bez znaczenia: to ten sam n8n.
+    Zapamiętany host trzyma się do pierwszej porażki, więc raz przełączony na
+    zapasowy zostajesz na nim, aż coś się wywali. Bez znaczenia: to ten sam n8n.
     """
     global _active_url
     error = "brak skonfigurowanego adresu n8n"
@@ -126,20 +129,35 @@ def _rows_url(base: str, cfg: dict, suffix: str = "") -> str:
     return f"{base}/api/v1/data-tables/{cfg['table_id']}/rows{suffix}"
 
 
-def _headers(cfg: dict) -> dict:
-    return {"Content-Type": "application/json", "X-N8N-API-KEY": cfg["api_key"]}
+def _headers(cfg: dict, url: str) -> dict:
+    headers = {"Content-Type": "application/json", "X-N8N-API-KEY": cfg["api_key"]}
+    client_id = (cfg.get("cf_client_id") or "").strip()
+    secret = (cfg.get("cf_client_secret") or "").strip()
+    if client_id and secret and url.startswith("https://"):
+        headers["CF-Access-Client-Id"] = client_id
+        headers["CF-Access-Client-Secret"] = secret
+    return headers
+
+
+def _json(body: bytes):
+    """(wartość, błąd). Strona HTML zamiast JSON-a to prawie zawsze logowanie
+    Cloudflare Access — urllib idzie za przekierowaniem i dostaje formularz."""
+    try:
+        return json.loads(body), None
+    except ValueError as e:
+        if body.lstrip()[:1] == b"<":
+            return None, ("odpowiedź HTML zamiast JSON — sprawdź service token "
+                          "Cloudflare Access i regułę „Service Auth”")
+        return None, f"zła odpowiedź n8n: {e}"
 
 
 def _get_json(url: str, cfg: dict):
     # Jedna próba, krótki timeout: gdy host padł, chcemy SZYBKO przejść na
-    # kolejny (_via_hosts), a nie mielić 3 retry × 10 s zanim spróbujemy Tailscale.
-    raw = fetch_url(url, headers=_headers(cfg), max_retries=1, timeout=5)
+    # kolejny (_via_hosts), a nie mielić 3 retry × 10 s przed adresem zapasowym.
+    raw = fetch_url(url, headers=_headers(cfg, url), max_retries=1, timeout=5)
     if raw is None:
         return None, "brak odpowiedzi (szczegóły w Logach)"
-    try:
-        return json.loads(raw), None
-    except ValueError as e:
-        return None, f"zła odpowiedź n8n: {e}"
+    return _json(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -214,10 +232,11 @@ def _payload(filters: list[dict], flag_column: str, value: bool) -> bytes:
 def _set_flag(filters: list[dict], cfg: dict, value: bool) -> tuple[int, str | None]:
     """Ustaw flag_column na wierszach pasujących do filtrów. Zwraca (trafione, błąd)."""
     def call(base):
+        url = _rows_url(base, cfg, "/update")
         body, error = post_json(
-            _rows_url(base, cfg, "/update"),
+            url,
             _payload(filters, cfg["flag_column"], value),
-            _headers(cfg),
+            _headers(cfg, url),
             method="PATCH",
             max_retries=2,  # 429/5xx warte ponowienia — utrata PATCH-a to rozjazd z n8n
             timeout=8,
@@ -225,10 +244,9 @@ def _set_flag(filters: list[dict], cfg: dict, value: bool) -> tuple[int, str | N
         )
         if error:
             return None, error
-        try:
-            rows = json.loads(body)
-        except ValueError as e:
-            return None, f"zła odpowiedź n8n: {e}"
+        rows, error = _json(body)
+        if error:
+            return None, error
         if not isinstance(rows, list):
             return None, f"zła odpowiedź n8n: oczekiwano listy, jest {type(rows).__name__}"
         return len(rows), None
@@ -248,18 +266,18 @@ def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
     payload = json.dumps({"data": rows, "returnData": True}).encode()
 
     def call(base):
+        url = _rows_url(base, cfg)
         body, error = post_json(
-            _rows_url(base, cfg), payload, _headers(cfg),
+            url, payload, _headers(cfg, url),
             max_retries=2,  # utrata zapisu to hasło, które przepadło — warte ponowienia
             timeout=8,
             log=log,
         )
         if error:
             return None, error
-        try:
-            saved = json.loads(body)
-        except ValueError as e:
-            return None, f"zła odpowiedź n8n: {e}"
+        saved, error = _json(body)
+        if error:
+            return None, error
         if isinstance(saved, dict):
             saved = saved.get("data", saved)
         if not isinstance(saved, list) or len(saved) != len(words):
@@ -369,7 +387,8 @@ def _toggle_panel(addcards) -> None:
     global _panel
     cfg = _get_config()
     if not _configured(cfg):
-        tooltip("word_queue: uzupełnij n8n_url, api_key i table_id w config.json",
+        tooltip("Kolejka słówek: uzupełnij adres n8n, klucz API i ID tabeli w "
+                "Narzędzia → Anki Toolkit → Ustawienia… → Kolejka słówek",
                 parent=mw, period=6000)
         return
 
@@ -409,13 +428,6 @@ def on_editor_buttons_init(buttons, editor):
     return buttons
 
 
-def setup_menu(parent_menu=None) -> None:
-    menu = parent_menu or mw.form.menuTools
-    action = QAction("Kolejka słówek (n8n)...", mw)
-    action.triggered.connect(lambda _checked=False: open_queue())
-    menu.addAction(action)
-
-
 if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez sieci)
     cfg = dict(_DEFAULTS, n8n_url="http://h:5678/", table_id="T")
 
@@ -423,7 +435,7 @@ if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez siec
     assert _rows_url("http://h:5678", cfg, "/update").endswith("/rows/update")
 
     # --- failover -----------------------------------------------------------
-    home, away = "http://192.168.1.50:5678", "https://n8n.ts.net"
+    home, away = "http://192.168.1.50:5678", "https://n8n.example.com"
     fcfg = dict(cfg, n8n_url=home + "/", fallback_url=away)  # rstrip('/') po drodze
 
     _active_url = None
@@ -440,7 +452,7 @@ if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez siec
     assert (value, error) == ("ok", None) and tried == [home, away], tried
     assert _active_url == away                               # zapamiętany
 
-    tried.clear()                                            # kolejne wywołanie: od razu Tailscale
+    tried.clear()                                            # kolejne wywołanie: od razu zapamiętany
     _via_hosts(fcfg, only_away)
     assert tried == [away], tried
 
@@ -462,6 +474,14 @@ if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez siec
     q = json.loads(_payload([{"columnName": "Word", "condition": "eq", "value": "x"}], "Done", True))
     assert q["data"] == {"Done": True}
     assert q["filter"]["filters"][0]["columnName"] == "Word"
+
+    # token Cloudflare Access: tylko https i tylko komplet
+    tcfg = dict(cfg, api_key="k", cf_client_id="id", cf_client_secret="sec")
+    assert _headers(tcfg, away + "/x")["CF-Access-Client-Secret"] == "sec"
+    assert "CF-Access-Client-Id" not in _headers(tcfg, home + "/x")
+    assert "CF-Access-Client-Id" not in _headers(dict(tcfg, cf_client_secret=""), away)
+    assert "Service Auth" in _json(b"<!DOCTYPE html><html>")[1]
+    assert _json(b'{"data": []}') == ({"data": []}, None)
 
     # nieskonfigurowany moduł musi spać, nawet gdy część pól jest wypełniona
     assert not _configured(dict(_DEFAULTS))

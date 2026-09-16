@@ -36,38 +36,13 @@ DEFAULT_CONTEXT_MENU = {
     "field_splitter": True,  # "Rozdziel pole"
 }
 
-# Re-seeded as an editable workflow during migration so the menu loses nothing.
-# Only generic, field-name-agnostic steps here — a personal p1–p3 pipeline is
-# something the user builds in the UI, not something a fresh install inherits.
-_DEFAULT_PIPELINES = [
-    {
-        "name": "Generuj wszystko: puste → TTS → rozdziel → zablokowane",
-        "editor_button": False,
-        "steps": [
-            {"module": "ai", "action": "generate", "fields": "empty"},
-            {"module": "tts", "action": "generate"},
-            {"module": "field_splitter", "action": "split"},
-            {"module": "ai", "action": "generate", "fields": "manual"},
-        ],
-    },
-]
-
 
 def get_workflows() -> list[dict]:
-    """User-defined named workflows. Falls back to wrapping the legacy single
-    `workflow` config so an un-migrated profile still works."""
-    full = mw.addonManager.getConfig(ADDON_NAME) or {}
-    wfs = full.get("workflows")
-    if isinstance(wfs, list):
-        return [w for w in wfs if isinstance(w, dict) and w.get("steps")]
-    legacy = full.get("workflow")
-    if isinstance(legacy, dict) and legacy.get("steps"):
-        return [{
-            "name": legacy.get("editor_label", "Generuj fiszkę"),
-            "editor_button": legacy.get("enabled", True),
-            "steps": legacy.get("steps", []),
-        }]
-    return []
+    """User-defined named workflows that have at least one step."""
+    wfs = (mw.addonManager.getConfig(ADDON_NAME) or {}).get("workflows")
+    if not isinstance(wfs, list):
+        return []
+    return [w for w in wfs if isinstance(w, dict) and w.get("steps")]
 
 
 def get_context_menu() -> dict:
@@ -76,32 +51,6 @@ def get_context_menu() -> dict:
     if not isinstance(cm, dict):
         return dict(DEFAULT_CONTEXT_MENU)
     return {**DEFAULT_CONTEXT_MENU, **cm}
-
-
-def migrate_workflows() -> None:
-    """Migrate the legacy workflow and seed the former built-in pipeline."""
-    full = mw.addonManager.getConfig(ADDON_NAME) or {}
-    changed = False
-
-    if not isinstance(full.get("workflows"), list):
-        workflows: list[dict] = []
-        legacy = full.get("workflow")
-        if isinstance(legacy, dict) and legacy.get("steps"):
-            workflows.append({
-                "name": legacy.get("editor_label", "Generuj fiszkę"),
-                "editor_button": legacy.get("enabled", True),
-                "steps": legacy.get("steps", []),
-            })
-        workflows.extend(_DEFAULT_PIPELINES)
-        full["workflows"] = workflows
-        changed = True
-
-    if not isinstance(full.get("context_menu"), dict):
-        full["context_menu"] = dict(DEFAULT_CONTEXT_MENU)
-        changed = True
-
-    if changed:
-        mw.addonManager.writeConfig(ADDON_NAME, full)
 
 
 def _resolve_ai_fields(step: dict, ai_config: dict):

@@ -137,8 +137,6 @@ class OpenAICompatProvider(BaseProvider):
 
     API_URL: str = ""
     LABEL: str = ""
-    # Mistral rejects reasoning_effort outright — opt out per subclass.
-    SUPPORTS_REASONING_EFFORT: bool = True
     # Extra static headers (e.g. OpenRouter app attribution). Subclass overrides.
     EXTRA_HEADERS: dict = {}
 
@@ -154,8 +152,7 @@ class OpenAICompatProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
         }
         add_temperature_if_supported(data, self.model, self.temperature)
-        if self.SUPPORTS_REASONING_EFFORT:
-            add_reasoning_effort_if_supported(data, self.model, self.reasoning_effort)
+        add_reasoning_effort_if_supported(data, self.model, self.reasoning_effort)
         try:
             raw = self._post_with_reasoning_fallback(self.API_URL, data, headers)
             if raw is None:

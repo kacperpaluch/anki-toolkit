@@ -1,4 +1,4 @@
-# HTML Cleanup
+# Czyszczenie HTML (`html_cleanup/`)
 
 Czyści HTML w polach notatek według reguł, które definiujesz sam.
 
@@ -9,7 +9,9 @@ Czyści HTML w polach notatek według reguł, które definiujesz sam.
 - Reguły edytujesz w **Narzędzia → Anki Toolkit → Ustawienia… → Czyszczenie
   HTML**, a całą kolekcję czyścisz przez **Narzędzia → Anki Toolkit → Wyczyść
   HTML w kolekcji…**.
-- Opcjonalny automatyczny skan przy otwieraniu profilu można włączyć w UI.
+- Opcja **Czyść całą kolekcję przy otwarciu profilu** uruchamia ten sam skan
+  automatycznie; **Pokazuj podsumowanie po czyszczeniu** steruje dymkiem.
+- Czyszczenie całej kolekcji to jeden krok **Edycja → Cofnij**.
 
 ## Reguły
 
@@ -28,8 +30,8 @@ Kolejność ma znaczenie — `▲`/`▼` ją zmieniają. Domyślne pięć reguł
 (`&nbsp;` → spacja, tagi `<div>` → `<br>`, usunięcie `<div>` w polu `ang`,
 scalenie sąsiadujących `<br>` i obcięcie brzegowych `<br>`) przywraca przycisk
 **Przywróć domyślne**. Zachowują one granice także przy zagnieżdżonych blokach.
-Niezmieniony stary zestaw domyślny jest aktualizowany przy odczycie; własne reguły
-pozostają bez zmian. Pusta lista wyłącza czyszczenie — nie przywraca domyślnych reguł.
+Reguły domyślne pochodzą z szablonu `config.json`. Pusta lista wyłącza
+czyszczenie — nie przywraca domyślnych reguł.
 
 Czyszczenie w Dodaj odbywa się przed zapisem, w ramach tego samego kroku undo.
 Reguły mają limit 20 przebiegów i 1 000 000 znaków pola. Przekroczenie limitu

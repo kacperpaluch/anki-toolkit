@@ -7,7 +7,7 @@ obciążenia i terminy są szczegółami rozwijanymi w tym samym oknie.
 
 ## Niezmienniki
 
-- Kolekcja jest **wyłącznie odczytywana**, na głównym wątku. Dodatek nie zmienia
+- Kolekcja jest **wyłącznie odczytywana**, na głównym wątku. Moduł nie zmienia
   limitów Anki, kart ani harmonogramu i nie zatrzymuje sesji. Własne ustawienia
   (sekcja `workload`) zapisuje wspólne okno ustawień, zachowując nieznane klucze.
 - `logic.py` nie importuje Anki/Qt. `build_snapshot` dostarcza migawkę-słownik;
@@ -45,14 +45,14 @@ obciążenia i terminy są szczegółami rozwijanymi w tym samym oknie.
   pozostaje w raporcie. „Ta talia” ma pierwszeństwo nad limitem presetu.
 - Przybliżenie `suma(1/ivl)` i scenariusz `limit × mnożnik` są wyraźnie
   opisane jako przybliżenia. Nie sterują planem. Wysoki limit powtórek nie
-  jest alarmem i dodatek nie proponuje obniżania limitów powtórek.
+  jest alarmem i moduł nie proponuje obniżania limitów powtórek.
 - Brak klucza flagi kolekcji daje `None`; wyjątek daje wpis `flag_errors`.
 
 `snapshot.py` zbiera dane bez Qt; `__init__.py` buduje okno, `settings.py` to
 panel „Plan nauki” we wspólnym oknie ustawień (sekcja `workload`).
 **Narzędzia → Anki Toolkit → Plan nauki…** otwiera plan z przyciskami
 **Pokaż szczegóły raportu**, **Odśwież**, **Kopiuj raport**, **Ustawienia…**
-(ten ostatni otwiera wspólne okno na stronie Workload). Odświeżanie i zapis
+(ten ostatni otwiera wspólne okno na stronie „Plan nauki”). Odświeżanie i zapis
 ustawień przeliczają plan w tym samym oknie.
 
 Testy: `tests/test_workload_standalone.py` — logika oraz odczyt na prawdziwym

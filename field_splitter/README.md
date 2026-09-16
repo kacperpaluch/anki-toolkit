@@ -1,4 +1,4 @@
-# Field Splitter — rozdzielanie pól
+# Rozdzielanie pól (`field_splitter/`)
 
 Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kopiuje** części do kolejnych pól docelowych (`p1`, `p2`, `p3`…). Pole źródłowe nie jest modyfikowane — to kopia, nie przeniesienie. Gdy wpiszesz je omyłkowo na listę celów, jest z niej pomijane (przy zapisie ustawień i przy samym rozdzielaniu), więc nie da się zastąpić całego pola jego pierwszym fragmentem.
 
@@ -78,4 +78,4 @@ Tryb OFF jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpi
 
 ## Separator — whitespace-tolerant
 
-Whitespace w separatorze dopasowuje dowolny ciąg whitespace w treści. Dzięki temu `"<br> <br>"` jako separator zadziała także gdy w treści jest `"<br><br>"` (bez spacji) lub `"<br>  <br>"` (z dwiema spacjami). Mechanizm jest współdzielony z `common/text.py::split_separator_regex()`.
+Whitespace w separatorze dopasowuje dowolny ciąg whitespace w treści. Dzięki temu `"<br> <br>"` jako separator zadziała także gdy w treści jest `"<br><br>"` (bez spacji) lub `"<br>  <br>"` (z dwiema spacjami). Kilka separatorów pod rząd liczy się jak jeden, a puste części są pomijane. Reguła jest ta sama co w `common/text.py::split_separator_regex()` — `splitting.py` ma jej kopię, żeby logikę dało się testować bez Anki.

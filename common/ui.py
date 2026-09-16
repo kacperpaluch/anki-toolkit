@@ -143,6 +143,12 @@ def _scrollable(inner: QWidget) -> QScrollArea:
     return scroll
 
 
+def set_special_value(spin, text: str) -> None:
+    """Tekst zamiast minimum (np. „bez limitu”) — macOS nie poszerza pola sam."""
+    spin.setSpecialValueText(text)
+    spin.setMinimumWidth(spin.fontMetrics().horizontalAdvance(text) + 48)
+
+
 def scroll_panel(widget: QWidget) -> QVBoxLayout:
     """Make `widget` a scrollable settings page; returns the layout to fill."""
     outer = QVBoxLayout(widget)

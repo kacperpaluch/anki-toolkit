@@ -1,4 +1,4 @@
-"""TTS API calls — Kokoro (local) and OpenRouter."""
+"""TTS API calls — OpenRouter."""
 
 import json
 import logging
@@ -14,12 +14,7 @@ logger = logging.getLogger(__name__)
 
 def generate_audio(text: str, config: dict, voice: str) -> bytes:
     text = apply_word_replacements(text, config.get("replacements") or {})
-    provider = config.get("tts_provider", "kokoro")
-    if provider == "openrouter":
-        generate = _generate_openrouter
-    else:
-        generate = _generate_kokoro
-    return generate(text, config, voice)
+    return _generate_openrouter(text, config, voice)
 
 
 def _ensure_audio(raw: bytes, label: str) -> bytes:
@@ -27,34 +22,6 @@ def _ensure_audio(raw: bytes, label: str) -> bytes:
     do mediów — [sound:...] w polu blokuje ponowną generację na zawsze."""
     if not raw or raw.lstrip()[:1] in (b"{", b"["):
         raise Exception(f"{label}: odpowiedź nie jest audio (pusta lub JSON)")
-    return raw
-
-
-def _generate_kokoro(text: str, config: dict, voice: str) -> bytes:
-    url = config.get("api_url", "http://localhost:8880/v1/audio/speech")
-    payload = {
-        "model": config.get("model", "kokoro"),
-        "input": text,
-        "voice": voice,
-        "speed": normalize_float(config.get("speed"), 0.9),
-        "response_format": "mp3",
-    }
-    headers = {"Content-Type": "application/json"}
-
-    max_retries = int(config.get("max_retries", 3))
-    timeout = int(config.get("timeout", 60))
-    logger.debug(f"Kokoro TTS: voice={voice}, {len(text)} zn., timeout={timeout}s")
-    t0 = time.time()
-    raw, err = post_json(
-        url, json.dumps(payload).encode("utf-8"), headers,
-        max_retries=max_retries, timeout=timeout, log=logger,
-    )
-    if err:
-        raise Exception(f"Kokoro API Error: {err}")
-    raw = _ensure_audio(raw, "Kokoro API")
-    logger.debug(
-        f"Kokoro TTS OK: voice={voice}, {len(raw)} B w {time.time() - t0:.1f}s"
-    )
     return raw
 
 

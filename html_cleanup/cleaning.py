@@ -1,66 +1,18 @@
 """Pure HTML cleanup helpers — a user-editable list of find/replace rules."""
 
+import json
 import re
+from pathlib import Path
 
 
 MAX_PASSES = 20
 MAX_FIELD_CHARS = 1_000_000
 
 
-def legacy_default_rules(skip_field: str = "ang") -> list[dict]:
-    """The built-in rule set, scoped to a single-line field named `skip_field`.
-
-    Also used to migrate configs written before rules were editable.
-    """
-    keep = f"!{skip_field}" if skip_field else ""
-    return [
-        {
-            "on": True,
-            "name": "&nbsp; → spacja",
-            "find": "&nbsp;",
-            "to": " ",
-            "regex": False,
-            "fields": "",
-            "repeat": False,
-        },
-        {
-            "on": True,
-            "name": "Bloki <div> → <br>",
-            "find": r"<div[^>]*>((?:(?!</?div\b).)*?)</div>",
-            "to": r"\1<br>",
-            "regex": True,
-            "fields": keep,
-            "repeat": True,
-        },
-        {
-            "on": bool(skip_field),
-            "name": "Usuń tagi <div>",
-            "find": r"</?div[^>]*>",
-            "to": "",
-            "regex": True,
-            "fields": skip_field,
-            "repeat": False,
-        },
-        {
-            "on": True,
-            "name": "Obetnij końcowy <br>",
-            "find": r"<br>\s*$",
-            "to": "",
-            "regex": True,
-            "fields": keep,
-            "repeat": False,
-        },
-    ]
-
-
-def default_rules(skip_field: str = "ang") -> list[dict]:
-    rules = legacy_default_rules(skip_field)
-    rules[1].update(find=r"</?div\b[^>]*>", to="<br>", repeat=False)
-    rules[-1].update(name="Obetnij brzegowe <br>", find=r"^(?:<br>\s*)+|(?:<br>\s*)+$")
-    rules.insert(3, {"on": True, "name": "Scal sąsiadujące <br>",
-                     "find": r"(?:<br>\s*){2,}", "to": "<br>", "regex": True,
-                     "fields": rules[1]["fields"], "repeat": False})
-    return rules
+def default_rules() -> list[dict]:
+    """The built-in rule set — a fresh copy of the `html_cleanup` template."""
+    template = Path(__file__).resolve().parents[1] / "config.json"
+    return json.loads(template.read_text(encoding="utf-8"))["html_cleanup"]["rules"]
 
 
 def _replace_bounded(value, find, replacement, regex):

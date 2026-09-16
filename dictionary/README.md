@@ -1,6 +1,8 @@
-# Dictionary — pobieranie audio i IPA
+# Słownik (`dictionary/`) — wymowa i IPA
 
 Pobiera pliki audio MP3 z wymową oraz transkrypcje IPA z czterech słowników online. Działa w edytorze kart i przeglądarce.
+
+Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Słownik**. Krok „Słownik” jest też dostępny w workflowach.
 
 ## Jak używać
 
@@ -13,7 +15,7 @@ Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Pobierz wymowę**.
 
 W submenu dostępne są:
-- **Wszystkie włączone słowniki** — scala źródła ze wszystkich aktywnych pozycji `buttons` w jedną grupę i pobiera je za jednym razem, więc pole docelowe dostaje audio z każdej włączonej grupy (wcześniej wygrywała pierwsza, która cokolwiek znalazła, bo kolejne trafiały na „pole niepuste")
+- **Wszystkie włączone słowniki** — scala źródła ze wszystkich aktywnych pozycji `buttons` w jedną grupę i pobiera je za jednym razem, więc pole docelowe dostaje audio z każdej włączonej grupy
 - **Pobierz z Diki / Oxford / ...** — uruchamia batch tylko dla wybranego przycisku/słownika
 
 Batch działa w tle i pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.
@@ -105,7 +107,7 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | Wartość | Przykład |
 |---|---|
 | `"compact"` | `/θɔːt/` gdy UK=US, lub `UK: /θɔːt/ • US: /θɑːt/` gdy różne |
-| `"both"` | `UK: /θɔːt/ • US: /θɑːt/` gdy różne; `/{phon}/` gdy UK==US |
+| `"both"` | `UK: /θɔːt/ • US: /θɑːt/` gdy różne; `/θɔːt/` gdy UK=US |
 | `"uk_only"` | `/θɔːt/` |
 | `"us_only"` | `/θɑːt/` |
 
@@ -114,7 +116,7 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 Każdy przycisk to obiekt z:
 - `"dictionaries"` — lista słowników do użycia przez ten przycisk. Podanie UK + US = dwa pliki audio zapisane w jednym polu
 - `"label"` — tekst na przycisku
-- `"enabled"` — `true` / `false`
+- `"enabled"` — `true` / `false` (w ustawieniach: sekcja „Przyciski w edytorze”)
 
 Przykład przycisku z jednym słownikiem:
 ```json

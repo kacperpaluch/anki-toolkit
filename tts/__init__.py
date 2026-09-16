@@ -1,4 +1,4 @@
-"""TTS module (Kokoro / OpenRouter) — Anki browser menu/hook integration."""
+"""TTS module (OpenRouter) — Anki browser menu/hook integration."""
 
 from aqt.qt import QAction, QMenu
 from aqt.utils import tooltip

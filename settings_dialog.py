@@ -6,8 +6,8 @@ wraps every panel in the same page header (title + one-line purpose).
 """
 from aqt import mw
 from aqt.qt import (
-    QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QSize, QStackedWidget, Qt, QVBoxLayout, QWidget,
+    QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QSize, QStackedWidget, Qt, QVBoxLayout, QWidget,
 )
 from aqt.utils import showWarning, tooltip
 
@@ -33,7 +33,7 @@ PAGES = [
          WorkflowsTab),
         ("ai_generator", "🤖", "AI Generator",
          "Prompty dla pól notatek i dostawcy modeli językowych.", AIGeneratorTab),
-        ("tts", "🔊", "TTS", "Nagrania z lokalnego Kokoro albo OpenRouter.", TTSTab),
+        ("tts", "🔊", "TTS", "Nagrania przez API TTS OpenRoutera.", TTSTab),
         ("dictionary", "📖", "Słownik",
          "Wymowa i IPA z Diki, Oxford, Cambridge i Longman.", DictionaryTab),
         ("field_splitter", "✂️", "Rozdzielanie pól",
@@ -67,8 +67,18 @@ QListWidget::item:selected { background: palette(highlight); color: palette(high
 """
 
 
+def _unify_forms(panel: QWidget) -> None:
+    """macOS styl zostawia pola formularza w rozmiarze minimalnym i centruje
+    formularz — pola tekstowe mają się rozciągać, a formularz trzymać lewej."""
+    for form in panel.findChildren(QFormLayout):
+        if form.fieldGrowthPolicy() == QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint:
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+
+
 def _page(icon: str, title: str, description: str, panel: QWidget) -> QWidget:
     """The same header over every panel, so pages read as one window."""
+    _unify_forms(panel)
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(0, 0, 0, 0)

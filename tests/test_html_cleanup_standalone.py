@@ -1,4 +1,4 @@
-"""Pure-logic tests for the standalone HTML Cleanup package."""
+"""Pure-logic tests for the HTML Cleanup rule engine."""
 
 import importlib.util
 from pathlib import Path
@@ -13,12 +13,12 @@ _SPEC.loader.exec_module(cleaning)
 
 
 class DefaultRuleTests(unittest.TestCase):
-    """The shipped rules must keep behaving as they did before rules were editable."""
+    """The shipped rules (config.json template) keep their behaviour."""
 
     def setUp(self):
-        self.rules = cleaning.default_rules("ang")
+        self.rules = cleaning.default_rules()
 
-    def test_skip_field_removes_div_tags_without_breaks(self):
+    def test_ang_field_removes_div_tags_without_breaks(self):
         value, counts = cleaning.clean_field("ang", "<div>look&nbsp;up</div>", self.rules)
         self.assertEqual(value, "look up")
         self.assertEqual(counts, {0: 1, 2: 2})

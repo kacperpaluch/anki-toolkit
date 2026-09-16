@@ -2,9 +2,8 @@
 
 ## Co robi
 
-Generuje pliki audio MP3 przez dwa źródła:
-- **Kokoro** — lokalny serwer TTS (Docker, darmowy)
-- **OpenRouter** — API TTS w chmurze (płatne per znak, nie wymaga lokalnego serwera)
+Generuje pliki audio MP3 przez API TTS OpenRoutera (płatne per znak). Lokalny
+serwer Kokoro został usunięty; model Kokoro jest dostępny przez OpenRoutera.
 
 System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pola. Każde zadanie definiuje:
 - `label` — etykieta w menu
@@ -12,7 +11,7 @@ System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pol
 - `mode` — `single` (jedno audio na notatkę), `split` (segmenty tekstu z audio) lub `split_audio` (same połączone tagi audio w polu docelowym)
 - `split_separator` — string dzielący tekst w trybach `split` i `split_audio`
 
-Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Backward compat: jeśli klucz `tasks` **nie istnieje** (lub nie jest listą), `get_tasks()` buduje domyślne zadania z legacy pól `ang_source_field`/`ang_target_field`/`przyklad_target_field`. Gdy `tasks` istnieje, ma pierwszeństwo; jawnie zapisana **pusta lista** oznacza "brak zadań".
+Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Jeśli klucz `tasks` nie istnieje (lub nie jest listą), `get_tasks()` zwraca zadania domyślne z `_DEFAULTS`; jawnie zapisana **pusta lista** oznacza "brak zadań".
 
 Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w głównym dialogu ustawień wtyczki (**TTS**) oraz w sekcji `tts` konfiguracji profilu Anki.
 
@@ -22,7 +21,7 @@ Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w 
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_kokoro()`, `_generate_openrouter()` — `_generate_*` delegują POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
+| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` **nie rusza notatki przed czasem**: `build_note_work_items(..., overwrite=True)` odkłada stare tagi do `split_contexts["prev"]`/`["prev_tags"]`, a `apply_results_to_note()` podmienia je wyłącznie tam, gdzie powstał nowy plik (nieudany segment zachowuje swoje nagranie); generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
 | `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(clone, tasks=[task], overwrite=...)` na kopii z `detach_note()`, a wynik wraca przez `merge_editor_note()` |
 
@@ -52,7 +51,7 @@ _process_batch_async(browser, nids, tasks, label):
             key_fn=lambda item: (item["nid"], item["task_i"], item["seg_i"]),
             cancel_flag, on_progress)
           → ThreadPoolExecutor(max_workers=config.get("max_workers", 12))
-              → generate_audio(text, config, voice)  # dispatcher → Kokoro / OpenRouter
+              → generate_audio(text, config, voice)  # → _generate_openrouter()
           → mw.col.media.write_data(unique_filename(), bytes)
           → results[(nid, task_i, seg_i)] = filename
   → on_done (główny wątek):
@@ -82,25 +81,19 @@ Przycisk edytora (toolbar)
           → jeden tooltip z podsumowaniem
 ```
 
-### get_tasks() — backward compat
+### get_tasks()
 
 ```
 get_tasks(config)
   → jeśli config["tasks"] jest listą (także pustą) → zwróć przefiltrowaną listę
-  → else (klucz nie istnieje / zły typ): zbuduj z legacy pól
-       (ang_source_field + ang_target_field → mode=single,
-        przyklad_target_field → mode=split)
-       — te pola nie są w _DEFAULTS; fallback czyta je
-         tylko ze starych zapisanych configów użytkownika
+  → else (klucz nie istnieje / zły typ) → kopia _DEFAULTS["tasks"]
 ```
 
-### Dispatcher providera
+### Wywołanie API
 
-`generate_audio()` (`api.py:14`) sprawdza `config["tts_provider"]`:
-- `"kokoro"` (domyślnie) → `_generate_kokoro()` — POST do `config["api_url"]`
-- `"openrouter"` → `_generate_openrouter()` — POST do `https://openrouter.ai/api/v1/audio/speech` z `Authorization: Bearer`
+`generate_audio()` (`api.py`) stosuje `replacements` i woła `_generate_openrouter()` — POST do `https://openrouter.ai/api/v1/audio/speech` z `Authorization: Bearer`.
 
-Retry (HTTP 429/5xx, timeouty) dzieje się w `common.http.post_json()` — `_generate_*` tylko interpretują wynik `(bytes|None, err|None)` i rzucają `Exception` gdy `err` niepuste.
+Retry (HTTP 429/5xx, timeouty) dzieje się w `common.http.post_json()` — `_generate_openrouter` tylko interpretuje wynik `(bytes|None, err|None)` i rzuca `Exception` gdy `err` niepuste.
 
 ### Proces przykładów (tryb split)
 
@@ -129,9 +122,6 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 
 ```json
 {
-  "tts_provider": "kokoro",
-  "api_url": "http://localhost:8880/v1/audio/speech",
-  "model": "kokoro",
   "openrouter_api_key": "",
   "use_ai_openrouter_key": false,
   "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
@@ -150,43 +140,25 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 }
 ```
 
-- `tts_provider` — `"kokoro"` lub `"openrouter"`; domyślnie `"kokoro"` dla kompatybilności wstecznej
-- `api_url` / `model` — tylko dla Kokoro
 - `button_label` — etykieta przycisku TTS w edytorze
-- `openrouter_api_key` — klucz API z https://openrouter.ai/keys (tylko dla OpenRouter)
+- `openrouter_api_key` — klucz API z https://openrouter.ai/keys
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
 - `openrouter_provider` — pusty string = automatyczny price-weighted routing OpenRouter; slug wybranego endpointu (np. `deepinfra`) = tylko ten provider, bez fallbacku
 - `voices` — lista głosów do losowania
 - `replacements` — dict `{skrót: pełne_słowo}` rozwijany przez `apply_word_replacements()` (`common/text.py`) na tekście wejściowym `generate_audio()`, zanim trafi do payloadu. Whole-word (`\b`), `re.IGNORECASE`, wielka litera trafienia zachowywana, klucze sortowane od najdłuższego (alternacja longest-first). Karta nietknięta — zmienia się tylko tekst wysyłany do silnika. UI: tabela Skrót/Zamiennik w `settings/tts_tab.py` (`_add_repl_row`/`_remove_repl_row`/`_collect_replacements`)
-- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`/`split_audio`) i opcjonalnie `split_separator`. `split_audio` zapisuje w polu docelowym wyłącznie połączone tagi `[sound:...]`. Jeśli klucz nie istnieje, backward compat czyta legacy pola; pusta lista = brak zadań
+- `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`/`split_audio`) i opcjonalnie `split_separator`. `split_audio` zapisuje w polu docelowym wyłącznie połączone tagi `[sound:...]`. Brak klucza = zadania domyślne; pusta lista = brak zadań
 - `max_workers` — liczba wątków w `ThreadPoolExecutor`
-- `max_retries` i `timeout` — retry logic w `common.http.post_json()` (HTTP 429/5xx; timeouty zgłaszane jako błąd); przekazywane przez `_generate_*` do `post_json()`
+- `max_retries` i `timeout` — retry logic w `common.http.post_json()` (HTTP 429/5xx; timeouty zgłaszane jako błąd); przekazywane przez `_generate_openrouter` do `post_json()`
 - Wszystkie domyślne wartości zdefiniowane w `_DEFAULTS` (config.py) i mergowane przez `get_tts_config()` używającego `get_module_config()` z `common.config`
 
 ### Walidacja konfiguracji
 
 `validate_config()` (config.py) sprawdza:
-- Dla `"openrouter"`: czy `openrouter_api_key` nie jest pusty (lub `use_ai_openrouter_key` wskazuje na klucz z AI)
-- Dla `"kokoro"`: czy `api_url` nie jest pusty
-- Zawsze: czy `voices` nie jest pusta
+- czy jest klucz OpenRoutera (`openrouter_api_key` albo, przy `use_ai_openrouter_key`, klucz z AI Generatora)
+- czy `voices` nie jest pusta
 
 Ostrzeżenia (`showWarning`) są wysyłane przez `mw.taskman.run_on_main` — `validate_config()` może być wywołane z wątku tła (np. krok TTS w workflow), a wywołania Qt UI muszą iść z głównego wątku.
-
-## Kokoro API
-
-```
-POST {api_url}
-Content-Type: application/json
-{
-  "model": "kokoro",
-  "input": "tekst do syntezy",
-  "voice": "af_bella",
-  "speed": 0.9,
-  "response_format": "mp3"
-}
-→ raw MP3 bytes
-```
 
 ## OpenRouter TTS API
 
@@ -215,7 +187,6 @@ Generowane losowo przez `unique_filename()` z `common.text`: `tts_` + 12 znaków
 
 - Stdlib: `urllib.request` (GET w `fetch_openrouter_tts_models`), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
 - Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.update_notes` (przez `CollectionOp`), `mw.col.media.write_data`, `mw.taskman`, `CollectionOp`
-- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_kokoro`/`_generate_openrouter`)
-- Kokoro: wymaga lokalnego serwera Kokoro TTS (Docker)
+- Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html), `common.http` (post_json — POST z retry; używany przez `_generate_openrouter`)
 - OpenRouter: tylko klucz API, żadnych lokalnych zależności
 - Brak pip packages

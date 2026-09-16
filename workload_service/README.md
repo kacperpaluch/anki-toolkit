@@ -1,4 +1,4 @@
-# Workload — codzienny klient synchronizacji
+# Workload Service — codzienny klient synchronizacji
 
 Samodzielny proces bez GUI, uruchamiany na własnej maszynie. Korzysta z oficjalnej
 biblioteki `anki==26.8.1` i wspólnej logiki modułu Workload z Anki Toolkit. Obsługuje AnkiWeb
@@ -94,7 +94,7 @@ Panel i worker współdzielą ustawienia przez kotwicę YAML oraz prywatny wolum
 | `split_strategy` | `proportional` lub `heaviest_first`. |
 
 Pozostałe parametry obliczeń i ich domyślne wartości opisuje
-[Workload](../workload/README.md#ustawienia).
+[Plan nauki](../workload/README.md#ustawienia).
 Ustawienia modułu w Anki i usługi są niezależne. Usługa może zmniejszać porcję
 albo wrócić do skonfigurowanego pułapu; nie stosuje automatycznie sugestii +1.
 Nie gwarantuje 15–30 minut: czas odpowiedzi jest przybliżeniem, istniejące
@@ -165,7 +165,7 @@ Wynik JSON polecenia `run` zawiera też `card_costs`: czas odpowiedzi w sekundac
 z 7 zakończonych dni, koszt kohorty wprowadzonej w 14 zakończonych dniach oraz
 5 najbardziej czasochłonnych kart (ID, czas, odpowiedzi, Ponownie).
 Treść notatek nie trafia do logów. Ten pomiar nie zmienia decyzji o limitach;
-szczegóły interpretacji opisuje [Workload](../workload/README.md#co-zabiera-czas).
+szczegóły interpretacji opisuje [Plan nauki](../workload/README.md#co-zabiera-czas).
 
 ### Konfiguracja w panelu
 
@@ -184,7 +184,11 @@ przed przypadkowym wywołaniem przez obcą stronę, nie ogranicza dostępu w LAN
 
 ## Dane na dysku i e-mail
 
-Compose montuje `../user_files` do `/data/user_files` w obu kontenerach.
+Compose montuje `../user_files` do `/data/user_files` w obu kontenerach. Katalog
+główny repozytorium jest też dodatkiem Anki, więc w checkoutcie z podpiętą
+wtyczką to ten sam `user_files/`, w którym dodatek trzyma `ai_batches.json`
+i historię normalizacji audio. Nazwy plików się nie pokrywają; na serwerze bez
+Anki nie ma to znaczenia.
 Na RPi wszystkie trwałe dane są w **/root/aplikacje/anki-workload/user_files/**:
 kolekcja, token, ustawienia, historia i konfiguracja SMTP. Zrób kopię całego
 katalogu przy zatrzymanych kontenerach. Nie usuwaj go podczas aktualizacji.

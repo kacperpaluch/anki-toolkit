@@ -1,16 +1,16 @@
-# TTS — Text-to-Speech
+# TTS (`tts/`) — nagrania przez OpenRouter
 
-Generuje pliki audio MP3 dla kart Anki. Obsługuje dwa źródła:
-- **Kokoro** — lokalny serwer TTS przez Dockera (darmowy, bez limitu)
-- **OpenRouter** — API TTS przez chmurę (płatne per znak, lepsza jakość głosów)
+Generuje pliki audio MP3 dla kart Anki przez API TTS OpenRoutera (płatne per
+znak). Dostępne są tam m.in. modele OpenAI TTS i Kokoro (`hexgrad/kokoro-82m`).
 
 ## Wymagania
 
-### Kokoro (lokalnie)
-Lokalnie uruchomiony serwer Kokoro. Wtyczka nie startuje serwera samodzielnie — Kokoro musi działać pod adresem podanym w `api_url`.
+Klucz API z https://openrouter.ai/keys (albo klucz OpenRoutera z AI Generatora).
+Żadnych innych zależności.
 
-### OpenRouter (API)
-Klucz API z https://openrouter.ai/keys. Żadnych innych zależności.
+Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → TTS** — sekcje
+*OpenRouter*, *Głosy*, *Zamiana wyrazów*, *Zadania TTS* i zwijana *Wydajność
+i sieć* (wątki, próby, timeout).
 
 ## Jak używać
 
@@ -43,7 +43,7 @@ Każde zadanie definiuje:
   - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`). Pole puste lub niekompletne zostaje zastąpione dopiero po wygenerowaniu całego zestawu; częściowa awaria pozostawia dotychczasową treść do ponowienia. Przy regeneracji kompletnego zestawu nieudane segmenty zachowują swoje stare nagrania.
 - **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
 
-Zadania konfiguruje się w **Narzędzia → Anki Toolkit → Ustawienia… → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń) lub bezpośrednio w `config.json`.
+Zadania konfiguruje się w **Narzędzia → Anki Toolkit → Ustawienia… → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń).
 
 W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopiero po zakończeniu generowania danej operacji. Przy anulowaniu zapisują już wygenerowane pliki i pokazują jedno podsumowanie.
 
@@ -51,10 +51,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 
 ```json
 "tts": {
-    "tts_provider": "kokoro",
     "button_label": "TTS",
-    "api_url": "http://localhost:8880/v1/audio/speech",
-    "model": "kokoro",
     "openrouter_api_key": "",
     "use_ai_openrouter_key": false,
     "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
@@ -74,18 +71,15 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
-| `tts_provider` | `kokoro` | Dostawca TTS: `kokoro` (lokalny) lub `openrouter` (API) |
-| `button_label` | `"TTS"` | Etykieta przycisku w edytorze kart |
-| `api_url` | `http://localhost:8880/v1/audio/speech` | Adres serwera Kokoro (tylko dla `kokoro`) |
-| `model` | `kokoro` | Nazwa modelu Kokoro (tylko dla `kokoro`) |
-| `openrouter_api_key` | `""` | Klucz API OpenRouter (tylko dla `openrouter`) |
+| `button_label` | `"TTS"` | Etykieta przycisku w edytorze kart (bez pola w oknie ustawień — zmienisz w `meta.json`) |
+| `openrouter_api_key` | `""` | Klucz API OpenRouter |
 | `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
 | `openrouter_provider` | `""` | Opcjonalny dostawca modelu OpenRouter. Puste pole zachowuje automatyczny routing; wybrany slug (np. `deepinfra`) wymusza tego dostawcę bez fallbacku |
-| `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania. Dla OpenRouter: po wybraniu modelu i kliknięciu **Pobierz**, lista głosów wypełnia się automatycznie |
+| `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania (domyślne to głosy Kokoro). Po wybraniu modelu i kliknięciu **Pobierz** lista głosów wypełnia się automatycznie |
 | `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
-| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań. Legacy pola pozostają w szablonie `config.json`, ale są ignorowane, gdy istnieje `tasks` |
+| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań, brak klucza = dwa zadania domyślne |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
 | `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
 | `timeout` | `60` | Timeout pojedynczego żądania TTS w sekundach |
@@ -110,16 +104,10 @@ Przykład:
 
 Każda notatka/zdanie losuje głos z listy `voices`. Można podać jeden głos (zawsze ten sam) lub wiele (losowanie).
 
-### Kokoro — ręczne wpisywanie
+### Wybór z listy (checklist)
 
-Dodawanie głosów do `config.json`:
-```json
-"voices": ["af_bella", "af_heart", "bm_lewis", "bf_emma"]
-```
-
-### OpenRouter — wybór z listy (checklist)
-
-W ustawieniach TTS, po wybraniu OpenRouter:
+Dopóki lista głosów modelu nie jest pobrana, głosy wpisujesz ręcznie po przecinku
+w polu **Głosy**. W ustawieniach TTS:
 1. Wpisz klucz API
 2. Kliknij **Pobierz** obok pola Model — wtyczka pobiera dostępne modele TTS z OpenRouter (wraz z cenami)
 3. Wybierz model z rozwijanej listy
@@ -127,11 +115,17 @@ W ustawieniach TTS, po wybraniu OpenRouter:
 5. Pod spodem pojawi się tabela głosów z checkboxami — zaznacz które chcesz używać
 6. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
 7. Pole "Głosy" poniżej aktualizuje się automatycznie
-8. **▶** — przycisk obok każdego głosu generuje krótki sample i go odtwarza (nie musisz zaznaczać głosu żeby go posłuchać; koszt jednego krótkiego żądania TTS; dla Kokoro darmowe)
+8. **▶** — przycisk obok każdego głosu generuje krótki sample i go odtwarza (nie musisz zaznaczać głosu żeby go posłuchać; koszt jednego krótkiego żądania TTS)
 
 Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova`, `echo`; Voxtral używa `en_paul_happy` itd.)
 
-### Amerykański angielski (`en-us`)
+### Głosy modelu Kokoro
+
+Poniższe identyfikatory dotyczą modelu `hexgrad/kokoro-82m` (domyślna pula
+`voices` to głosy Kokoro). Aktualną listę głosów danego modelu pokazuje tabela
+po kliknięciu **Pobierz**.
+
+#### Amerykański angielski (`en-us`)
 
 | ID głosu | Płeć |
 |---|---|
@@ -156,7 +150,7 @@ Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova
 | `am_puck` | mężczyzna |
 | `am_santa` | mężczyzna |
 
-### Brytyjski angielski (`en-gb`)
+#### Brytyjski angielski (`en-gb`)
 
 | ID głosu | Płeć |
 |---|---|
@@ -169,7 +163,7 @@ Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova
 | `bm_george` | mężczyzna |
 | `bm_lewis` | mężczyzna |
 
-### Pozostałe języki
+#### Pozostałe języki
 
 | ID głosu | Język | Płeć |
 |---|---|---|
@@ -200,7 +194,7 @@ Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova
 | `zm_yunxia` | Chiński mandaryński (`zh`) | mężczyzna |
 | `zm_yunyang` | Chiński mandaryński (`zh`) | mężczyzna |
 
-### Schemat nazw głosów
+#### Schemat nazw głosów
 
 ```
 af_bella
