@@ -109,7 +109,15 @@ analizuje niepełną historię; po przesłaniu odpowiedzi uwzględni je w nastę
 uruchomieniu. Dwa urządzenia offline nie mają wspólnego bieżącego licznika,
 więc ścisłego globalnego limitu nie da się wtedy zagwarantować.
 
-Pełna synchronizacja zawsze zatrzymuje zwykły przebieg. Nie wybieraj w ciemno
+Pełna synchronizacja zatrzymuje zwykły przebieg i harmonogram (także po restarcie).
+Panel pokazuje **Wymagana interwencja**. W **Napraw synchronizację** możesz wybrać
+**Pobierz kolekcję z serwera** po potwierdzeniu, że urządzenia wysłały aktualne dane.
+Operacja pobiera wyłącznie do repliki Workload; nie wysyła pełnej kolekcji.
+Zapisuje kopię kolekcji i stanu w `user_files/before-download-*/`, zachowuje stan
+limitów i sprawdza jego zgodność z pobranymi taliami. Niezgodność lub błąd pobrania
+pozostawia dotychczasową replikę i wstrzymany harmonogram; szczegóły są w historii.
+Udane pobranie odblokowuje harmonogram; **Uruchom teraz** pozwala przeliczyć limity
+od razu. Odpowiednik CLI: `docker compose run --rm workload download`. Nie wybieraj w ciemno
 pobrania całej kolekcji na telefon z niewysłanymi odpowiedziami.
 Telefon z dawnymi ustawieniami może przy synchronizacji przywrócić starsze
 limity talii; historia odpowiedzi pozostaje zachowana, ale automat może się
@@ -182,14 +190,18 @@ Włącz wysyłkę i zapisz. Puste hasło zachowuje poprzednie; checkbox pozwala 
 usunąć. Hasło SMTP jest zapisane w `mail.json` (uprawnienia 600), nigdy nie
 jest odsyłane do formularza ani umieszczane w historii.
 
-Mail jest wysyłany po każdym zakończonym `run` i `restore`: także bez zmian
-limitów, w symulacji i po błędzie. Zawiera wynik, tryb, czas, powód oraz
+Mail jest wysyłany po każdym udanym `run` i `restore`: także bez zmian
+limitów i w symulacji. Błąd wysyła jeden alert; identyczne kolejne błędy są
+zapisywane w historii bez ponownego maila, również po restarcie. Sukces `run`
+lub `restore` resetuje alert, a inny błąd może wysłać nowy. Stan jest zapisany
+w `notification_state.json`; nieudana wysyłka SMTP nie oznacza dostarczenia alertu.
+Wiadomość zawiera wynik, tryb, czas, powód oraz
 wartości przed/po; tylko udany zapis oznacza zmiany jako potwierdzone.
 Wersja HTML pokazuje wąską tabelę Talia / Przed / Po z zawijaniem nazw na
 telefonie. Wspólny limit bazowy 0 jest opisany pod tabelą; inne wartości są
 widoczne przy liczbach. Wiadomość zawiera również zapasową wersję tekstową.
-Inicjalizacja i logowanie nie wysyłają wiadomości. Harmonogram uruchamia
-przebieg raz dziennie; ponowienia po błędzie też wysyłają raport.
+Inicjalizacja, logowanie i ręczne pobranie nie wysyłają wiadomości. Harmonogram uruchamia
+przebieg raz dziennie; ponowienia identycznego błędu nie wysyłają kolejnych raportów.
 Zatrzymany kontener nie wyśle maila — brak codziennego raportu jest sygnałem
 do sprawdzenia usługi, a nie niezależnym monitoringiem jej dostępności.
 Błąd SMTP pojawia się w historii, nie cofa synchronizacji i nie uruchamia jej ponownie.

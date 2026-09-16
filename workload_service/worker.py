@@ -35,6 +35,10 @@ class WorkloadError(Exception):
     """Messages safe to print without credentials or card contents."""
 
 
+class FullSyncRequired(WorkloadError):
+    """A full download requires explicit operator confirmation."""
+
+
 def read_json(path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
 
@@ -147,7 +151,7 @@ def sync_normal(col, auth):
     result = col.sync_collection(auth, sync_media=False)
     accept_endpoint(result, auth)
     if result.required != Response.NO_CHANGES:
-        raise WorkloadError("Full sync requested. Stopped; no automatic upload/download is allowed")
+        raise FullSyncRequired("Full sync requested. Stopped; no automatic upload/download is allowed")
 
 
 def selected_decks(col, names):
@@ -250,6 +254,39 @@ def initialize(data_dir, identity):
     print("Private replica downloaded. No limits changed.", flush=True)
 
 
+def download_replica(data_dir, identity, state, event):
+    """Replace only this client's replica, after backup and limit validation."""
+    from anki.collection import Collection
+    write_json(data_dir / "intervention.json", {"error": "Pobieranie kolekcji wymaga zakończenia sukcesem; sprawdź historię."})
+    backup = Path(tempfile.mkdtemp(prefix="before-download-", dir=data_dir))
+    clone_database(data_dir / "collection.anki2", backup / "collection.anki2")
+    write_json(backup / "state.json", state)
+    event["backup"] = backup.name
+    with tempfile.TemporaryDirectory(dir=data_dir) as folder:
+        replica = Path(folder) / "collection.anki2"
+        col = Collection(str(replica))
+        try:
+            auth = get_auth(col, data_dir, identity)
+            accept_endpoint(col.sync_status(auth), auth)
+            save_auth(data_dir, identity, auth)
+            col.close_for_full_sync()
+            col.full_upload_or_download(auth=auth, server_usn=None, upload=False)
+            col.reopen(after_full_sync=True)
+            if col.is_empty():
+                raise WorkloadError("Remote collection is empty; download rejected")
+            for key, entry in state.get("managed", {}).items():
+                deck = col.decks.get(int(key), default=False)
+                if not deck or limits(deck) not in (entry["applied"], entry.get("pending")):
+                    raise WorkloadError("Downloaded limits differ from Workload state; resolve limits manually")
+        finally:
+            col.close()
+        destination = data_dir / "replica.tmp"
+        clone_database(replica, destination)
+        destination.replace(data_dir / "collection.anki2")
+    (data_dir / "intervention.json").unlink(missing_ok=True)
+    event["reason"] = "Pobrano kolekcję z serwera. Kopia bezpieczeństwa: " + backup.name
+
+
 def _run(data_dir, settings, command, event):
     from anki.collection import Collection
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -271,6 +308,9 @@ def _run(data_dir, settings, command, event):
             raise WorkloadError("Client identity mismatch or missing init. Use a new volume for a different server/account")
         state_path = data_dir / "state.json"
         state = read_json(state_path, {"managed": {}})
+        if command == "download":
+            download_replica(data_dir, identity, state, event)
+            return
         apply = command == "restore" or settings.get("apply", False)
         with tempfile.TemporaryDirectory(dir=data_dir) as folder:
             replica = Path(folder) / "collection.anki2"
@@ -332,6 +372,9 @@ def _run(data_dir, settings, command, event):
                         state = {"managed": {}}
                     state["last_success"] = dt.date.today().isoformat()
                     write_json(state_path, state)
+            except FullSyncRequired as error:
+                write_json(data_dir / "intervention.json", {"error": str(error)})
+                raise
             finally:
                 col.close()
             # Only successful runs replace the durable replica. Failed runs discard
@@ -339,13 +382,14 @@ def _run(data_dir, settings, command, event):
             destination = data_dir / "replica.tmp"
             clone_database(replica, destination)
             destination.replace(data_dir / "collection.anki2")
+            (data_dir / "intervention.json").unlink(missing_ok=True)
         if not apply:
             print("Dry run: no limit changes uploaded.", flush=True)
 
 
 def run(data_dir, settings, command):
     event = {"started": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-             "command": command, "apply": command == "restore" or settings.get("apply", False),
+             "command": command, "apply": command == "restore" or (command == "run" and settings.get("apply", False)),
              "status": "running", "changes": []}
     try:
         _run(data_dir, settings, command, event)
@@ -357,18 +401,42 @@ def run(data_dir, settings, command):
     finally:
         event["finished"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
         data_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            try:
-                from .notifications import send_summary
-            except ImportError:
-                from notifications import send_summary
-            event["email"] = send_summary(read_json(data_dir / "mail.json", {}), event)
-        except Exception as error:
-            # Delivery failure must not repeat a successful Anki mutation or expose SMTP credentials.
-            event["email"] = "error: " + type(error).__name__
         with (data_dir / "history.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             history = read_json(data_dir / "history.json", [])
+            incident_path = data_dir / "notification_state.json"
+            incident = read_json(incident_path)
+            # Seed from old history when upgrading an already failing service.
+            if incident is None:
+                incident = {}
+                for previous in reversed(history):
+                    if previous.get("command") not in ("run", "restore"):
+                        continue
+                    if previous.get("status") == "success":
+                        break
+                    if previous.get("email") == "sent":
+                        incident = {"error": previous.get("error")}
+                        break
+            try:
+                try:
+                    from .notifications import send_summary
+                except ImportError:
+                    from notifications import send_summary
+                if command in ("run", "restore") and event["status"] == "error" and incident.get("error") == event["error"]:
+                    event["email"] = "suppressed_duplicate"
+                else:
+                    event["email"] = send_summary(read_json(data_dir / "mail.json", {}), event)
+                if command in ("run", "restore"):
+                    if event["status"] == "success":
+                        incident = {}
+                    elif event["email"] == "sent":
+                        incident = {"error": event["error"]}
+            except Exception as error:
+                # SMTP failure must not retry an already successful collection mutation.
+                event["email"] = "error: " + type(error).__name__
+                if command in ("run", "restore") and event["status"] == "success":
+                    incident = {}
+            write_json(incident_path, incident)
             # ponytail: retain 200 runs; use SQLite if searchable long-term history is needed.
             write_json(data_dir / "history.json", (history + [event])[-200:])
 
@@ -378,7 +446,7 @@ def main():
     os.environ.setdefault("TZ", "Europe/Warsaw")
     time.tzset()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("init", "login", "run", "serve", "restore", "dashboard"))
+    parser.add_argument("command", choices=("init", "login", "run", "serve", "restore", "download", "dashboard"))
     parser.add_argument("--config", type=Path, default=Path("/config/workload.json"))
     parser.add_argument("--data", type=Path, default=Path("/data/user_files"))
     args = parser.parse_args()
@@ -391,7 +459,7 @@ def main():
         return
     last_run = None
     while True:
-        if not (args.data / "identity.json").exists():
+        if not (args.data / "identity.json").exists() or (args.data / "intervention.json").exists():
             time.sleep(30)
             continue
         settings = settings_from(args.config, args.data)

@@ -10,7 +10,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-def render(history, token="", running=False, settings=None, connection=None, mail=None):
+def render(history, token="", running=False, settings=None, connection=None, mail=None, intervention=None):
     parts = ['''<!doctype html><html lang="pl"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Workload — historia</title>
@@ -25,6 +25,16 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
     parts.append(f'<form method="post" action="/run"><input type="hidden" name="token" value="{escape(token)}">'
                  f'<button {"disabled" if running else ""}>Uruchom teraz</button></form>'
                  + ('<p>Przebieg trwa…</p>' if running else '<p>Pełny przebieg zgodny z apply: symulacja lub zapis limitów.</p>'))
+    if intervention:
+        parts.append('<article><h2>Wymagana interwencja</h2><p>Harmonogram wstrzymany: '
+                     + escape(intervention.get("error", "")) + '</p></article>')
+    parts.append(f'<details><summary>Napraw synchronizację</summary><form method="post" action="/download">'
+                 f'<input type="hidden" name="token" value="{escape(token)}">'
+                 '<p>Pobranie zastąpi kopię Workload na RPi. Powstanie kopia bezpieczeństwa. '
+                 'Stan limitów zostanie zachowany i sprawdzony przed wznowieniem harmonogramu.</p>'
+                 '<p><label><input type="checkbox" name="confirm" value="yes" required>'
+                 'Potwierdzam, że serwer ma aktualną kolekcję po synchronizacji moich urządzeń.</label></p>'
+                 f'<button {"disabled" if running else ""}>Pobierz kolekcję z serwera</button></form></details>')
     settings = settings or {}
     connection = connection or {}
     parts.append(f'<details><summary>Ustawienia i konto Anki</summary><form method="post" action="/settings">'
@@ -49,7 +59,7 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
     mail = mail or {}
     parts.append(f'<details><summary>Powiadomienia e-mail</summary><form method="post" action="/mail">'
                  f'<input type="hidden" name="token" value="{escape(token)}">'
-                 f'<p><label><input type="checkbox" name="enabled" {"checked" if mail.get("enabled") else ""}>Wysyłaj raport po każdym przebiegu</label></p>')
+                 f'<p><label><input type="checkbox" name="enabled" {"checked" if mail.get("enabled") else ""}>Wysyłaj raporty i powiadomienia o błędach</label></p>')
     for name, label, kind, default in [('host', 'Host SMTP', 'text', ''), ('port', 'Port SMTP', 'number', 587),
                                      ('username', 'Login SMTP (pusty = bez logowania)', 'text', ''),
                                      ('sender', 'Nadawca', 'email', ''), ('recipient', 'Odbiorca', 'email', '')]:
@@ -61,13 +71,15 @@ Historia pojawia się po zakończeniu przebiegu.</p>''']
                  '<input type="password" name="password" autocomplete="new-password"></label></p>'
                  '<p><label><input type="checkbox" name="clear_password">Usuń zapisane hasło SMTP</label></p>'
                  '<button>Zapisz powiadomienia</button></form>'
-                 '<p>Mail po każdym run i restore, także bez zmian, w symulacji oraz po błędzie. '
+                 '<p>Raport po udanym run i restore, również w symulacji. Jeden alert dla powtarzającego się błędu do sukcesu lub zmiany błędu. '
                  'Wynik wysyłki pojawi się w historii.</p></details>')
     if not history:
         parts.append('<article>Brak historii. Uruchom init, a następnie run.</article>')
     for event in reversed(history):
         ok = event.get('status') == 'success'
         mode = ('Zastosowano' if event.get('apply') else 'Symulacja — bez zapisu limitów')
+        if event.get("command") == "download":
+            mode = "Pobranie kolekcji z serwera"
         if event.get('command') in ('init', 'login'):
             mode = 'Inicjalizacja' if event['command'] == 'init' else 'Odświeżenie logowania'
         status = 'Sukces' if ok else 'Błąd — zmiany mogły zostać częściowo wysłane'
@@ -128,7 +140,7 @@ def serve(data_dir):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             nonlocal process
-            if self.path not in ("/run", "/settings", "/mail"):
+            if self.path not in ("/run", "/settings", "/mail", "/download"):
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -144,6 +156,11 @@ def serve(data_dir):
                 self.send_error(409, "Przebieg trwa; poczekaj na wynik")
                 return
             command, env = "run", os.environ.copy()
+            if self.path == "/download":
+                if form.get("confirm") != ["yes"]:
+                    self.send_error(400, "Potwierdz aktualnosc kolekcji na serwerze")
+                    return
+                command = "download"
             if self.path == "/mail":
                 try:
                     config = notifications.settings_from(form, worker.read_json(data_dir / "mail.json", {}))
@@ -202,7 +219,8 @@ def serve(data_dir):
                     else render(history, token, busy() or (process is not None and process.poll() is None),
                                 worker.settings_from(Path("/config/workload.json"), data_dir) if (data_dir / "settings.json").exists() else json.loads(os.environ.get("WORKLOAD_CONFIG", "{}")),
                                 worker.read_json(data_dir / "connection.json", {"url": os.environ.get("ANKI_SYNC_URL", "ankiweb"), "username": os.environ.get("ANKI_SYNC_USERNAME", "")}),
-                                worker.read_json(data_dir / "mail.json", {}))).encode()
+                                worker.read_json(data_dir / "mail.json", {}),
+                                worker.read_json(data_dir / "intervention.json"))).encode()
             self.send_response(200)
             self.send_header('Content-Type', ('application/json' if self.path == '/history.json' else 'text/html') + '; charset=utf-8')
             self.send_header('Cache-Control', 'no-store')

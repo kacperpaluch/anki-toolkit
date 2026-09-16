@@ -111,6 +111,38 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(history[-1]["email"], "error: RuntimeError")
             self.assertNotIn("secret", (data / "history.json").read_text())
 
+    def test_repeated_error_is_suppressed_until_success_or_different_error(self):
+        from workload_service import notifications
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            with patch.object(worker, "_run") as operation, patch.object(notifications, "send_summary", return_value="sent") as mail:
+                operation.side_effect = worker.WorkloadError("full sync")
+                for _ in range(2):
+                    with self.assertRaises(worker.WorkloadError):
+                        worker.run(data, {}, "run")
+                self.assertEqual(mail.call_count, 1)
+                self.assertEqual(worker.read_json(data / "history.json")[-1]["email"], "suppressed_duplicate")
+                operation.side_effect = worker.WorkloadError("network")
+                with self.assertRaises(worker.WorkloadError):
+                    worker.run(data, {}, "run")
+                self.assertEqual(mail.call_count, 2)
+                operation.side_effect = None
+                worker.run(data, {}, "run")
+                operation.side_effect = worker.WorkloadError("network")
+                with self.assertRaises(worker.WorkloadError):
+                    worker.run(data, {}, "run")
+                self.assertEqual(mail.call_count, 4)
+
+    def test_upgrade_uses_previous_delivered_error(self):
+        from workload_service import notifications
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder)
+            worker.write_json(data / "history.json", [{"command": "run", "status": "error", "error": "full sync", "email": "sent"}])
+            with patch.object(worker, "_run", side_effect=worker.WorkloadError("full sync")), patch.object(notifications, "send_summary") as mail:
+                with self.assertRaises(worker.WorkloadError):
+                    worker.run(data, {}, "run")
+                mail.assert_not_called()
+
     def test_credentials_do_not_accept_a_url_with_embedded_password(self):
         with patch.dict(os.environ, {"ANKI_SYNC_URL": "https://user:secret@example.com/"}):
             with self.assertRaises(worker.WorkloadError):
@@ -216,6 +248,30 @@ class OfficialServerTests(unittest.TestCase):
         worker.sync_normal(self.client, self.auth)
         for did in (self.root, self.child, self.other):
             self.assertEqual(worker.limits(self.client.decks.get(did)), worker.limits(original[did]))
+
+    def test_full_download_preserves_state_and_rejects_foreign_limits(self):
+        worker.run(self.data, self.settings, "init")
+        worker.run(self.data, self.settings, "run")
+        state = worker.read_json(self.data / "state.json")
+        with patch.object(worker, "sync_normal", side_effect=worker.FullSyncRequired("full sync")):
+            with self.assertRaises(worker.FullSyncRequired):
+                worker.run(self.data, self.settings, "run")
+        self.assertTrue((self.data / "intervention.json").exists())
+        worker.run(self.data, self.settings, "download")
+        self.assertFalse((self.data / "intervention.json").exists())
+        self.assertEqual(worker.read_json(self.data / "state.json"), state)
+        self.assertEqual(len(list(self.data.glob("before-download-*/collection.anki2"))), 1)
+        worker.run(self.data, self.settings, "run")
+        worker.sync_normal(self.client, self.auth)
+        deck = self.client.decks.get(self.root)
+        deck["newLimit"] = 7
+        self.client.decks.update_dict(deck)
+        worker.sync_normal(self.client, self.auth)
+        before = (self.data / "collection.anki2").read_bytes()
+        with self.assertRaises(worker.WorkloadError):
+            worker.run(self.data, self.settings, "download")
+        self.assertEqual((self.data / "collection.anki2").read_bytes(), before)
+        self.assertTrue((self.data / "intervention.json").exists())
 
     def test_offline_answer_survives_remote_limit_changes(self):
         worker.run(self.data, self.settings, "init")
