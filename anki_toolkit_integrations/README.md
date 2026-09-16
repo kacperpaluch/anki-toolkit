@@ -168,6 +168,12 @@ model. Brak polskiego cytatu odrzuca znaczenie, brak angielskiego zostawia pust�
 definicję. To kontrola pochodzenia tekstu, nie gwarancja zgodności znaczeń —
 sprawdź propozycje przed zatwierdzeniem.
 
+Kontrola dowodzi tylko, że cytat **jest na stronie**, a nie że należy do hasła:
+reklamy, listy „podobne słówka" i sąsiednie hasła też są w pobranym tekście.
+Zabrania ich prompt, nie walidator. Z tego samego powodu prompt każe wybierać
+*approx* w razie wątpliwości — `exact` wyłącza kartę z listy do przejrzenia,
+więc niepewność ma kosztować przegląd, a nie cichą akceptację.
+
 ### Okno wyboru
 
 Puste polskie znaczenie blokuje zatwierdzenie zaznaczonej propozycji. Ręczne

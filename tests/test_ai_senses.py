@@ -172,6 +172,19 @@ class FourDictionaryTests(unittest.TestCase):
         self.assertIn("w kolejności z diki", prompt)
         self.assertIn("zwróć RAZ", prompt)
 
+    def test_prompt_covers_what_the_substring_check_cannot(self):
+        """Walidator dowodzi, że cytat JEST na stronie — nie, że należy do hasła.
+        Reklamy i „podobne słówka" przeszłyby go, więc musi ich zabronić prompt."""
+        prompt = self.m.build_prompt("mother", self.PAGES, 3, True, self.PL, self.EN)
+        self.assertIn("podobne słówka", prompt)
+        self.assertIn("Nie cytuj stamtąd niczego", prompt)
+        # `exact` wyłącza kartę z listy do przejrzenia, więc domyślny wybór to approx
+        self.assertIn('W razie wątpliwości "approx"', prompt)
+        # szkielet JSON nie może kotwiczyć na wartości, która wyłącza kontrolę
+        self.assertNotIn('"match": "exact"}', prompt)
+        # polskie odpowiedniki są sprawdzane fragment po fragmencie
+        self.assertIn("KAŻDY fragment po przecinku", prompt)
+
     def test_label_typo_is_named_instead_of_looking_like_an_empty_result(self):
         called = []
         provider = types.SimpleNamespace(call_api=lambda _prompt: called.append(1) or "{}")

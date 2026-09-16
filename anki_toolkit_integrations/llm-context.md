@@ -48,7 +48,11 @@ migracji konfiguracji: prywatne ustawienia przenosi się jednorazowo poza kodem.
   ponownie. Cytaty modelu (`en`, `example`) są weryfikowane substringiem wobec
   wskazanego źródła z `ai_en_sources`, a polskie odpowiedniki wobec sumy tekstów
   z `ai_pl_sources` (tekst przycięty jak w prompcie) — nie usuwaj tej kontroli,
-  to jedyna bariera przed zmyśloną definicją. Znaczenie bez definicji zostaje kartą EN-PL. Tagi są rozłączne:
+  to jedyna bariera przed zmyśloną definicją. Substring dowodzi tylko, że tekst
+  JEST na stronie — nie, że należy do hasła; reklamy, „podobne słówka" i sąsiednie
+  hasła przeszłyby go, więc odcina je reguła 8 promptu. Podobnie `match` to
+  deklaracja modelu, a `exact` wyłącza kartę z `tag:ai-review` — dlatego prompt
+  każe wybierać `approx` przy wątpliwości, a szkielet JSON nie pokazuje `"exact"`. Znaczenie bez definicji zostaje kartą EN-PL. Tagi są rozłączne:
   `ai_tag` wyłącznie dla `match == "exact"`, `ai_review_tag` dla całej reszty.
   Nie dokładaj `ai_tag` do wszystkich — filtr `tag:ai-review` ma być kompletną
   listą do weryfikacji, a nie podzbiorem.

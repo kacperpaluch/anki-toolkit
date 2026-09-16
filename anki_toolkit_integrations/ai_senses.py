@@ -73,22 +73,29 @@ polskie odpowiedniki (źródła PL: {pl_sources})
 do angielskich definicji (źródła EN: {en_sources}).
 
 Zwróć WYŁĄCZNIE JSON, bez markdown i komentarzy:
-{{"senses": [{{"pl": "...", "en": "...", "example": "...", "src": "...", "match": "exact"}}]}}
+{{"senses": [{{"pl": "...", "en": "...", "example": "...", "src": "...", "match": "..."}}]}}
 
 Zasady:
 1. Jeden obiekt = jedno odrębne znaczenie. Maksymalnie {max_senses}, w kolejności z {primary}.
 2. "en" oraz "example" MUSZĄ być skopiowane DOSŁOWNIE z tekstu poniżej — bez
    parafrazy, skracania i tłumaczenia. Cytat, którego nie ma w tekście, odrzucam.
 3. Kilka polskich odpowiedników tego samego znaczenia scal w "pl" po przecinku.
+   KAŻDY fragment po przecinku sprawdzam osobno w źródle PL, więc nie dopisuj
+   własnych słów, kwalifikatorów ani nawiasów — jeden dopisek unieważnia całe znaczenie.
 4. Brak angielskiej definicji dla znaczenia → "en": "", "example": "", "match": "none".
-   Nie wymyślaj definicji i nie podpinaj cudzej.
-5. "match": "exact" gdy definicja pokrywa się ze znaczeniem, "approx" gdy z grubsza.
+   Nie wymyślaj definicji i nie podpinaj cudzej. Puste pole jest poprawnym wynikiem,
+   zmyślone nie.
+5. "match": "exact" TYLKO wtedy, gdy angielska definicja opisuje dokładnie to
+   znaczenie, które niesie "pl". Definicja szersza, węższa albo obok — "approx".
+   W razie wątpliwości "approx".
 6. "src" to dokładna etykieta źródła EN, z którego pochodzą "en" i "example" —
    jedna z: {en_sources}. Każdy polski odpowiednik w "pl" musi być cytatem ze
    źródła PL ({pl_sources}).
 7. To samo znaczenie opisane w kilku słownikach zwróć RAZ, z jedną definicją.
    Nie rób osobnego obiektu dla każdego słownika.
-8. Pomiń znaczenia dotyczące innego hasła niż {word}.
+8. Bierz WYŁĄCZNIE treść hasła {word}. Poniższy tekst to surowe strony: są tam
+   menu, reklamy, listy „podobne słówka", sąsiednie hasła i przykłady spoza hasła.
+   Nie cytuj stamtąd niczego, nawet jeśli pasuje tematycznie.
 
 {pages}
 """
