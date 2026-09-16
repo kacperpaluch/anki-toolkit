@@ -63,6 +63,11 @@ równoległym dostępem, a ponowienia nie podnoszą przydziału tego samego dnia
 Otwórz **http://ADRES-SERWERA:8070**. Port jest dostępny na interfejsach sieciowych serwera.
 Panel nie ma logowania — udostępniaj go tylko w zaufanej sieci.
 
+Na górze pokazuje wynik ostatniej operacji, budżet nauki i ustawioną godzinę
+harmonogramu. Ustawienia oraz naprawa synchronizacji są w zwijanych sekcjach.
+Historia ma rozwinięty najnowszy wpis; starsze rozwiniesz kliknięciem.
+Układ dopasowuje się do ekranu telefonu.
+
 Pokazuje ostatnie 200 zakończonych przebiegów: czas rozpoczęcia i zakończenia,
 sukces lub błąd, tryb symulacji/zapisu, powód decyzji i wartości limitów przed/po.
 Przy błędzie planowane zmiany nie są oznaczane jako potwierdzone; część mogła

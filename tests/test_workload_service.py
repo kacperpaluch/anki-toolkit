@@ -45,6 +45,22 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("setInterval", html)
         self.assertNotIn('http-equiv="refresh"', html)
 
+    def test_dashboard_summary_and_collapsed_history(self):
+        from workload_service.dashboard import render, display_time
+        self.assertEqual(display_time("2026-09-16T05:56:44+02:00"), "16.09.2026 · 05:56:44")
+        self.assertEqual(display_time(""), "")
+        event = {"command": "run", "status": "error", "apply": True,
+                 "error": "<script>bad</script>", "email": "suppressed_duplicate"}
+        html = render([event, {"command": "download", "status": "success"}],
+                      intervention={"error": "<script>bad</script>"})
+        self.assertIn("Wymagana interwencja", html)
+        self.assertNotIn("Ostatnia operacja udana", html)
+        self.assertEqual(html.count('class="event" open'), 1)
+        self.assertIn("pominięto powtórzony alert", html)
+        self.assertNotIn("<script>", html)
+        self.assertIn("Przebieg trwa…", render([event], running=True))
+        self.assertIn("Zacznij od połączenia z Anki", render([]))
+
     def test_email_every_run_and_secret_not_rendered(self):
         from workload_service import notifications
         from workload_service.dashboard import render
