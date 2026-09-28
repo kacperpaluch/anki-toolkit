@@ -68,16 +68,12 @@ _DEFAULTS = {
     # „AI: znaczenia" — dostawca z zakładki AI Generator (tam są klucze).
     "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
     "ai_model": "",            # puste = model domyślny dostawcy
-    "ai_max_senses": 3,        # ile kart maksymalnie z jednego hasła
+    "ai_max_senses": 3,        # ile pierwszych znaczeń z diki zaznaczyć w oknie wyboru
     "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
     "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)
     "ai_review_tag": "ai-review",  # dodatkowo, dopóki użytkownik nie potwierdzi weryfikacji
-    # Skąd model może cytować. Cambridge EN-PL jest na OBU listach: ta sama
-    # strona ma polskie odpowiedniki i angielskie definicje. Etykiety muszą się
-    # zgadzać z kluczami `link_templates`, inaczej nie ma czego sprawdzać.
-    "ai_pl_sources": ["diki", "Cambridge EN-PL"],
-    "ai_en_sources": ["Cambridge EN-PL", "Oxford", "LDoCE"],
-    # Pole angielskie to `word_field` powyżej — tu tylko reszta.
+    # Pole angielskie to `word_field` powyżej — tu tylko reszta. AI wypełnia pl
+    # i definition; `example` to cel przycisków „+ przykład” w userscripcie.
     "ai_fields": {"pl": "pol", "definition": "def", "example": "przyklad"},
 }
 

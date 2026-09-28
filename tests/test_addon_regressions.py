@@ -223,12 +223,12 @@ class PanelTests(unittest.TestCase):
         tabs._loaded = {0: True, 1: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
-            runJavaScript=lambda script, callback: callback(text))) for text in ("po polsku", "in english")]
+            runJavaScript=lambda script, callback: callback(text))) for text in ([{"pl": "po polsku"}], [{"def": "in english"}])]
         got = []
         tabs._collect(got.append)
         self.assertFalse(got)                      # jeszcze nie — jesteśmy w callbacku silnika
         self.timers.pop()()
-        self.assertEqual(got, [{"diki": "po polsku", "Oxford": "in english"}])
+        self.assertEqual(got, [{"diki": [{"pl": "po polsku"}], "Oxford": [{"def": "in english"}]}])
 
         tabs._loaded = {}                          # nic się nie wczytało: ta ścieżka też odbija
         got.clear()
@@ -257,16 +257,16 @@ class PanelTests(unittest.TestCase):
         tabs.isTabEnabled = lambda _i: True
         pending = []
         tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
-            runJavaScript=lambda script, cb: cb("matka"))),
+            runJavaScript=lambda script, cb: cb([{"pl": "matka"}]))),
             types.SimpleNamespace(page=lambda: types.SimpleNamespace(
                 runJavaScript=lambda script, cb: pending.append(cb)))]
         got = []
         tabs._collect(got.append)
         self.assertFalse(got)
         self.timers.pop()()  # extraction deadline
-        self.assertEqual(got, [{"diki": "matka"}])
-        pending[0]("late English")
-        self.assertEqual(got, [{"diki": "matka"}])
+        self.assertEqual(got, [{"diki": [{"pl": "matka"}]}])
+        pending[0]([{"def": "late English"}])
+        self.assertEqual(got, [{"diki": [{"pl": "matka"}]}])
 
     def test_range_selection_does_not_prompt_to_replace_the_headword(self):
         """Qt wysyła currentItemChanged przed selectionChanged — w tej chwili
@@ -322,9 +322,8 @@ class PanelTests(unittest.TestCase):
         self.panel._tabs = types.SimpleNamespace(
             set_urls=lambda urls, word="": None,
             setEnabled=lambda on: None,
-            whole_page=set(),
-            texts=lambda callback: (self.loaded.append(self.panel._shown_word),
-                                    callback({"diki": "tekst"}))[0])
+            entries=lambda callback: (self.loaded.append(self.panel._shown_word),
+                                      callback({"diki": [{"pl": "tekst"}]}))[0])
         return items
 
     def test_word_already_in_anki_never_reaches_the_model(self):
@@ -463,20 +462,6 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.jobs, [])
         self.assertEqual(self.panel._state.data["owed"], {})
 
-    def test_whole_page_fallback_is_flagged(self):
-        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
-        tabs._labels, tabs._word, tabs._generation = ["diki", "Oxford"], "mother", 1
-        tabs._loaded = {0: True, 1: True}
-        tabs.isTabEnabled = lambda _i: True
-        answers = ["matka", {"text": "MENU mother a female parent", "whole": True}]
-        tabs._views = [types.SimpleNamespace(page=lambda a=a: types.SimpleNamespace(
-            runJavaScript=lambda script, cb: cb(a))) for a in answers]
-        got = []
-        tabs._collect(got.append)
-        self.timers.pop()()
-        self.assertEqual(got, [{"diki": "matka", "Oxford": "MENU mother a female parent"}])
-        self.assertEqual(tabs.whole_page, {"Oxford"})
-
     def test_failed_load_and_empty_entry_are_excluded(self):
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
         tabs._labels = ["diki", "Oxford", "Cambridge"]
@@ -485,11 +470,11 @@ class PanelTests(unittest.TestCase):
         tabs._loaded = {0: False, 1: True, 2: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
-            runJavaScript=lambda script, callback: callback(text))) for text in ("error", "", "matka")]
+            runJavaScript=lambda script, callback: callback(text))) for text in ([], [], [{"pl": "matka"}])]
         got = []
         tabs._collect(got.append)
         self.timers.pop()()
-        self.assertEqual(got, [{"Cambridge": "matka"}])
+        self.assertEqual(got, [{"Cambridge": [{"pl": "matka"}]}])
         tabs._collect(got.append)
         tabs._generation += 1
         self.timers.pop()()

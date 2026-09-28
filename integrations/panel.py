@@ -113,7 +113,6 @@ class _DictTabs(QTabWidget):
         self._loaded: dict[int, bool | None] = {}
         self._generation = 0
         self._word = ""
-        self.whole_page: set[str] = set()  # labels whose selectors found no entry
         for index, label in enumerate(self._labels):
             view = QWebEngineView(self)
             view.setPage(QWebEnginePage(_dict_profile(), view))
@@ -159,8 +158,8 @@ class _DictTabs(QTabWidget):
         """Zakładki, z których zbieramy tekst dla AI."""
         return [i for i in range(len(self._labels)) if self.isTabEnabled(i)]
 
-    def texts(self, callback, timeout_ms: int = 20000) -> None:
-        """{etykieta: tekst strony} dla włączonych zakładek — do promptu AI.
+    def entries(self, callback, timeout_ms: int = 20000) -> None:
+        """{etykieta: [pozycje hasła]} dla włączonych zakładek — dla „AI: znaczenia”.
 
         Zakładki ruszają już przy wyborze słówka, więc zwykle jest na co czekać,
         a nie co zaczynać. Dociąganie zostaje na wypadek zakładki, która z
@@ -187,21 +186,20 @@ class _DictTabs(QTabWidget):
         ready()
 
     def _collect(self, callback) -> None:
-        """Zbierz tekst stron i oddaj go JUŻ POZA callbackiem silnika.
+        """Zbierz pozycje ze stron i oddaj je JUŻ POZA callbackiem silnika.
 
         `runJavaScript` woła nas ze środka QtWebEngine, a wywołujący robi tam
         rzeczy, których w cudzym callbacku robić nie wypada: `load()` na tym
         samym widoku (paczka przechodzi do kolejnego hasła) i modalne okno
         wyboru. Jedno odbicie przez pętlę zdarzeń zdejmuje to z wszystkich
-        wywołujących `texts()` naraz. Higiena, nie znana awaria.
+        wywołujących `entries()` naraz. Higiena, nie znana awaria.
         """
         indexes = [i for i in self._enabled() if self._loaded.get(i)]
         generation = self._generation
         if not indexes:
             QTimer.singleShot(0, lambda: None if sip.isdeleted(self) or generation != self._generation else callback({}))
             return
-        result: dict[str, str] = {}
-        whole: set[str] = set()
+        result: dict[str, list] = {}
         missing = [len(indexes)]
         returned = [False]
 
@@ -209,29 +207,25 @@ class _DictTabs(QTabWidget):
             if returned[0] or sip.isdeleted(self) or generation != self._generation:
                 return
             returned[0] = True
-            self.whole_page = whole
             callback(result)
 
         # A stalled renderer may never answer runJavaScript, even after loadFinished.
         QTimer.singleShot(5000, finish)
 
-        def got(text, label):
+        def got(items, label):
             if returned[0]:
                 return
-            if isinstance(text, dict):  # userscript fell back to the whole page
-                text = text.get("text")
-                whole.add(label)
-            if isinstance(text, str) and text.strip():
-                result[label] = text
+            if isinstance(items, list) and items:
+                result[label] = items
             missing[0] -= 1
             if missing[0] == 0 and not sip.isdeleted(self):
                 QTimer.singleShot(0, finish)
 
         for index in indexes:
             self._views[index].page().runJavaScript(
-                "typeof window.ankiDictionaryText === 'function' ? window.ankiDictionaryText("
-                + json.dumps(self._word) + ") : ''",
-                lambda text, label=self._labels[index]: got(text, label)
+                "typeof window.ankiDictionaryEntries === 'function' ? window.ankiDictionaryEntries("
+                + json.dumps(self._word) + ") : []",
+                lambda items, label=self._labels[index]: got(items, label)
             )
 
 
@@ -361,9 +355,8 @@ class WordQueuePanel(QDockWidget):
 
         self._ai_btn = QPushButton("AI: znaczenia")
         self._ai_btn.setToolTip(
-            "Dopasuj polskie znaczenia (diki, Cambridge EN-PL) do angielskich\n"
-            "definicji (Cambridge EN-PL, Oxford, LDoCE) i utwórz po jednej karcie\n"
-            "na każde znaczenie.\n"
+            "Znaczenia z diki + angielska definicja (Cambridge, Oxford, LDoCE)\n"
+            "wskazana przez AI; po jednej karcie na każde zaznaczone znaczenie.\n"
             "Bierze zaptaszkowane hasła, a gdy nic nie zaptaszkowano — podświetlone."
         )
         self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
@@ -930,7 +923,6 @@ class WordQueuePanel(QDockWidget):
         cached = {p["row_id"]: p for p in self._state.data["drafts"]}
         errors: list[tuple[str, str]] = []
         source_texts = {}
-        whole_pages = {}
         provider_name = ai_senses.provider_label(self._cfg)
 
         def valid():
@@ -955,24 +947,23 @@ class WordQueuePanel(QDockWidget):
             self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}")
             self._show_urls(word, rows[index])
 
-            def with_texts(texts):
+            def with_entries(entries):
                 if not valid():
                     self._unfreeze()
                     return
-                if not texts:
-                    errors.append((word, "zakładki słownikowe się nie wczytały"))
+                if not entries:
+                    errors.append((word, "żaden słownik nie ma tego hasła (albo się nie wczytał)"))
                     step(index + 1)
                     return
-                source_texts[index] = list(texts)
-                whole_pages[index] = sorted(self._tabs.whole_page & set(texts))
-                self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}; źródła: {', '.join(texts)}")
+                source_texts[index] = list(entries)
+                self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}; źródła: {', '.join(entries)}")
                 mw.taskman.run_in_background(
-                    lambda: ai_senses.generate(provider, word, texts, self._cfg),
+                    lambda: ai_senses.generate(provider, word, entries, self._cfg),
                     lambda future: collected(index, word, future),
                     uses_collection=False,  # minuty czekania na model nie mogą blokować kolekcji
                 )
 
-            self._tabs.texts(with_texts)
+            self._tabs.entries(with_entries)
 
         def collected(index, word, future):
             if not valid():
@@ -989,7 +980,7 @@ class WordQueuePanel(QDockWidget):
                 proposals.append({"word": word, "senses": senses,
                                   "urls": word_queue.dict_urls(word, self._cfg, rows[index]),
                                   "row_id": rows[index].get("id"),
-                                  "sources": source_texts[index], "whole_page": whole_pages[index],
+                                  "sources": source_texts[index],
                                   "provider": provider_name})
                 self._state.data["drafts"] = [p for p in self._state.data["drafts"]
                                                if p["row_id"] != rows[index]["id"]] + [proposals[-1]]

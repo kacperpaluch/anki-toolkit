@@ -42,8 +42,9 @@ Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
 wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje
 adres główny i zapasowy n8n oraz Cloudflare Access (service token). Web Bridge przyjmuje dane
-z userscriptu słownika. **AI: znaczenia** robi z jednego hasła po jednej karcie
-na każde znaczenie, cytując definicje dosłownie z otwartych zakładek.
+z userscriptu słownika. **AI: znaczenia** robi po jednej karcie na znaczenie
+z diki; model tylko wskazuje pasującą definicję z Cambridge, Oxfordu lub LDoCE,
+więc cała treść karty pochodzi ze słowników.
 
 **Porządki**
 

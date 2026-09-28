@@ -3,7 +3,7 @@
 Run with Anki's Python (needs network, so it is not part of the unit suite):
     QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py
 
-AI column:  OK = entry found. WHOLE = markup changed, AI gets the whole page (fix the rule).
+AI column:  OK = entry items found (diki: meanings, others: definitions).
             EMPTY = nothing extracted (CAPTCHA, timeout or broken rule).
 Buttons:    OK = the searched word has a "→ hasło" button and other buttons exist.
             Inflected words (went) only need some headword button (often the lemma).
@@ -52,23 +52,19 @@ def main():
             loaded = wait(load)
             page.loadFinished.disconnect()
             value = wait(lambda done: page.runJavaScript(
-                SCRIPT + f"\nwindow.ankiDictionaryText({word!r})", done), 5000) if loaded else None
-            if isinstance(value, dict):
-                status = "WHOLE"
-            elif isinstance(value, str) and value.strip():
-                status = "OK"
-            else:
-                status = "EMPTY" if loaded else "EMPTY (load failed)"
-            text = value.get("text", "") if isinstance(value, dict) else (value or "")
+                SCRIPT + f"\nwindow.ankiDictionaryEntries({word!r})", done), 5000) if loaded else None
+            items = value if isinstance(value, list) else []
+            status = "OK" if items else ("EMPTY" if loaded else "EMPTY (load failed)")
             buttons = (wait(lambda done: page.runJavaScript(BUTTONS, done), 5000) or {}) if loaded else {}
             heads = buttons.get("heads") or []
             if word in INFLECTED:  # the page may only point to the lemma ("past tense of go")
                 ok_buttons = bool(heads)
             else:  # diki lists related phrases too; the searched word must have its own button
                 ok_buttons = word in heads and (buttons.get("other") or 0) > 0
-            failed += status != "OK" or not ok_buttons
+            # An inflected form's page may only point to the lemma ("past tense of go").
+            failed += (status != "OK" and word not in INFLECTED) or not ok_buttons
             print(f"AI {status:8} przyciski {'OK' if ok_buttons else 'ZLE':3} {label:16} {word:8} "
-                  f"{len(text):5} zn.  hasło={sorted(set(heads))} inne={int(buttons.get('other') or 0)}", flush=True)
+                  f"{len(items):3} poz.  hasło={sorted(set(heads))} inne={int(buttons.get('other') or 0)}", flush=True)
     sip.delete(page)
     sip.delete(profile)
     return 1 if failed else 0

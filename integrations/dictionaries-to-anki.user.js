@@ -28,44 +28,44 @@
   // normalizacja białych znaków + obcięcie końcowego dwukropka (Cambridge kończy definicje na ":")
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().replace(/\s*:$/, '');
 
-  // Shared extraction for AI: only the requested entry; the whole page only when the markup changed.
-  window.ankiDictionaryText = (word) => {
+  // Shared extraction for „AI: znaczenia”: structured items of the requested entry only.
+  // diki gives card units {pl} (Polish equivalents with their context in parentheses);
+  // the other dictionaries give definitions {def, pl?} — Cambridge EN-PL adds its Polish
+  // translation. A page whose markup no longer matches (or a CAPTCHA) yields [].
+  window.ankiDictionaryEntries = (word) => {
     const norm = (s) => clean(s).normalize('NFKC').toLocaleLowerCase()
       .replace(/[‘’ʼ]/g, "'").replace(/\s+/g, ' ');
+    const text = (el) => (el ? clean(el.textContent) : '');
     const rules = {
-      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li'],
-      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense'],
-      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense'],
-      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block'],
+      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li', (li) => ({
+        pl: [...li.querySelectorAll(':scope > .hw'), li.querySelector(':scope > .meaningAdditionalInformation')]
+          .map(text).filter(Boolean).join(', ') })],
+      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense',
+        (sense) => ({ def: text(sense.querySelector('.def')) })],
+      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense',
+        (sense) => ({ def: text(sense.querySelector('.DEF')) })],
+      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block', (block) => ({
+        def: text(block.querySelector('.def')),
+        pl: text(block.querySelector('.dtrans-se')) || [...block.querySelectorAll('.trans')].map(text).join(', ') })],
     };
     const rule = rules[location.hostname];
-    if (!rule) return '';
-    const [entrySelector, headSelector, senseSelector] = rule;
+    if (!rule) return [];
+    const [entrySelector, headSelector, senseSelector, item] = rule;
     const entries = [...document.querySelectorAll(entrySelector)];
-    if (!entries.length) {
-      // No entry at all = the site changed its markup (or a CAPTCHA/error page).
-      // Hand over the whole page, flagged, so the preview warns instead of the source vanishing.
-      const page = clean(document.body ? document.body.innerText : '');
-      return norm(page).includes(norm(word)) ? { text: page, whole: true } : '';
-    }
+    // diki marks placeholders in headwords (give <span class="stopword">something</span> up),
+    // so "give something up" is the same headword as "give up" and its senses count.
+    const headword = (head) => {
+      const copy = head.cloneNode(true);
+      copy.querySelectorAll('.stopword').forEach((el) => el.remove());
+      return norm(copy.textContent);
+    };
     let matched = entries.filter((entry) =>
-      [...entry.querySelectorAll(headSelector)].some((head) => norm(head.textContent) === norm(word)));
+      [...entry.querySelectorAll(headSelector)].some((head) => headword(head) === norm(word)));
     // Inflected single words (went → go): dictionaries redirect to the lemma, so trust the
     // first entry. Never for phrases: "give up" must not fall back to "give".
     if (!matched.length && !/\s/.test(word.trim())) matched = entries.slice(0, 1);
-    return matched.map((entry) => {
-      const senses = [...entry.querySelectorAll(senseSelector)].map((sense) => {
-        const copy = sense.cloneNode(true);
-        copy.querySelectorAll('.ankiBtn, script, style, .asset, .propform, .tail, .xref, .runon, '
-          + '.dwl, .epp-xref, .sensenum, .ACTIV, .FIELD, .speaker, .symbols, .box_title')
-          .forEach((el) => el.remove());
-        // textContent glues blocks ("childI want"), which breaks word-boundary quote checks.
-        copy.querySelectorAll('li, div, p, ul, ol, br, h1, h2, h3, .EXAMPLE, .def, .DEF')
-          .forEach((el) => el.append(' '));
-        return clean(copy.textContent);
-      }).filter(Boolean);
-      return senses.length ? word + '\n' + senses.join('\n') : '';
-    }).filter(Boolean).join('\n');
+    return matched.flatMap((entry) => [...entry.querySelectorAll(senseSelector)].map(item))
+      .filter((found) => ('def' in found ? found.def : found.pl));
   };
 
   // Menedżery userscriptów: GM_xmlhttpRequest (Tampermonkey) lub GM.xmlHttpRequest

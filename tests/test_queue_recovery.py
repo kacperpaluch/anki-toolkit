@@ -82,13 +82,9 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertIn('max_rows', error)
 
-    def test_quotes_and_mapping_reject_silent_corruption(self):
+    def test_indexes_and_mapping_reject_silent_corruption(self):
         m = load('ai_senses')
-        raw = json.dumps({'senses': [{'pl': 'kot', 'en': 'a cat', 'src': 'Oxford', 'match': 'exact'}]})
-        self.assertEqual(m.parse_senses(raw, {'diki': 'kotlet', 'Oxford': 'a cat'})[0], [])
-        self.assertTrue(m.contains_quote('give up', 'to give   up.'))
-        self.assertFalse(m.contains_quote('cat', 'cats'))
-        self.assertTrue(m.contains_quote('łódź', '(Łódź)'))
+        self.assertEqual(m.parse_mapping(json.dumps({'D1': 'E7'}), 1, 2), {})  # numer spoza listy
         self.assertIsNotNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'ang'}}))
         self.assertIsNotNone(m.validate_mapping({'word_field': '', 'ai_fields': {'pl': 'pol'}}))
         self.assertIsNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'pol'}}))

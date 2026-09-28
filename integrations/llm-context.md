@@ -3,7 +3,7 @@
 Łączy Word Queue (n8n DataTable, panel, adres zapasowy i Cloudflare Access) z Web Bridge
 (lokalny endpoint dla userscriptu). `word_queue.py` (HTTP n8n, konfiguracja,
 przycisk 📚) i `panel.py` (Qt) obsługują kolejkę; `ai_senses.py` — „AI:
-znaczenia” (prompt, walidacja cytatów, okno wyboru, zapis notatek); `bridge.py`
+znaczenia” (numerowane dopasowanie definicji, okno wyboru, zapis notatek); `bridge.py`
 endpoint; `settings.py` — panel „Kolejka słówek” we wspólnym oknie ustawień;
 `__init__.py` tylko rejestruje hooki. `dictionaries-to-anki.user.js` jest jednym
 źródłem przycisków dla przeglądarki i panelu. Nie rozdzielaj userscriptu na
@@ -45,31 +45,35 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   a nie z kolumn n8n. `link_columns` to tylko nadpisanie gotowym URL-em z wiersza;
   etykieta bez szablonu nie dostaje zakładki. Nowy słownik = jeden wpis w configu,
   bez zmian w DataTable.
-- Role zakładek są w konfiguracji, nie w kodzie: `ai_pl_sources` i `ai_en_sources`.
-  Cambridge EN-PL jest na obu listach — nie zakładaj, że źródło PL i EN to
-  rozłączne zbiory, i nie wracaj do zaszytego `"diki"`. Etykiety muszą się zgadzać
-  z `link_templates`; `generate` sprawdza to z góry, bo inaczej pusty worek PL
-  odrzuca wszystkie znaczenia bez wskazania przyczyny.
-- `ai_senses.py` bierze wyłącznie bloki znaczeń pasującego nagłówka. Ekstrakcja
-  `window.ankiDictionaryText(word)` jest w tym samym userscripcie co przyciski.
-  Brak reguły/CAPTCHA = brak źródła. Zero wpisów na stronie z hasłem w tekście =
-  zmieniony HTML: userscript zwraca `{text, whole: true}` (cała strona), a podgląd
-  pokazuje ostrzeżenie (`whole_page`). Kanarek: `tests/live_selectors.py` (sieć, kod wyjścia 1 = reguła nie pasuje).
+- „AI: znaczenia”: userscript (`window.ankiDictionaryEntries(word)`, ten sam plik co
+  przyciski) zwraca pozycje wpisu o pasującym nagłówku. Rolę wyznacza KSZTAŁT, nie
+  konfiguracja: `{pl}` bez `def` = znaczenie (diki, jednostka karty), `{def, pl?}` =
+  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki (Cambridge ma
+  na stronie dwa słowniki). Model dostaje ponumerowane D/E i zwraca TYLKO numery;
+  `parse_mapping` odrzuca numery spoza listy. Nie przywracaj modelu piszącego tekst,
+  walidacji cytatów ani trybu „cała strona” — treść karty ma być wyłącznie ze słownika.
+  Bez znaczeń z diki kartami są pary Cambridge (bez modelu); bez definicji — samo PL
+  (bez modelu). Znaczenia spoza diki są pomijane celowo.
+  Brak reguły/CAPTCHA/zmieniony HTML = `[]`, czyli brak źródła. Kanarek:
+  `tests/live_selectors.py` (sieć, kod wyjścia 1 = reguła nie pasuje).
+  Nagłówek porównujemy bez `.stopword` (diki: give *something* up = give up).
   Wyjątek: pojedyncze słowo bez pasującego nagłówka (went → go) bierze PIERWSZY
-  wpis strony; frazy nigdy (give up nie może spaść do give). Bloki dostają spację
-  na granicach — `textContent` skleja „childI want" i psuje granice słów w cytatach.
-  Selektory sprawdzone na żywych stronach (09.2026): Cambridge `.dhw`, LDOCE `.PHRVBHWD`.
+  wpis strony; frazy nigdy (give up nie może spaść do give).
+  Selektory sprawdzone na żywych stronach (09.2026): diki `:scope > .hw` (kontekst
+  w nawiasie jest wewnątrz `.hw`), Cambridge `.dhw` + `.def-block` (`.def`,
+  `.dtrans-se`), LDOCE `.PHRVBHWD`.
   Przycisk „→ hasło" na Cambridge: jeden na wpis (`.di-title.dhw, .hw.dhw`), bo
   strona frazy ma też goły `.hw.dhw` z samym czasownikiem („give" przy „give up").
   `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
   sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
   i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.
-- Cytaty są sprawdzane z granicami Unicode wyrazów względem wskazanego źródła
-  EN lub poszczególnych źródeł PL (bez sklejenia granic stron). Prompt i walidator
-  używają tego samego limitu tekstu. `match` jest wyłącznie oceną modelu.
-- `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki AI; `ai_review_tag`
-  jest dodatkowy, chyba że użytkownik potwierdził `reviewed` w podglądzie.
-  Każda edycja cofa checkbox weryfikacji. Nie wnioskuj weryfikacji z `exact`.
+- `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki z przycisku;
+  `ai_review_tag` tylko przy `by_ai` (definicję przypisał model), chyba że
+  użytkownik potwierdził `reviewed`. Każda edycja cofa potwierdzenie; zmiana
+  definicji zdejmuje `by_ai`. Propozycje bez klucza `by_ai` (stare drafty) liczą
+  się jak AI, gdy mają definicję (`_by_ai`).
+- AI wypełnia tylko `word_field`, `ai_fields.pl` i `ai_fields.definition`;
+  `ai_fields.example` jest celem przycisków „+ przykład” (rola `example` w mostku).
 - `validate_mapping` obsługuje ustawienia i zapis: wymagane EN/PL, różne pola,
   a przed transakcją sprawdzenie wszystkich skonfigurowanych pól w typie notatki.
 - Dostawcę AI bierzemy z `..ai_generator.providers` (import leniwy w
@@ -85,7 +89,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - AI działa na PACZCE zaznaczonych wierszy: `SensePicker` i `add_notes` biorą
   listę haseł, nie jedno. Nie cofaj tego do jednego hasła — okno na hasło przy
   wklejonej liście to tyle klików, ile haseł.
-- `_DictTabs._collect` oddaje tekst stron przez `QTimer.singleShot(0, …)`, nigdy
+- `_DictTabs._collect` oddaje pozycje ze stron przez `QTimer.singleShot(0, …)`, nigdy
   wprost. `runJavaScript` woła nas ze środka QtWebEngine, a paczka w tym callbacku
   ładuje kolejne hasło i potrafi otworzyć modalne okno — to natywny crash Anki,
   nie wyjątek Pythona. Nie „upraszczaj" tego z powrotem do bezpośredniego wywołania.
@@ -102,12 +106,11 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - Zapis AI: przygotowanie całej paczki, jedno `col.add_notes` na głównym
   wątku; zwrócone OpChanges trafiają do `on_op_finished`. Pola tekstowe są
   escapowane jako HTML bez cudzysłowów (`quote=False`, jak edytor Anki), bo
-  wyszukiwarka porównuje surowy HTML pola. `exact` to ocena modelu, nie walidacja semantyczna.
+  wyszukiwarka porównuje surowy HTML pola.
 
-- SensePicker edytuje kopie propozycji; ręczna zmiana ustawia approx/none,
-  wymaga niepustego PL i cofa potwierdzenie weryfikacji. Linki HTTP(S) pochodzą z adresów zakładek (wiersz n8n
-  albo szablon), nigdy z odpowiedzi modelu. Ręczna treść nie przechodzi walidacji
-  cytatów.
+- SensePicker edytuje kopie propozycji i pokazuje wszystkie znaczenia, zaznaczając
+  pierwsze `ai_max_senses`. Wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów
+  zakładek (wiersz n8n albo szablon) dla `pl_src` i `src`, nigdy z odpowiedzi modelu.
 - Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
   Szukamy też wariantu z encjami (`&amp;`, a dla starszych notatek `&#x27;`/`&quot;`).
   `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd

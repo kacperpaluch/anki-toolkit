@@ -290,16 +290,7 @@
       "definition": "def",
       "example": "przyklad"
     },
-    "ai_review_tag": "ai-review",
-    "ai_pl_sources": [
-      "diki",
-      "Cambridge EN-PL"
-    ],
-    "ai_en_sources": [
-      "Cambridge EN-PL",
-      "Oxford",
-      "LDoCE"
-    ]
+    "ai_review_tag": "ai-review"
   },
   "web_bridge": {
     "port": 8767

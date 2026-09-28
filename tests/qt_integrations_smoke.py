@@ -16,15 +16,15 @@ class QtIntegrationSmoke(unittest.TestCase):
     def test_dictionary_entries_and_challenges(self):
         script = (ROOT / 'integrations/dictionaries-to-anki.user.js').read_text()
         cases = [
-            ('www.diki.pl', '<div class="dictionaryEntity"><div class="hws"><b class="hw">mother</b></div><ul class="foreignToNativeMeanings"><li>matka</li></ul></div>'),
-            ('www.oxfordlearnersdictionaries.com', '<div class="entry"><h1 class="headword">mother</h1><div class="sense"><span class="def">a female parent</span></div></div>'),
-            ('www.ldoceonline.com', '<div class="Entry"><span class="HWD">mother</span><span class="Sense"><span class="DEF">a female parent</span></span></div>'),
-            ('dictionary.cambridge.org', '<div class="entry-body__el"><b class="hw dhw">mother</b><div class="def-block"><span class="def">a female parent</span><span class="dtrans-se">matka</span></div></div>'),
+            ('www.diki.pl', '<div class="dictionaryEntity"><div class="hws"><b class="hw">mother</b></div><ul class="foreignToNativeMeanings"><li><span class="hw"><a>matka</a> (rodzic)</span>, <span class="hw">mama</span> <span class="meaningAdditionalInformation"> </span><div class="cat">Rodzina</div><div class="exampleSentence">Anki example</div></li></ul></div><div class="dictionaryEntity"><div class="hws"><b class="hw">mother <span class="stopword">somebody</span></b></div><ul class="foreignToNativeMeanings"><li><span class="hw">matkować</span></li></ul></div>', [{'pl': 'matka (rodzic), mama'}, {'pl': 'matkować'}]),
+            ('www.oxfordlearnersdictionaries.com', '<div class="entry"><h1 class="headword">mother</h1><div class="sense"><span class="def">a female parent</span></div></div>', [{'def': 'a female parent'}]),
+            ('www.ldoceonline.com', '<div class="Entry"><span class="HWD">mother</span><span class="Sense"><span class="DEF">a female parent</span></span></div>', [{'def': 'a female parent'}]),
+            ('dictionary.cambridge.org', '<div class="entry-body__el"><b class="hw dhw">mother</b><div class="def-block"><span class="def">a female parent:</span><span class="dtrans-se">matka</span></div><div class="def-block"><span class="def"></span><span class="dtrans-se">sierota</span></div></div>', [{'def': 'a female parent', 'pl': 'matka'}]),
         ]
         profile = QWebEngineProfile()
         page = QWebEnginePage(profile)
         try:
-            for host, entry in cases:
+            for host, entry, expected in cases:
                 with self.subTest(host=host):
                     loop = QEventLoop()
                     page.loadFinished.connect(loop.quit)
@@ -33,30 +33,22 @@ class QtIntegrationSmoke(unittest.TestCase):
                     loop.exec()
                     page.loadFinished.disconnect(loop.quit)
                     result = []
-                    page.runJavaScript(script + '\nwindow.ankiDictionaryText("mother")', lambda value: (result.append(value), loop.quit()))
+                    page.runJavaScript(script + '\nwindow.ankiDictionaryEntries("mother")', lambda value: (result.append(value), loop.quit()))
                     QTimer.singleShot(5000, loop.quit)
                     loop.exec()
-                    self.assertTrue(result and result[0])
-                    self.assertNotIn('father', result[0])
-                    self.assertNotIn('MENU', result[0])
-                    self.assertNotIn('Anki', result[0])
+                    self.assertEqual(result, [expected])  # only this entry, no menus, buttons or examples
                     result.clear()
-                    page.runJavaScript('window.ankiDictionaryText("unrelated phrase")', lambda value: (result.append(value), loop.quit()))
+                    page.runJavaScript('window.ankiDictionaryEntries("unrelated phrase")', lambda value: (result.append(value), loop.quit()))
                     QTimer.singleShot(5000, loop.quit)
                     loop.exec()
-                    self.assertEqual(result, [''])
-            result = []
-            # Markup changed: no entry selector matches, but the word is on the page.
-            page.runJavaScript('document.body.innerHTML="<main><p>mother</p><p>a female parent</p></main>"; window.ankiDictionaryText("mother")', lambda value: (result.append(value), loop.quit()))
-            QTimer.singleShot(5000, loop.quit)
-            loop.exec()
-            self.assertTrue(result[0]['whole'])
-            self.assertIn('a female parent', result[0]['text'])
-            result = []
-            page.runJavaScript('document.body.innerHTML="Verify you are human"; window.ankiDictionaryText("mother")', lambda value: (result.append(value), loop.quit()))
-            QTimer.singleShot(5000, loop.quit)
-            loop.exec()
-            self.assertEqual(result, [''])
+                    self.assertEqual(result, [[]])
+            for body in ("<main><p>mother</p><p>a female parent</p></main>", "Verify you are human"):
+                # Changed markup or a CAPTCHA is no source, never a guess from the whole page.
+                result = []
+                page.runJavaScript(f'document.body.innerHTML="{body}"; window.ankiDictionaryEntries("mother")', lambda value: (result.append(value), loop.quit()))
+                QTimer.singleShot(5000, loop.quit)
+                loop.exec()
+                self.assertEqual(result, [[]])
         finally:
             from aqt.qt import sip
             sip.delete(page)
@@ -66,8 +58,14 @@ class QtIntegrationSmoke(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('senses_smoke', ROOT / 'integrations/ai_senses.py')
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        dialog = m.SensePicker([{'word': 'mother', 'senses': [{'pl': 'matka', 'en': 'a female parent', 'example': '', 'match': 'exact'}]}], None)
+        senses = [{'pl': 'matka', 'en': 'a female parent', 'src': 'Oxford', 'by_ai': True},
+                  {'pl': 'mama', 'en': 'mum', 'src': 'Cambridge', 'by_ai': False},
+                  {'pl': 'macierz', 'en': '', 'src': '', 'by_ai': False}]
+        dialog = m.SensePicker([{'word': 'mother', 'senses': senses}], None, {'ai_max_senses': 2})
         try:
+            self.assertEqual([s['pl'] for _w, s in dialog.selected()], ['matka', 'mama'])  # first N checked
+            self.assertIsNone(dialog._boxes[1][4])          # dictionary pair: nothing to review
+            self.assertIn('bez definicji', dialog._boxes[2][0].text())
             self.assertFalse(dialog.selected()[0][1]['reviewed'])
             box, word, sense, fields, reviewed = dialog._boxes[0]
             reviewed.setChecked(True)

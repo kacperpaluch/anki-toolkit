@@ -47,9 +47,9 @@ class IntegrationsTab(QWidget):
         ai = QGroupBox("AI: znaczenia")
         form = QFormLayout(ai)
         form.addRow(hint_label(
-            "Przycisk „AI: znaczenia” w panelu robi z jednego hasła po jednej karcie na "
-            "każde znaczenie. Definicje są dosłownymi cytatami ze słowników otwartych "
-            "w zakładkach — model je dopasowuje, nie tłumaczy.", small=True))
+            "Przycisk „AI: znaczenia” robi po jednej karcie na znaczenie z diki. Cała treść "
+            "pochodzi ze słowników — model tylko wskazuje, która definicja z Cambridge, "
+            "Oxfordu lub LDoCE pasuje do znaczenia.", small=True))
         fields = q.get("ai_fields") or {}
         self._providers = dict((cfg.get("ai_generator") or {}).get("providers") or {})
         self._provider = QComboBox()
@@ -69,7 +69,8 @@ class IntegrationsTab(QWidget):
         self._senses = QSpinBox()
         self._senses.setRange(1, 10)
         self._senses.setValue(int(q.get("ai_max_senses", 3) or 3))
-        self._senses.setToolTip("Ile kart maksymalnie powstaje z jednego hasła")
+        self._senses.setToolTip("Ile pierwszych znaczeń z diki jest zaznaczonych w oknie wyboru;\n"
+                                "pozostałe widzisz i możesz zaznaczyć ręcznie")
         self._timeout = QSpinBox()
         self._timeout.setRange(10, 600)
         self._timeout.setSuffix(" s")
@@ -83,7 +84,7 @@ class IntegrationsTab(QWidget):
         self._definition = QLineEdit(fields.get("definition", "def"))
         self._example = QLineEdit(fields.get("example", "przyklad"))
         for label, widget in (("Dostawca AI:", self._provider), ("Model:", self._model),
-                              ("Maks. znaczeń z hasła:", self._senses),
+                              ("Zaznaczone znaczenia:", self._senses),
                               ("Limit czasu:", self._timeout),
                               ("Tag kart z AI:", self._tag),
                               ("Tag do weryfikacji:", self._review_tag),
@@ -91,8 +92,10 @@ class IntegrationsTab(QWidget):
                               ("Pole przykładu:", self._example)):
             form.addRow(label, widget)
         form.addRow(hint_label(
-            "Pole angielskie to „Pole notatki” z kolejki. Tagi rozdzielaj spacją lub "
-            "przecinkiem; tag do weryfikacji znika tylko po ręcznym potwierdzeniu w podglądzie.", small=True))
+            "Pole angielskie to „Pole notatki” z kolejki. AI nie wypełnia przykładu — pole "
+            "przykładu to cel przycisków „+ przykład” na stronach słowników. Tagi rozdzielaj "
+            "spacją lub przecinkiem; tag do weryfikacji dostają tylko definicje dobrane przez AI "
+            "i znika po ręcznym potwierdzeniu w podglądzie.", small=True))
         layout.addWidget(ai)
 
         bridge = QGroupBox("Web Bridge")

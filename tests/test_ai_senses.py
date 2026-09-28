@@ -1,4 +1,4 @@
-"""ai_senses: weryfikacja cytatów i mapowanie znaczeń na pola. Bez Anki i sieci."""
+"""ai_senses: dopasowanie definicji po numerach i mapowanie znaczeń na pola. Bez Anki i sieci."""
 import importlib.util
 import json
 import tempfile
@@ -22,184 +22,103 @@ def load():
     return module
 
 
-PAGE = {"diki": "rozległy, rozciągnięty; chaotyczny " + " ".join(f"znaczenie {i}" for i in range(6)),
-        "Oxford": "covering a large area\na sprawling city on the edge of the desert"}
+# Tak zwraca userscript: diki daje znaczenia, reszta ponumerowane definicje.
+ENTRIES = {
+    "diki": [{"pl": "krawężnik"}, {"pl": "ograniczać (np. wydatki, podatki)"}, {"pl": "wędzidło"}],
+    "Cambridge": [{"def": "to limit or control something", "pl": "ograniczać"},
+                  {"def": "to limit or control something", "pl": "ograniczać"}],  # drugi słownik na stronie
+    "LDoCE": [{"def": "the raised edge of a road", "pl": ""}],
+}
 
 
+class Provider:
+    def __init__(self, answer):
+        self.answer, self.prompts, self.last_error = answer, [], None
 
-class SenseParsingTests(unittest.TestCase):
+    def call_api(self, prompt):
+        self.prompts.append(prompt)
+        return self.answer
+
+
+class DefinitionMatchingTests(unittest.TestCase):
     def setUp(self):
         self.m = load()
 
-    def parse(self, raw, **kwargs):
-        data = json.loads(raw) if raw.startswith('{"senses"') else None
-        if data:
-            for sense in data["senses"]:
-                sense.setdefault("src", "Oxford")
-            raw = json.dumps(data)
-        return self.m.parse_senses(raw, PAGE, **kwargs)
+    def test_entries_split_by_shape_and_duplicates_drop(self):
+        units, definitions = self.m.split_entries(ENTRIES)
+        self.assertEqual([u["pl"] for u in units],
+                         ["krawężnik", "ograniczać (np. wydatki, podatki)", "wędzidło"])
+        self.assertEqual([d["en"] for d in definitions],
+                         ["to limit or control something", "the raised edge of a road"])
+        self.assertEqual(definitions[0]["src"], "Cambridge")
 
-    def test_verbatim_quote_survives(self):
-        senses, error = self.parse(
-            '{"senses":[{"pl":"rozległy","en":"covering a large area",'
-            '"example":"a sprawling city","src":"Oxford","match":"exact"}]}')
+    def test_prompt_numbers_both_lists_and_shows_cambridge_polish(self):
+        prompt = self.m.build_prompt("curb", *self.m.split_entries(ENTRIES))
+        self.assertIn("D2: ograniczać (np. wydatki, podatki)", prompt)
+        self.assertIn("E1 [Cambridge] to limit or control something (PL: ograniczać)", prompt)
+        self.assertIn("E2 [LDoCE] the raised edge of a road\n", prompt + "\n")
+        self.assertIn("nie instrukcje", prompt)
+
+    def test_mapping_accepts_only_indexes_from_the_list(self):
+        raw = '```json\n{"D1": "E2", "D2": 1, "D3": "E9", "D4": "E1"}\n```'
+        self.assertEqual(self.m.parse_mapping(raw, 3, 2), {0: 1, 1: 0})  # E9 i D4 poza listą
+        self.assertEqual(self.m.parse_mapping('{"D1": null, "D2": "coś"}', 2, 2), {})
+        self.assertIsNone(self.m.parse_mapping("nie wiem", 2, 2))
+
+    def test_card_text_comes_only_from_the_dictionaries(self):
+        provider = Provider('{"D1": "E2", "D2": "E1", "D3": null}')
+        senses, error = self.m.generate(provider, "curb", ENTRIES, {})
         self.assertIsNone(error)
-        self.assertEqual(senses[0]["en"], "covering a large area")
-        self.assertEqual(senses[0]["match"], "exact")
+        self.assertEqual([(s["pl"], s["en"], s["src"], s["by_ai"]) for s in senses], [
+            ("krawężnik", "the raised edge of a road", "LDoCE", True),
+            ("ograniczać (np. wydatki, podatki)", "to limit or control something", "Cambridge", True),
+            ("wędzidło", "", "", False),          # brak definicji to pusta, nie zmyślona
+        ])
+        self.assertEqual(senses[0]["pl_src"], "diki")
 
-    def test_invented_definition_is_dropped_not_trusted(self):
-        senses, _ = self.parse(
-            '{"senses":[{"pl":"rozległy","en":"extending over a wide region","match":"exact"}]}')
-        self.assertEqual(senses[0]["en"], "")
-        self.assertEqual(senses[0]["match"], "none")
-        self.assertEqual(senses[0]["pl"], "rozległy")  # karta EN-PL zostaje
+    def test_without_diki_cambridge_pairs_are_cards_and_no_model_is_asked(self):
+        provider = Provider("{}")
+        senses, error = self.m.generate(provider, "mother", {"Cambridge": [
+            {"def": "your female parent", "pl": "matka"}, {"def": "no translation", "pl": ""}]}, {})
+        self.assertIsNone(error)
+        self.assertEqual([(s["pl"], s["en"], s["by_ai"]) for s in senses],
+                         [("matka", "your female parent", False)])
+        self.assertEqual(provider.prompts, [])
 
-    def test_invented_example_does_not_kill_real_definition(self):
-        senses, _ = self.parse(
-            '{"senses":[{"pl":"rozległy","en":"covering a large area",'
-            '"example":"a sprawling meadow","match":"exact"}]}')
-        self.assertEqual(senses[0]["en"], "covering a large area")
-        self.assertEqual(senses[0]["example"], "")
+    def test_no_definitions_means_no_model_call(self):
+        provider = Provider("{}")
+        senses, _ = self.m.generate(provider, "household income", {"diki": [{"pl": "dochód"}]}, {})
+        self.assertEqual([(s["pl"], s["en"]) for s in senses], [("dochód", "")])
+        self.assertEqual(provider.prompts, [])
 
-    def test_many_senses_keep_order_and_respect_limit(self):
-        raw = ('{"senses":[' + ",".join(
-            f'{{"pl":"znaczenie {i}","en":"","match":"none"}}' for i in range(6)) + "]}")
-        senses, _ = self.parse(raw, max_senses=4)
-        self.assertEqual([s["pl"] for s in senses],
-                         ["znaczenie 0", "znaczenie 1", "znaczenie 2", "znaczenie 3"])
+    def test_failures_are_errors_not_empty_cards(self):
+        self.assertTrue(self.m.generate(Provider("bełkot"), "curb", ENTRIES, {})[1])
+        self.assertTrue(self.m.generate(Provider(""), "curb", ENTRIES, {})[1])
+        self.assertTrue(self.m.generate(Provider("{}"), "curb", {"LDoCE": [{"def": "x", "pl": ""}]}, {})[1])
 
-    def test_unknown_match_label_is_never_promoted_to_exact(self):
-        senses, _ = self.parse(
-            '{"senses":[{"pl":"rozległy","en":"covering a large area","match":"idealne"}]}')
-        self.assertEqual(senses[0]["match"], "approx")
-
-    def test_garbage_response_is_an_error_not_an_empty_card(self):
-        self.assertTrue(self.parse("nie wiem")[1])
-        self.assertTrue(self.parse('{"senses":[{"pl":""}]}')[1])
-        self.assertTrue(self.parse('{"co":"innego"}')[1])
-
-    def test_note_fields_skip_empty_and_unmapped(self):
-        sense = {"pl": "rozległy", "en": "", "example": "", "src": "", "match": "none"}
+    def test_note_fields_skip_empty_and_escape_html(self):
+        sense = {"pl": "rozległy", "en": ""}
         self.assertEqual(
             self.m.note_fields(sense, {"en": "ang", "pl": "pol", "definition": "def"}, "sprawling"),
             {"ang": "sprawling", "pol": "rozległy"})
-
-    def test_source_and_polish_validation_and_html(self):
-        sense = {"pl": "rozległy", "en": "covering a large area", "src": "Longman", "match": "exact"}
-        result, _ = self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)
-        self.assertEqual(result[0]["match"], "none")
-        sense.update(src="Oxford", pl="nie ma tego w diki")
-        self.assertEqual(self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)[0], [])
-        sense.update(pl="rozległy", example="rozciągnięty")
-        result, _ = self.m.parse_senses(json.dumps({"senses": [sense]}), PAGE)
-        self.assertEqual(result[0]["example"], "")
         self.assertEqual(self.m.note_fields({"pl": "<b>&lt;</b>"}, {"pl": "pol"}, "x"),
                          {"pol": "&lt;b&gt;&amp;lt;&lt;/b&gt;"})
 
-    def test_manual_edits_copy_and_downgrade_match(self):
-        original = {"pl": "rozległy", "en": "wide", "example": "", "src": "Oxford", "match": "exact"}
+    def test_manual_definition_is_no_longer_the_models(self):
+        original = {"pl": "rozległy", "en": "wide", "src": "Oxford", "by_ai": True}
         self.assertEqual(self.m.edited_sense(original, original), original)
-        edited = self.m.edited_sense(original, {**original, "pl": "obszerny"})
-        self.assertEqual(edited["match"], "approx")
-        self.assertEqual(original["pl"], "rozległy")
-        self.assertEqual(self.m.edited_sense(original, {**original, "en": ""})["match"], "none")
+        self.assertTrue(self.m.edited_sense(original, {**original, "pl": "obszerny"})["by_ai"])
+        self.assertFalse(self.m.edited_sense(original, {**original, "en": "vast"})["by_ai"])
+        self.assertEqual(original["en"], "wide")
         with self.assertRaises(ValueError):
             self.m.edited_sense(original, {**original, "pl": "  "})
-        links = self.m.source_links(original, {"diki": "https://diki.pl/?a=1&b=2",
-                                               "Oxford": "javascript:alert(1)", "Other": "https://other.test"})
+
+    def test_source_links_are_the_meaning_and_definition_tabs(self):
+        sense = {"pl": "matka", "en": "a parent", "pl_src": "diki", "src": "Oxford"}
+        links = self.m.source_links(sense, {"diki": "https://diki.pl/?a=1&b=2", "Oxford": "javascript:alert(1)",
+                                            "LDoCE": "https://ldoce.test"})
         self.assertIn("&amp;b=2", links)
         self.assertNotIn("javascript", links)
-        self.assertNotIn("Other", links)
-
-    def test_disabled_example_is_not_requested_or_returned(self):
-        provider = types.SimpleNamespace(call_api=lambda prompt: json.dumps({"senses": [{
-            "pl": "rozległy", "en": "covering a large area", "example": "a sprawling city",
-            "src": "Oxford", "match": "exact"}]}))
-        senses, error = self.m.generate(provider, "sprawling", PAGE, {"ai_fields": {"example": ""}})
-        self.assertIsNone(error)
-        self.assertEqual(senses[0]["example"], "")
-        senses, _ = self.m.generate(provider, "sprawling", PAGE, {"ai_fields": {"example": "przyklad"}})
-        self.assertEqual(senses[0]["example"], "a sprawling city")
-        self.assertIn("Nie wybieraj ani nie generuj przykładów", self.m.build_prompt("x", PAGE, 3, False))
-
-    def test_prompt_truncates_pages(self):
-        prompt = self.m.build_prompt("sprawling", {"diki": "x" * 20000}, 3)
-        self.assertLess(len(prompt), 20000)
-        self.assertIn("sprawling", prompt)
-
-
-class FourDictionaryTests(unittest.TestCase):
-    """Cambridge EN-PL jest źródłem PL i EN naraz — obie role na jednej stronie."""
-
-    PAGES = {"diki": "gęstwina",
-             "Cambridge": "your female parent matka, mama a single mother",
-             "Oxford": "a female parent of a child or an animal",
-             "LDoCE": "a woman who has a child"}
-    PL = ("diki", "Cambridge")
-    EN = ("Cambridge", "Oxford", "LDoCE")
-
-    def setUp(self):
-        self.m = load()
-
-    def parse(self, sense, **kwargs):
-        return self.m.parse_senses(json.dumps({"senses": [sense]}), self.PAGES, 3, **kwargs)
-
-    def test_polish_from_cambridge_counts_only_when_listed(self):
-        sense = {"pl": "matka, mama", "en": "", "match": "none"}
-        senses, error = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
-        self.assertIsNone(error)
-        self.assertEqual(senses[0]["pl"], "matka, mama")
-        self.assertEqual(self.parse(sense)[0], [])  # domyślnie tylko diki → brak w worku
-
-    def test_cambridge_may_be_the_english_source_too(self):
-        sense = {"pl": "matka", "en": "your female parent", "example": "a single mother",
-                 "src": "Cambridge", "match": "exact"}
-        senses, _ = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
-        self.assertEqual(senses[0]["en"], "your female parent")
-        self.assertEqual(senses[0]["example"], "a single mother")
-        # bez listy EN Cambridge jest tylko polski — definicja leci, karta zostaje
-        self.assertEqual(self.parse(sense, pl_sources=self.PL)[0][0]["en"], "")
-
-    def test_polish_source_cannot_pose_as_an_english_definition(self):
-        sense = {"pl": "matka", "en": "gęstwina", "src": "diki", "match": "exact"}
-        senses, _ = self.parse(sense, pl_sources=self.PL, en_sources=self.EN)
-        self.assertEqual((senses[0]["en"], senses[0]["match"]), ("", "none"))
-
-    def test_prompt_names_both_source_lists_and_forbids_duplicates(self):
-        prompt = self.m.build_prompt("mother", self.PAGES, 3, True, self.PL, self.EN)
-        self.assertIn("źródła PL: diki, Cambridge", prompt)
-        self.assertIn("źródła EN: Cambridge, Oxford, LDoCE", prompt)
-        self.assertIn("w kolejności z diki", prompt)
-        self.assertIn("zwróć RAZ", prompt)
-
-    def test_prompt_covers_what_the_substring_check_cannot(self):
-        """Walidator dowodzi, że cytat JEST na stronie — nie, że należy do hasła.
-        Reklamy i „podobne słówka" przeszłyby go, więc musi ich zabronić prompt."""
-        prompt = self.m.build_prompt("mother", self.PAGES, 3, True, self.PL, self.EN)
-        self.assertIn("podobne słówka", prompt)
-        self.assertIn("Nie cytuj stamtąd niczego", prompt)
-        # `exact` wyłącza kartę z listy do przejrzenia, więc domyślny wybór to approx
-        self.assertIn('W razie wątpliwości "approx"', prompt)
-        # szkielet JSON nie może kotwiczyć na wartości, która wyłącza kontrolę
-        self.assertNotIn('"match": "exact"}', prompt)
-        # polskie odpowiedniki są sprawdzane fragment po fragmencie
-        self.assertIn("KAŻDY fragment po przecinku", prompt)
-
-    def test_label_typo_is_named_instead_of_looking_like_an_empty_result(self):
-        called = []
-        provider = types.SimpleNamespace(call_api=lambda _prompt: called.append(1) or "{}")
-        _senses, error = self.m.generate(provider, "mother", self.PAGES, {"ai_pl_sources": ["Diki.pl"]})
-        self.assertIn("ai_pl_sources", error)
-        self.assertIn("Diki.pl", error)
-        self.assertFalse(called)  # zła etykieta wychodzi PRZED zapłaceniem za model
-
-    def test_source_links_follow_the_configured_polish_sources(self):
-        sense = {"pl": "matka", "en": "a female parent", "src": "Oxford", "match": "exact"}
-        urls = {"diki": "https://diki.test/x", "Cambridge": "https://cambridge.test/x",
-                "Oxford": "https://oxford.test/x", "LDoCE": "https://ldoce.test/x"}
-        links = self.m.source_links(sense, urls, self.PL)
-        self.assertIn("Cambridge", links)
-        self.assertIn("Oxford", links)
         self.assertNotIn("LDoCE", links)
 
 
@@ -304,25 +223,28 @@ class AddNotesTests(unittest.TestCase):
             return self.m.add_notes(self.addcards, chosen, cfg or self.CFG)
 
     def sense(self, **kwargs):
-        return {"pl": "rozległy", "en": "covering a large area", "example": "",
-                "src": "Oxford", "match": "exact", **kwargs}
+        return {"pl": "rozległy", "en": "covering a large area", "src": "Oxford", "by_ai": True, **kwargs}
 
-    def test_one_note_per_sense_in_chosen_deck(self):
-        added, error = self.add([self.sense(), self.sense(pl="chaotyczny", match="none", en="")])
+    def test_one_note_per_sense_in_chosen_deck_and_no_example(self):
+        added, error = self.add([self.sense(), self.sense(pl="chaotyczny", en="", by_ai=False)])
         self.assertIsNone(error)
         self.assertEqual(added, 2)
         self.assertEqual([deck for _note, deck in self.added], [7, 7])
         self.assertEqual(self.added[0][0]["ang"], "sprawling")
         self.assertEqual(self.added[0][0]["def"], "covering a large area")
+        self.assertEqual(self.added[0][0]["przyklad"], "")      # przykłady dodajesz sam
 
-    def test_review_is_independent_of_model_confidence(self):
-        """Model confidence never substitutes for the human review checkbox."""
-        self.add([self.sense(), self.sense(match="approx"), self.sense(match="none", en="")])
+    def test_only_model_picked_definitions_wait_for_review(self):
+        self.add([self.sense(), self.sense(by_ai=False), self.sense(en="", by_ai=False)])
         self.assertEqual([note.tags for note, _ in self.added],
-                         [["ai-auto", "ai-review"], ["ai-auto", "ai-review"], ["ai-auto", "ai-review"]])
+                         [["ai-auto", "ai-review"], ["ai-auto"], ["ai-auto"]])
+
+    def test_old_drafts_without_flag_are_reviewed_like_model_output(self):
+        self.add([{"pl": "rozległy", "en": "covering a large area", "match": "exact"}])
+        self.assertEqual(self.added[0][0].tags, ["ai-auto", "ai-review"])
 
     def test_only_human_confirmation_removes_review_tag(self):
-        self.add([self.sense(match="approx", reviewed=True)])
+        self.add([self.sense(reviewed=True)])
         self.assertEqual(self.added[0][0].tags, ["ai-auto"])
 
     def test_duplicate_field_map_never_reaches_collection(self):
@@ -331,7 +253,7 @@ class AddNotesTests(unittest.TestCase):
         self.assertIn("innego pola", error)
 
     def test_empty_tags_add_nothing(self):
-        self.add([self.sense(match="none", en="")], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})
+        self.add([self.sense()], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})
         self.assertEqual(self.added[0][0].tags, [])
 
     def test_prepare_failure_never_starts_batch(self):

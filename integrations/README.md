@@ -153,10 +153,11 @@ Na stronach działają przyciski userscriptu — te same, co w przeglądarce.
 
 ## AI: znaczenia → karty
 
-Przycisk robi z jednego hasła tyle kart, ile ma ono znaczeń: bierze tekst
-otwartych zakładek, prosi model o dopasowanie polskich odpowiedników do
-angielskich definicji i pokazuje propozycje z checkboxami oraz edytowalnymi
-polami polskiego znaczenia, definicji i przykładu.
+Przycisk robi z hasła po jednej karcie na znaczenie z **diki**: polskie
+odpowiedniki razem z kontekstem, np. *ograniczać (np. wydatki, podatki)*. Do
+każdego znaczenia dobiera angielską definicję z Cambridge EN-PL, Oxfordu albo
+LDoCE i pokazuje propozycje z checkboxami oraz edytowalnym polskim znaczeniem
+i definicją. Przykładów nie wypełnia — dodajesz je przyciskami **+ przykład**.
 
 ### Paczka
 
@@ -166,7 +167,7 @@ z sekcją na hasło i checkboxem *Zaznacz wszystkie* u góry. Zatwierdzasz raz,
 karty powstają jedną transakcją i jednym krokiem cofania, a odhaczane są tylko
 te hasła, z których faktycznie powstały karty.
 
-Hasła idą **po kolei**: załaduj zakładki, zbierz tekst, zapytaj model, następne.
+Hasła idą **po kolei**: załaduj zakładki, zbierz wpisy, zapytaj model, następne.
 Zakładki są jedne na panel, więc nakładanie kroków nic by nie przyspieszyło.
 Hasło, które się nie powiedzie — brak odpowiedzi modelu albo niewczytana
 zakładka — nie zatrzymuje paczki; wypada z niej i trafia do dymka
@@ -182,45 +183,46 @@ zamkniesz okno „Dodaj”, zapis nie następuje i dostajesz o tym dymek.
 Przy zaznaczaniu wielu pozycji panel **nie rusza notatki ani zakładek** — pola
 edytora zostają takie, jakie były.
 
-### Skąd biorą się definicje
+### Skąd biorą się znaczenia i definicje
 
-**Do promptu idzie treść pasującego hasła z poprawnie wczytanych zakładek.**
-Userscript wybiera bloki znaczeń we wpisie z nagłówkiem zgodnym z hasłem,
-usuwając przyciski i elementy poboczne. Błąd ładowania, CAPTCHA lub brak obsługi
-słownika oznaczają pominięcie źródła. Gdy słownik zmieni układ strony i żaden wpis
-nie zostanie rozpoznany, model dostaje całą stronę, a podgląd pokazuje ostrzeżenie
-**⚠ Cała strona** — cytaty mogą wtedy pochodzić z sąsiednich haseł. Czy reguły
-nadal pasują, sprawdzisz poleceniem (wymaga sieci):
+**Cała treść karty pochodzi ze słowników — model niczego nie pisze.** Userscript
+wyciąga z każdej zakładki wyłącznie wpis z nagłówkiem zgodnym z hasłem:
+
+| Źródło | Co daje |
+|---|---|
+| diki | znaczenia — polskie odpowiedniki z kontekstem (bez kategorii, synonimów i przykładów) |
+| Cambridge EN-PL | definicje z polskim tłumaczeniem |
+| Oxford, LDoCE | definicje |
+
+Model dostaje ponumerowane listy (D1… znaczenia, E1… definicje) i odpowiada
+wyłącznie numerami: `{"D1": "E2", "D2": null}`. Nie przepisuje żadnego tekstu,
+więc nie ma czego zmyślić — numer spoza listy liczy się jak brak definicji.
+Tłumaczenie z Cambridge pomaga mu porównać polski z polskim (*poddać się* =
+*poddawać się*). Definicja szersza, węższa albo obok ma zostać pusta: **pusta
+definicja jest poprawnym wynikiem**, zła nie.
+
+- **Brak wpisu w diki** (np. rzadkie hasło): kartami są gotowe pary z Cambridge
+  EN-PL — słownik sam dobrał tłumaczenie do definicji, model nie jest pytany.
+- **Brak definicji w słownikach angielskich** (np. *household income*): karty
+  mają samo polskie znaczenie, model też nie jest pytany.
+- Znaczenia tylko ze słowników angielskich są pomijane — to diki wyznacza,
+  jakie karty powstają.
+
+Nagłówek z zaślepką w diki (*give **something** up*) liczy się jak *give up*.
+Pojedyncze słowo przekierowane na formę podstawową (*went* → *go*) bierze
+pierwszy wpis strony; fraza (*give up*) nigdy nie spada do *give*. Błąd
+ładowania, CAPTCHA albo zmieniony układ strony oznaczają pominięcie źródła,
+nigdy zgadywanie z całej strony. Czy reguły nadal pasują, sprawdzisz poleceniem
+(wymaga sieci):
 `QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py`.
 Kod wyjścia 1 oznacza, że któraś reguła przestała pasować — to polecenie możesz
 uruchamiać cyklicznie (np. zadaniem `launchd` z powiadomieniem przez `osascript`).
-Gdy pojedyncze słowo przekierowuje na formę podstawową (np. *went* → *go*),
-brany jest pierwszy wpis strony; dla fraz (*give up*) nigdy — tam inny nagłówek
-oznacza pominięcie źródła. Oczekiwanie na ładowanie ma limit 20 sekund, a odczyt
-treści z silnika przeglądarki osobny limit 5 sekund. Dodanie nowego słownika do zakładek nie wystarcza do AI;
-potrzebna jest reguła ekstrakcji w userscripcie.
+Oczekiwanie na ładowanie ma limit 20 sekund, a odczyt wpisów z silnika
+przeglądarki osobny limit 5 sekund. Nowy słownik w zakładkach wymaga reguły
+ekstrakcji w userscripcie, zanim trafi do AI.
 
-Postęp i podgląd wskazują wykorzystane źródła; podgląd wymienia też pominięte.
-Model sam wybiera,
-z którego słownika wziąć definicję, i zapisuje to w polu `src` widocznym w oknie
-wyboru jako link do źródła. Nie ma stałego pierwszeństwa słownika, a znaczenie
-opisane w kilku słownikach ma wrócić raz. Kolejność znaczeń bierze się
-z pierwszego źródła PL.
-
-**Cytaty są sprawdzane względem źródła, z granicami wyrazów** (`kot` nie pasuje do `kotlet`). Definicja i przykład muszą występować
-w tekście słownika wskazanego w `src` (lista `ai_en_sources`); polskie
-odpowiedniki — rozdzielone przecinkami lub średnikami — w dowolnym słowniku
-z `ai_pl_sources`. Cambridge EN-PL jest na obu listach; poza nim źródło polskie
-nie może dostarczyć angielskiej definicji. Obie listy muszą używać etykiet
-z `link_templates` — literówka kończy się konkretnym komunikatem, a nie pustym
-wynikiem bez powodu. Sprawdzany jest ten sam, przycięty tekst, który otrzymał
-model. Brak polskiego cytatu odrzuca znaczenie, brak angielskiego zostawia pustą
-definicję. To kontrola pochodzenia tekstu, nie gwarancja zgodności znaczeń —
-sprawdź propozycje przed zatwierdzeniem.
-
-Weryfikacja dowodzi obecności cytatu we wpisie, ale nie zgodności znaczeń.
-`exact` oznacza **AI: dopasowane**, a nie ręczne sprawdzenie. Prompt nadal
-preferuje `approx` przy wątpliwości.
+Postęp i podgląd wskazują wykorzystane źródła; podgląd wymienia też pominięte
+i linkuje do słownika znaczenia i definicji.
 
 ### Przerwanie i odzyskiwanie
 
@@ -250,9 +252,11 @@ startuje od zera.
 
 ### Okno wyboru
 
-Puste polskie znaczenie blokuje zatwierdzenie zaznaczonej propozycji. Ręczne
-poprawki cofają potwierdzenie ręcznej weryfikacji; nie są ponownie sprawdzane jako
-cytaty. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
+Okno pokazuje **wszystkie** znaczenia z diki, ale zaznaczone jest tylko pierwsze
+N (**Zaznaczone znaczenia**, `ai_max_senses`, domyślnie 3) — diki podaje je od
+najczęstszych. Przy każdym widać, skąd jest definicja: *para ze słownika*,
+*definicję dobrało AI* albo *✗ bez definicji*. Puste polskie znaczenie blokuje
+zatwierdzenie zaznaczonej propozycji. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
 interpretacją jako HTML. Zatwierdzone znaczenia lądują jako osobne notatki
 w talii i typie wybranym w oknie „Dodaj”.
 
@@ -266,20 +270,20 @@ słowa dodajesz ręcznie. Gdy sprawdzenie
 się nie uda, paczka nie rusza. Przy odzyskanych propozycjach okno wyboru
 dodatkowo ostrzega na czerwono, jeśli karty z tym słowem powstały w międzyczasie.
 
-**Brak dopasowania 1:1 nie blokuje karty.** Znaczenie bez angielskiej definicji
-dostaje pustą definicję, a nie zmyśloną. Każda karta dostaje **Tag kart z AI**
-(`ai_tag`, domyślnie `ai-auto`). Dodatkowo dostaje **Tag do weryfikacji**
-(`ai_review_tag`, domyślnie `ai-review`), chyba że zaznaczysz przy niej
-**Sprawdziłem znaczenie i zgodność ze źródłem**. Samo zatwierdzenie okna ani
-ocena `exact` nie zastępują tej czynności. Puste ustawienie tagu wyłącza go.
-Zmiana nie retaguje wcześniejszych notatek.
+Każda karta dostaje **Tag kart z AI** (`ai_tag`, domyślnie `ai-auto`).
+**Tag do weryfikacji** (`ai_review_tag`, domyślnie `ai-review`) dostają tylko
+karty, których definicję dobrało AI — chyba że zaznaczysz przy nich
+**Sprawdziłem, że definicja pasuje do znaczenia**. Edycja pól cofa to
+potwierdzenie; definicja wpisana ręcznie przestaje być definicją AI. Pary ze
+słownika i karty bez definicji nie mają czego weryfikować. Puste ustawienie
+tagu wyłącza go. Zmiana nie retaguje wcześniejszych notatek.
 
 Pole angielskie i polskie są wymagane. Wszystkie niepuste przypisania muszą
 być różne i istnieć w docelowym typie notatki — sprawdzenie przed zapisem
 obejmuje również konfigurację zmienioną ręcznie.
 
-Puste ustawienie *Pole przykładu* wyłącza przykłady w prompcie i podglądzie;
-ewentualny przykład zwrócony mimo to przez model jest pomijany.
+*Pole przykładu* nie jest wypełniane przez AI — to pole, do którego piszą
+przyciski **+ przykład** na stronach słowników.
 
 ### Model
 
@@ -307,9 +311,9 @@ Sekcja `word_queue`: adresy n8n (`n8n_url` główny, `fallback_url` zapasowy),
 klucz API, token Cloudflare Access (`cf_client_id`, `cf_client_secret`),
 `table_id`, nazwy kolumn (`word_column`, `flag_column`), pole notatki
 (`word_field`), `link_templates` i `link_columns`, ustawienia `ai_*` (dostawca,
-model, limity, tagi, pola, listy źródeł PL/EN), `order` oraz `page_size`
+model, zaznaczone znaczenia, limit czasu, tagi, pola), `order` oraz `page_size`
 i `max_rows` (stronicowanie). Sekcja `web_bridge` trzyma `port`.
-`link_templates`, `link_columns`, `ai_pl_sources`, `ai_en_sources`, `page_size`
+`link_templates`, `link_columns`, `page_size`
 i `max_rows` nie mają pól w oknie ustawień — zmienisz je, edytując `meta.json`
 dodatku przy zamkniętym Anki (przycisk **Config** w menedżerze dodatków otwiera
 okno ustawień, a nie edytor JSON). Klucze, token i pozostałe
