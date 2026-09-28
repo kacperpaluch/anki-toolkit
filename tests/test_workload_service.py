@@ -19,32 +19,38 @@ from workload_service import worker
 
 
 class ServiceTests(unittest.TestCase):
-    def test_configuration_requires_explicit_scope_and_valid_budget(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "config.json"
-            for overrides in ({"decks": []}, {"apply": "false"},
-                              {"minutes_per_day": 40, "max_minutes_per_day": 30},
-                              {"new_cards_per_day": -1}):
-                path.write_text(json.dumps({"decks": ["English"], **overrides}))
-                with self.assertRaises(worker.WorkloadError):
-                    worker.settings_from(path)
+    def test_settings_are_validated(self):
+        self.assertEqual(worker.validate({})["decks"], [])  # onboarding: no decks yet
+        for overrides in ({"decks": "English"}, {"apply": "false"},
+                          {"minutes_per_day": 40, "max_minutes_per_day": 30},
+                          {"new_cards_per_day": -1}, {"run_at": "25:00"},
+                          {"split_strategy": "random"}, {"seconds_per_card": -1}):
+            with self.assertRaises(worker.WorkloadError):
+                worker.validate({"decks": ["English"], **overrides})
 
-    def test_compose_settings_and_dashboard_escape(self):
-        from workload_service.dashboard import render
+    def test_settings_file_is_the_only_source_after_a_one_time_import(self):
         with tempfile.TemporaryDirectory() as folder:
-            with patch.dict(os.environ, {"WORKLOAD_CONFIG": json.dumps({
-                "decks": ["English"], "run_at": "06:30", "apply": True})}):
-                settings = worker.settings_from(Path(folder) / "missing.json")
-                self.assertEqual(settings["run_at"], "06:30")
-                self.assertTrue(settings["apply"])
+            data = Path(folder)
+            self.assertEqual(worker.load_settings(data), worker.default_settings())
+            legacy = {"decks": ["English"], "run_at": "06:30", "apply": True, "forecast_days": 60}
+            with patch.dict(os.environ, {"WORKLOAD_CONFIG": json.dumps(legacy)}):
+                self.assertEqual(worker.load_settings(data)["run_at"], "06:30")
+                worker.save_settings(data, {"run_at": "07:00"})
+            with patch.dict(os.environ, {"WORKLOAD_CONFIG": json.dumps({**legacy, "run_at": "05:00"})}):
+                settings = worker.load_settings(data)
+            self.assertEqual((settings["run_at"], settings["apply"]), ("07:00", True))
+            self.assertEqual(settings["forecast_days"], 60)  # unknown keys are kept
+
+    def test_dashboard_escapes_and_polls_only_while_running(self):
+        from workload_service.dashboard import render
         html = render([{"status": "error", "error": "<script>bad</script>",
                         "changes": [], "command": "run"}], "test-token", True)
         self.assertNotIn("<script>bad</script>", html)
         self.assertIn("&lt;script&gt;", html)
         self.assertIn("disabled", html)
         self.assertIn('action="/run"', html)
-        self.assertNotIn("setInterval", html)
-        self.assertNotIn('http-equiv="refresh"', html)
+        self.assertIn('fetch("/status")', html)
+        self.assertNotIn('fetch("/status")', render([]))
 
     def test_dashboard_summary_and_collapsed_history(self):
         from workload_service.dashboard import render, display_time
@@ -60,7 +66,33 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("pominięto powtórzony alert", html)
         self.assertNotIn("<script>", html)
         self.assertIn("Przebieg trwa…", render([event], running=True))
-        self.assertIn("Zacznij od połączenia z Anki", render([]))
+        self.assertIn("Pierwsze kroki", render([]))
+        self.assertIn("Połącz i pobierz kolekcję", render([]))
+
+    def test_dashboard_shows_today_plan_and_deck_picker(self):
+        from datetime import datetime
+        from workload_service.dashboard import render
+        plan = {"new_today": 3, "due_cards": 40, "due_minutes": 6.2, "minutes": 15, "pace": 3,
+                "pace_reason": "Utrzymaj tempo.",
+                "decks": [{"deck": "English", "limit": 3, "root": True},
+                          {"deck": "English::<b>Words</b>", "limit": 2, "root": False}]}
+        history = [{"command": "run", "status": "success", "apply": day % 2 == 0,
+                    "started": f"2026-09-{day:02d}T05:00:00+02:00", "reason": "Najpierw powtórki.",
+                    "plan": {**plan, "new_today": day % 4}, "changes": []} for day in range(20, 29)]
+        history[-1]["plan"] = plan
+        settings = {"decks": ["English", "Gone"], "apply": True}
+        html = render(history, settings=settings, identity={"endpoint": None, "username": "me@example.test"},
+                      decks=["English", "English::Words", "Other"], now=datetime(2026, 9, 28, 12))
+        self.assertIn(">Dziś</h2>", html)
+        self.assertIn('<div class="big">3</div>', html)
+        self.assertIn("↳ &lt;b&gt;Words&lt;/b&gt;", html)
+        self.assertIn("jutro 05:00", html)
+        self.assertIn('class="chart"', html)
+        self.assertIn('value="English" checked', html)
+        self.assertIn('value="Other">', html)
+        self.assertIn("(nie ma w kolekcji)", html)
+        self.assertNotIn("Pierwsze kroki", html)
+        self.assertIn("Odnów logowanie", html)
 
     def test_email_every_run_and_secret_not_rendered(self):
         from workload_service import notifications
@@ -122,26 +154,25 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder)
             with patch.object(worker, "_run"), patch.object(notifications, "send_summary", side_effect=RuntimeError("secret")):
-                worker.run(data, {"apply": True}, "run")
+                worker.run(data, "run")
             history = worker.read_json(data / "history.json")
             self.assertEqual(history[-1]["status"], "success")
             self.assertEqual(history[-1]["email"], "error: RuntimeError")
             self.assertNotIn("secret", (data / "history.json").read_text())
 
-    def test_settings_are_read_again_under_the_worker_lock(self):
+    def test_settings_are_read_under_the_worker_lock(self):
         from workload_service import notifications
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder)
             anki = types.ModuleType("anki"); collection = types.ModuleType("anki.collection")
             collection.Collection = object
+            worker.write_json(data / "identity.json", {"endpoint": None, "username": "me"})
+            worker.write_json(data / "settings.json", {"apply": True, "decks": []})
             with patch.dict(sys.modules, {"anki": anki, "anki.collection": collection}), \
-                    patch.object(worker, "settings_from", return_value={"apply": False}) as reread, \
-                    patch.object(worker, "credentials", side_effect=worker.WorkloadError("stop")), \
                     patch.object(notifications, "send_summary", return_value="disabled"):
-                with self.assertRaises(worker.WorkloadError):
-                    worker.run(data, {"apply": True}, "run", data / "config.json")
-            reread.assert_called_once_with(data / "config.json", data)
-            self.assertFalse(worker.read_json(data / "history.json")[-1]["apply"])
+                with self.assertRaisesRegex(worker.WorkloadError, "Wybierz talie"):
+                    worker.run(data, "run")
+            self.assertTrue(worker.read_json(data / "history.json")[-1]["apply"])
 
     def test_repeated_error_is_suppressed_until_success_or_different_error(self):
         from workload_service import notifications
@@ -151,18 +182,18 @@ class ServiceTests(unittest.TestCase):
                 operation.side_effect = worker.WorkloadError("full sync")
                 for _ in range(2):
                     with self.assertRaises(worker.WorkloadError):
-                        worker.run(data, {}, "run")
+                        worker.run(data, "run")
                 self.assertEqual(mail.call_count, 1)
                 self.assertEqual(worker.read_json(data / "history.json")[-1]["email"], "suppressed_duplicate")
                 operation.side_effect = worker.WorkloadError("network")
                 with self.assertRaises(worker.WorkloadError):
-                    worker.run(data, {}, "run")
+                    worker.run(data, "run")
                 self.assertEqual(mail.call_count, 2)
                 operation.side_effect = None
-                worker.run(data, {}, "run")
+                worker.run(data, "run")
                 operation.side_effect = worker.WorkloadError("network")
                 with self.assertRaises(worker.WorkloadError):
-                    worker.run(data, {}, "run")
+                    worker.run(data, "run")
                 self.assertEqual(mail.call_count, 4)
 
     def test_upgrade_uses_previous_delivered_error(self):
@@ -172,7 +203,7 @@ class ServiceTests(unittest.TestCase):
             worker.write_json(data / "history.json", [{"command": "run", "status": "error", "error": "full sync", "email": "sent"}])
             with patch.object(worker, "_run", side_effect=worker.WorkloadError("full sync")), patch.object(notifications, "send_summary") as mail:
                 with self.assertRaises(worker.WorkloadError):
-                    worker.run(data, {}, "run")
+                    worker.run(data, "run")
                 mail.assert_not_called()
 
     def test_credentials_do_not_accept_a_url_with_embedded_password(self):
@@ -217,10 +248,8 @@ class OfficialServerTests(unittest.TestCase):
                 time.sleep(0.05)
         else:
             self.fail("isolated sync server did not start")
-        password = self.folder / "password.txt"
-        password.write_text("local-test-password\n")
         env = patch.dict(os.environ, {"ANKI_SYNC_URL": self.url, "ANKI_SYNC_USERNAME": "workload-test",
-                                     "ANKI_SYNC_PASSWORD_FILE": str(password)})
+                                     "ANKI_SYNC_PASSWORD": "local-test-password"})
         env.start()
         self.addCleanup(env.stop)
         self.client = Collection(str(self.folder / "client.anki2"))
@@ -241,6 +270,11 @@ class OfficialServerTests(unittest.TestCase):
         self.settings = {**worker.default_settings(),
                          "decks": ["English"], "apply": True}
 
+    def work(self, command, **overrides):
+        self.data.mkdir(parents=True, exist_ok=True)
+        worker.write_json(self.data / "settings.json", {**self.settings, **overrides})
+        worker.run(self.data, command)
+
     def stop_server(self):
         self.server.terminate()
         self.server.wait(timeout=10)
@@ -249,18 +283,21 @@ class OfficialServerTests(unittest.TestCase):
         original = {did: copy.deepcopy(self.client.decks.get(did))
                     for did in (self.root, self.child, self.other)}
         original_cards = self.client.db.all("select id, queue, due, ivl from cards order by id")
-        worker.run(self.data, self.settings, "init")
-        worker.run(self.data, {**self.settings, "apply": False}, "run")
+        self.work("init")
+        self.assertEqual(worker.read_json(self.data / "decks.json"), ["English", "English::Words", "Unmanaged"])
+        self.work("run", apply=False)
+        plan = worker.read_json(self.data / "history.json")[-1]["plan"]
+        self.assertEqual((plan["new_today"], [row["root"] for row in plan["decks"]]), (3, [True, False]))
         worker.sync_normal(self.client, self.auth)
         self.assertEqual(worker.limits(self.client.decks.get(self.root)), worker.limits(original[self.root]))
-        worker.run(self.data, self.settings, "run")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         first = self.client.decks.get(self.root)
         self.assertEqual(first["newLimit"], 0)
         self.assertEqual(first["newLimitToday"]["limit"], 3)
         self.assertEqual(worker.limits(self.client.decks.get(self.other)), worker.limits(original[self.other]))
         self.assertEqual(self.client.db.all("select id, queue, due, ivl from cards order by id"), original_cards)
-        worker.run(self.data, self.settings, "run")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.assertEqual(worker.limits(self.client.decks.get(self.root)), worker.limits(first))
         # Backend honours the combined parent/child quota and falls back to zero
@@ -276,57 +313,59 @@ class OfficialServerTests(unittest.TestCase):
         self.client.close_for_full_sync()
         self.client.full_upload_or_download(auth=self.auth, server_usn=None, upload=False)
         self.client.reopen(after_full_sync=True)
-        worker.run(self.data, self.settings, "restore")
+        time.sleep(1.1)  # restore must be newer than the applied limits on the server
+        self.work("restore")
         worker.sync_normal(self.client, self.auth)
         for did in (self.root, self.child, self.other):
             self.assertEqual(worker.limits(self.client.decks.get(did)), worker.limits(original[did]))
 
     def test_full_download_preserves_state_and_rejects_foreign_limits(self):
-        worker.run(self.data, self.settings, "init")
-        worker.run(self.data, self.settings, "run")
+        self.work("init")
+        self.work("run")
         state = worker.read_json(self.data / "state.json")
         with patch.object(worker, "sync_normal", side_effect=worker.FullSyncRequired("full sync")):
             with self.assertRaises(worker.FullSyncRequired):
-                worker.run(self.data, self.settings, "run")
+                self.work("run")
         self.assertTrue((self.data / "intervention.json").exists())
-        worker.run(self.data, self.settings, "download")
+        self.work("download")
         self.assertFalse((self.data / "intervention.json").exists())
         self.assertEqual(worker.read_json(self.data / "state.json"), state)
         self.assertEqual(len(list(self.data.glob("before-download-*/collection.anki2"))), 1)
-        worker.run(self.data, self.settings, "run")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
+        time.sleep(1.1)  # native deck conflict timestamps have second precision
         deck = self.client.decks.get(self.root)
         deck["newLimit"] = 7
         self.client.decks.update_dict(deck)
         worker.sync_normal(self.client, self.auth)
         before = (self.data / "collection.anki2").read_bytes()
         with self.assertRaises(worker.WorkloadError):
-            worker.run(self.data, self.settings, "download")
+            self.work("download")
         self.assertEqual((self.data / "collection.anki2").read_bytes(), before)
         self.assertTrue((self.data / "intervention.json").exists())
 
     def test_offline_answer_survives_remote_limit_changes(self):
-        worker.run(self.data, self.settings, "init")
-        worker.run(self.data, self.settings, "run")
+        self.work("init")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.client.decks.select(self.root)
         card = self.client.sched.getCard()
         self.client.sched.answerCard(card, 3)
         history = self.client.db.all("select id, cid, ease, ivl, lastIvl, factor, time, type from revlog order by id")
         card_state = self.client.db.first("select type, queue, due, ivl from cards where id = ?", card.id)
-        worker.run(self.data, self.settings, "run")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.assertEqual(self.client.db.all("select id, cid, ease, ivl, lastIvl, factor, time, type from revlog order by id"), history)
         self.assertEqual(self.client.db.first("select type, queue, due, ivl from cards where id = ?", card.id), card_state)
         # Cached hkey suffices after the bootstrap password is removed.
-        with patch.dict(os.environ, {"ANKI_SYNC_PASSWORD_FILE": ""}):
-            worker.run(self.data, self.settings, "run")
+        with patch.dict(os.environ, {"ANKI_SYNC_PASSWORD": ""}):
+            self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.assertEqual(self.client.db.all("select id, cid, ease, ivl, lastIvl, factor, time, type from revlog order by id"), history)
 
     def test_external_edit_is_not_overwritten(self):
-        worker.run(self.data, self.settings, "init")
-        worker.run(self.data, self.settings, "run")
+        self.work("init")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         time.sleep(1.1)  # native deck conflict timestamps have second precision
         deck = self.client.decks.get(self.root)
@@ -334,10 +373,27 @@ class OfficialServerTests(unittest.TestCase):
         self.client.decks.update_dict(deck)
         worker.sync_normal(self.client, self.auth)
         with self.assertRaises(worker.WorkloadError):
-            worker.run(self.data, self.settings, "run")
+            self.work("run")
+
+    def test_phone_that_studied_offline_does_not_stop_the_controller(self):
+        self.work("init")
+        self.work("run")
+        # The phone never pulled today's plan; studying offline makes its deck
+        # (still holding yesterday's expired override) newer, so it wins the sync.
+        time.sleep(1.1)
+        yesterday = self.client.sched.today - 1 if self.client.sched.today else 999999
+        for did in (self.root, self.child):
+            deck = self.client.decks.get(did)
+            deck["newLimit"], deck["newLimitToday"] = 0, {"today": yesterday, "limit": 5}
+            self.client.decks.update_dict(deck)
+        worker.sync_normal(self.client, self.auth)
+        self.work("run")
+        worker.sync_normal(self.client, self.auth)
+        today = self.client.decks.get(self.root)["newLimitToday"]
+        self.assertEqual((today["today"], today["limit"]), (self.client.sched.today, 3))
 
     def test_retry_after_failed_upload_does_not_send_stale_local_changes(self):
-        worker.run(self.data, self.settings, "init")
+        self.work("init")
         sync = worker.sync_normal
         calls = 0
         def fail_second(col, auth):
@@ -348,9 +404,9 @@ class OfficialServerTests(unittest.TestCase):
             return sync(col, auth)
         with patch.object(worker, "sync_normal", side_effect=fail_second):
             with self.assertRaises(worker.WorkloadError):
-                worker.run(self.data, self.settings, "run")
+                self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.assertIsNone(self.client.decks.get(self.root)["newLimit"])
-        worker.run(self.data, self.settings, "run")
+        self.work("run")
         worker.sync_normal(self.client, self.auth)
         self.assertEqual(self.client.decks.get(self.root)["newLimitToday"]["limit"], 3)

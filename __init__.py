@@ -1,9 +1,9 @@
-"""Anki Toolkit — one add-on: card content, word queue, study plan and upkeep."""
+"""Anki Toolkit — one add-on: card content, word queue and upkeep."""
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
 
 from . import ai_generator, dictionary, field_splitter, tts
-from . import audio_normalizer, field_hider, html_cleanup, integrations, workload
+from . import audio_normalizer, field_hider, html_cleanup, integrations
 from .common import setup_logging
 
 setup_logging()
@@ -38,7 +38,6 @@ def _setup_menu(*_):
         ("Ustawienia…", open_settings),
         None,
         ("Kolejka słówek (n8n)…", integrations.open_queue),
-        ("Plan nauki…", workload.show_report),
         None,
         ("Sprawdź batche AI", lambda: ai_generator.check_pending_batches(silent=False)),
         ("Rozdziel pola w kolekcji…", field_splitter.run_on_collection),

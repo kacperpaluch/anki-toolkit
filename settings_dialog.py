@@ -23,7 +23,6 @@ from .settings.logs_tab import LogsTab
 from .settings.narzedzia_tab import FieldSplitterSettings
 from .settings.tts_tab import TTSTab
 from .settings.workflows_tab import WorkflowsTab
-from .workload.settings import WorkloadTab
 
 # (grupa, [(klucz strony, ikona, tytuł, opis, panel)])
 PAGES = [
@@ -42,10 +41,6 @@ PAGES = [
     ("Źródła", [
         ("integrations", "📚", "Kolejka słówek",
          "Kolejka z n8n, AI: znaczenia i Web Bridge dla userscriptu słownika.", IntegrationsTab),
-    ]),
-    ("Nauka", [
-        ("workload", "📅", "Plan nauki",
-         "Spokojne tempo nowych kart i elastyczny czas nauki.", WorkloadTab),
     ]),
     ("Porządki", [
         ("audio_normalizer", "🎚️", "Normalizacja audio",

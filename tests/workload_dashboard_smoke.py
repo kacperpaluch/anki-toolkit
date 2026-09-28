@@ -1,36 +1,53 @@
 """Manual isolated smoke check: python tests/workload_dashboard_smoke.py (port 8080, anki installed)."""
-import subprocess, sys, tempfile, os, time, urllib.request, urllib.error, urllib.parse, re, json
+import json, os, re, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
+
+URL = 'http://localhost:8080'
+
+
+def post(path, form, expect=200):
+    try:
+        response = urllib.request.urlopen(URL + path, data=urllib.parse.urlencode(form, doseq=True).encode())
+        status, body = response.status, response.read().decode()
+    except urllib.error.HTTPError as error:
+        status, body = error.code, error.read().decode()
+    assert status == expect, (path, status)
+    return body
+
+
 with tempfile.TemporaryDirectory() as folder:
-    env={**os.environ,'WORKLOAD_CONFIG':'{"decks":["test"]}','ANKI_SYNC_URL':'invalid'}
-    process=subprocess.Popen([sys.executable,str(Path(__file__).resolve().parents[1] / 'workload_service' / 'worker.py'),'dashboard','--data',folder],env=env)
+    data = Path(folder)
+    (data / 'decks.json').write_text(json.dumps(['English', 'English::Words']))
+    process = subprocess.Popen([sys.executable, str(Path(__file__).resolve().parents[1] / 'workload_service' / 'worker.py'),
+                                'dashboard', '--data', folder], env=os.environ.copy())
     try:
         for _ in range(50):
             try:
-                html=urllib.request.urlopen('http://localhost:8080/').read().decode(); break
+                html = urllib.request.urlopen(URL + '/').read().decode(); break
             except OSError: time.sleep(.1)
-        token=re.search('name="token" value="([^"]+)"',html)[1]
-        try: urllib.request.urlopen('http://localhost:8080/run',data=b'token=bad'); raise AssertionError('CSRF accepted')
-        except urllib.error.HTTPError as e: assert e.code==403
-        form={'token':token,'url':'ankiweb','username':'test@example.com','password':'',
-              'run_at':'06:30','minutes_per_day':'15','max_minutes_per_day':'30',
-              'new_cards_per_day':'3','decks':'English'}
-        urllib.request.urlopen('http://localhost:8080/settings',data=urllib.parse.urlencode(form).encode()).read()
-        settings=json.loads((Path(folder)/'settings.json').read_text())
-        assert settings['run_at']=='06:30' and settings['decks']==['English']
-        assert 'password' not in (Path(folder)/'connection.json').read_text()
-        mail={'token':token,'host':'smtp.test','port':'587','security':'starttls',
-              'sender':'a@example.test','recipient':'b@example.test','password':'mail-secret'}
-        urllib.request.urlopen('http://localhost:8080/mail',data=urllib.parse.urlencode(mail).encode()).read()
-        assert json.loads((Path(folder)/'mail.json').read_text())['password']=='mail-secret'
-        assert (Path(folder)/'mail.json').stat().st_mode & 0o777 == 0o600
-        assert 'mail-secret' not in urllib.request.urlopen('http://localhost:8080/').read().decode()
-        urllib.request.urlopen('http://localhost:8080/run',data=('token='+token).encode()).read()
-        for _ in range(50):
-            if (Path(folder)/'history.json').exists(): break
+        token = re.search('name="token" value="([^"]+)"', html)[1]
+        assert 'Pierwsze kroki' in html and 'value="English::Words"' in html
+        post('/run', {'token': 'bad'}, 403)
+        plan = {'token': token, 'deck': ['English'], 'run_at': '06:30', 'minutes_per_day': '15',
+                'max_minutes_per_day': '30', 'new_cards_per_day': '3', 'split_strategy': 'proportional',
+                'seconds_per_card': '0', 'learn_seconds_per_card': '0', 'learn_answers_per_new_card': '0'}
+        assert 'Zapisano ustawienia planu' in post('/plan', plan)
+        settings = json.loads((data / 'settings.json').read_text())
+        assert settings['run_at'] == '06:30' and settings['decks'] == ['English'] and not settings['apply']
+        assert 'Górna granica czasu nie może' in post('/plan', {**plan, 'max_minutes_per_day': '10'}, 400)
+        assert 'Podaj hasło Anki' in post('/account', {'token': token, 'url': 'ankiweb', 'username': 'me'}, 400)
+        mail = {'token': token, 'host': 'smtp.test', 'port': '587', 'security': 'starttls',
+                'sender': 'a@example.test', 'recipient': 'b@example.test', 'password': 'mail-secret'}
+        post('/mail', mail)
+        assert (data / 'mail.json').stat().st_mode & 0o777 == 0o600
+        assert 'mail-secret' not in urllib.request.urlopen(URL + '/').read().decode()
+        post('/run', {'token': token})
+        for _ in range(100):
+            if (data / 'history.json').exists(): break
             time.sleep(.1)
-        history=json.loads((Path(folder)/'history.json').read_text())
-        assert history[-1]['status']=='error'
-        assert history[-1]['command']=='run'
-        print('PASS: dashboard, CSRF rejection, button starts worker, error recorded')
-    finally: process.terminate(); process.wait()
+        history = json.loads((data / 'history.json').read_text())
+        assert history[-1]['status'] == 'error' and history[-1]['error'] == 'Najpierw połącz konto Anki'
+        assert json.loads(urllib.request.urlopen(URL + '/status').read())['running'] is False
+        print('PASS: onboarding, plan validation, account, mail, CSRF, run button, status')
+    finally:
+        process.terminate(); process.wait()

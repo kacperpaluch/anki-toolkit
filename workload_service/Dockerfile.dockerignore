@@ -1,9 +1,0 @@
-**
-!workload_service/
-!workload_service/worker.py
-!workload_service/requirements.txt
-!config.json
-!workload/logic.py
-!workload/snapshot.py
-!workload_service/dashboard.py
-!workload_service/notifications.py

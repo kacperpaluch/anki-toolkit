@@ -1,19 +1,11 @@
+# Wszystkie ustawienia (konto Anki, talie, budżet, e-mail) edytujesz w panelu.
 services:
   workload:
-    build:
-      context: ..
-      dockerfile: workload_service/Dockerfile
+    build: .
     image: anki-workload:local
     restart: unless-stopped
     environment: &workload_environment
       TZ: Europe/Warsaw
-      ANKI_SYNC_URL: 'ankiweb' # albo pełny URL własnego serwera
-      ANKI_SYNC_USERNAME: 'twoj-email@example.com'
-      ANKI_SYNC_PASSWORD: '' # wpisz hasło; literalny $ zapisuj jako $$
-      WORKLOAD_CONFIG: >-
-        {"apply": false, "run_at": "05:00", "minutes_per_day": 15,
-         "max_minutes_per_day": 30, "new_cards_per_day": 3,
-         "decks": ["angielski"], "split_strategy": "proportional"}
     volumes:
       - ../user_files:/data/user_files
   dashboard:

@@ -22,7 +22,6 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
 | `integrations/` | kolejka n8n, panel słowników, AI: znaczenia, Web Bridge — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
-| `workload/` | plan nauki (tylko odczyt kolekcji) — `workload/llm-context.md` | `workload` |
 | `audio_normalizer/` | ffmpeg loudnorm, ręcznie lub przez watcher | `audio_normalizer` |
 | `html_cleanup/` | reguły „znajdź → zamień” przy dodawaniu i dla kolekcji | `html_cleanup` |
 | `field_hider/` | ukrywanie pól tylko w oknie Dodaj | `field_hider` |
@@ -44,9 +43,6 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
   ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
 - `setConfigAction` musi zwracać `None` — `False` otwiera w Anki edytor JSON.
-- `logic.py` i `snapshot.py` Workloadu nie mogą mieć importów względnych ani
-  aqt: `workload_service/` ładuje je po ścieżce, a domyślne wartości bierze
-  z sekcji `workload` w głównym `config.json`.
 
 ## Niezmienniki małych modułów
 
@@ -69,14 +65,17 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 
 ## Workload Service
 
-`workload_service/` to osobny klient headless: przeczytaj jego `README.md` oraz
-kontekst Workload. Własna replika, oficjalny sync, tylko limity nowych;
-bez bezpośredniego dostępu do bazy serwera. Stan i token w `user_files/` —
+`workload_service/` to osobny klient headless (tylko Docker, nie część dodatku):
+przeczytaj jego `README.md` i `llm-context.md`. Jest samowystarczalny: nie
+importuje niczego z dodatku, domyślne ustawienia ma w `worker.DEFAULTS`.
+Własna replika, oficjalny sync, tylko limity nowych; bez bezpośredniego
+dostępu do bazy serwera. Stan i token w `user_files/` —
 Compose montuje `../user_files`, czyli ten sam katalog co dane dodatku; nie
 nadawaj plikom usługi nazw używanych przez dodatek (`ai_batches.json`,
 `audio_normalizer_*.json`) i odwrotnie.
 
-Usługa: `WORKLOAD_CONFIG` w Compose nadpisuje plik; `dashboard.py` czyta historię
+Usługa: jedyne źródło ustawień to `settings.json` edytowany w panelu (konto: `identity.json`);
+`dashboard.py` czyta historię
 i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko
 w głównym wątku workera, chroniony flock. Panel nie udostępnia plików wolumenu.
 

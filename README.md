@@ -1,9 +1,8 @@
 # Anki Toolkit
 
 Anki Toolkit to jeden dodatek do Anki, wspierający cały proces tworzenia kart:
-od pobrania słowa, przez wypełnienie treści i wymowę, po plan powtórek oraz
-utrzymanie mediów. Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia
-w jednym oknie.
+od pobrania słowa, przez wypełnienie treści i wymowę, po utrzymanie mediów.
+Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia w jednym oknie.
 
 ## Menu
 
@@ -11,7 +10,6 @@ w jednym oknie.
 |---|---|
 | **Ustawienia…** | Jedno okno z paskiem bocznym dla wszystkich modułów (ten sam dialog otwiera **Config** w **Narzędzia → Dodatki**) |
 | **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
-| **Plan nauki…** | Elastyczny plan na dziś i spokojne tempo nowych kart |
 | **Sprawdź batche AI** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
 | **Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
 | **Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
@@ -46,11 +44,6 @@ wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsłu
 adres główny i zapasowy n8n oraz Cloudflare Access (service token). Web Bridge przyjmuje dane
 z userscriptu słownika. **AI: znaczenia** robi z jednego hasła po jednej karcie
 na każde znaczenie, cytując definicje dosłownie z otwartych zakładek.
-
-**Nauka** — [Plan nauki](workload/README.md). Domyślnie 15 minut
-jako punkt odniesienia, 30 minut jako górna granica i 3 nowe karty dziennie
-łącznie. Uwzględnia dzisiejszą naukę, zaległości i częste „Ponownie”. Doradza —
-nie zmienia limitów Anki ani harmonogramu.
 
 **Porządki**
 
@@ -118,4 +111,4 @@ git diff --check
 
 [Workload Service](workload_service/README.md) to niezależny klient dla AnkiWeb lub własnego
 serwera Anki: codziennie analizuje historię i ustawia porcję nowych kart.
-Moduł w Anki pozostaje doradczy.
+Działa na serwerze w Dockerze, bez Anki na komputerze; nie jest częścią dodatku.
