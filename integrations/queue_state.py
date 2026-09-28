@@ -1,7 +1,6 @@
 """Per-profile/table scratch file. Main thread only; no credentials stored.
 
 - drafts: AI proposals not yet saved as cards (a second model call costs money),
-- local_rows: words n8n did not accept (offline),
 - owed: row id → word whose cards exist, but whose n8n "done" PATCH has not succeeded.
 
 ponytail: no Undo tracking. Undoing an AI batch leaves the n8n row marked done;
@@ -24,7 +23,7 @@ class QueueState:
         key = hashlib.sha256(json.dumps(scope).encode()).hexdigest()[:24]
         self.path = Path(path) if path else (
             Path(directory or Path(__file__).resolve().parent.parent / "user_files") / f"word_queue_{key}.json")
-        self.data = {"drafts": [], "local_rows": [], "owed": {}}
+        self.data = {"drafts": [], "owed": {}}
         if not self.path.exists():
             return
         try:
@@ -57,29 +56,3 @@ class QueueState:
 
     def drop_drafts(self, row_ids):
         self.data["drafts"] = [p for p in self.data["drafts"] if p["row_id"] not in row_ids]
-
-    def resolve_local_rows(self, rows, column, done=()):
-        """An uncertain POST may have landed: move a local word onto its unique n8n row.
-
-        A local row already ticked (`done` ids) becomes a debt on its n8n row,
-        so the tick is sent instead of silently reverting to "to do".
-        """
-        matches = {}
-        for row in rows:
-            matches.setdefault(str(row.get(column, "")).strip().casefold(), []).append(row["id"])
-        remapped = {}
-        for local in self.data["local_rows"]:
-            ids = matches.get(str(local.get(column, "")).strip().casefold(), [])
-            if len(ids) == 1:
-                remapped[local["id"]] = ids[0]
-        for old, new in remapped.items():
-            if str(old) in self.data["owed"]:
-                self.data["owed"][str(new)] = self.data["owed"].pop(str(old))
-            elif old in done:
-                local = next(r for r in self.data["local_rows"] if r["id"] == old)
-                self.data["owed"][str(new)] = str(local.get(column, "")).strip()
-            for draft in self.data["drafts"]:
-                if draft["row_id"] == old:
-                    draft["row_id"] = new
-        self.data["local_rows"][:] = [r for r in self.data["local_rows"] if r["id"] not in remapped]
-        return remapped

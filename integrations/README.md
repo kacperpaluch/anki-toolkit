@@ -21,7 +21,15 @@ Mostek przyjmuje wyłącznie POST-y z polami notatki (`{"fields": {...}}`)
 i zapisuje bufor edytora przed wypełnieniem pól. Wartości są zwykłym tekstem —
 `<` czy `&` trafiają do pola jako znaki, nie znaczniki. Skrypt, który wysyła
 gotowy HTML, dodaje `"html": true`. Separator doklejania (`separator`, domyślnie
-`<br><br>`) jest zawsze HTML-em. Żądanie jest związane
+`<br><br>`) jest zawsze HTML-em.
+
+Przyciski userscriptu wysyłają **role**, nie nazwy pól: `headword`, `meaning`,
+`definition`, `example`. Mostek zamienia je na pola z ustawień Kolejki słówek
+(**Pole notatki** i pola *AI: znaczenia*), więc nazwy pól zmieniasz tylko tam —
+userscriptu nie trzeba edytować. Klucz, który nie jest rolą, trafia do pola
+o tej nazwie; rola przypisana do pustego pola (np. wyłączony przykład) jest
+pomijana. Po aktualizacji dodatku wgraj userscript ponownie w menedżerze
+userscriptów. Żądanie jest związane
 z konkretną notatką i profilem; timeout anuluje oczekującą zmianę. Okno „Dodaj”
 musi być otwarte, inaczej endpoint zwraca błąd.
 
@@ -106,14 +114,14 @@ wklejenia tego samego słowa nie zrobią dwóch wierszy. Pominięte hasła pokaz
 dymek, a panel skacze na tę pozycję, która już istnieje.
 
 Gdy n8n nie przyjmie zapisu (offline, zła tabela), dostajesz dymek z powodem,
-a hasła zostają jako pozycje **lokalne** w `user_files/`, także po zamknięciu Anki.
-Działa na nich generowanie i lokalne odhaczanie. Przy odświeżeniu lokalna
-pozycja zostaje połączona z n8n, jeśli tabela zawiera dokładnie jedno takie hasło.
+a hasła wracają do pola **własne hasło** — nic nie trafia na listę, a ponowienie
+to Enter. Panel wymaga działającego n8n; pozycji offline nie ma.
 
 POST dopisujący hasła ma **jedną próbę**. Dostępny host jest wybierany przez
 GET przed zapisem. Przy utracie odpowiedzi dodatek sprawdza tabelę, ale nie
 powtarza POST-a na drugim adresie. Jeśli nie da się ustalić wyniku, pokazuje
-komunikat o niepewnym zapisie i zachowuje hasła lokalnie. Nie jest to blokada
+komunikat o niepewnym zapisie i oddaje hasła do pola — przed ponowieniem
+kliknij **Odśwież**, żeby zapisane już hasła zostały pominięte. Nie jest to blokada
 równoczesnego dopisania tego samego słowa z dwóch różnych urządzeń.
 
 ## Słowniki w zakładkach
@@ -184,6 +192,8 @@ nie zostanie rozpoznany, model dostaje całą stronę, a podgląd pokazuje ostrz
 **⚠ Cała strona** — cytaty mogą wtedy pochodzić z sąsiednich haseł. Czy reguły
 nadal pasują, sprawdzisz poleceniem (wymaga sieci):
 `QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py`.
+Kod wyjścia 1 oznacza, że któraś reguła przestała pasować — to polecenie możesz
+uruchamiać cyklicznie (np. zadaniem `launchd` z powiadomieniem przez `osascript`).
 Gdy pojedyncze słowo przekierowuje na formę podstawową (np. *went* → *go*),
 brany jest pierwszy wpis strony; dla fraz (*give up*) nigdy — tam inny nagłówek
 oznacza pominięcie źródła. Oczekiwanie na ładowanie ma limit 20 sekund, a odczyt
@@ -233,8 +243,8 @@ Takie hasło nie jest ponownie wysyłane do AI.
 **Cofnij** (Undo) po zapisie paczki nie cofa odhaczenia w n8n — zrób to ręcznie
 przez **Cofnij odhaczenie** w menu pozycji.
 
-Pliki `user_files/word_queue_<hash>.json` przechowują propozycje AI, lokalne
-hasła i oczekujące odhaczenia osobno dla kolekcji, głównego adresu i tabeli n8n.
+Pliki `user_files/word_queue_<hash>.json` przechowują propozycje AI
+i oczekujące odhaczenia osobno dla kolekcji, głównego adresu i tabeli n8n.
 Nie zawierają kluczy API. Uszkodzony plik jest odkładany jako `.broken`, a panel
 startuje od zera.
 

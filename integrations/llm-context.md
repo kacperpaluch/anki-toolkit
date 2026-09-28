@@ -54,7 +54,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   `window.ankiDictionaryText(word)` jest w tym samym userscripcie co przyciski.
   Brak reguły/CAPTCHA = brak źródła. Zero wpisów na stronie z hasłem w tekście =
   zmieniony HTML: userscript zwraca `{text, whole: true}` (cała strona), a podgląd
-  pokazuje ostrzeżenie (`whole_page`). Kanarek: `tests/live_selectors.py` (sieć, ręcznie).
+  pokazuje ostrzeżenie (`whole_page`). Kanarek: `tests/live_selectors.py` (sieć, kod wyjścia 1 = reguła nie pasuje).
   Wyjątek: pojedyncze słowo bez pasującego nagłówka (went → go) bierze PIERWSZY
   wpis strony; frazy nigdy (give up nie może spaść do give). Bloki dostają spację
   na granicach — `textContent` skleja „childI want" i psuje granice słów w cytatach.
@@ -118,25 +118,15 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   odsiewa panel po zawartości listy — ma całą tabelę, więc osobne zapytanie
   „czy już jest" byłoby zbędnym żądaniem przed każdą wklejką. Do porównania wchodzi też `_adding`
   (hasła w locie): przed odpowiedzią n8n nie ma ich na liście, a bez tego drugie
-  wklejenie zapisałoby duplikat. Zapasowe ujemne `id` wydaje licznik
-  `_next_local_id`, nigdy `min(_local_rows)` — inaczej równoległe zapisy dostają
-  ten sam numer. Nieudany zapis degraduje się do wiersza lokalnego, nie do
-  wyjątku: hasło ma dać się przerobić także offline — również gdy okno „Dodaj”
-  zamknięto w trakcie (`_keep_local_rows`: żywy panel tego samego pliku stanu
-  przejmuje wiersze z własnymi `id`, inaczej plik jest czytany na nowo i
-  uzupełniany; zamknięty panel nigdy nie zapisuje swojej nieaktualnej kopii).
+  wklejenie zapisałoby duplikat. Nieudany zapis oddaje hasła do pola „własne
+  hasło” — panel zakłada działający n8n i nie ma trybu offline ani wierszy
+  lokalnych (usunięte celowo; nie przywracaj ujemnych `id`).
 - `_added` trzyma wiersze zapisane w n8n, dopóki nie zobaczy ich odświeżenie:
   GET rozpoczęty przed POST-em nie może ich usunąć z listy ani odblokować
   ponownego zapisu tego samego hasła.
-- Wiersz lokalny (fallback) to zwykły wiersz listy z UJEMNYM `id` (`_local_rows`).
-  `_set_row` zamiast PATCH-a domyka tę samą ścieżkę `finished` gotowym wynikiem.
-  Wiersze lokalne są trwałe; pełny GET łączy je z pojedynczym pasującym hasłem
-  w n8n i przenosi ID w propozycjach, powiązaniach i oczekujących flagach;
-  odhaczony wiersz lokalny staje się długiem (`owed`) i PATCH-em na nowym `id`. Nie
-  dokładaj drugiego trybu pracy panelu ani pola „to jest lokalne": znak `id`
-  wystarcza, a `refill` musi te wiersze i ich ptaszki przenieść sam, bo n8n
-  ich nie odtworzy.
-
+- Userscript wysyła role (`headword`, `meaning`, `definition`, `example`);
+  `bridge._resolve` zamienia je na pola z `word_queue` na głównym wątku. Nazwy
+  pól nie wracają do userscriptu — jedno źródło to konfiguracja.
 - Mostek i panel traktują wartości jako tekst i escapują je przed wpisaniem do
   pola; surowy HTML tylko z `"html": true`. Separator zawsze jest HTML-em.
 - `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
@@ -151,8 +141,7 @@ Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany 
 `.broken` i panel startuje z pustym stanem — nie może blokować okna „Dodaj".
 
 - `add_rows`: wybór hosta przez GET, jeden POST bez retry/failover zapisu.
-  Niepewny wynik sprawdzamy pełnym GET; brak pewności daje lokalny wiersz
-  (`local_rows`), który `resolve_local_rows` przepina na jednoznaczny wiersz n8n.
+  Niepewny wynik sprawdzamy pełnym GET; brak pewności to błąd, a hasła wracają do pola.
   Przekroczenie `max_rows` to błąd, nie udane pobranie części tabeli.
 - `drafts`: każdy ukończony wynik AI; stop kończy bieżące hasło, przycisk
   odzyskiwania otwiera propozycje bez modelu. Znikają po zapisie kart.

@@ -167,10 +167,11 @@ class PanelTests(unittest.TestCase):
         self.panel._resume_btn = types.SimpleNamespace(setEnabled=lambda on: None)
         self.panel._marked = set()
         self.panel._picked = set()
-        self.panel._local_rows = []
         self.panel._adding = set()
         self.panel._added = {}
-        self.panel._next_local_id = 0
+        self.typed = types.SimpleNamespace(value="")
+        self.panel._word_input = types.SimpleNamespace(
+            text=lambda: self.typed.value, setText=lambda v: setattr(self.typed, "value", v))
         self.panel._busy = False
         self.panel._pending = {}
         self.panel._done_count = 0
@@ -301,7 +302,7 @@ class PanelTests(unittest.TestCase):
 
     def batch_panel(self, words):
         """Panel z listą N haseł, wszystkie zaznaczone — tak wygląda paczka."""
-        items = [Item(-(i + 1)) for i, _word in enumerate(words)]
+        items = [Item(i + 1) for i, _word in enumerate(words)]
         for item, word in zip(items, words):
             item.row["Slowko"] = word
         self.panel._list = types.SimpleNamespace(
@@ -340,11 +341,11 @@ class PanelTests(unittest.TestCase):
         self.assertIn("mother", shown[0])
 
         self.assertEqual(self.panel._marked, set())
-        self.assertNotIn(-1, self.panel._picked)
+        self.assertNotIn(1, self.panel._picked)
 
     def test_accepted_prompt_ticks_known_words_and_continues(self):
         items = self.batch_panel(["mother", "father"])
-        self.panel._picked = {-1, -2}
+        self.panel._picked = {1, 2}
         self.module.ai_senses.find_word_notes = lambda word, cfg: [7] if word == "mother" else []
         asked = []
         self.module.askUser = lambda text, **k: asked.append(text) or True
@@ -352,10 +353,10 @@ class PanelTests(unittest.TestCase):
             self.panel._ai_senses()
             self.answer("ojciec")
         self.assertIn("mother", asked[0])
-        self.assertEqual(self.panel._marked, {-1})          # local row: ticked at once
-        self.assertEqual(self.panel._picked, {-2})          # known word left the AI selection
+        self.assertEqual(self.panel._pending, {1: True})    # PATCH „zrobione” wysłany
+        self.assertEqual(self.panel._picked, {2})           # known word left the AI selection
         self.assertFalse(items[0].checked)
-        self.assertEqual(self.panel._state.data["owed"], {})
+        self.assertEqual(self.panel._state.data["owed"], {"1": "mother"})
         self.assertEqual(self.loaded, ["father"])
 
     def test_accepted_n8n_row_stays_owed_until_patch_succeeds(self):
@@ -374,7 +375,7 @@ class PanelTests(unittest.TestCase):
 
     def test_already_ticked_known_word_is_not_asked_about(self):
         self.batch_panel(["mother"])
-        self.panel._marked = {-1}
+        self.panel._marked = {1}
         self.module.ai_senses.find_word_notes = lambda word, cfg: [7]
         self.module.askUser = lambda *a, **k: self.fail("nothing to tick, nothing to ask")
         self.panel._ai_senses()
@@ -512,8 +513,9 @@ class PanelTests(unittest.TestCase):
             self.answer("ojciec")
         add.assert_called_once()
         self.assertEqual(add.call_args.args[1], chosen)
-        self.assertEqual(self.panel._marked, {-1})   # „mother" dostało karty → zrobione
-        self.assertNotIn(-2, self.panel._marked)     # „father" odznaczone w oknie → zostaje
+        self.assertEqual(self.panel._pending, {1: True})  # „mother" dostało karty → PATCH
+        self.finish((1, None))
+        self.assertEqual(self.panel._marked, {1})    # „father" odznaczone w oknie → zostaje
 
     def test_failed_word_does_not_sink_the_rest_of_the_batch(self):
         self.batch_panel(["mother", "father"])
@@ -580,14 +582,14 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.item.text, "word")
 
     def test_newest_first_puts_the_words_you_just_added_on_top(self):
-        """`id` rośnie z każdym dopisanym wierszem, a wiersz lokalny jest najnowszy."""
-        rows = [{"id": 3}, {"id": 1}, {"id": -1}, {"id": 7}]
+        """`id` rośnie z każdym dopisanym wierszem."""
+        rows = [{"id": 3}, {"id": 1}, {"id": 7}]
         self.panel._cfg["order"] = "id"
-        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [1, 3, 7, -1])
+        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [1, 3, 7])
         self.panel._cfg["order"] = "new"
-        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [-1, 7, 3, 1])
+        self.assertEqual([r["id"] for r in self.panel._ordered(rows)], [7, 3, 1])
         self.panel._cfg["order"] = "random"
-        self.assertEqual(sorted(r["id"] for r in self.panel._ordered(rows)), [-1, 1, 3, 7])
+        self.assertEqual(sorted(r["id"] for r in self.panel._ordered(rows)), [1, 3, 7])
 
     def test_picked_rows_win_over_the_highlight(self):
         items = [Item(1), Item(2)]
@@ -619,11 +621,10 @@ class PanelTests(unittest.TestCase):
         self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None,
                                                  setCurrentRow=lambda i: None)
         self.panel._select_word = lambda word: None
-        self.panel._add_local_rows(self.module.word_queue.parse_words("mother, give up"))
+        self.panel._add_words(self.module.word_queue.parse_words("mother, give up"))
         self.assertFalse(rebuilt)                    # najpierw zapis, potem lista
         self.finish(([{"id": 7, "Slowko": "mother"}, {"id": 8, "Slowko": "give up"}], None))
         self.assertEqual([row["id"] for row in rebuilt[0]], [7, 8])
-        self.assertEqual(self.panel._local_rows, [])  # prawdziwe wiersze, nie zastępcze
 
     def test_word_being_written_is_not_written_again(self):
         """Zapis trwa, hasła nie ma jeszcze na liście — drugie wklejenie musi je pominąć."""
@@ -631,9 +632,9 @@ class PanelTests(unittest.TestCase):
                                                  setCurrentRow=lambda i: None)
         self.panel._rebuild = lambda rows: None
         self.panel._select_word = lambda word: None
-        self.panel._add_local_rows(["mother"])
+        self.panel._add_words(["mother"])
         self.assertEqual(len(self.jobs), 1)
-        self.panel._add_local_rows(["Mother"])           # w trakcie zapisu, inna wielkość liter
+        self.panel._add_words(["Mother"])           # w trakcie zapisu, inna wielkość liter
         self.assertEqual(len(self.jobs), 1)              # nadal jedno żądanie
         self.finish(([{"id": 7, "Slowko": "mother"}], None))
         self.assertEqual(self.panel._adding, set())      # po odpowiedzi blokada znika
@@ -646,39 +647,22 @@ class PanelTests(unittest.TestCase):
                                                  currentItem=lambda: existing,
                                                  setCurrentRow=lambda i: None)
         self.panel._select_word = lambda word: None
-        self.panel._add_local_rows(["mother"])        # inna wielkość liter, to samo hasło
+        self.panel._add_words(["mother"])        # inna wielkość liter, to samo hasło
         self.assertEqual(self.jobs, [])
 
-    def test_failed_write_leaves_the_words_usable_in_the_panel(self):
-        """Offline: hasła zostają jako wiersze lokalne (ujemne id), bez PATCH-a."""
+    def test_failed_write_puts_the_words_back_into_the_input(self):
+        """n8n nie przyjął zapisu: nic nie trafia na listę, hasła wracają do pola."""
         rebuilt = []
         self.panel._rebuild = rebuilt.append
-        self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None,
-                                                 setCurrentRow=lambda i: None)
-        self.panel._select_word = lambda word: None
-        self.panel._add_local_rows(["mother", "give up"])
-        self.finish(([], "Connection error"))
-        self.assertEqual([row["id"] for row in rebuilt[0]], [-1, -2])
-        self.assertEqual([row["id"] for row in self.panel._local_rows], [-1, -2])
-
-        local = Item(-1)
-        self.panel._list = types.SimpleNamespace(count=lambda: 1, item=lambda i: local,
-                                                 currentItem=lambda: local)
-        self.jobs.clear()
-        self.panel._set_row(local, True)
-        self.assertEqual(self.jobs, [])                  # odhaczanie nie ma czego wysłać
-        self.assertEqual(self.panel._marked, {-1})
-        self.panel._set_row(local, False)                # pomyłkę dalej da się cofnąć
-        self.assertEqual(self.panel._marked, set())
-
-    def test_words_survive_closing_the_panel_during_a_failed_write(self):
         self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None)
-        self.panel._add_local_rows(["mother"])
-        self.panel.deleted = True                        # okno „Dodaj” zamknięte
-        self.module.word_queue._panel = None
+        self.typed.value = "cat"                         # coś już wpisano w międzyczasie
+        self.panel._add_words(["mother", "give up"])
         self.finish(([], "Connection error"))
-        again = self.module.QueueState("/test/collection.anki2", {}, self.state_dir.name)
-        self.assertEqual([row["Slowko"] for row in again.data["local_rows"]], ["mother"])
+        self.assertEqual(rebuilt, [])
+        self.assertEqual(self.typed.value, "cat, mother, give up")
+        self.assertEqual(self.panel._adding, set())      # ponowienie nie jest blokowane
+        self.panel._add_words(["mother"])
+        self.assertEqual(len(self.jobs), 2)
 
     def test_refill_started_before_a_write_keeps_the_new_row(self):
         rebuilt = []
@@ -687,26 +671,14 @@ class PanelTests(unittest.TestCase):
         self.panel._list = types.SimpleNamespace(count=lambda: 0, item=None, currentItem=lambda: None)
         self.panel.refill()
         refill_done = self.jobs[-1][1]
-        self.panel._add_local_rows(["mother"])
+        self.panel._add_words(["mother"])
         self.finish(([{"id": 7, "Slowko": "mother"}], None))
         future = Future(); future.set_result(([{"id": 5, "Slowko": "cat"}], None))
         refill_done(future)                              # GET sprzed zapisu kończy się później
         self.assertEqual([row["id"] for row in rebuilt[-1]], [5, 7])
         self.jobs.clear()
-        self.panel._add_local_rows(["Mother"])           # nadal „już na liście”
+        self.panel._add_words(["Mother"])           # nadal „już na liście”
         self.assertEqual(self.jobs, [])
-
-    def test_ticked_local_row_is_ticked_on_its_n8n_row(self):
-        self.panel._local_rows[:] = [{"id": -1, "Slowko": "mother", "Anki": True}]
-        self.panel._state.data["local_rows"] = self.panel._local_rows
-        self.panel._marked = {-1}
-        self.panel._rebuild = lambda rows: None
-        self.panel._settle_owed = lambda: None
-        self.panel.refill()
-        future = Future(); future.set_result(([{"id": 9, "Slowko": "mother", "Anki": False}], None))
-        self.jobs[-1][1](future)
-        self.assertEqual(self.panel._pending, {9: True})  # PATCH „zrobione” wysłany
-        self.assertEqual(self.panel._state.data["owed"], {"9": "mother"})
 
     def test_cards_are_not_added_when_the_debt_cannot_be_saved(self):
         added = []
@@ -719,16 +691,6 @@ class PanelTests(unittest.TestCase):
         self.panel._finish_batch([{"word": "mother", "row_id": 3, "senses": []}], [], self.module.mw.col)
         self.assertEqual(added, [])
         self.assertEqual(self.panel._state.data["owed"], {})
-
-    def test_refill_keeps_local_rows_and_their_ticks(self):
-        self.panel._local_rows = [{"id": -1, "Slowko": "mother"}]
-        self.panel._marked = {-1}
-        rebuilt = []
-        self.panel._rebuild = rebuilt.append
-        self.panel.refill()
-        future = Future(); future.set_result(([{"id": 5, "Anki": True}], None)); self.jobs[0][1](future)
-        self.assertEqual([row["id"] for row in rebuilt[0]], [5, -1])
-        self.assertEqual(self.panel._marked, {5, -1})
 
     def test_walking_the_list_does_not_ask_about_an_empty_note(self):
         """Hasło w polu wpisał panel przy poprzednim kliknięciu — nie ma czego bronić."""

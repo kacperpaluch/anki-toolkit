@@ -39,21 +39,8 @@ class RecoveryTests(unittest.TestCase):
             state.path.write_text('{"drafts": ', encoding='utf-8')
             with self.assertLogs(level='ERROR'):
                 fresh = State('/profile/collection.anki2', {}, folder)
-            self.assertEqual(fresh.data, {'drafts': [], 'local_rows': [], 'owed': {}})
+            self.assertEqual(fresh.data, {'drafts': [], 'owed': {}})
             self.assertTrue(state.path.with_suffix('.broken').exists())
-
-    def test_local_word_moves_onto_its_n8n_row(self):
-        State = load('queue_state').QueueState
-        with tempfile.TemporaryDirectory() as folder:
-            state = State('/profile/collection.anki2', {}, folder)
-            state.data['local_rows'] = [{'id': -1, 'Slowko': 'mother'}, {'id': -2, 'Slowko': 'dup'}]
-            state.data['drafts'] = [{'row_id': -1, 'word': 'mother'}]
-            state.data['owed'] = {'-1': 'mother'}
-            rows = [{'id': 7, 'Slowko': 'Mother '}, {'id': 8, 'Slowko': 'dup'}, {'id': 9, 'Slowko': 'dup'}]
-            self.assertEqual(state.resolve_local_rows(rows, 'Slowko'), {-1: 7})
-            self.assertEqual(state.data['local_rows'], [{'id': -2, 'Slowko': 'dup'}])  # ambiguous stays
-            self.assertEqual(state.data['drafts'][0]['row_id'], 7)
-            self.assertEqual(state.data['owed'], {'7': 'mother'})
 
     def test_failed_atomic_save_keeps_previous_file(self):
         module = load('queue_state')

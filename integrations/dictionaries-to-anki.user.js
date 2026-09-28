@@ -18,13 +18,10 @@
 (function () {
   'use strict';
 
-  // ── KONFIG — nazwy pól w Twoim typie notatki ────────────────────────────────
-  const FIELDS = {
-    headword:   'ang',       // hasło (angielskie)
-    meaning:    'pol',       // polskie tłumaczenie (diki)
-    definition: 'def',       // angielska definicja (Oxford / LDOCE)
-    example:    'przyklad',  // przykładowe zdania (Oxford / LDOCE) — DOKLEJANE przez <br><br>
-  };
+  // ── KONFIG ──────────────────────────────────────────────────────────────────
+  // Przyciski wysyłają ROLE (headword, meaning, definition, example), a Anki
+  // zamienia je na pola z ustawień Kolejki słówek — nazw pól tu nie ma.
+  // Port musi być równy `web_bridge.port`.
   const ENDPOINT = 'http://127.0.0.1:8767';
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -131,7 +128,7 @@
     document.querySelectorAll('.dictionaryEntity .hws').forEach((hws) => {
       const hw = hws.querySelector('.hw');
       if (!hw || hws.querySelector('.ankiBtn')) return;
-      hw.after(makeBtn('→ hasło', () => ({ [FIELDS.headword]: clean(hw.textContent) })));
+      hw.after(makeBtn('→ hasło', () => ({ headword: clean(hw.textContent) })));
     });
     document.querySelectorAll('.foreignToNativeMeanings > li').forEach((li) => {
       if (li.querySelector('.ankiBtn')) return;
@@ -143,8 +140,8 @@
         return hw ? clean(hw.textContent) : '';
       };
       const last = spans[spans.length - 1];
-      last.after(makeBtn('→ oba', () => ({ [FIELDS.headword]: headword(), [FIELDS.meaning]: meaning() })));
-      last.after(makeBtn('→ Anki', () => ({ [FIELDS.meaning]: meaning() })));
+      last.after(makeBtn('→ oba', () => ({ headword: headword(), meaning: meaning() })));
+      last.after(makeBtn('→ Anki', () => ({ meaning: meaning() })));
     });
   }
 
@@ -168,27 +165,27 @@
     if (host.includes('diki.pl')) {
       injectDiki();
     } else if (host.includes('oxfordlearnersdictionaries.com')) {
-      injectButtons('h1.headword', '→ hasło', FIELDS.headword);
+      injectButtons('h1.headword', '→ hasło', 'headword');
       // Oxford: „(of a person)” siedzi w osobnym .dis-g tuż przed .def — doklej go jako prefiks
-      injectButtons('.def', '→ def', FIELDS.definition, {}, (el) => {
+      injectButtons('.def', '→ def', 'definition', {}, (el) => {
         const dis = el.previousElementSibling;
         const prefix = dis && dis.classList.contains('dis-g') ? clean(dis.textContent) + ' ' : '';
         return prefix + clean(el.textContent);
       });
-      injectButtons('.x', '+ przykład', FIELDS.example, { append: true });
+      injectButtons('.x', '+ przykład', 'example', { append: true });
     } else if (host.includes('ldoceonline.com')) {
-      injectButtons('.HWD, .PHRVBHWD', '→ hasło', FIELDS.headword);  // PHRVBHWD = phrasal verb (give up)
-      injectButtons('.DEF', '→ def', FIELDS.definition);
-      injectButtons('.EXAMPLE', '+ przykład', FIELDS.example, { append: true });
+      injectButtons('.HWD, .PHRVBHWD', '→ hasło', 'headword');  // PHRVBHWD = phrasal verb (give up)
+      injectButtons('.DEF', '→ def', 'definition');
+      injectButtons('.EXAMPLE', '+ przykład', 'example', { append: true });
     } else if (host.includes('dictionary.cambridge.org')) {
       // One headword per entry: phrasal verbs sit in .di-title ("give up"), and the page
       // also carries a bare .hw.dhw ("give") that must not get the button.
       const heads = [...document.querySelectorAll('.entry-body__el')]
         .map((entry) => entry.querySelector('.di-title.dhw, .hw.dhw')).filter(Boolean);
-      injectButtons(heads, '→ hasło', FIELDS.headword);
-      injectButtons('.def', '→ def', FIELDS.definition);           // Cambridge: definicja + końcowy ":" ucinany w clean()
-      injectButtons('.eg', '+ przykład', FIELDS.example, { append: true });
-      injectButtons('.dtrans-se', '→ pol', FIELDS.meaning);        // tłumaczenie PL (tylko wersja EN-PL)
+      injectButtons(heads, '→ hasło', 'headword');
+      injectButtons('.def', '→ def', 'definition');           // Cambridge: definicja + końcowy ":" ucinany w clean()
+      injectButtons('.eg', '+ przykład', 'example', { append: true });
+      injectButtons('.dtrans-se', '→ pol', 'meaning');        // tłumaczenie PL (tylko wersja EN-PL)
     }
   }
 

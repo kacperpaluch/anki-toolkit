@@ -4,8 +4,9 @@ Wystawia jeden endpoint POST na 127.0.0.1 (port z `web_bridge.port`), który wpi
 do JUŻ OTWARTEGO okna „Dodaj". Nie tworzy notatek, nie zapisuje — tylko
 wypełnia pola edytora; zapis zatwierdzasz w Anki ręcznie (Enter).
 
-Które pole dostaje jaką wartość decyduje strona wysyłająca (body: {"fields": {...}}),
-więc moduł jest uniwersalny. Dołączony userscript `dictionaries-to-anki.user.js`
+Strona wysyłająca podaje role (`headword`, `meaning`, `definition`, `example`),
+a mostek zamienia je na pola z sekcji `word_queue` (`word_field`, `ai_fields`).
+Klucz, który nie jest rolą, traktujemy jak nazwę pola (body: {"fields": {...}}). Dołączony userscript `dictionaries-to-anki.user.js`
 obsługuje diki.pl, Oxford Learner's i Longman (LDOCE). Okno „Dodaj" musi być
 otwarte, inaczej endpoint zwraca błąd.
 """
@@ -78,6 +79,20 @@ def _origin_allowed(origin: str | None) -> bool:
     return parsed.hostname in ALLOWED_ORIGIN_HOSTS
 
 
+def _role_fields() -> dict:
+    """Rola z userscriptu → pole notatki. Nazwy pól są tylko w sekcji `word_queue`."""
+    cfg = get_module_config("word_queue")
+    ai = cfg.get("ai_fields") or {}
+    return {"headword": cfg.get("word_field", "ang"), "meaning": ai.get("pl", "pol"),
+            "definition": ai.get("definition", "def"), "example": ai.get("example", "przyklad")}
+
+
+def _resolve(fields: dict, roles: dict) -> dict:
+    """Role zamień na pola; nazwa spoza ról przechodzi bez zmian (curl, stare skrypty).
+    Rola przypisana do pustego pola (np. wyłączony przykład) odpada."""
+    return {roles.get(name, name): value for name, value in fields.items() if roles.get(name, name)}
+
+
 def _join(existing: str, value: str, separator: str) -> str:
     """Doklej `value` do `existing` przez `separator`; puste `existing` → sama `value`."""
     base = existing.strip()
@@ -121,7 +136,8 @@ def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5, is_
             if done.is_set():
                 return
             try:
-                box["error"] = _apply_fields(fields, target, append, separator, is_html)
+                box["error"] = _apply_fields(_resolve(fields, _role_fields()), target,
+                                             append, separator, is_html)
             except Exception as error:
                 box["error"] = str(error)
                 logger.exception("web_bridge: apply failed")
@@ -240,4 +256,8 @@ if __name__ == "__main__":  # self-check logiki doklejania (bez Anki)
     assert _join("ex1", "ex2", SEP) == "ex1<br><br>ex2"         # doklejenie
     assert _join("ex1<br><br>ex2", "ex3", SEP) == "ex1<br><br>ex2<br><br>ex3"
     assert _join("  ex1  ", "ex2", SEP) == "ex1<br><br>ex2"     # trim istniejącego
+    roles = {"headword": "ang", "meaning": "pol", "definition": "def", "example": ""}
+    assert _resolve({"headword": "go", "meaning": "iść"}, roles) == {"ang": "go", "pol": "iść"}
+    assert _resolve({"ang": "go"}, roles) == {"ang": "go"}        # surowa nazwa pola przechodzi
+    assert _resolve({"example": "x"}, roles) == {}                # przykład wyłączony w configu
     print("web_bridge self-check OK")

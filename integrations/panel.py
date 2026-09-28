@@ -79,9 +79,8 @@ _BATCH_ASK = 10
 
 def _age_key(row: dict):
     """Rosnąco = od najstarszego. `id` rośnie z każdym dopisanym wierszem, więc
-    jest zarazem datą dodania. Wiersze lokalne (ujemne id) są najnowsze."""
-    row_id = row.get("id") or 0
-    return (1, -row_id) if row_id < 0 else (0, row_id)
+    jest zarazem datą dodania."""
+    return row.get("id") or 0
 
 _profile = None  # jeden na proces — nazwany, więc ciasteczka (zgody RODO, logowanie) przeżywają restart
 
@@ -249,7 +248,7 @@ class WordQueuePanel(QDockWidget):
         self._stop_requested = False
         self._fetch_queue = fetch_queue
         self._mark_row_done = mark_row_done
-        self._marked: set = {r["id"] for r in self._state.data["local_rows"] if r.get(cfg["flag_column"])}  # id wierszy już odhaczonych — PATCH tylko raz na wiersz
+        self._marked: set = set()  # id wierszy już odhaczonych — PATCH tylko raz na wiersz
         self._picked: set = set()  # id zaptaszkowanych do AI; wyłącznie stan panelu
         self._done_count = 0
         self._suspend = False  # blokuje itemChanged przy zmianach programowych
@@ -258,10 +257,8 @@ class WordQueuePanel(QDockWidget):
         self._selection_generation = 0
         self._bound_note = None
         self._bound_row_id = None
-        self._local_rows: list[dict] = self._state.data["local_rows"]  # hasła spoza n8n; ujemne id
         self._adding: set[str] = set()  # hasła w trakcie zapisu do n8n (casefold)
         self._added: dict = {}  # id → wiersz zapisany w n8n, zanim zobaczy go odświeżenie
-        self._next_local_id = min([0] + [row["id"] for row in self._local_rows])  # zapasowe, ujemne id; nigdy nie wraca do użytku
         self._busy = False  # paczka AI w toku — nic nie przebudowuje listy
 
         self.setAllowedAreas(
@@ -270,7 +267,6 @@ class WordQueuePanel(QDockWidget):
         self.setWidget(self._build_ui())
         addcards.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
         addcards.resizeDocks([self], [1100], Qt.Orientation.Horizontal)
-        self._rebuild(self._ordered(self._local_rows))
         self.refill()
 
     def _save_state(self) -> bool:
@@ -353,8 +349,8 @@ class WordQueuePanel(QDockWidget):
         self._word_input.setMaximumWidth(200)
         self._word_input.setToolTip(
             "Hasła spoza kolejki n8n; kilka rozdziel przecinkiem.\n"
-            "Trafiają na listę i mają te same zakładki oraz „AI: znaczenia”,\n"
-            "a w razie braku połączenia zostają zapisane lokalnie.")
+            "Trafiają do tabeli n8n i na listę, z tymi samymi zakładkami\n"
+            "oraz „AI: znaczenia”. Nieudany zapis wraca do tego pola.")
         self._word_input.returnPressed.connect(self._add_typed_word)
         bar.addWidget(self._word_input)
 
@@ -438,7 +434,7 @@ class WordQueuePanel(QDockWidget):
 
     def _add_typed_word(self) -> None:
         """Enter w polu obok listy: dopisz hasło (albo kilka po przecinku)."""
-        self._add_local_rows(word_queue.parse_words(self._word_input.text()))
+        self._add_words(word_queue.parse_words(self._word_input.text()))
         self._word_input.clear()
 
     def _paste_words(self) -> None:
@@ -446,17 +442,16 @@ class WordQueuePanel(QDockWidget):
         text, accepted = QInputDialog.getMultiLineText(
             self, "Własne hasła", "Po jednym na linię (albo po przecinku):")
         if accepted:
-            self._add_local_rows(word_queue.parse_words(text))
+            self._add_words(word_queue.parse_words(text))
 
-    def _add_local_rows(self, words: list[str]) -> None:
+    def _add_words(self, words: list[str]) -> None:
         """Dopisz hasła do tabeli n8n i na koniec listy; skocz na pierwsze z nich.
 
         Hasło, które już jest na liście, pomijamy — panel trzyma CAŁĄ tabelę,
         więc to jest zarazem kontrola duplikatów w n8n, bez dodatkowego zapytania.
 
-        Gdy n8n nie przyjmie zapisu (offline, zła tabela), hasła zostają jako
-        wiersze lokalne z UJEMNYM `id`: działa wszystko poza odhaczaniem, którego
-        nie ma co wysyłać, przeżywają zamknięcie okna „Dodaj".
+        Gdy n8n nie przyjmie zapisu, hasła wracają do pola „własne hasło”, żeby
+        nie przepadły — ponowienie to Enter (po „Odśwież”, jeśli zapis był niepewny).
         """
         if not words:
             return
@@ -479,15 +474,14 @@ class WordQueuePanel(QDockWidget):
                 skipped.append(word)
                 continue
             known.add(word.casefold())
-            self._next_local_id -= 1  # rezerwujemy od razu; równoległe zapisy nie kolidują
-            fresh.append({"id": self._next_local_id, column: word})
+            fresh.append(word)
         if skipped:
             shown = ", ".join(skipped[:8]) + (f" (+{len(skipped) - 8})" if len(skipped) > 8 else "")
             tooltip(f"Już na liście, pominięto: {shown}", parent=mw, period=4000)
         if not fresh:
             self._select_word(skipped[0] if skipped else "")
             return
-        self._adding |= {row[column].casefold() for row in fresh}
+        self._adding |= {word.casefold() for word in fresh}
 
         def done(future):
             try:
@@ -495,19 +489,18 @@ class WordQueuePanel(QDockWidget):
             except Exception:  # noqa: BLE001
                 log.exception("word_queue: dopisywanie wierszy rzuciło wyjątkiem")
                 saved, error = [], "wyjątek (szczegóły w Logach)"
-            self._adding -= {row[column].casefold() for row in fresh}
-            if error:
-                # Offline albo zła tabela: hasła zostają w panelu, żeby dało się
-                # z nimi pracować teraz i po ponownym otwarciu panelu — także
-                # wtedy, gdy okno „Dodaj” zamknięto w trakcie zapisu.
-                tooltip(f"n8n: {error}. Hasła zachowano lokalnie.",
-                        parent=mw, period=8000)
-                self._keep_local_rows(fresh)
-                saved = fresh
-            elif not sip.isdeleted(self):
-                self._added.update({row["id"]: row for row in saved})
             if sip.isdeleted(self):
+                if error:
+                    tooltip(f"n8n: {error}. Nie zapisano: {', '.join(fresh)}", parent=mw, period=8000)
                 return
+            self._adding -= {word.casefold() for word in fresh}
+            if error:
+                tooltip(f"n8n: {error}. Hasła wróciły do pola „własne hasło”.",
+                        parent=mw, period=8000)
+                typed = self._word_input.text().strip()
+                self._word_input.setText(", ".join(([typed] if typed else []) + fresh))
+                return
+            self._added.update({row["id"]: row for row in saved})
             def append_when_idle():
                 if sip.isdeleted(self) or mw.col is not self._collection:
                     return
@@ -518,37 +511,8 @@ class WordQueuePanel(QDockWidget):
             append_when_idle()
 
         mw.taskman.run_in_background(
-            lambda: word_queue.add_rows([row[column] for row in fresh], self._cfg), done,
+            lambda: word_queue.add_rows(fresh, self._cfg), done,
             uses_collection=False)
-
-    def _keep_local_rows(self, fresh: list[dict]) -> None:
-        """Persist offline words into whichever panel owns this state file now.
-
-        A closed panel must not save its stale copy of the file over a panel
-        opened meanwhile — that one gets the rows (with its own ids) instead.
-        """
-        target = self
-        if sip.isdeleted(self):
-            live = word_queue._panel
-            alive = live is not None and not sip.isdeleted(live)
-            target = live if alive and live._state.path == self._state.path else None
-        if target is None:
-            state = QueueState("", {}, path=self._state.path)  # re-read: never save a stale copy
-            start = min([0] + [row["id"] for row in state.data["local_rows"]])
-            state.data["local_rows"] += [{**row, "id": start - n} for n, row in enumerate(fresh, 1)]
-            try:
-                state.save()
-            except Exception:
-                log.exception("word_queue: nie zapisano haseł lokalnych")
-            return
-        if target is not self:
-            for row in fresh:
-                target._next_local_id -= 1
-                row["id"] = target._next_local_id
-        target._local_rows += fresh
-        target._save_state()
-        if target is not self and not target._busy:  # busy: the next refill shows them
-            target._append_rows(fresh)
 
     def _append_rows(self, fresh: list[dict]) -> None:
         if not fresh:
@@ -598,24 +562,14 @@ class WordQueuePanel(QDockWidget):
                 return  # okno „Dodaj" zamknięte, zanim n8n odpowiedział
             # Stan bierzemy z tabeli, nie z pamięci sesji — po „Odśwież" zrobione
             # wciąż są na liście (schowane), więc pomyłkę da się cofnąć.
-            # Wyjątkiem są wiersze lokalne: n8n o nich nie wie, więc ich ptaszki
-            # przenosimy przez odświeżenie sami, inaczej wracałyby jako do zrobienia.
-            flag = self._cfg["flag_column"]
-            done_local = {row_id for row_id in self._marked if row_id < 0}
-            remapped = self._state.resolve_local_rows(rows, self._cfg["word_column"], done_local)
-            self._picked = {remapped.get(row_id, row_id) for row_id in self._picked}
-            self._marked = ({r["id"] for r in rows if r.get(flag)}
-                            | {row_id for row_id in done_local if row_id not in remapped})
+            self._marked = {r["id"] for r in rows if r.get(self._cfg["flag_column"])}
             # A GET that started before our POST does not know the new rows yet.
             fetched = {row["id"] for row in rows}
             for row_id in fetched & set(self._added):
                 del self._added[row_id]
             late = [row for row_id, row in self._added.items() if row_id not in fetched]
             self._done_count = 0  # licznik jest per sesja, nie per tabela
-            self._rebuild(self._ordered(rows + late + self._local_rows))
-            for old, new in remapped.items():
-                if old in done_local:
-                    self._set_row(None, True, row_id=new)
+            self._rebuild(self._ordered(rows + late))
             self._settle_owed()
 
         mw.taskman.run_in_background(lambda: self._fetch_queue(self._cfg), done,
@@ -775,10 +729,6 @@ class WordQueuePanel(QDockWidget):
             if sip.isdeleted(self) or mw.col is not self._collection:
                 return  # `owed` stays on disk; the next panel retries after refill
             if not error:
-                if row_id < 0:
-                    for row in self._local_rows:
-                        if row["id"] == row_id:
-                            row[self._cfg["flag_column"]] = done
                 # Success either way settles the debt: done is reported, undone was a manual choice.
                 self._state.data["owed"].pop(str(row_id), None)
                 self._save_state()
@@ -794,15 +744,6 @@ class WordQueuePanel(QDockWidget):
                     self._style_item(current)
             self._apply_hiding()
             self._update_counter()
-
-        if row_id < 0:
-            # Wiersz lokalny: nie ma go w tabeli, więc „zapis" się udał z definicji.
-            # Idziemy tą samą ścieżką co PATCH, żeby licznik i styl miały jedno
-            # miejsce obsługi.
-            local = Future()
-            local.set_result((1, None))
-            finished(local)
-            return
 
         try:
             mw.taskman.run_in_background(
