@@ -193,6 +193,12 @@ class ProviderContractTests(unittest.TestCase):
         self.assertIn("haiku", cl.fetch_models())
         self.assertIn("sonnet", cl.fetch_models())
 
+    def test_full_model_ids_are_listed_without_api_key(self):
+        # Bez klucza Anthropic lista i tak zawiera konkretne wersje obok aliasów.
+        models = cl.fetch_models()
+        self.assertEqual(models[:4], cl.MODEL_ALIASES)
+        self.assertIn("claude-opus-5-5", models)
+
 
 if __name__ == "__main__":
     unittest.main()

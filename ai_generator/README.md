@@ -204,7 +204,7 @@ Obaj dostawcy zachowują się tak samo w tych punktach:
 | `binary_path` | Ścieżka do `claude`. Puste = autodetekcja; dodatkowy kandydat: `~/.claude/local/claude` |
 | `system_prompt` | Zastępuje systemowy prompt Claude Code. Puste = domyślny prompt generatora fiszek |
 | `cli_timeout` | Limit czasu jednego `claude -p` (domyślnie 180 s) |
-| `model` | Alias (`haiku`, `sonnet`, `opus`, `fable`) albo pełna nazwa (np. `claude-sonnet-5`) |
+| `model` | Alias (`haiku`, `sonnet`, `opus`, `fable` — zawsze najnowsza wersja rodziny) albo pełne ID konkretnej wersji (np. `claude-opus-5-5`). **Pobierz** dokłada pełne ID do aliasów: z `GET /v1/models`, jeśli skonfigurowano klucz dostawcy `anthropic` (tylko do listy — generowanie nadal idzie przez subskrypcję), inaczej ze znanej listy |
 
 **Czego ten dostawca nie robi:** nie dotyka poświadczeń. Token siedzi w keychainie systemu, a status logowania pochodzi z `claude auth status --json`, które tokenu nie zwraca.
 
@@ -238,7 +238,7 @@ Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawc
 | `anthropic` | `GET /v1/models` | tak |
 | `openrouter` | `GET /v1/models` | nie (publiczne) |
 | `codex_cli` | `model/list` przez `codex app-server` | nie (lokalne logowanie) |
-| `claude_cli` | aliasy rodzin modeli (CLI nie wystawia listy) | nie (lokalne logowanie) |
+| `claude_cli` | aliasy rodzin + pełne ID z `GET /v1/models` Anthropic (CLI nie wystawia listy) | nie — klucz `anthropic` opcjonalny, bez niego znana lista |
 
 Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
 
@@ -249,8 +249,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 | `openai` | `gpt-4o` | Silny, droższy |
 | `openai` | `gpt-4o-mini` | Szybki, tani |
 | `anthropic` | `claude-haiku-4-5-20251001` | Szybki, tani |
-| `anthropic` | `claude-sonnet-5` | Silniejszy |
-| `anthropic` | `claude-opus-5` | Najmocniejszy, najdroższy |
+| `anthropic` | `claude-sonnet-5-5` | Silniejszy |
+| `anthropic` | `claude-opus-5-5` | Najmocniejszy, najdroższy |
 | `openrouter` | `openai/gpt-oss-120b:free` | Darmowy wariant `:free` (limit 20 RPM) |
 | `codex_cli` | `gpt-5.4-mini` | Najtańszy w limicie planu — dobry do fiszek |
 | `codex_cli` | `gpt-5.5` | Silniejszy, szybciej zjada limit |
@@ -362,6 +362,7 @@ Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć 
 - **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
 - **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
+- **Ustaw te modele we wszystkich promptach…** — kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy bieżącego promptu do pozostałych promptów widocznych na liście (filtr typu notatki zawęża zakres); przed zmianą pyta o potwierdzenie, zapis dopiero przy zapisie ustawień
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
 - Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
 - Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")

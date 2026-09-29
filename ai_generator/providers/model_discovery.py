@@ -108,17 +108,21 @@ def fetch_openrouter_chat_models(force: bool = False) -> list[dict]:
 # Anthropic
 # ---------------------------------------------------------------------------
 
+# Zapas, gdy API nie odpowie albo nie ma klucza (lista Claude CLI).
+ANTHROPIC_MODELS = [
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-4-5-20251001",
+]
+
 def fetch_anthropic_models(api_key: str, force: bool = False) -> list[str]:
     return _fetch_simple(
         ("anthropic", api_key[:8]),
         "https://api.anthropic.com/v1/models",
         {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
         lambda m: True,
-        [
-            "claude-opus-5",
-            "claude-sonnet-5",
-            "claude-haiku-4-5-20251001",
-        ],
+        ANTHROPIC_MODELS,
         force,
     )
 
@@ -136,10 +140,10 @@ def fetch_models(provider: str, api_key: str = "", force: bool = False) -> list[
     elif provider == "anthropic":
         return fetch_anthropic_models(api_key, force)
     elif provider == "claude_cli":
-        # CLI nie wystawia listy modeli — aliasy zawsze wskazują na najnowszą
-        # wersję rodziny, a pełne nazwy można wpisać ręcznie.
+        # CLI nie wystawia listy modeli — `api_key` to tu klucz Anthropic,
+        # używany wyłącznie do pobrania pełnych ID.
         from .claude_cli import fetch_models as fetch_claude_models
-        return fetch_claude_models()
+        return fetch_claude_models(api_key=api_key)
     elif provider == "codex_cli":
         # Lokalny app-server zna modele dostępne dla zalogowanego konta —
         # nie ma tu klucza API ani endpointu do odpytania.

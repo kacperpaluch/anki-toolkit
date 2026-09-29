@@ -473,6 +473,8 @@ class AIGeneratorTab(QWidget):
             return
         api_key = w["api_key"].text().strip()
         is_local = bool(w.get("is_local"))
+        anthropic_key = self._provider_widgets.get("anthropic", {}).get("api_key")
+        anthropic_key = anthropic_key.text().strip() if anthropic_key else ""
 
         try:
             from ..ai_generator.providers.model_discovery import fetch_models
@@ -491,8 +493,12 @@ class AIGeneratorTab(QWidget):
                 # Lista modeli zależy od lokalnej instalacji, nie od klucza —
                 # pytamy moduł dostawcy, respektując ścieżkę wpisaną w tym
                 # dialogu (także jeszcze niezapisaną).
-                return _local_provider_module(provider_name).fetch_models(
-                    w["binary_path"].text().strip())
+                mod = _local_provider_module(provider_name)
+                binary = w["binary_path"].text().strip()
+                if provider_name == "claude_cli":
+                    # Klucz Anthropic (jeśli jest) daje aktualną listę pełnych ID.
+                    return mod.fetch_models(binary, anthropic_key)
+                return mod.fetch_models(binary)
             return fetch_models(provider_name, api_key, force=True)
 
         def on_done(fut):

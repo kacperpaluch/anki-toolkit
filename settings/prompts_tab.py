@@ -8,7 +8,7 @@ buttons reorder both the list and the saved config.
 import re
 
 from aqt import mw
-from aqt.utils import showWarning
+from aqt.utils import askUser, showWarning
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
@@ -358,6 +358,12 @@ class PromptsTab(QWidget):
         form.addRow(self._ed_manual_only)
         form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
         form.addRow("Model zapasowy:", fb_model_row)
+        self._btn_apply_models = QPushButton("Ustaw te modele we wszystkich promptach…")
+        self._btn_apply_models.setToolTip(
+            "Kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy tego\n"
+            "promptu do wszystkich promptów widocznych na liście (wg filtra typu notatki)."
+        )
+        form.addRow(self._btn_apply_models)
         editor_form_layout.addLayout(form)
 
         prompt_header = QHBoxLayout()
@@ -416,6 +422,7 @@ class PromptsTab(QWidget):
         self._ed_prompt.textChanged.connect(self._validate_prompt)
         self._btn_fetch_models.clicked.connect(self._fetch_models)
         self._btn_fetch_fb_models.clicked.connect(self._fetch_fallback_models)
+        self._btn_apply_models.clicked.connect(self._on_apply_models_to_all)
         self._btn_insert_field.clicked.connect(self._on_insert_field)
         self._btn_insert_cond.clicked.connect(self._on_insert_condition)
         self._btn_preview.clicked.connect(self._on_preview)
@@ -676,7 +683,9 @@ class PromptsTab(QWidget):
 
     def _fetch_models_for_combo(self, provider: str, combo: QComboBox,
                                 btn: QPushButton) -> None:
-        api_key = str(self._provider_values(provider).get("api_key", "")).strip()
+        # Claude CLI nie ma listy modeli — pełne ID pobiera kluczem Anthropic.
+        key_source = "anthropic" if provider == "claude_cli" else provider
+        api_key = str(self._provider_values(key_source).get("api_key", "")).strip()
         current = combo.currentText()
         btn.setEnabled(False)
         btn.setText("...")
@@ -910,6 +919,29 @@ class PromptsTab(QWidget):
         self._filter_combo.setCurrentIndex(self._filter_combo.findData(key[0]))
         self._filter_combo.blockSignals(False)
         self._rebuild_list(select_key=key)
+
+    def _on_apply_models_to_all(self) -> None:
+        self._save_current_to_data(self._list.currentItem())
+        source = self._data.get(self._current_key)
+        if source is None:
+            return
+        filter_nt = self._filter_combo.currentData()
+        keys = [k for k in self._data
+                if k != self._current_key and (filter_nt is None or k[0] == filter_nt)]
+        if not keys:
+            return
+        fb = source.get("fallback_model") or "— (dziedziczony z dostawcy)"
+        scope = f"typu „{filter_nt}”" if filter_nt else "wszystkich typów"
+        if not askUser(
+            f"Ustawić w {len(keys)} promptach {scope}:\n\n"
+            f"model: {source['provider']} / {source['model'] or '— (domyślny dostawcy)'}\n"
+            f"zapasowy: {source.get('fallback_provider') or source['provider']} / {fb}",
+            parent=self,
+        ):
+            return
+        for k in keys:
+            for field in ("provider", "model", "fallback_provider", "fallback_model"):
+                self._data[k][field] = source.get(field, "")
 
     def _on_delete(self) -> None:
         item = self._list.currentItem()

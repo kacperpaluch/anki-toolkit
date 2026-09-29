@@ -33,8 +33,8 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 # Aliasy modeli zawsze wskazują na najnowszą wersję z danej rodziny, więc się
-# nie starzeją. Pełne nazwy (np. `claude-sonnet-5`) można wpisać ręcznie —
-# pole modelu jest edytowalne.
+# nie starzeją. Konkretną wersję (np. `claude-opus-5-5`) wybiera pełne ID —
+# `fetch_models()` dokłada je do listy, a pole modelu jest edytowalne.
 MODEL_ALIASES = ["haiku", "sonnet", "opus", "fable"]
 
 # `claude -p` bez narzędzi kończy się szybko, ale globalny request_timeout
@@ -95,9 +95,16 @@ def login_status(binary: str = "") -> tuple[bool, str]:
     return True, f"subskrypcja {subscription}{f' — {email}' if email else ''}"
 
 
-def fetch_models(binary: str = "") -> list[str]:
-    """Aliasy modeli. CLI nie wystawia listy, a aliasy się nie starzeją."""
-    return list(MODEL_ALIASES)
+def fetch_models(binary: str = "", api_key: str = "") -> list[str]:
+    """Aliasy + pełne ID modeli.
+
+    CLI nie wystawia listy modeli, więc pełne ID bierzemy z `GET /v1/models`
+    Anthropic, gdy podano klucz (służy tylko do listy — generowanie nadal idzie
+    przez subskrypcję), a bez klucza ze znanej listy.
+    """
+    from .model_discovery import ANTHROPIC_MODELS, fetch_anthropic_models
+    full = fetch_anthropic_models(api_key, force=True) if api_key else ANTHROPIC_MODELS
+    return MODEL_ALIASES + [m for m in full if m not in MODEL_ALIASES]
 
 
 def _is_retryable(message: str) -> bool:
