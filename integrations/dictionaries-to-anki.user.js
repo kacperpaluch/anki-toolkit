@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.8
+// @version      4.9
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -27,14 +27,22 @@
 
   // normalizacja białych znaków + obcięcie końcowego dwukropka (Cambridge kończy definicje na ":")
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().replace(/\s*:$/, '');
+  // Headword comparison only: case, apostrophes and hyphens (brother-in-law = brother in law).
+  const norm = (s) => clean(s).normalize('NFKC').toLocaleLowerCase()
+    .replace(/[‘’ʼ]/g, "'").replace(/[-‐‑‒–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  // diki marks placeholders in headwords (give <span class="stopword">something</span> up),
+  // so "give something up" is the same headword as "give up" and its senses count.
+  const headword = (head) => {
+    const copy = head.cloneNode(true);
+    copy.querySelectorAll('.stopword').forEach((el) => el.remove());
+    return norm(copy.textContent);
+  };
 
   // Shared extraction for „AI: znaczenia”: structured items of the requested entry only.
   // diki gives card units {pl} (Polish equivalents with their context in parentheses);
   // the other dictionaries give definitions {def, pl?} — Cambridge EN-PL adds its Polish
   // translation. A page whose markup no longer matches (or a CAPTCHA) yields [].
   window.ankiDictionaryEntries = (word) => {
-    const norm = (s) => clean(s).normalize('NFKC').toLocaleLowerCase()
-      .replace(/[‘’ʼ]/g, "'").replace(/[-‐‑‒–—]/g, ' ').replace(/\s+/g, ' ').trim();
     const text = (el) => (el ? clean(el.textContent) : '');
     // Optional dictionary metadata is evidence for matching, never inferred.
     const metadata = (pos, nodes) => {
@@ -79,13 +87,6 @@
     if (!rule) return [];
     const [entrySelector, headSelector, senseSelector, item] = rule;
     const entries = [...document.querySelectorAll(entrySelector)];
-    // diki marks placeholders in headwords (give <span class="stopword">something</span> up),
-    // so "give something up" is the same headword as "give up" and its senses count.
-    const headword = (head) => {
-      const copy = head.cloneNode(true);
-      copy.querySelectorAll('.stopword').forEach((el) => el.remove());
-      return norm(copy.textContent);
-    };
     let matched = entries.filter((entry) =>
       [...entry.querySelectorAll(headSelector)].some((head) => headword(head) === norm(word)));
     // Inflected single words (went → go): dictionaries redirect to the lemma, so trust the
@@ -152,22 +153,23 @@
 
   // ── diki.pl ─────────────────────────────────────────────────────────────────
   function injectDiki() {
-    document.querySelectorAll('.dictionaryEntity .hws').forEach((hws) => {
-      const hw = hws.querySelector('.hw');
-      if (!hw || hws.querySelector('.ankiBtn')) return;
-      hw.after(makeBtn('→ hasło', () => ({ headword: clean(hw.textContent) })));
-    });
+    // One entry may list several headwords (a latin name first, then „także:” alternatives):
+    // each gets its own button, so the first one is never sent by default.
+    injectButtons('.dictionaryEntity .hws .hw', '→ hasło', 'headword');
+    // „→ oba” has no headword to click, so it takes the searched one (?q=), else the first.
+    const searched = norm(new URLSearchParams(location.search).get('q'));
     document.querySelectorAll('.foreignToNativeMeanings > li').forEach((li) => {
       if (li.querySelector('.ankiBtn')) return;
       const spans = [...li.querySelectorAll(':scope > span.hw')];
       if (!spans.length) return;
       const meaning = () => spans.map((s) => clean(s.textContent)).join(', ');
-      const headword = () => {
-        const hw = li.closest('.dictionaryEntity')?.querySelector('.hws .hw');
+      const entryHeadword = () => {
+        const hws = [...(li.closest('.dictionaryEntity')?.querySelectorAll('.hws .hw') || [])];
+        const hw = hws.find((el) => headword(el) === searched) || hws[0];
         return hw ? clean(hw.textContent) : '';
       };
       const last = spans[spans.length - 1];
-      last.after(makeBtn('→ oba', () => ({ headword: headword(), meaning: meaning() })));
+      last.after(makeBtn('→ oba', () => ({ headword: entryHeadword(), meaning: meaning() })));
       last.after(makeBtn('→ Anki', () => ({ meaning: meaning() })));
     });
   }

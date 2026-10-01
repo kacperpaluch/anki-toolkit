@@ -155,6 +155,12 @@ zwykle komplet stron gotowy, zanim go naciśniesz.
 
 Na stronach działają przyciski userscriptu — te same, co w przeglądarce.
 
+Wpis diki z kilkoma nagłówkami (np. *hippophae*, *sea buckthorn*, także:
+*sandthorn*, *seaberry*) ma **→ hasło** przy każdym z nich — do pola trafia ten,
+który klikniesz. **→ oba** przy znaczeniu bierze nagłówek, którego szukałeś
+(z adresu strony), a gdy żaden nie pasuje — pierwszy. Karta dostaje zawsze jedno
+hasło; pozostałe warianty nie są dopisywane.
+
 **Skrypty samej strony działają tylko na zakładkach z listy `page_js`**
 (domyślnie `["diki"]`). Pozostałe zakładki pokazują treść słownika bez nich:
 nie ma reklam ani okien zgód, ale nie działają też przyciski odsłuchu, rozwijane

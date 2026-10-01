@@ -79,6 +79,11 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   `.dtrans-se`), LDOCE `.PHRVBHWD`.
   Przycisk „→ hasło" na Cambridge: jeden na wpis (`.di-title.dhw, .hw.dhw`), bo
   strona frazy ma też goły `.hw.dhw` z samym czasownikiem („give" przy „give up").
+  Na diki odwrotnie — „→ hasło" przy KAŻDYM `.hws .hw`: wpis bywa listą nagłówków
+  (nazwa łacińska jako pierwsza, potem „także:" — `.hwLessPopularAlternative`),
+  więc pierwszy `.hw` nie jest hasłem („hippophae" przy „sea buckthorn"). „→ oba"
+  bierze nagłówek równy `?q=` (to samo porównanie co ekstrakcja), inaczej pierwszy.
+  Pole hasła dostaje zawsze JEDEN nagłówek; warianty nie trafiają na kartę (celowo).
   `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
   sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
   i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.

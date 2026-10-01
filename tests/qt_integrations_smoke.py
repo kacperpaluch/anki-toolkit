@@ -86,6 +86,41 @@ class QtIntegrationSmoke(unittest.TestCase):
             sip.delete(page)
             sip.delete(profile)
 
+    def test_diki_buttons_cover_every_headword(self):
+        # diki "sea buckthorn": a latin name comes first, alternatives follow „także:”.
+        script = (ROOT / 'integrations/dictionaries-to-anki.user.js').read_text()
+        html = ('<div class="dictionaryEntity"><div class="hws"><h1><span class="hw">hippophae</span><br>'
+                '<span class="hw">sea buckthorn</span>, także: '
+                '<span class="hw hwLessPopularAlternative">seaberry</span></h1></div>'
+                '<ol class="foreignToNativeMeanings"><li><span class="hw">rokitnik</span></li></ol></div>')
+        sent = ('(() => { let body; window.fetch = (_url, options) => { body = options.body;'
+                ' return Promise.resolve({json: () => ({ok: true})}); };'
+                ' const buttons = [...document.querySelectorAll(".ankiBtn")];'
+                ' buttons.find((b) => b.textContent === "→ oba").click();'
+                ' return [buttons.filter((b) => b.textContent === "→ hasło")'
+                '.map((b) => b.previousElementSibling.textContent), JSON.parse(body).fields.headword]; })()')
+        profile = QWebEngineProfile()
+        page = QWebEnginePage(profile)
+        try:
+            for query, headword in (('sea+buckthorn', 'sea buckthorn'), ('seaberry', 'seaberry'),
+                                    ('rokitnik', 'hippophae')):  # no headword searched: the first
+                with self.subTest(query=query):
+                    loop = QEventLoop()
+                    page.loadFinished.connect(loop.quit)
+                    page.setHtml(html, QUrl('https://www.diki.pl/slownik-angielskiego?q=' + query))
+                    QTimer.singleShot(5000, loop.quit)
+                    loop.exec()
+                    page.loadFinished.disconnect(loop.quit)
+                    result = []
+                    page.runJavaScript(script + '\n' + sent, lambda value: (result.append(value), loop.quit()))
+                    QTimer.singleShot(5000, loop.quit)
+                    loop.exec()
+                    self.assertEqual(result, [[['hippophae', 'sea buckthorn', 'seaberry'], headword]])
+        finally:
+            from aqt.qt import sip
+            sip.delete(page)
+            sip.delete(profile)
+
     def test_userscript_works_where_page_scripts_are_off(self):
         # Tabs outside `page_js` run no page JavaScript; the userscript lives in its own world.
         from aqt.qt import QWebEngineScript, QWebEngineSettings, sip
