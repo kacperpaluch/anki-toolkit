@@ -53,7 +53,9 @@ dodawanie i filtrowanie słów od działań AI, oznaczania jako zrobione i pomij
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
 Nowe notatki z **AI: znaczenia** mają tag dnia `ai-import::YYYY-MM-DD`;
-szczegóły dopasowania i otwarte zgłoszenie znikającego podglądu opisuje dokumentacja modułu.
+szczegóły dopasowania opisuje dokumentacja modułu. Skrypty samych stron działają
+tylko na zakładkach z `page_js` (domyślnie diki) — obejście błędu QtWebEngine 6.11.2,
+przez który strony Cambridge, Oxfordu i LDoCE znikały po chwili.
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
 wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje

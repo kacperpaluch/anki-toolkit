@@ -280,6 +280,7 @@
       "Oxford": "Oxford",
       "LDoCE": "Longman"
     },
+    "page_js": ["diki"],
     "page_size": 250,
     "max_rows": 5000,
     "order": "id",

@@ -86,6 +86,39 @@ class QtIntegrationSmoke(unittest.TestCase):
             sip.delete(page)
             sip.delete(profile)
 
+    def test_userscript_works_where_page_scripts_are_off(self):
+        # Tabs outside `page_js` run no page JavaScript; the userscript lives in its own world.
+        from aqt.qt import QWebEngineScript, QWebEngineSettings, sip
+        world = 1  # ApplicationWorld, as panel._WORLD
+        profile = QWebEngineProfile()
+        script = QWebEngineScript()
+        script.setSourceCode((ROOT / 'integrations/dictionaries-to-anki.user.js').read_text())
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        script.setWorldId(world)
+        profile.scripts().insert(script)
+        page = QWebEnginePage(profile)
+        page.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, False)
+        try:
+            loop = QEventLoop()
+            page.loadFinished.connect(loop.quit)
+            page.setHtml('<script>document.title = "page js ran"</script><div class="Entry">'
+                         '<span class="HWD">mother</span><span class="Sense">'
+                         '<span class="DEF">a female parent</span></span></div>',
+                         QUrl('https://www.ldoceonline.com/dictionary/mother'))  # Qt honours @match
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            result = []
+            page.runJavaScript(
+                '[document.title, window.ankiDictionaryEntries("mother").length,'
+                ' document.querySelectorAll(".ankiBtn").length]',
+                world, lambda value: (result.append(value), loop.quit()))
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            self.assertEqual(result, [['', 1, 2]])  # no page script; entry read; → hasło, → def
+        finally:
+            sip.delete(page)
+            sip.delete(profile)
+
     def test_picker_requires_explicit_review_and_edit_resets_it(self):
         spec = importlib.util.spec_from_file_location('senses_smoke', ROOT / 'integrations/ai_senses.py')
         m = importlib.util.module_from_spec(spec)

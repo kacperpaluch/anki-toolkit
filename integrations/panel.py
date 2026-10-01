@@ -5,6 +5,8 @@ notatki i ładuje gotowe URL-e z kolumn (diki / Longman / Oxford) w QWebEngineVi
 Do stron wstrzykiwany jest TEN SAM userscript, którego używasz w przeglądarce —
 jego przyciski gadają z mostkiem web_bridge na 127.0.0.1:8767. Dzięki temu
 istnieje jedna wersja skryptu, a nie dwie.
+Skrypty samych stron działają tylko na zakładkach z `page_js`; userscript ma
+własny świat JS i działa wszędzie.
 
 Po dodaniu notatki (hook w __init__) wiersz jest odhaczany po `id`, ale panel
 ZOSTAJE na słówku — jedno hasło bywa kilkoma kartami (kilka znaczeń).
@@ -57,6 +59,7 @@ from aqt.qt import (
     QWebEnginePage,
     QWebEngineProfile,
     QWebEngineScript,
+    QWebEngineSettings,
     QWidget,
     QWebEngineView,
     sip,
@@ -85,6 +88,11 @@ def _age_key(row: dict):
 _profile = None  # jeden na proces — nazwany, więc ciasteczka (zgody RODO, logowanie) przeżywają restart
 
 
+# Userscript żyje w osobnym świecie JS: DOM i fetch() ma te same, ale działa także
+# tam, gdzie skrypty samej strony są wyłączone (patrz `_DictTabs.__init__`).
+_WORLD = 1  # QWebEngineScript.ScriptWorldId.ApplicationWorld; Qt bierze tu liczbę
+
+
 def _dict_profile() -> QWebEngineProfile:
     global _profile
     if _profile is not None:
@@ -94,9 +102,7 @@ def _dict_profile() -> QWebEngineProfile:
     script.setName("dictionaries-to-anki")
     script.setSourceCode(_USERSCRIPT_PATH.read_text(encoding="utf-8"))
     script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
-    # MainWorld, bo skrypt musi widzieć fetch() i DOM strony. W izolowanym
-    # świecie nie dopiąłby przycisków ani nie dobił się do mostka.
-    script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+    script.setWorldId(_WORLD)
     script.setRunsOnSubFrames(False)
     _profile.scripts().insert(script)
     return _profile
@@ -105,7 +111,7 @@ def _dict_profile() -> QWebEngineProfile:
 class _DictTabs(QTabWidget):
     """Zakładki ze słownikami. URL ładowany dopiero przy pierwszym wejściu w zakładkę."""
 
-    def __init__(self, labels: list[str], parent=None):
+    def __init__(self, labels: list[str], page_js: list[str] = (), parent=None):
         super().__init__(parent)
         self._labels = list(labels)          # indeks zakładki → etykieta
         self._views: list[QWebEngineView] = []
@@ -116,11 +122,36 @@ class _DictTabs(QTabWidget):
         for index, label in enumerate(self._labels):
             view = QWebEngineView(self)
             view.setPage(QWebEnginePage(_dict_profile(), view))
+            # Skrypty strony tylko na życzenie (`page_js`). QtWebEngine 6.11.2 wywraca
+            # renderer na każdym zasobie w starym kodowaniu (windows-1250, ISO-8859-x),
+            # a takie skrypty doładowują reklamy słowników: strona znikała po chwili.
+            # Blokada samych reklam nie wystarcza — strony same się wtedy czyszczą.
+            view.settings().setAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled, label in page_js)
             view.loadStarted.connect(lambda i=index: self._loaded.__setitem__(i, None))
             view.loadFinished.connect(lambda ok, i=index: self._loaded.__setitem__(i, ok))
+            view.renderProcessTerminated.connect(
+                lambda status, code, i=index: self._renderer_died(i, status, code))
             self._views.append(view)
             self.addTab(view, label)
         self.currentChanged.connect(lambda _i: self._load_current())
+
+    def _renderer_died(self, index: int, status, code: int) -> None:
+        """Martwy renderer zostawia pusty, szary widok — powiedz to wprost."""
+        url = self._views[index].url().toString()
+        log.warning("word_queue: renderer zakładki %s padł (%s, kod %s) na %s",
+                    self._labels[index], status.name, code, url)
+        self._loaded[index] = False
+        self._pending.setdefault(index, url)  # ponowne wejście w zakładkę wczyta ją od nowa
+
+        def explain():  # poza sygnałem silnika, jak w `_collect`
+            if not sip.isdeleted(self):
+                self._views[index].setHtml(
+                    "<p style='font: 14px sans-serif; margin: 2em'>Silnik przeglądarki przerwał "
+                    "wyświetlanie tej strony. Przejdź na inną zakładkę i wróć, żeby wczytać ją "
+                    "ponownie.</p>")
+
+        QTimer.singleShot(0, explain)
 
     def set_urls(self, urls: dict[str, str], word: str = "") -> None:
         """urls: etykieta → URL. Brak/pusty URL = zakładka wyszarzona."""
@@ -225,6 +256,7 @@ class _DictTabs(QTabWidget):
             self._views[index].page().runJavaScript(
                 "typeof window.ankiDictionaryEntries === 'function' ? window.ankiDictionaryEntries("
                 + json.dumps(self._word) + ") : []",
+                _WORLD,
                 lambda items, label=self._labels[index]: got(items, label)
             )
 
@@ -406,7 +438,7 @@ class WordQueuePanel(QDockWidget):
         self._list.customContextMenuRequested.connect(self._list_menu)
         split.addWidget(self._list)
 
-        self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), split)
+        self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), self._cfg.get("page_js") or [], split)
         split.addWidget(self._tabs)
         split.setStretchFactor(1, 1)  # zakładki zjadają całą nadmiarową szerokość
         split.setSizes([220, 880])

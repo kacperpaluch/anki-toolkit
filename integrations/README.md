@@ -155,6 +155,17 @@ zwykle komplet stron gotowy, zanim go naciśniesz.
 
 Na stronach działają przyciski userscriptu — te same, co w przeglądarce.
 
+**Skrypty samej strony działają tylko na zakładkach z listy `page_js`**
+(domyślnie `["diki"]`). Pozostałe zakładki pokazują treść słownika bez nich:
+nie ma reklam ani okien zgód, ale nie działają też przyciski odsłuchu, rozwijane
+sekcje i wyszukiwarka strony. Przyciski userscriptu i **AI: znaczenia** działają
+na każdej zakładce. Powód: QtWebEngine 6.11.2 (Anki 26.09) wywraca proces strony
+na każdym pliku w starym kodowaniu znaków (windows-1250, ISO-8859-x), a takie
+skrypty doładowują reklamy Cambridge, Oxfordu i LDoCE — strona pokazywała się
+i po chwili znikała. Dopisz etykietę do `page_js`, jeśli wolisz pełną stronę
+i ryzyko jej zniknięcia; zakładka, której proces padł, mówi o tym wprost
+i wczytuje się ponownie po powrocie na nią.
+
 ## AI: znaczenia → karty
 
 Przycisk robi z hasła po jednej karcie na znaczenie z **diki**: polskie
@@ -364,10 +375,10 @@ Reszta pól (audio, IPA, TTS, przykłady) to zadanie dla workflowu: zaznacz
 Sekcja `word_queue`: adresy n8n (`n8n_url` główny, `fallback_url` zapasowy),
 klucz API, token Cloudflare Access (`cf_client_id`, `cf_client_secret`),
 `table_id`, nazwy kolumn (`word_column`, `flag_column`), pole notatki
-(`word_field`), `link_templates` i `link_columns`, ustawienia `ai_*` (dostawca,
+(`word_field`), `link_templates`, `link_columns` i `page_js`, ustawienia `ai_*` (dostawca,
 model, zaznaczone znaczenia, limit czasu, tagi, pola), `order` oraz `page_size`
 i `max_rows` (stronicowanie). Sekcja `web_bridge` trzyma `port`.
-`link_templates`, `link_columns`, `page_size`
+`link_templates`, `link_columns`, `page_js`, `page_size`
 i `max_rows` nie mają pól w oknie ustawień — zmienisz je, edytując `meta.json`
 dodatku przy zamkniętym Anki (przycisk **Config** w menedżerze dodatków otwiera
 okno ustawień, a nie edytor JSON). Klucze, token i pozostałe

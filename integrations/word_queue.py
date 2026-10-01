@@ -59,6 +59,9 @@ _DEFAULTS = {
         "LDoCE": "https://www.ldoceonline.com/dictionary/{slug}",
     },
     "link_columns": {"diki": "URL", "Oxford": "Oxford", "LDoCE": "Longman"},
+    # Zakładki, na których działają skrypty samej strony (audio, okna zgód, reklamy).
+    # Pozostałe pokazują stronę bez nich — przyciski userscriptu działają wszędzie.
+    "page_js": ["diki"],
     "page_size": 250,          # maksimum, jakie przyjmuje n8n
     "max_rows": 5000,          # bezpiecznik pętli stronicowania
     # Kolejność listy: "id" (od początku tabeli), "new" (najnowsze u góry), "random".

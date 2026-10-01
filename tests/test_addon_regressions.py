@@ -223,7 +223,7 @@ class PanelTests(unittest.TestCase):
         tabs._loaded = {0: True, 1: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
-            runJavaScript=lambda script, callback: callback(text))) for text in ([{"pl": "po polsku"}], [{"def": "in english"}])]
+            runJavaScript=lambda script, world, callback: callback(text))) for text in ([{"pl": "po polsku"}], [{"def": "in english"}])]
         got = []
         tabs._collect(got.append)
         self.assertFalse(got)                      # jeszcze nie — jesteśmy w callbacku silnika
@@ -245,7 +245,7 @@ class PanelTests(unittest.TestCase):
         tabs._loaded = {0: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
-            runJavaScript=lambda script, callback: callback("tekst")))]
+            runJavaScript=lambda script, world, callback: callback("tekst")))]
         tabs._collect(lambda _result: self.fail("zamknięty panel nie może dostać tekstu"))
         tabs.deleted = True                        # okno „Dodaj" zamknięte, zanim timer wystrzelił
         self.timers.pop()()
@@ -257,9 +257,9 @@ class PanelTests(unittest.TestCase):
         tabs.isTabEnabled = lambda _i: True
         pending = []
         tabs._views = [types.SimpleNamespace(page=lambda: types.SimpleNamespace(
-            runJavaScript=lambda script, cb: cb([{"pl": "matka"}]))),
+            runJavaScript=lambda script, world, cb: cb([{"pl": "matka"}]))),
             types.SimpleNamespace(page=lambda: types.SimpleNamespace(
-                runJavaScript=lambda script, cb: pending.append(cb)))]
+                runJavaScript=lambda script, world, cb: pending.append(cb)))]
         got = []
         tabs._collect(got.append)
         self.assertFalse(got)
@@ -470,7 +470,7 @@ class PanelTests(unittest.TestCase):
         tabs._loaded = {0: False, 1: True, 2: True}
         tabs.isTabEnabled = lambda _i: True
         tabs._views = [types.SimpleNamespace(page=lambda text=text: types.SimpleNamespace(
-            runJavaScript=lambda script, callback: callback(text))) for text in ([], [], [{"pl": "matka"}])]
+            runJavaScript=lambda script, world, callback: callback(text))) for text in ([], [], [{"pl": "matka"}])]
         got = []
         tabs._collect(got.append)
         self.timers.pop()()

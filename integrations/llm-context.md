@@ -188,22 +188,34 @@ Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany 
   paczki zostawia wiersz odhaczony w n8n — odznacza się go ręcznie.
 - `_set_row` pozostaje jedynym wejściem do PATCH.
 
-## Otwarty problem podglądu (2026-10-01)
+## Znikający podgląd słowników (rozwiązane 2026-10-01)
 
-- Środowisko zgłoszenia: Anki 26.09.3, Python 3.13.15, Qt 6.11.2,
-  PyQt 6.11.0, macOS 27.0.1 ARM64. Diki pozostaje widoczne; Cambridge, Oxford
-  i LDoCE pokazują się na chwilę, po czym widok jest pusty — według użytkownika
-  dla wszystkich haseł. Przyczyna nie jest potwierdzona; nie uznawaj za naprawione.
-- To osobny objaw od ekstrakcji `brother in law`: nierówne separatory nagłówka
-  naprawiono w userscripcie 4.8. Na żywych stronach po poprawce odczytano
-  1 znaczenie diki oraz 3/1/3 pozycje Cambridge/Oxford/LDoCE.
-- Osobny proces QtWebEngine offscreen z `--disable-gpu` zachowywał DOM
-  przez 25 s; przełączanie zakładek i zrzut widoku Cambridge pokazały stronę.
-  Nie odtwarza to ustawień/renderowania uruchomionego Anki i nie dowodzi
-  winy GPU. Sterownik Software zaproponowano jako test; brak wyniku od użytkownika.
-- Dalsza diagnostyka: rzeczywiste URL-e po przekierowaniach, `loadFinished`,
-  `renderProcessTerminated`, zawartość DOM w chwili pustego widoku i porównanie
-  sterowników wideo. Nie zmieniono `panel.py` ani globalnych ustawień renderowania.
-- Zgłoszony później wyjątek `SidebarTreeView has been deleted` pochodzi
-  z Advanced Browser (`1334324384`), nie z tego modułu. Użytkownik polecił
-  go pominąć i nie modyfikować innych dodatków; nic w nich nie zmieniono.
+- Przyczyna: QtWebEngine 6.11.2 (także czyste koła PyPI, nie tylko pakiet Anki
+  26.09.3; macOS 27 ARM64) nie rejestruje kodeków ICU. Dekodują się tylko
+  UTF-8/16, windows-1252, GBK/gb18030, kodowania japońskie, EUC-KR
+  i ISO-8859-8-I; każde inne (windows-125x, ISO-8859-x, KOI8, Big5) kończy się
+  `CHECK` w `NewTextCodec` i SIGTRAP procesu renderera (`renderProcessTerminated`,
+  Crashed, kod 5). Minimalne odtworzenie:
+  `new TextDecoder('windows-1250').decode(new Uint8Array([65]))` (sam konstruktor nie pada).
+  Qt 6.8/6.9 na tej samej maszynie działa. To nie GPU ani sterownik wideo.
+- Na stronach słowników wyzwalaczem są skrypty reklam (stos awarii:
+  `ResponseBodyLoader` → `ScriptResource::SourceText` → `NewTextCodec`), stąd
+  losowość i opóźnienie do chwili wczytania kreacji. Diki nie padło w żadnej
+  próbie, więc zostaje z włączonym JS.
+- Naprawa: `page_js` — skrypty strony (MainWorld) są włączone tylko na zakładkach
+  z tej listy (domyślnie diki). Userscript działa w ApplicationWorld (`_WORLD`),
+  więc przyciski, mostek i `ankiDictionaryEntries` działają też przy wyłączonym
+  JS strony; `runJavaScript` w `_collect` musi podawać ten sam świat. Nie przenoś
+  userscriptu z powrotem do MainWorld.
+- Nie zastępuj tego blokadą żądań reklam: Cambridge, Oxford i LDoCE mają
+  Ad-Shield (`html-load.com`), który po zablokowaniu skryptów czyści stronę
+  i przekierowuje na `report.error-report.com`. Sprawdzone, odrzucone.
+- `_renderer_died` loguje awarię, pokazuje komunikat zamiast szarego widoku
+  i odkłada URL do `_pending` (ponowne wejście w zakładkę wczytuje stronę).
+- Potwierdzone w działającym Anki 26.09.3 przez użytkownika (2026-10-01) oraz
+  serią przebiegów `_DictTabs` na Qt z pakietu Anki: zero awarii, przyciski
+  i ekstrakcja działają na czterech słownikach.
+- Gdy Anki dostanie poprawione Qt, wystarczy dopisać etykiety do `page_js`.
+- Wyjątek `SidebarTreeView has been deleted` pochodzi z Advanced Browser
+  (`1334324384`), nie z tego modułu; użytkownik polecił go pominąć i nie
+  modyfikować innych dodatków.
