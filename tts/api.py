@@ -43,9 +43,10 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     if speed is not None:
         payload["speed"] = normalize_float(speed, 0.9)
 
-    # An empty value keeps OpenRouter's normal price-weighted routing and
-    # provider failover.  A selected provider is intentionally strict: users
-    # choose it to control both the host and its price.
+    # /audio/speech ignores routing preferences (only, order, ignore, sort) —
+    # its schema knows just provider.options — and does not pick the cheapest
+    # host on its own.  The preference is still sent in case OpenRouter starts
+    # honouring it; real pinning needs a guardrail on the API key.
     selected_provider = str(config.get("openrouter_provider") or "").strip()
     if selected_provider:
         payload["provider"] = {
@@ -63,7 +64,7 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
 
     max_retries = int(config.get("max_retries", 3))
     timeout = int(config.get("timeout", 60))
-    routing = f", provider={selected_provider} (bez fallbacku)" if selected_provider else ""
+    routing = f", provider={selected_provider} (prośba — OpenRouter może ją zignorować)" if selected_provider else ""
     logger.debug(
         f"OpenRouter TTS: model={model}, voice={voice}, {len(text)} zn., timeout={timeout}s{routing}"
     )

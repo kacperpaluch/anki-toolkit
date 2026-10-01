@@ -78,7 +78,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `openrouter_api_key` | `""` | Klucz API OpenRouter |
 | `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
-| `openrouter_provider` | `""` | Opcjonalny dostawca modelu OpenRouter. Puste pole zachowuje automatyczny routing; wybrany slug (np. `deepinfra`) wymusza tego dostawcę bez fallbacku |
+| `openrouter_provider` | `""` | Preferowany dostawca modelu OpenRouter (slug endpointu, np. `deepinfra/us`). OpenRouter ignoruje tę preferencję dla TTS — patrz „Wymuszenie dostawcy” niżej |
 | `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania (domyślne to głosy Kokoro). Po wybraniu modelu i kliknięciu **Pobierz** lista głosów wypełnia się automatycznie |
 | `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
@@ -86,6 +86,23 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
 | `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
 | `timeout` | `60` | Limit czasu pojedynczego żądania TTS w sekundach |
+
+## Wymuszenie dostawcy
+
+Endpoint TTS OpenRoutera (`/audio/speech`) ignoruje preferencje routingu z
+żądania i nie wybiera sam najtańszego dostawcy — ten sam model może trafić do
+hosta kilkukrotnie droższego. Dostawcę wymusza dopiero ustawienie po stronie
+konta OpenRouter:
+
+1. Utwórz osobny klucz API tylko dla TTS (openrouter.ai/settings/keys).
+2. Utwórz guardrail (openrouter.ai/settings/guardrails) w trybie „Only Allow”
+   z wybranym dostawcą na liście Allowed Providers i przypisz go do tego klucza.
+3. Wklej klucz w **Ustawienia → TTS → Klucz API** i odznacz „Użyj klucza
+   OpenRouter z AI Generatora”.
+
+Guardrail obejmuje tylko przypisany klucz, więc AI Generator na własnym kluczu
+zachowuje pełny routing. Gdy dozwolony dostawca jest niedostępny, żądanie TTS
+kończy się błędem zamiast przejść na droższego.
 
 ## Zamiana wyrazów
 
@@ -114,7 +131,7 @@ w polu **Głosy**. W ustawieniach TTS:
 1. Wpisz klucz API
 2. Kliknij **Pobierz** obok pola Model — wtyczka pobiera dostępne modele TTS z OpenRouter (wraz z cenami)
 3. Wybierz model z rozwijanej listy
-4. W polu **Dostawca modelu** wybierz „Automatycznie” albo konkretny endpoint z jego ceną. Przy konkretnym wyborze żądanie zawiera `provider.only` i `allow_fallbacks: false`, więc OpenRouter nie przełączy go po cichu na droższego dostawcę
+4. Pole **Dostawca modelu** pokazuje dostawców wybranego modelu i ich ceny. Sam wybór nie wymusza dostawcy — patrz „Wymuszenie dostawcy” niżej
 5. Pod spodem pojawi się tabela głosów z checkboxami — zaznacz które chcesz używać
 6. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
 7. Pole "Głosy" poniżej aktualizuje się automatycznie

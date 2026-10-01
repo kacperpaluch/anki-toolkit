@@ -138,7 +138,7 @@ class TTSTab(QWidget):
         orf.addRow("Model:", model_row)
 
         self._or_provider = QComboBox()
-        self._or_provider.addItem("Automatycznie (najtańszy sprawny)", "")
+        self._or_provider.addItem("Automatycznie (wybiera OpenRouter)", "")
         saved_or_provider = t.get("openrouter_provider", "")
         if saved_or_provider:
             self._or_provider.addItem(saved_or_provider, saved_or_provider)
@@ -442,7 +442,7 @@ class TTSTab(QWidget):
                 saved = self._or_provider.currentData() or ""
                 self._or_provider.blockSignals(True)
                 self._or_provider.clear()
-                self._or_provider.addItem("Automatycznie (najtańszy sprawny)", "")
+                self._or_provider.addItem("Automatycznie (wybiera OpenRouter)", "")
                 for provider in providers:
                     self._or_provider.addItem(
                         f"{provider['name']}  ({provider['pricing']})",
@@ -457,7 +457,10 @@ class TTSTab(QWidget):
                 self._or_provider.blockSignals(False)
                 self._or_provider.setEnabled(bool(providers) or bool(saved))
                 self._or_provider_hint.setText(
-                    "Wybierz dostawcę, aby wymusić go bez fallbacku."
+                    "Lista pokazuje ceny dostawców. OpenRouter ignoruje ten wybór"
+                    " dla TTS i sam dobiera dostawcę (nie zawsze najtańszego)."
+                    " Aby go wymusić, użyj osobnego klucza API z guardrailem"
+                    " ograniczonym do tego dostawcy (openrouter.ai/settings/guardrails)."
                     if providers else
                     "Nie udało się pobrać dostawców dla tego modelu."
                 )

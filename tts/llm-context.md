@@ -123,7 +123,7 @@ Głosy dla segmentów w jednej notatce są przetasowane losowo (`random.shuffle`
 - `pricing` jest parsowane z `pricing.prompt` (dolary/znak), przeliczane i formatowane jako `$X.XXX/1 mln zn`
 - `voices` to `supported_voices` z API — pełna lista głosów dla danego modelu
 
-W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu asynchronicznie ładowana jest lista dostawców z cenami; „Automatycznie” nie wysyła obiektu `provider`, a wybrany dostawca zapisuje `openrouter_provider` i wysyła `provider: {only: [slug], allow_fallbacks: false}`. QTableWidget z checkboxami i przyciskami ▶ podglądu pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
+W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z `tts.api`) i wypełnia QComboBox. Po wybraniu modelu asynchronicznie ładowana jest lista dostawców z cenami; „Automatycznie” nie wysyła obiektu `provider`, a wybrany dostawca zapisuje `openrouter_provider` i wysyła `provider: {only: [slug], allow_fallbacks: false}` — **OpenRouter ignoruje to dla `/audio/speech`** (patrz „OpenRouter TTS API”), więc lista jest w praktyce cennikiem. QTableWidget z checkboxami i przyciskami ▶ podglądu pokazuje dostępne głosy, synchronizowane dwukierunkowo z polem tekstowym "Głosy".
 
 ## Konfiguracja (sekcja `tts` w config.json)
 
@@ -151,7 +151,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - `openrouter_api_key` — klucz API z https://openrouter.ai/keys
 - `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
 - `openrouter_model` — ID modelu TTS
-- `openrouter_provider` — pusty string = automatyczny price-weighted routing OpenRouter; slug wybranego endpointu (np. `deepinfra`) = tylko ten provider, bez fallbacku
+- `openrouter_provider` — pusty string = routing OpenRoutera; slug endpointu (`tag`, np. `deepinfra/us`) = preferencja wysyłana w żądaniu, której OpenRouter dla TTS nie honoruje
 - `voices` — lista głosów do losowania
 - `replacements` — dict `{skrót: pełne_słowo}` rozwijany przez `apply_word_replacements()` (`common/text.py`) na tekście wejściowym `generate_audio()`, zanim trafi do payloadu. Whole-word (`\b`), `re.IGNORECASE`, wielka litera trafienia zachowywana, klucze sortowane od najdłuższego (alternacja longest-first). Karta nietknięta — zmienia się tylko tekst wysyłany do silnika. UI: tabela Skrót/Zamiennik w `settings/tts_tab.py` (`_add_repl_row`/`_remove_repl_row`/`_collect_replacements`)
 - `tasks` — lista zadań TTS, każde z `label`, `source_field`, `target_field`, `mode` (`single`/`split`/`split_audio`) i opcjonalnie `split_separator`. `split_audio` zapisuje w polu docelowym wyłącznie połączone tagi `[sound:...]`. Brak klucza = zadania domyślne; pusta lista = brak zadań
@@ -185,6 +185,8 @@ Content-Type: application/json
 
 `speed` jest wysyłane tylko gdy ustawione w konfiguracji (niektóre providery go nie obsługują).
 Gdy `openrouter_provider` nie jest pusty, payload dostaje dodatkowo `"provider": {"only": ["…"], "allow_fallbacks": false}`.
+
+**Routing dostawców nie działa na tym endpoincie** (sprawdzone 2026-10-02 na `hexgrad/kokoro-82m`): schemat `SpeechRequest.provider` zna tylko `options`, a `only`/`order`/`ignore`/`sort` i sufiks `:floor` są po cichu ignorowane; bez ograniczeń OpenRouter kierował ruch do droższego hosta (Together zamiast DeepInfra). Działa wyłącznie ograniczenie po stronie konta: guardrail z `allowed_providers`/`ignored_providers` przypisany do klucza API (albo globalna lista ignorowanych). Faktycznego dostawcę żądania pokazuje `GET /api/v1/generation?id=<nagłówek X-Generation-Id>`.
 
 ## Nazwy plików audio
 
