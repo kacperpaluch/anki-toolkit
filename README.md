@@ -52,6 +52,8 @@ i mapowanie pól są w osobnych zwijanych sekcjach. Panel kolejki rozdziela
 dodawanie i filtrowanie słów od działań AI, oznaczania jako zrobione i pomijania.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
+Nowe notatki z **AI: znaczenia** mają tag dnia `ai-import::YYYY-MM-DD`;
+szczegóły dopasowania i otwarte zgłoszenie znikającego podglądu opisuje dokumentacja modułu.
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
 wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje

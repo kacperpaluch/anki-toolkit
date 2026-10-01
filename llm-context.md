@@ -21,7 +21,7 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
-| `integrations/` | kolejka n8n, panel słowników, AI: znaczenia, Web Bridge — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
+| `integrations/` | kolejka n8n, panel słowników, AI: znaczenia, tag dnia importu, Web Bridge i otwarte zgłoszenie renderowania — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
 | `audio_normalizer/` | ffmpeg loudnorm, ręcznie lub przez watcher | `audio_normalizer` |
 | `html_cleanup/` | reguły „znajdź → zamień” przy dodawaniu i dla kolekcji | `html_cleanup` |
 | `field_hider/` | ukrywanie pól tylko w oknie Dodaj | `field_hider` |

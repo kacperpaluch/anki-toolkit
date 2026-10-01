@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.6
+// @version      4.8
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -34,19 +34,46 @@
   // translation. A page whose markup no longer matches (or a CAPTCHA) yields [].
   window.ankiDictionaryEntries = (word) => {
     const norm = (s) => clean(s).normalize('NFKC').toLocaleLowerCase()
-      .replace(/[‘’ʼ]/g, "'").replace(/\s+/g, ' ');
+      .replace(/[‘’ʼ]/g, "'").replace(/[-‐‑‒–—]/g, ' ').replace(/\s+/g, ' ').trim();
     const text = (el) => (el ? clean(el.textContent) : '');
+    // Optional dictionary metadata is evidence for matching, never inferred.
+    const metadata = (pos, nodes) => {
+      const labels = [...new Set(nodes.map(text).filter(Boolean))].join('; ');
+      return { ...(text(pos) ? {pos: text(pos)} : {}), ...(labels ? {labels} : {}) };
+    };
     const rules = {
-      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li', (li) => ({
-        pl: [...li.querySelectorAll(':scope > .hw'), li.querySelector(':scope > .meaningAdditionalInformation')]
-          .map(text).filter(Boolean).join(', ') })],
-      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense',
-        (sense) => ({ def: text(sense.querySelector('.def')) })],
-      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense',
-        (sense) => ({ def: text(sense.querySelector('.DEF')) })],
-      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block', (block) => ({
+      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li', (li) => {
+        // An entity may contain noun AND verb sections: use this list's header.
+        let header = li.closest('.foreignToNativeMeanings')?.previousElementSibling;
+        while (header && !header.matches('.partOfSpeechSectionHeader, .foreignToNativeMeanings')) {
+          header = header.previousElementSibling;
+        }
+        return {
+          pl: [...li.querySelectorAll(':scope > .hw'), li.querySelector(':scope > .meaningAdditionalInformation')]
+            .map(text).filter(Boolean).join(', '),
+          ...metadata(header?.querySelector('.partOfSpeech'),
+            [...li.querySelectorAll(':scope > .meaningAdditionalInformation')])
+        };
+      }],
+      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense', (sense, entry) => ({
+        def: text(sense.querySelector('.def')),
+        ...metadata(entry.querySelector('.pos'),
+          [...entry.querySelectorAll('.webtop .grammar, .webtop .labels'),
+           ...sense.querySelectorAll('.grammar, .labels')])
+      })],
+      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense', (sense, entry) => ({
+        def: text(sense.querySelector('.DEF')),
+        ...metadata(entry.querySelector('.POS'),
+          [...entry.querySelectorAll('.Head .GRAM, .Head .REGISTER'),
+           ...sense.querySelectorAll('.GRAM, .REGISTER, .FIELD')])
+      })],
+      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block', (block, entry) => ({
         def: text(block.querySelector('.def')),
-        pl: text(block.querySelector('.dtrans-se')) || [...block.querySelectorAll('.trans')].map(text).join(', ') })],
+        pl: text(block.querySelector('.dtrans-se')) || [...block.querySelectorAll('.trans')].map(text).join(', '),
+        ...metadata(entry.querySelector('.pos'),
+          [...entry.querySelectorAll('.pos-header .gram'),
+           ...block.querySelectorAll('.usage, .gram, .lab')])
+      })],
     };
     const rule = rules[location.hostname];
     if (!rule) return [];
@@ -63,8 +90,8 @@
       [...entry.querySelectorAll(headSelector)].some((head) => headword(head) === norm(word)));
     // Inflected single words (went → go): dictionaries redirect to the lemma, so trust the
     // first entry. Never for phrases: "give up" must not fall back to "give".
-    if (!matched.length && !/\s/.test(word.trim())) matched = entries.slice(0, 1);
-    return matched.flatMap((entry) => [...entry.querySelectorAll(senseSelector)].map(item))
+    if (!matched.length && !/\s/.test(norm(word))) matched = entries.slice(0, 1);
+    return matched.flatMap((entry) => [...entry.querySelectorAll(senseSelector)].map((node) => item(node, entry)))
       .filter((found) => ('def' in found ? found.def : found.pl));
   };
 

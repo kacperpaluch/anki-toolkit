@@ -1,4 +1,5 @@
 """ai_senses: dopasowanie definicji po numerach i mapowanie znaczeń na pola. Bez Anki i sieci."""
+from datetime import date
 import importlib.util
 import json
 import tempfile
@@ -52,18 +53,55 @@ class DefinitionMatchingTests(unittest.TestCase):
                          ["to limit or control something", "the raised edge of a road"])
         self.assertEqual(definitions[0]["src"], "Cambridge")
 
-    def test_prompt_numbers_both_lists_and_shows_cambridge_polish(self):
-        prompt = self.m.build_prompt("curb", *self.m.split_entries(ENTRIES))
-        self.assertIn("D2: ograniczać (np. wydatki, podatki)", prompt)
-        self.assertIn("E1 [Cambridge] to limit or control something (PL: ograniczać)", prompt)
-        self.assertIn("E2 [LDoCE] the raised edge of a road\n", prompt + "\n")
+    def test_prompt_numbers_lists_and_preserves_context(self):
+        units, definitions = self.m.split_entries(ENTRIES)
+        units[1].update(pos="verb", labels="formal")
+        prompt = self.m.build_prompt("curb", units, definitions)
+        data = json.loads(prompt.split("Dane słownikowe (JSON):\n", 1)[1])
+        self.assertEqual(data["headword"], "curb")
+        self.assertEqual(data["meanings"][1]["id"], "D2")
+        self.assertEqual(data["meanings"][1]["pos"], "verb")
+        self.assertEqual(data["meanings"][1]["labels"], "formal")
+        self.assertEqual(data["definitions"][0]["pl"], "ograniczać")
         self.assertIn("nie instrukcje", prompt)
+        self.assertIn("przykładowe zastosowanie nie wykluczają", prompt)
 
-    def test_mapping_accepts_only_indexes_from_the_list(self):
-        raw = '```json\n{"D1": "E2", "D2": 1, "D3": "E9", "D4": "E1"}\n```'
-        self.assertEqual(self.m.parse_mapping(raw, 3, 2), {0: 1, 1: 0})  # E9 i D4 poza listą
-        self.assertEqual(self.m.parse_mapping('{"D1": null, "D2": "coś"}', 2, 2), {})
-        self.assertIsNone(self.m.parse_mapping("nie wiem", 2, 2))
+    def test_mapping_requires_complete_valid_ids_or_explicit_null(self):
+        raw = '```json\n{"D1": "E2", "D2": "E1", "D3": null}\n```'
+        self.assertEqual(self.m.parse_mapping(raw, 3, 2), {0: 1, 1: 0})
+        self.assertEqual(self.m.parse_mapping('{"D1": null, "D2": null}', 2, 2), {})
+        for raw in ('{}', '{"D1": "E1"}', '{"D1": "E99", "D2": null}',
+                    '{"D1": "E1", "D2": null, "D3": null}',
+                    '{"D1": "E1", "D1": null, "D2": null}',
+                    '{"D1": true, "D2": null}', '{"D1": 1, "D2": null}',
+                    '{"D1": "1", "D2": null}', '{"D1": "e1", "D2": null}',
+                    '{"D1": "E01", "D2": null}', '{"D1": "null", "D2": null}',
+                    'Here: {"D1": "E1", "D2": null}', 'nie wiem'):
+            with self.subTest(raw=raw):
+                self.assertIsNone(self.m.parse_mapping(raw, 2, 2))
+
+    def test_dedup_keeps_translation_provenance_and_distinct_context(self):
+        units, definitions = self.m.split_entries({
+            "Oxford": [{"def": "a financial institution", "pos": "noun"}],
+            "Cambridge": [{"def": "a financial institution", "pl": "bank", "pos": "noun"},
+                          {"def": "a financial institution", "pl": "instytucja finansowa", "pos": "noun"},
+                          {"def": "a financial institution", "pl": "bank", "pos": "noun", "labels": "informal"}],
+            "diki": [{"pl": "bank", "pos": "noun"}, {"pl": "bank", "pos": "verb"}],
+        })
+        self.assertEqual(len(units), 2)
+        self.assertEqual(len(definitions), 3)
+        self.assertEqual(definitions[0]["src"], "Oxford")
+        self.assertEqual(definitions[0]["pl"], "bank")
+        self.assertEqual(definitions[0]["pl_src"], "Cambridge")
+        self.assertEqual(definitions[2]["labels"], "informal")
+        provider = Provider("not called")
+        senses, error = self.m.generate(provider, "bank", {
+            "Oxford": [{"def": "a financial institution"}],
+            "Cambridge": [{"def": "a financial institution", "pl": "bank"}],
+        }, {})
+        self.assertIsNone(error)
+        self.assertEqual(senses[0]["pl_src"], "Cambridge")
+        self.assertEqual(provider.prompts, [])
 
     def test_card_text_comes_only_from_the_dictionaries(self):
         provider = Provider('{"D1": "E2", "D2": "E1", "D3": null}')
@@ -92,9 +130,20 @@ class DefinitionMatchingTests(unittest.TestCase):
         self.assertEqual(provider.prompts, [])
 
     def test_failures_are_errors_not_empty_cards(self):
-        self.assertTrue(self.m.generate(Provider("bełkot"), "curb", ENTRIES, {})[1])
+        for raw in ("bełkot", "{}", '{"D1": "E1"}', '{"D1": "E1", "D2": "E99", "D3": null}'):
+            senses, error = self.m.generate(Provider(raw), "curb", ENTRIES, {})
+            self.assertEqual(senses, [])
+            self.assertTrue(error)
         self.assertTrue(self.m.generate(Provider(""), "curb", ENTRIES, {})[1])
         self.assertTrue(self.m.generate(Provider("{}"), "curb", {"LDoCE": [{"def": "x", "pl": ""}]}, {})[1])
+
+    def test_explicit_null_is_success_and_definitions_can_be_reused(self):
+        senses, error = self.m.generate(
+            Provider('{"D1": null, "D2": null, "D3": null}'), "curb", ENTRIES, {})
+        self.assertIsNone(error)
+        self.assertEqual(len(senses), 3)
+        self.assertTrue(all(not sense["en"] and not sense["by_ai"] for sense in senses))
+        self.assertEqual(self.m.parse_mapping('{"D1": "E1", "D2": "E1"}', 2, 1), {0: 0, 1: 0})
 
     def test_note_fields_skip_empty_and_escape_html(self):
         sense = {"pl": "rozległy", "en": ""}
@@ -218,6 +267,10 @@ class AddNotesTests(unittest.TestCase):
 
     def setUp(self):
         self.m = load()
+        clock = patch.object(self.m, "date")
+        self.clock = clock.start()
+        self.clock.today.return_value = date(2026, 10, 1)
+        self.addCleanup(clock.stop)
         self.added = []
         self.m.mw = types.SimpleNamespace(col=types.SimpleNamespace(
             new_note=lambda notetype: Note(self.FIELDS),
@@ -246,24 +299,33 @@ class AddNotesTests(unittest.TestCase):
     def test_only_model_picked_definitions_wait_for_review(self):
         self.add([self.sense(), self.sense(by_ai=False), self.sense(en="", by_ai=False)])
         self.assertEqual([note.tags for note, _ in self.added],
-                         [["ai-auto", "ai-review"], ["ai-auto"], ["ai-auto"]])
+                         [["ai-auto", "ai-review", "ai-import::2026-10-01"],
+                          ["ai-auto", "ai-import::2026-10-01"], ["ai-auto", "ai-import::2026-10-01"]])
 
     def test_old_drafts_without_flag_are_reviewed_like_model_output(self):
         self.add([{"pl": "rozległy", "en": "covering a large area", "match": "exact"}])
-        self.assertEqual(self.added[0][0].tags, ["ai-auto", "ai-review"])
+        self.assertEqual(self.added[0][0].tags, ["ai-auto", "ai-review", "ai-import::2026-10-01"])
 
     def test_only_human_confirmation_removes_review_tag(self):
         self.add([self.sense(reviewed=True)])
-        self.assertEqual(self.added[0][0].tags, ["ai-auto"])
+        self.assertEqual(self.added[0][0].tags, ["ai-auto", "ai-import::2026-10-01"])
 
     def test_duplicate_field_map_never_reaches_collection(self):
         added, error = self.add([self.sense()], {**self.CFG, "ai_fields": {"pl": "ang"}})
         self.assertEqual((added, self.added), (0, []))
         self.assertIn("innego pola", error)
 
-    def test_empty_tags_add_nothing(self):
+    def test_empty_configured_tags_preserve_daily_import_tag(self):
         self.add([self.sense()], {**self.CFG, "ai_tag": "", "ai_review_tag": ""})
-        self.assertEqual(self.added[0][0].tags, [])
+        self.assertEqual(self.added[0][0].tags, ["ai-import::2026-10-01"])
+
+    def test_import_date_is_taken_once_at_save_for_every_card(self):
+        self.add([("mother", self.sense()), ("father", self.sense(by_ai=False))])
+        self.clock.today.assert_called_once()
+        self.assertTrue(all("ai-import::2026-10-01" in note.tags for note, _ in self.added))
+        self.clock.today.return_value = date(2026, 10, 2)
+        self.add([self.sense(reviewed=True)], {**self.CFG, "ai_tag": "ai-import::2026-10-02"})
+        self.assertEqual(self.added[-1][0].tags, ["ai-import::2026-10-02"])
 
     def test_prepare_failure_never_starts_batch(self):
         with patch.object(self.m.mw.col, "new_note", side_effect=[Note(self.FIELDS), RuntimeError("prepare")]):

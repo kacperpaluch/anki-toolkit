@@ -84,7 +84,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_indexes_and_mapping_reject_silent_corruption(self):
         m = load('ai_senses')
-        self.assertEqual(m.parse_mapping(json.dumps({'D1': 'E7'}), 1, 2), {})  # numer spoza listy
+        self.assertIsNone(m.parse_mapping(json.dumps({'D1': 'E7'}), 1, 2))  # błędny numer, nie świadome null
         self.assertIsNotNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'ang'}}))
         self.assertIsNotNone(m.validate_mapping({'word_field': '', 'ai_fields': {'pl': 'pol'}}))
         self.assertIsNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'pol'}}))

@@ -48,14 +48,27 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - „AI: znaczenia”: userscript (`window.ankiDictionaryEntries(word)`, ten sam plik co
   przyciski) zwraca pozycje wpisu o pasującym nagłówku. Rolę wyznacza KSZTAŁT, nie
   konfiguracja: `{pl}` bez `def` = znaczenie (diki, jednostka karty), `{def, pl?}` =
-  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki (Cambridge ma
-  na stronie dwa słowniki). Model dostaje ponumerowane D/E i zwraca TYLKO numery;
-  `parse_mapping` odrzuca numery spoza listy. Nie przywracaj modelu piszącego tekst,
+  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki po tekście + `pos` + `labels` osobno dla D/E;
+  różne niepuste PL przy tym samym E pozostają oddzielne. Duplikat E uzupełnia
+  brakujące PL i `pl_src`, zachowując pierwsze `src` definicji. Fallback bez D
+  korzysta z `pl_src` tłumaczenia, które może różnić się od źródła definicji.
+  `build_prompt` serializuje hasło, D/E i metadane jako JSON (bez interpolowania
+  tekstu stron w linie instrukcji). Prompt opisuje zgodność sensu zamiast równej
+  szczegółowości; PL, część mowy i kwalifikatory są dowodami, nie regułą zgadywania.
+  Model zwraca TYLKO pełną mapę D → tekstowy identyfikator E albo null.
+  `parse_mapping` zwraca None przy brakujących/dodatkowych/powtórzonych kluczach,
+  złym typie lub numerze spoza listy. `_json_object` parsuje cały tekst (może zdjąć
+  otoczkę ```json); nie wycina obiektu z komentarza i nie toleruje duplikatów kluczy.
+  Tylko jawne null jest brakiem dopasowania; kompletna mapa samych null zwraca {}.
+  Błędna mapa odrzuca całe hasło (`generate` → [], error), bez automatycznej próby
+  naprawczej i bez tworzenia kart; paczka kontynuuje inne hasła. Nie przywracaj modelu piszącego tekst,
   walidacji cytatów ani trybu „cała strona” — treść karty ma być wyłącznie ze słownika.
   Bez znaczeń z diki kartami są pary Cambridge (bez modelu); bez definicji — samo PL
   (bez modelu). Znaczenia spoza diki są pomijane celowo.
   Brak reguły/CAPTCHA/zmieniony HTML = `[]`, czyli brak źródła. Kanarek:
   `tests/live_selectors.py` (sieć, kod wyjścia 1 = reguła nie pasuje).
+  Porównanie nagłówka normalizuje spacje i łączniki ASCII/Unicode do spacji
+  (`brother in law` = `brother-in-law`), bez zmiany URL ani treści karty.
   Nagłówek porównujemy bez `.stopword` (diki: give *something* up = give up).
   Wyjątek: pojedyncze słowo bez pasującego nagłówka (went → go) bierze PIERWSZY
   wpis strony; frazy nigdy (give up nie może spaść do give).
@@ -67,11 +80,27 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
   sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
   i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.
+- Userscript 4.8 zwraca opcjonalne `pos`/`labels` obok `{pl}` lub `{def, pl?}`.
+  Diki bierze POS z nagłówka poprzedzającego konkretną listę znaczeń (jedna entity
+  może mieć rzeczownik i czasownik). Kwalifikatory są lokalne dla znaczenia;
+  gramatyka nagłówka wpisu jest dodatkowym kontekstem w Cambridge/Oxford/LDoCE.
+  Brak selektora zostawia metadata puste — nigdy nie zgadujemy z treści definicji.
+  Metadane pomagają dopasowaniu, ale nie są nowymi polami karty ani rolami mostka.
+  Stare wpisy `{pl}`/`{def, pl?}` i odzyskane drafty nadal działają. Zmiana promptu
+  nie przelicza automatycznie istniejących draftów; odzyskiwanie nie pyta modelu.
+  Regresje kontraktu: `tests/test_ai_senses.py`, `tests/test_queue_recovery.py`;
+  DOM i lokalność metadanych: `tests/qt_integrations_smoke.py` (syntetyczne strony).
 - `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki z przycisku;
   `ai_review_tag` tylko przy `by_ai` (definicję przypisał model), chyba że
   użytkownik potwierdził `reviewed`. Każda edycja cofa potwierdzenie; zmiana
   definicji zdejmuje `by_ai`. Propozycje bez klucza `by_ai` (stare drafty) liczą
   się jak AI, gdy mają definicję (`_by_ai`).
+- `add_notes` dopisuje każdej nowej notatce `ai-import::YYYY-MM-DD`.
+  `date.today()` jest odczytane raz na głównym wątku przy przygotowaniu zapisu:
+  lokalna data zapisu, nie generowania/draftu ani dzień Anki liczony od rollover.
+  Tag obejmuje całą paczkę, również pary bez modelu i brak definicji. Nie zależy
+  od `ai_tag`, `ai_review_tag` ani potwierdzenia; nie retaguje istniejących notatek.
+  Nie ma nowego klucza configu ani stanu sesji; deduplikacja tagów pozostaje wspólna.
 - AI wypełnia tylko `word_field`, `ai_fields.pl` i `ai_fields.definition`;
   `ai_fields.example` jest celem przycisków „+ przykład” (rola `example` w mostku).
 - `validate_mapping` obsługuje ustawienia i zapis: wymagane EN/PL, różne pola,
@@ -158,3 +187,23 @@ Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany 
 - Undo NIE jest śledzone (świadomie, `ponytail:` w `queue_state.py`): cofnięcie
   paczki zostawia wiersz odhaczony w n8n — odznacza się go ręcznie.
 - `_set_row` pozostaje jedynym wejściem do PATCH.
+
+## Otwarty problem podglądu (2026-10-01)
+
+- Środowisko zgłoszenia: Anki 26.09.3, Python 3.13.15, Qt 6.11.2,
+  PyQt 6.11.0, macOS 27.0.1 ARM64. Diki pozostaje widoczne; Cambridge, Oxford
+  i LDoCE pokazują się na chwilę, po czym widok jest pusty — według użytkownika
+  dla wszystkich haseł. Przyczyna nie jest potwierdzona; nie uznawaj za naprawione.
+- To osobny objaw od ekstrakcji `brother in law`: nierówne separatory nagłówka
+  naprawiono w userscripcie 4.8. Na żywych stronach po poprawce odczytano
+  1 znaczenie diki oraz 3/1/3 pozycje Cambridge/Oxford/LDoCE.
+- Osobny proces QtWebEngine offscreen z `--disable-gpu` zachowywał DOM
+  przez 25 s; przełączanie zakładek i zrzut widoku Cambridge pokazały stronę.
+  Nie odtwarza to ustawień/renderowania uruchomionego Anki i nie dowodzi
+  winy GPU. Sterownik Software zaproponowano jako test; brak wyniku od użytkownika.
+- Dalsza diagnostyka: rzeczywiste URL-e po przekierowaniach, `loadFinished`,
+  `renderProcessTerminated`, zawartość DOM w chwili pustego widoku i porównanie
+  sterowników wideo. Nie zmieniono `panel.py` ani globalnych ustawień renderowania.
+- Zgłoszony później wyjątek `SidebarTreeView has been deleted` pochodzi
+  z Advanced Browser (`1334324384`), nie z tego modułu. Użytkownik polecił
+  go pominąć i nie modyfikować innych dodatków; nic w nich nie zmieniono.

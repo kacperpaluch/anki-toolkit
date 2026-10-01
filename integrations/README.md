@@ -189,8 +189,11 @@ edytora zostają takie, jakie były.
 
 ### Skąd biorą się znaczenia i definicje
 
-**Cała treść karty pochodzi ze słowników — model niczego nie pisze.** Userscript
-wyciąga z każdej zakładki wyłącznie wpis z nagłówkiem zgodnym z hasłem:
+**Automatycznie przygotowana treść karty pochodzi ze słowników — model jej nie pisze.** Userscript
+wyciąga z każdej zakładki wyłącznie wpis z nagłówkiem zgodnym z hasłem.
+Spacje i łączniki (także typograficzne) są równoważne przy porównaniu:
+`brother in law` pasuje do `brother-in-law`. Nie zmienia to zapisywanego hasła
+ani adresu strony; inna fraza nadal nie jest dopasowaniem. Źródła:
 
 | Źródło | Co daje |
 |---|---|
@@ -198,12 +201,37 @@ wyciąga z każdej zakładki wyłącznie wpis z nagłówkiem zgodnym z hasłem:
 | Cambridge EN-PL | definicje z polskim tłumaczeniem |
 | Oxford, LDoCE | definicje |
 
-Model dostaje ponumerowane listy (D1… znaczenia, E1… definicje) i odpowiada
-wyłącznie numerami: `{"D1": "E2", "D2": null}`. Nie przepisuje żadnego tekstu,
-więc nie ma czego zmyślić — numer spoza listy liczy się jak brak definicji.
-Tłumaczenie z Cambridge pomaga mu porównać polski z polskim (*poddać się* =
-*poddawać się*). Definicja szersza, węższa albo obok ma zostać pusta: **pusta
-definicja jest poprawnym wynikiem**, zła nie.
+Model dostaje dane JSON: hasło, ponumerowane znaczenia (D1…) i definicje (E1…),
+źródła oraz opcjonalne części mowy (`pos`) i kwalifikatory (`labels`). Metadane
+są odczytywane z HTML słownika, nie zgadywane. Diki przypisuje część mowy z
+nagłówka właściwej sekcji; Oxford, LDoCE i Cambridge przekazują część mowy wpisu
+oraz lokalne kwalifikatory/gramatykę, jeśli są dostępne. Dane bez metadanych
+nadal mogą być dopasowane. Kontekst w nawiasach pozostaje częścią polskiego znaczenia.
+
+Model odpowiada wyłącznie identyfikatorami: `{"D1": "E2", "D2": null}`.
+Kod kopiuje definicję ze słownika — model nie pisze ani nie poprawia jej treści.
+Wciąż może wybrać niewłaściwy sens, dlatego podgląd i tag do weryfikacji pozostają.
+
+Prompt wymaga tego samego sensu, ale dopuszcza różną długość opisu i przykładowe
+zastosowania. „Ograniczać (np. wydatki)” może pasować do „to limit or control
+something”. Istotna zmiana zakresu znaczenia, sprzeczny kontekst lub brak
+wiarygodnego rozstrzygnięcia oznacza `null`. Polskie tłumaczenie przy definicji
+jest dodatkową wskazówką; różnica aspektu nie wyklucza tego samego sensu.
+Przy kilku równie zgodnych definicjach preferowana jest najczytelniejsza i
+samodzielna, a przy dalszym remisie najniższy numer E. Jedno E może pasować do wielu D.
+
+**Tylko jawne JSON `null` oznacza świadomy brak dopasowania.** Odpowiedź musi
+zawierać każdy D dokładnie raz, bez dodatkowych kluczy, a wartościami mogą być
+wyłącznie istniejące identyfikatory E lub `null`. Brak D, powtórzony klucz,
+nieistniejący numer, liczba zamiast `"E1"` albo tekst poza JSON-em oznaczają
+błąd całego wyniku danego hasła; nie powstają z niego propozycje kart. Otoczka markdown z oznaczeniem `json` jest tolerowana, ale nie zmienia wymagań zawartości. Nie ma automatycznego
+ponownego zapytania, które zużywałoby dodatkowe limity. Błąd jednego hasła
+nie zatrzymuje reszty paczki.
+
+Deduplikacja porównuje tekst i kontekst (`pos`, `labels`). Identyczna definicja
+może zostać uzupełniona polskim tłumaczeniem z kolejnego źródła — jego pochodzenie
+zostaje zachowane osobno. Różne niepuste tłumaczenia, części mowy lub kwalifikatory
+pozostają oddzielnymi kandydatami. Definicja zachowuje swoje pierwotne źródło.
 
 - **Brak wpisu w diki** (np. rzadkie hasło): kartami są gotowe pary z Cambridge
   EN-PL — słownik sam dobrał tłumaczenie do definicji, model nie jest pytany.
@@ -282,6 +310,17 @@ potwierdzenie; definicja wpisana ręcznie przestaje być definicją AI. Pary ze
 słownika i karty bez definicji nie mają czego weryfikować. Puste ustawienie
 tagu wyłącza go. Zmiana nie retaguje wcześniejszych notatek.
 
+Każda notatka zapisana przez **AI: znaczenia** dostaje również automatyczny tag
+**`ai-import::YYYY-MM-DD`**, np. `ai-import::2026-10-01`. Data to lokalny dzień
+zapisu kart, również przy zapisie odzyskanych propozycji. Wszystkie notatki
+w jednej zatwierdzonej paczce mają tę samą datę; nie ma identyfikatora paczki.
+Tag trafia także na pary ze słownika i notatki bez definicji, niezależnie od
+potwierdzenia dopasowania i ustawień pozostałych tagów. Nie jest dopisywany wstecz.
+
+W Browserze wybierz dzień pod tagiem `ai-import` albo wpisz
+`tag:ai-import::2026-10-01`, zaznacz notatki i uruchom **Przygotuj fiszki** lub
+wybrane zadania AI. Zwykłe uzupełnianie zachowuje istniejące pola.
+
 Pole angielskie i polskie są wymagane. Wszystkie niepuste przypisania muszą
 być różne i istnieć w docelowym typie notatki — sprawdzenie przed zapisem
 obejmuje również konfigurację zmienioną ręcznie.
@@ -333,3 +372,14 @@ i `max_rows` nie mają pól w oknie ustawień — zmienisz je, edytując `meta.j
 dodatku przy zamkniętym Anki (przycisk **Config** w menedżerze dodatków otwiera
 okno ustawień, a nie edytor JSON). Klucze, token i pozostałe
 dane prywatne trafiają do `meta.json`, które nie jest wersjonowane.
+
+### Otwarte zgłoszenie: znikający podgląd słowników
+
+Na Anki 26.09.3 / Qt 6.11.2 / macOS 27.0.1 zgłoszono pusty widok
+Cambridge, Oxford i LDoCE po chwilowym wyświetleniu strony, przy działającym
+diki. Problem pozostaje niewyjaśniony. Poprawka rozpoznawania łączników
+w hasłach nie jest poprawką renderowania.
+
+Osobne testy Qt potwierdziły odczyt wpisów, ale nie odtworzyły znikania stron.
+Do porównania można wybrać sterownik wideo **Software** w preferencjach Anki
+i uruchomić Anki ponownie; wynik tego testu nie jest jeszcze znany.
