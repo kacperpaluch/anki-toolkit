@@ -673,5 +673,72 @@ class TestCliPromptEffort(unittest.TestCase):
         self.assertEqual(config["providers"]["claude_cli"]["reasoning_effort"], "medium")
 
 
+class TestBrowserAiActions(unittest.TestCase):
+    def setUp(self):
+        self.browser = _load("ai_generator.browser_ui", "ai_generator/browser_ui.py")
+        self.note = FakeNote({"ang": "cat", "def": "old", "manual": "", "audio": ""})
+        self.note.note_type = lambda: {"name": "Test"}
+        self.config = {"note_types": {"Test": {
+            "definition": {"target": "def", "provider": "claude_cli"},
+            "extra": {"target": "manual", "provider": "openai", "manual_only": True},
+            "invalid": {"target": "missing", "provider": "openai"},
+        }, "Other": {"other": {"target": "other", "provider": "openai"}}}}
+
+    def test_menu_scope_and_cli_batch_exclusion(self):
+        fields = self.browser._selected_target_fields
+        self.assertEqual(fields([self.note], self.config), ["def"])
+        self.assertEqual(fields([self.note], self.config, batch_api=True), [])
+        self.assertEqual(fields([self.note], self.config, True, True), ["manual"])
+        self.note.tags = ["skip-ai"]
+        self.config["skip_tags"] = ["skip-ai"]
+        self.assertEqual(fields([self.note], self.config), [])
+
+    def test_workflow_scope_checks_actual_fields(self):
+        matches = self.browser._workflow_matches
+        self.assertTrue(matches([self.note], [{"module": "ai", "action": "generate"}], self.config, {}))
+        self.assertFalse(matches([self.note], [{"module": "ai", "action": "generate", "fields": ["missing"]}], self.config, {}))
+        self.assertFalse(matches([self.note], [{"module": "field_splitter", "action": "split"}], self.config, {}))
+
+    def test_regeneration_confirmation_and_scope(self):
+        b = types.SimpleNamespace(selected_notes=lambda: [1, 2])
+        unrelated = FakeNote({"ang": "dog"})
+        unrelated.note_type = lambda: {"name": "Other"}
+        col = types.SimpleNamespace(get_note=lambda nid: self.note if nid == 1 else unrelated)
+        with patch.object(self.browser.mw, "col", col), \
+             patch.object(self.browser, "get_config", return_value=self.config), \
+             patch.object(self.browser, "askUser", return_value=False) as ask, \
+             patch.object(self.browser, "_run_batch") as run:
+            self.browser._on_regenerate_field_browser(b, "def")
+            run.assert_not_called()
+            self.assertIn("1 notatkach", ask.call_args.args[0])
+            self.assertTrue(ask.call_args.kwargs["defaultno"])
+            ask.return_value = True
+            self.browser._on_regenerate_field_browser(b, "def")
+            self.assertEqual(run.call_args.args[1], [1])
+            self.assertEqual(run.call_args.kwargs["only_fields"], {"def"})
+            self.assertTrue(run.call_args.kwargs["overwrite"])
+
+    def test_report_counts_saved_results_after_conflict(self):
+        import aqt.utils
+        second = FakeNote({"def": "new"}); second.id = 2
+        with patch.object(aqt.utils, "showText", create=True) as show:
+            self.browser._show_run_report(None, "AI", 3, 3, [self.note, second],
+                [(1, "error", "def: timeout"), (3, "skip", "pola mają treść")], False, [2])
+            report = show.call_args.args[0]
+            self.assertIn("Zapisano zmiany w notatkach: 1", report)
+            self.assertIn("Notatki z błędami: 1", report)
+            self.assertIn("nid:1 — Błąd: def: timeout", report)
+            self.assertIn("nid:2 — nie zapisano", report)
+
+    def test_overwrite_failure_preserves_old_field(self):
+        generator_module = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
+        generator = generator_module.FieldGenerator(self.config)
+        provider = types.SimpleNamespace(model="test", last_error="timeout", call_api=lambda _: None)
+        with patch.object(generator, "_resolve_provider", return_value=provider):
+            self.assertEqual(generator.process_note(self.note, {"def"}, overwrite=True), {})
+        self.assertEqual(self.note["def"], "old")
+        self.assertIn("timeout", generator.errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

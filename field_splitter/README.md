@@ -6,6 +6,9 @@ Rozdziela zawartość pola źródłowego (np. `przyklad`) po separatorze i **kop
 
 Gdy jedno pole zawiera wiele elementów rozdzielonych separatorem (np. przykłady z nagraniami `<br><br>`) i chcesz je rozbić na osobne pola, np. aby wyświetlać pojedynczy przykład na karcie bez kombinowania z CSS/JS.
 
+
+PPM pokazuje rozdzielanie tylko, gdy co najmniej jedna zaznaczona notatka ma pole źródłowe i przynajmniej jedno inne pole docelowe. Sekcję można ukryć w **Ustawienia → Workflowy**. Operacja dla całej kolekcji jest pod **Narzędzia → Anki Toolkit → Operacje na kolekcji → Rozdziel pola w kolekcji…**.
+
 ## Jak używać
 
 ### Batch na zaznaczonych notatkach
@@ -16,7 +19,7 @@ Etykieta pokazuje skonfigurowane pole źródłowe i pierwsze 3 pola docelowe. Ba
 
 ### Cała kolekcja
 
-**Narzędzia → Anki Toolkit → Rozdziel pola w kolekcji…** — po potwierdzeniu dzieli wszystkie notatki kolekcji (też jeden krok undo).
+**Narzędzia → Anki Toolkit → Operacje na kolekcji → Rozdziel pola w kolekcji…** — po potwierdzeniu dzieli wszystkie notatki kolekcji (też jeden krok undo).
 
 ## Przykład
 

@@ -6,7 +6,7 @@ field is never modified — this is a copy, not a move.
 
 Entry points:
   - Browser right-click → Anki Toolkit → „Rozdziel pole …"
-  - Tools → Anki Toolkit → „Rozdziel pola w kolekcji…"
+  - Tools → Anki Toolkit → Operacje na kolekcji → „Rozdziel pola w kolekcji…"
 """
 
 from anki.collection import Collection, OpChanges
@@ -115,10 +115,15 @@ def _run_batch(nids: list) -> None:
 # Browser context-menu entry
 # ---------------------------------------------------------------------------
 
-def add_to_context_menu(browser: Browser, menu) -> None:
+def add_to_context_menu(browser: Browser, menu, notes=None) -> None:
     cfg = _get_config()
     source = cfg.get("source_field", _DEFAULTS["source_field"])
     targets = parse_target_fields(cfg.get("target_fields", ""))
+    if notes is not None and not any(
+        source in note and any(t != source and t in note for t in targets)
+        for note in notes
+    ):
+        return
     label_targets = ", ".join(targets[:3])
     if len(targets) > 3:
         label_targets += "…"

@@ -15,6 +15,9 @@ Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruch
 
 Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w głównym dialogu ustawień wtyczki (**TTS**) oraz w sekcji `tts` konfiguracji profilu Anki.
 
+
+Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; menu filtruje zadania po obecności source/target, a „Uruchom wszystkie” używa przefiltrowanej listy.
+
 ## Pliki
 
 | Plik | Rola |

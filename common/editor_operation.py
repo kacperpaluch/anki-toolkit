@@ -152,7 +152,7 @@ def merge_detached_notes(col, expected_col, notes, before, skipped: list):
     return col.update_notes(fresh)
 
 
-def save_detached_notes(parent, col, notes, before, summary: str) -> None:
+def save_detached_notes(parent, col, notes, before, summary: str, on_saved=None) -> None:
     """Persist a Browser batch as one undoable op, then show the summary."""
     from aqt import mw
     from aqt.operations import CollectionOp
@@ -161,11 +161,17 @@ def save_detached_notes(parent, col, notes, before, summary: str) -> None:
         tooltip("Profil zmienił się podczas operacji — wyników nie zapisano.", period=8000)
         return
     if not notes:
-        tooltip(summary, period=8000)
+        if on_saved:
+            on_saved([])
+        else:
+            tooltip(summary, period=8000)
         return
     skipped: list = []
 
     def done(_changes):
+        if on_saved:
+            on_saved(skipped)
+            return
         text = summary
         if skipped:
             text += f" · pominięto {len(skipped)} notatek zmienionych w trakcie"
@@ -174,7 +180,9 @@ def save_detached_notes(parent, col, notes, before, summary: str) -> None:
     CollectionOp(
         parent=parent,
         op=lambda active: merge_detached_notes(active, col, notes, before, skipped),
-    ).success(done).run_in_background()
+    ).success(done).failure(
+        lambda exc: tooltip(f"Nie zapisano wyników: {exc}", period=10000)
+    ).run_in_background()
 
 
 def editor_shows_note(editor, note) -> bool:

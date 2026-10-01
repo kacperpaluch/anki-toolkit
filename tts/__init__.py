@@ -8,9 +8,13 @@ from .config import get_tts_config, get_tasks
 from .editor_ui import on_editor_buttons_init
 
 
-def add_to_context_menu(browser, menu: QMenu):
+def add_to_context_menu(browser, menu: QMenu, notes=None):
     config = get_tts_config()
     tasks = get_tasks(config)
+    if notes is not None:
+        tasks = [task for task in tasks if any(
+            task.get("source_field", "") in note and
+            task.get("target_field", "") in note for note in notes)]
 
     if not tasks:
         return

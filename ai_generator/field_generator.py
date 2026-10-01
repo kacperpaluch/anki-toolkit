@@ -169,6 +169,7 @@ class FieldGenerator:
         self._config = config
         self._providers: Dict[tuple, Optional[BaseProvider]] = {}
         self.last_error: Optional[str] = None
+        self.errors: list[str] = []
 
     def _resolve_provider(self, provider_name: str,
                           requested_model: str = "",
@@ -272,6 +273,7 @@ class FieldGenerator:
         (overwrites). False = skip filled fields (today's behavior).
         """
         self.last_error = None
+        self.errors = []
         changed: dict[str, str] = {}
         fields_map = {fld: clean_html_normalized(note[fld]) for fld in note.keys()}
 
@@ -280,7 +282,9 @@ class FieldGenerator:
         ):
             provider_name = safe_str(field_cfg.get("provider"))
             if not provider_name:
-                logger.warning(f"Pole '{target_field}' nie ma ustawionego 'provider' — pomijam.")
+                self.last_error = f"Pole '{target_field}' nie ma ustawionego dostawcy AI."
+                self.errors.append(self.last_error)
+                logger.warning(self.last_error)
                 continue
 
             model_name = safe_str(field_cfg.get("model"))
@@ -292,6 +296,7 @@ class FieldGenerator:
             provider = self._resolve_provider(
                 provider_name, model_name, temperature, field_cfg.get("reasoning_effort"))
             if provider is None:
+                self.errors.append(f"Pole '{target_field}': {self.last_error}")
                 continue
 
             prompt_template = safe_str(field_cfg.get("prompt", ""))
@@ -332,6 +337,7 @@ class FieldGenerator:
                             f"Provider '{provider_name}', model '{provider.model}', "
                             f"pole '{target_field}' nie zwrócił treści."
                         )
+                    self.errors.append(self.last_error)
                     logger.error(f"AI: {self.last_error}")
                     continue
                 fb_name = fallback_provider_name.strip() or provider_name
@@ -339,6 +345,7 @@ class FieldGenerator:
                     fb_name, fallback_model, temperature,
                     field_cfg.get("fallback_reasoning_effort"))
                 if fb_provider is None:
+                    self.errors.append(f"Pole '{target_field}': {self.last_error}")
                     continue
                 logger.warning(
                     f"AI: fallback dla pola '{target_field}': "
@@ -366,6 +373,7 @@ class FieldGenerator:
                             f"Fallback {fb_name}/{fb_provider.model}, "
                             f"pole '{target_field}' nie zwrócił treści."
                         )
+                    self.errors.append(self.last_error)
                     logger.error(f"AI: {self.last_error}")
 
         return changed

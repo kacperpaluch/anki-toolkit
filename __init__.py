@@ -22,9 +22,20 @@ _batch_timer.start()
 
 
 def _context(browser, menu):
+    from .ai_generator.workflow import get_context_menu
+    nids = browser.selected_notes()
+    if not nids or mw.col is None:
+        return
+    notes = [mw.col.get_note(nid) for nid in nids]
     sub = menu.addMenu("Anki Toolkit")
-    for module in (ai_generator, dictionary, tts, field_splitter):
-        module.add_to_context_menu(browser, sub)
+    cm = get_context_menu()
+    ai_generator.add_to_context_menu(browser, sub, notes=notes)
+    for key, module in (("dictionary", dictionary), ("tts", tts),
+                        ("field_splitter", field_splitter)):
+        if cm.get(key, True):
+            module.add_to_context_menu(browser, sub, notes=notes)
+    if sub.isEmpty():
+        menu.removeAction(sub.menuAction())
 
 
 gui_hooks.browser_will_show_context_menu.append(_context)
@@ -34,24 +45,27 @@ def _setup_menu(*_):
     from .settings_dialog import open_settings
 
     menu = mw.form.menuTools.addMenu("Anki Toolkit")
-    for entry in (
-        ("Ustawienia…", open_settings),
-        None,
+    def add_actions(target, entries):
+        for title, callback in entries:
+            action = QAction(title, target)
+            # QAction passes checked(bool), never a settings page name.
+            action.triggered.connect(lambda _checked=False, callback=callback: callback())
+            target.addAction(action)
+
+    add_actions(menu, (
         ("Kolejka słówek (n8n)…", integrations.open_queue),
-        None,
-        ("Sprawdź batche AI", lambda: ai_generator.check_pending_batches(silent=False)),
+        ("Ustawienia…", open_settings),
+    ))
+    menu.addSeparator()
+    add_actions(menu, (
+        ("Pobierz i zastosuj wyniki Batch API", lambda: ai_generator.check_pending_batches(silent=False)),
+    ))
+    operations = menu.addMenu("Operacje na kolekcji")
+    add_actions(operations, (
         ("Rozdziel pola w kolekcji…", field_splitter.run_on_collection),
         ("Normalizuj audio (ffmpeg)…", audio_normalizer.confirm_normalization),
         ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup),
-    ):
-        if entry is None:
-            menu.addSeparator()
-            continue
-        title, callback = entry
-        action = QAction(title, menu)
-        # triggered(bool) nie może trafić do open_settings(page) jako nazwa strony.
-        action.triggered.connect(lambda _checked=False, callback=callback: callback())
-        menu.addAction(action)
+    ))
     # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`
     # (`open_settings() and None` dawało False po „Anuluj”).
     def config_action():

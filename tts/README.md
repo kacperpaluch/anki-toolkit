@@ -12,6 +12,9 @@ Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → TTS** — sekcje
 *OpenRouter*, *Głosy*, *Zamiana wyrazów*, *Zadania TTS* i zwijana *Wydajność
 i sieć* (wątki, próby, timeout).
 
+
+Menu Browsera pokazuje tylko zadania, których pola źródłowe i docelowe istnieją w zaznaczonych notatkach. „Uruchom wszystkie” dotyczy zadań widocznych w tym menu. Sekcję można ukryć w **Ustawienia → Workflowy**.
+
 ## Jak używać
 
 ### Przeglądarka (batch)

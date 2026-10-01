@@ -13,7 +13,7 @@ Dodatkowo: **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole pu
 
 Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
 - Edytor odświeża się automatycznie po zakończeniu generowania
-- Przycisk **AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem workflow „zablokowane”. PPM → „Regeneruj” nadpisuje pełne pole
+- Przycisk **AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem workflow „tylko na żądanie”. PPM → „Regeneruj” nadpisuje pełne pole
 - **To, co wpiszesz w trakcie generowania, wygrywa** — generowanie pracuje na kopii notatki. Jeśli zmienisz dowolne pole, wynik bieżącej operacji/kroku zostanie pominięty: mógł korzystać z nieaktualnego źródła. Tooltip wymieni pominięte pola wynikowe. Ta sama zasada obowiązuje w TTS, słowniku i workflow; kolejny krok workflow widzi już aktualne dane.
 - Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd — **także wtedy, gdy część pól się udała, a część nie**; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
 - Gdy na tej samej notatce trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest ignorowana z krótkim komunikatem. Inne okno edytora może pracować równolegle.
@@ -23,33 +23,89 @@ Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międ
 
 Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Każdy workflow jest pozycją w menu PPM przeglądarki, a z flagą **„Pokaż jako przycisk w edytorze”** — także przyciskiem w toolbarze edytora. Konfiguracja w **Ustawienia → Workflowy**:
 - Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**, **+ Rozdziel**
-- Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / zablokowane / konkretne)
-- Zmieniaj kolejność ▲▼, usuwaj kroki
+- Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / tylko na żądanie / konkretne)
+- Zmieniaj kolejność ▲▼, usuwaj kroki. Podpowiedź pozycji na liście pokazuje sekwencję kroków. Workflow **Przygotuj fiszki** zachowuje kolejność: AI (puste) → TTS → rozdzielanie → AI (tylko na żądanie).
 
 W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
 
 ### Przeglądarka (batch)
-Zaznacz notatki → **menu kontekstowe → Anki Toolkit → Generuj pola ▸**.
+Zaznacz notatki → **menu kontekstowe → Anki Toolkit**:
 
-Submenu zawiera:
-- **Wszystkie puste** — generuje wszystkie skonfigurowane puste pola (bez pól „Tylko na żądanie”)
-- **AI: `def`**, **AI: `cz_mowy`** itd. — generuje tylko wybrane pole docelowe, pomija wypełnione
+- **Uzupełnij puste pola AI → Wszystkie pola automatyczne** — puste pola bez flagi „Tylko na żądanie”. Możesz też wybrać jedno pole.
+- **Generuj pola tylko na żądanie** — osobno uzupełnia puste pola z flagą `manual_only`.
+- **Wygeneruj ponownie wybrane pole… → `<pole>`** — generuje wskazane pole również w notatkach z istniejącą treścią. Potwierdzenie podaje liczbę pasujących notatek; domyślną odpowiedzią jest odmowa. Błąd generowania pozostawia dotychczasową treść pola. Pozostałe pola nie są generowane.
 
-Pozycje per-pole są spłaszczone po nazwie pola docelowego — notatki różnych typów notatek dostają swój prompt (każdy typ ma osobną konfigurację `note_types`), a notatki bez skonfigurowanego pola są pomijane.
+Menu pokazuje tylko pola obecne i skonfigurowane w zaznaczonych notatkach,
+z uwzględnieniem tagów wykluczających AI. Przy mieszanym zaznaczeniu każdy typ
+notatki korzysta z własnego promptu; niepasujące notatki są pomijane.
+Workflowy są widoczne, gdy przynajmniej jeden ich krok pasuje do zaznaczenia.
+Widocznością sekcji sterujesz w **Ustawienia → Workflowy**.
 
-- Pola które już mają treść są **zawsze pomijane** w batchu — generator uzupełnia tylko puste pola.
-- Jeśli nie zaznaczysz żadnych notatek, pojawi się krótki tooltip z informacją.
-- Wynik zapisywany jest tylko w polach zmienionych przez generator, do świeżo odczytanych notatek. Notatka zmieniona w trakcie batcha (np. przez wcześniej uruchomioną operację) jest pomijana, a podsumowanie podaje ich liczbę.
-- Praca AI dzieje się w tle. Batch pokazuje **natywny pasek postępu Anki** z licznikiem i przyciskiem **Anuluj** — na czas przetwarzania okno Anki jest zablokowane, dzięki czemu automatyczna kopia zapasowa / synchronizacja nie wyskakuje w środku batcha i nie zasłania przycisku Anuluj.
-- Po zakończeniu jeden tooltip z podsumowaniem, np. `"Zaktualizowano: 12"`, `"Zaktualizowano: 8 · przerwano"` albo licznik błędów z ostatnim błędem API.
+**Widoczność PPM** ustawiasz w **Ustawienia → Workflowy**. Przełączniki nie
+wyłączają modułów ani kroków workflow — dotyczą tylko wbudowanych sekcji menu:
+
+| Ustawienie | Widoczne działania |
+|---|---|
+| Uzupełnij puste pola AI | Pola automatyczne, ich regenerowanie oraz całe submenu Batch API |
+| Generuj pola tylko na żądanie (AI) | Pola `manual_only`, ich regenerowanie oraz ręczne pola w Batch API (jeśli pierwsza sekcja też jest włączona) |
+| Pobierz wymowę (słowniki) | Włączone grupy słowników, jeśli istnieją wymagane pola |
+| TTS (zadania audio) | Zadania z polami obecnymi w zaznaczeniu |
+| Rozdziel pole | Rozdzielanie, jeśli istnieje źródło i przynajmniej jedno inne pole docelowe |
+
+Workflowy mają własne pozycje i pojawiają się, gdy przynajmniej jeden ich krok
+pasuje do zaznaczenia. To sprawdzenie nie usuwa pozostałych kroków z workflow.
+Bez zaznaczenia lub przy braku pasujących działań submenu Anki Toolkit jest ukryte.
+
+Praca przebiega w tle z natywnym paskiem postępu Anki i możliwością anulowania.
+Zwykłe uzupełnianie pomija istniejącą treść. Wyniki wracają jednym krokiem cofania,
+po ponownym odczycie notatek: notatka zmieniona lub usunięta podczas pracy nie
+otrzyma wyników ze starych danych. Zmiana profilu blokuje zapis.
+
+Po generowaniu AI i workflow w Browserze otwiera się raport z liczbą zapisanych
+notatek, błędów, pominięć bez zmian i konfliktów przy zapisie. Szczegóły zawierają
+przyczyny i identyfikatory `nid:…`, które możesz wyszukać w przeglądarce. Raport
+można skopiować i pozostaje otwarty do zamknięcia; trafia też do Diagnostyki.
+Częściowo udana notatka może być zarówno zapisana, jak i zgłoszona jako błąd.
+Po anulowaniu zapisywane są zakończone wyniki; raport podaje liczbę przetworzonych notatek.
+
+Liczniki raportu dotyczą **notatek, nie pól**:
+
+| Licznik | Znaczenie |
+|---|---|
+| Zapisano zmiany w notatkach | Notatki ze zmienioną treścią, które przeszły kontrolę przy zapisie |
+| Przetworzono | Notatki, które worker zakończył; po anulowaniu może ich być mniej niż zaznaczonych |
+| Notatki z błędami | Co najmniej jedno nieudane pole lub krok; poprawne wyniki innych pól nadal mogą zostać zapisane |
+| Pominięto bez zmian | Np. pełne pola, wykluczający tag, brak pasującego zadania lub wynik identyczny z dotychczasową treścią |
+| Pominięto przy zapisie | Wynik był gotowy, ale notatka została zmieniona lub usunięta podczas pracy |
+
+Liczniki nie są rozłącznymi kategoriami. Raport otwiera się po udanym zapisie
+(lub od razu, gdy nie ma zmian do zapisania). Błąd zapisu i zmiana profilu
+powodują komunikat o niezapisaniu wyników zamiast raportu sukcesu.
+Raport jest przeznaczony dla zwykłego generowania AI, regenerowania oraz
+workflowów w przeglądarce. Batch API, samodzielne TTS i pobieranie wymowy
+zachowują swoje dotychczasowe podsumowania.
 
 ### Batch API (masowy backfill, ~50% taniej — Anthropic, OpenAI i OpenRouter)
 
-Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Batch API (Anthropic/OpenAI/OpenRouter, tańszy) ▸**:
+Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Batch API ▸**. Menu pojawia się tylko dla pasujących pól dostawców API; przy samych promptach CLI jest ukryte.
 
-- **Wyślij zaznaczone — wszystkie pola** / **Batch: `<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
-- **Wyślij zaznaczone — wszystkie zablokowane** / **Batch (zablokowane): `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje pojawiają się tylko gdy takie pola istnieją w konfiguracji promptów.
-- **Sprawdź batche i zastosuj wyniki** (także **Narzędzia → Anki Toolkit → Sprawdź batche AI**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
+Warunki pojawienia się submenu:
+
+1. Zaznaczona notatka ma skonfigurowane pole docelowe i to pole faktycznie istnieje.
+2. Główny dostawca tego promptu to `openai`, `anthropic` albo `openrouter`; sam fallback API przy głównym CLI nie wystarcza.
+3. Notatka nie ma tagu wykluczającego AI (`skip_tags`).
+4. W widoczności PPM włączone jest **Uzupełnij puste pola AI**. Jeśli pasują tylko pola `manual_only`, włączone musi być również **Generuj pola tylko na żądanie (AI)**.
+
+Widoczność nie zależy od tego, czy pole jest puste, czy jest podany poprawny
+klucz API lub czy dany model obsługuje Batch API. To sprawdzane jest podczas
+budowania zapytań i wysyłki. Menu może więc być widoczne przy pełnych polach,
+a wysyłka nie znajdzie żadnej pracy. Nie jest to błąd generowania.
+
+Działania w submenu:
+
+- **Wyślij wszystkie puste pola automatyczne** / **`<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
+- **Wyślij puste pola tylko na żądanie** / **Na żądanie: `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje pojawiają się tylko gdy takie pola istnieją w konfiguracji promptów.
+- **Pobierz i zastosuj wyniki Batch API** (także **Narzędzia → Anki Toolkit → Pobierz i zastosuj wyniki Batch API**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
 
 Szczegóły:
 - Starsze rekordy i zadania **bez `col` pozostają zachowane, ale są wstrzymane** — nie można bezpiecznie zgadnąć, do którego profilu należą. Po ustaleniu właściwego profilu, przy zamkniętym Anki i po zrobieniu kopii `user_files/ai_batches.json`, przypisz jego pełną ścieżkę `collection.anki2` jako `col` wyłącznie do należących do niego rekordów i zadań. Tak samo postępuj po przeniesieniu lub zmianie nazwy profilu. Nie przypisuj automatycznie całego pliku do aktualnego profilu.

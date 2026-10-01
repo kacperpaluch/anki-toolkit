@@ -18,8 +18,8 @@ from ..ai_generator.workflow import DEFAULT_CONTEXT_MENU
 _CONTEXT_LABELS = {
     "dictionary": "Pobierz wymowę (słowniki)",
     "tts": "TTS (zadania audio)",
-    "ai_fields": "Generuj pola (AI)",
-    "ai_blocked": "Generuj zablokowane (AI)",
+    "ai_fields": "Uzupełnij puste pola AI",
+    "ai_blocked": "Generuj pola tylko na żądanie (AI)",
     "field_splitter": "Rozdziel pole",
 }
 
@@ -41,7 +41,7 @@ def _step_label(step: dict) -> str:
     if mod == "ai":
         fields = step.get("fields", "empty")
         if fields == "manual":
-            return "AI: zablokowane pola"
+            return "AI: pola tylko na żądanie"
         if isinstance(fields, list):
             return f"AI: pola: {', '.join(fields)}"
         if isinstance(fields, str) and fields not in ("", "empty"):
@@ -339,7 +339,7 @@ class WorkflowsTab(QWidget):
             vis_layout.addWidget(cb)
         vis_layout.addWidget(hint_label(
             "Te sekcje generują się automatycznie (z pól AI, zadań TTS, słowników).\n"
-            "Odznacz, by ukryć je w menu — workflowy powyżej zawsze są widoczne."
+            "Odznacz, by ukryć je w menu — workflowy nie podlegają tym przełącznikom; pojawiają się, gdy pasują do zaznaczenia."
         ))
         layout.addWidget(vis_group)
         layout.addStretch()
@@ -359,7 +359,9 @@ class WorkflowsTab(QWidget):
             n_steps = len([s for s in w.get("steps", []) if isinstance(s, dict)])
             flag = "  ⌨" if w.get("editor_button") else ""
             name = w.get("name", "(bez nazwy)")
-            self._list.addItem(QListWidgetItem(f"{name}  [{n_steps} kroków]{flag}"))
+            item = QListWidgetItem(f"{name}  [{n_steps} kroków]{flag}")
+            item.setToolTip(" → ".join(_step_label(s) for s in w.get("steps", []) if isinstance(s, dict)))
+            self._list.addItem(item)
 
     def _add(self):
         dlg = WorkflowEditDialog(self, None, self._dict_buttons)

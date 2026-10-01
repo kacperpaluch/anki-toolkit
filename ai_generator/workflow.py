@@ -27,12 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 # Which built-in (auto-generated) right-click sections are shown. Workflows are
-# always listed; these toggles only govern the atomic building-block entries.
+# are not controlled by these toggles; Browser filters them by applicability.
 DEFAULT_CONTEXT_MENU = {
     "dictionary": True,    # "Pobierz wymowę"
     "tts": True,           # "TTS"
-    "ai_fields": True,     # "Generuj pola"
-    "ai_blocked": True,    # "Generuj zablokowane"
+    "ai_fields": True,     # "Uzupełnij puste pola AI"
+    "ai_blocked": True,    # "Generuj pola tylko na żądanie"
     "field_splitter": True,  # "Rozdziel pole"
 }
 
@@ -95,7 +95,7 @@ def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[st
         gen = ai_generator or FieldGenerator(get_config())
         only_fields = _resolve_ai_fields(step, get_config())
         changed = gen.process_note(note, only_fields=only_fields)
-        return bool(changed), gen.last_error
+        return bool(changed), " · ".join(gen.errors) or gen.last_error
 
     if module == "dictionary" and action == "fetch":
         dicts = step.get("dicts", [])

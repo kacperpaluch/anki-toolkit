@@ -12,10 +12,10 @@ from aqt.qt import *
 from aqt.browser import Browser
 
 from ..common import start_progress, update_progress, finish_progress
-from ..common.editor_operation import save_detached_notes, snapshot_fields
+from ..common.editor_operation import save_detached_notes, snapshot_fields, detach_note
 from . import batch_backfill
 from ._generator import get_config
-from .field_generator import FieldGenerator
+from .field_generator import FieldGenerator, iter_note_fields
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,67 @@ def _on_generate_field_browser(browser: Browser, field_name: str):
     )
 
 
+def _on_regenerate_field_browser(browser: Browser, field_name: str):
+    config = get_config()
+    notes = [mw.col.get_note(nid) for nid in browser.selected_notes()]
+    eligible = [note for note in notes if list(iter_note_fields(
+        note, config, only_fields={field_name}, overwrite=True))]
+    if not eligible:
+        tooltip("Brak pasujących notatek do regenerowania.")
+        return
+    if not askUser(
+        f"Wygenerować ponownie pole „{field_name}” w {len(eligible)} notatkach?\n\n"
+        "Istniejąca treść tego pola zostanie zastąpiona po udanym generowaniu.\n"
+        "Zapis możesz cofnąć jednym krokiem w Anki.", parent=browser,
+        defaultno=True,
+    ):
+        return
+    _run_batch(browser, [n.id for n in eligible], config,
+               only_fields={field_name}, label=f"Regenerowanie: {field_name}",
+               overwrite=True)
+
+
+def _skip_reason(note, config, only_fields, overwrite=False):
+    if any(t in note.tags for t in (config.get("skip_tags") or [])):
+        return "tag wykluczający generowanie AI"
+    configured = list(iter_note_fields(note, config, only_fields, overwrite=True))
+    if not configured:
+        return "brak pasujących pól AI (typ notatki, pola lub tryb tylko na żądanie)"
+    if not overwrite and not list(iter_note_fields(note, config, only_fields)):
+        return "pola docelowe mają już treść"
+    return None
+
+
+def _show_run_report(parent, title, total, done, changed, details, cancelled,
+                     skipped_at_save=()):
+    from aqt.utils import showText
+    from aqt.qt import sip
+    if parent is None or sip.isdeleted(parent):
+        parent = mw
+    conflicts = set(skipped_at_save)
+    saved = sum(n.id not in conflicts for n in changed)
+    lines = [f"Zapisano zmiany w notatkach: {saved}",
+             f"Przetworzono: {done} z {total}",
+             f"Notatki z błędami: {sum(kind == 'error' for _, kind, _ in details)}",
+             f"Pominięto bez zmian: {sum(kind == 'skip' for _, kind, _ in details)}",
+             f"Pominięto przy zapisie (notatka zmieniona lub usunięta): {len(conflicts)}"]
+    if cancelled:
+        lines.append("Przerwano operację; zakończone wyniki zostały zapisane.")
+    if details or conflicts:
+        lines.append("\nSzczegóły — identyfikatory można wyszukać w Browserze przez nid:123:")
+        for nid, kind, reason in sorted(details):
+            lines.append(f"nid:{nid} — {'Błąd' if kind == 'error' else 'Pominięto'}: {reason}")
+        for nid in sorted(conflicts):
+            lines.append(f"nid:{nid} — nie zapisano: notatka zmieniona lub usunięta podczas pracy")
+    text = "\n".join(lines)
+    logger.info("%s: %s", title, text)
+    showText(text, parent=parent, title=title, type="text", copyBtn=True)
+
+
 def _run_batch(browser: Browser, nids, config: dict,
-               only_fields, label: str):
+               only_fields, label: str, overwrite: bool = False):
     """Run a parallel AI batch. only_fields=None = all configured empty fields;
-    only_fields={name} = only that target field, still skipping filled ones.
+    only_fields={name} scopes the target; overwrite requires explicit confirmation.
     """
     batch_limit: int = max(1, config.get("batch_limit", 3))
     sleep_time: float = config.get("batch_sleep", 1.0)
@@ -60,14 +117,13 @@ def _run_batch(browser: Browser, nids, config: dict,
     # Load notes on the main thread — the Anki collection is single-threaded,
     # so workers must never touch mw.col. Each note is read once here and only
     # mutated in memory by process_note(); collection writes happen on the main
-    # thread in save_detached_notes(). note_type() is called to warm the models
-    # cache here too, so worker threads only do in-memory dict reads on it.
+    # thread in save_detached_notes(). detach_note() freezes the model lookup
+    # so workers do not reach the collection through note_type().
     nids = list(nids)
     try:
         notes = []
         for nid in nids:
-            note = mw.col.get_note(nid)
-            note.note_type()
+            note, _before = detach_note(mw.col.get_note(nid))
             notes.append(note)
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
@@ -77,7 +133,8 @@ def _run_batch(browser: Browser, nids, config: dict,
 
     cancel_flag = start_progress(label, len(notes), "AI Generator")
 
-    state = {"done": 0, "changed": 0, "failures": 0, "last_error": None}
+    state = {"done": 0}
+    details = []
     changed_notes: list = []
     lock = threading.Lock()
 
@@ -87,24 +144,28 @@ def _run_batch(browser: Browser, nids, config: dict,
         # failures.
         gen = FieldGenerator(config)
         try:
-            changed = gen.process_note(note, only_fields=only_fields)
+            reason = _skip_reason(note, config, only_fields, overwrite)
+            changed = gen.process_note(note, only_fields=only_fields, overwrite=overwrite)
         except Exception as e:
             with lock:
-                state["failures"] += 1
-                state["last_error"] = str(e)
+                if list(note.fields) != before[note.id]:
+                    changed_notes.append(note)
+                details.append((note.id, "error", str(e)))
                 state["done"] += 1
                 done = state["done"]
             _report_progress(done)
             return
         with lock:
-            if changed:
+            if list(note.fields) != before[note.id]:
                 changed_notes.append(note)
-                state["changed"] += 1
             # Independently of what was written: one field failing while
             # another succeeded used to be reported as a clean run.
             if gen.last_error:
-                state["failures"] += 1
-                state["last_error"] = gen.last_error
+                details.append((note.id, "error", " · ".join(gen.errors) or gen.last_error))
+            elif list(note.fields) == before[note.id]:
+                details.append((note.id, "skip", reason or (
+                    "wynik identyczny z dotychczasową treścią" if changed
+                    else "zadanie nie zwróciło zmian")))
             state["done"] += 1
             done = state["done"]
         _report_progress(done)
@@ -130,14 +191,12 @@ def _run_batch(browser: Browser, nids, config: dict,
         except Exception as e:
             tooltip(f"Błąd podczas generowania: {e}", period=5000)
             return
-        parts = [f"Zaktualizowano: {state['changed']}"]
-        if state["failures"]:
-            parts.append(f"błędy: {state['failures']}")
-        if cancel_flag["cancelled"]:
-            parts.append("przerwano")
-        if state["last_error"]:
-            parts.append(state["last_error"])
-        save_detached_notes(browser, col, changed_notes, before, " · ".join(parts))
+        save_detached_notes(
+            browser, col, changed_notes, before, label,
+            on_saved=lambda skipped: _show_run_report(
+                browser, label, len(notes), state["done"], changed_notes,
+                details, cancel_flag["cancelled"], skipped),
+        )
 
     mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
@@ -160,8 +219,7 @@ def _on_batch_submit(browser: Browser, only_fields=None):
     try:
         notes = []
         for nid in nids:
-            note = mw.col.get_note(nid)
-            note.note_type()
+            note, _before = detach_note(mw.col.get_note(nid))
             notes.append(note)
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
@@ -541,16 +599,12 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     sleep_time: float = config.get("batch_sleep", 1.0)
     parallel: int = max(1, int(config.get("parallel_requests", 3)))
 
-    # Preload notes on the main thread (collection is single-threaded). Workers
-    # only mutate notes in memory; the one collection touch left in a worker is
-    # mw.col.media.write_data() inside the TTS step, which the backend
-    # serializes. Collection writes for the notes themselves happen on the main
-    # thread in save_detached_notes().
+    # Freeze notes/models on the main thread. Workers mutate detached copies;
+    # save_detached_notes() merges them with freshly read collection notes.
     try:
         notes = []
         for nid in nids:
-            note = mw.col.get_note(nid)
-            note.note_type()
+            note, _before = detach_note(mw.col.get_note(nid))
             notes.append(note)
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
@@ -563,7 +617,8 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     label = workflow.get("name", "Workflow")
     cancel_flag = start_progress(label, len(notes), "Workflow")
 
-    state = {"done": 0, "errors": 0, "last_error": None}
+    state = {"done": 0}
+    details = []
     changed_notes: list = []
     lock = threading.Lock()
 
@@ -573,6 +628,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         # last_error across threads.
         gen = FieldGenerator(config)
         note_modified = False
+        note_errors = []
         for step in steps:
             if cancel_flag["cancelled"]:
                 break
@@ -582,13 +638,15 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
                 modified, err = False, str(e)
             note_modified = note_modified or modified
             if err:
-                with lock:
-                    state["errors"] += 1
-                    state["last_error"] = err
+                note_errors.append(err)
                 logger.error(f"Workflow batch (nid={note.id}): {err}")
         with lock:
-            if note_modified:
+            if list(note.fields) != before[note.id]:
                 changed_notes.append(note)
+            if note_errors:
+                details.append((note.id, "error", " · ".join(note_errors)))
+            elif list(note.fields) == before[note.id]:
+                details.append((note.id, "skip", "kroki nie zmieniły pól notatki"))
             state["done"] += 1
             done = state["done"]
         _report_progress(done)
@@ -614,27 +672,24 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         except Exception as e:
             tooltip(f"Błąd workflow: {e}", period=5000)
             return
-        parts = [f"Zaktualizowano: {len(changed_notes)}"]
-        if state["errors"]:
-            parts.append(f"błędy: {state['errors']}")
-        if cancel_flag["cancelled"]:
-            parts.append("przerwano")
-        if state["last_error"]:
-            parts.append(state["last_error"])
-        save_detached_notes(browser, col, changed_notes, before, " · ".join(parts))
+        save_detached_notes(
+            browser, col, changed_notes, before, label,
+            on_saved=lambda skipped: _show_run_report(
+                browser, label, len(notes), state["done"], changed_notes,
+                details, cancel_flag["cancelled"], skipped),
+        )
 
-    mw.taskman.run_in_background(task, on_done)
+    mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
 
 def _all_configured_target_fields(config: dict, manual_only: bool = False) -> list[str]:
     """Flattened list of distinct target field names across all note types.
 
-    Order follows first appearance (stable across menu builds). Used to build
-    the per-field submenu — process_note() dispatches per note type internally,
-    so 'AI: def' will use the right prompt for each note's type.
+    Order follows first appearance. Used by workflow field scoping; Browser
+    menus use _selected_target_fields() instead.
 
     manual_only=False (default) → only fields WITHOUT manual_only flag (auto-eligible).
-    manual_only=True → only fields WITH manual_only=True (blocked from auto/batch).
+    manual_only=True → only fields WITH manual_only=True (excluded from automatic generation).
     """
     seen: dict[str, None] = {}  # py3.7+ dict preserves insertion order
     for nt_name, nt_cfg in config.get("note_types", {}).items():
@@ -653,101 +708,121 @@ def _all_configured_target_fields(config: dict, manual_only: bool = False) -> li
     return list(seen.keys())
 
 
-def add_to_context_menu(browser: Browser, menu):
+def _selected_target_fields(notes, config, manual_only=False, batch_api=False):
+    fields = {}
+    for note in notes:
+        for entry, target in iter_note_fields(
+            note, config, only_fields=set(note.keys()), overwrite=True
+        ):
+            if bool(entry.get("manual_only")) != manual_only:
+                continue
+            if not entry.get("provider"):
+                continue
+            if batch_api and entry.get("provider") not in ("openai", "anthropic", "openrouter"):
+                continue
+            fields.setdefault(target, None)
+    return list(fields)
+
+
+def _workflow_matches(notes, steps, ai_config, full_config):
+    from .workflow import _resolve_ai_fields
+    from ..tts.config import get_tasks
+    from ..field_splitter.splitting import parse_target_fields
+    for step in steps:
+        module = step.get("module")
+        if module == "ai" and step.get("action") == "generate":
+            only = _resolve_ai_fields(step, ai_config)
+            if any(list(iter_note_fields(note, ai_config, only, overwrite=True)) for note in notes):
+                return True
+        elif module == "dictionary" and step.get("action") == "fetch" and step.get("dicts"):
+            cfg = full_config.get("dictionary", {})
+            if any(cfg.get("source_field", "ang") in n and cfg.get("target_field", "audio") in n for n in notes):
+                return True
+        elif module == "tts" and step.get("action") == "generate":
+            if any(task.get("source_field", "") in n and task.get("target_field", "") in n
+                   for task in get_tasks(full_config.get("tts", {})) for n in notes):
+                return True
+        elif module == "field_splitter" and step.get("action") == "split":
+            cfg = full_config.get("field_splitter", {})
+            source = cfg.get("source_field", "przyklad")
+            targets = parse_target_fields(cfg.get("target_fields", "p1, p2, p3, p4, p5"))
+            if any(source in n and any(t != source and t in n for t in targets) for n in notes):
+                return True
+    return False
+
+
+def add_to_context_menu(browser: Browser, menu, notes=None):
     from .workflow import get_workflows, get_context_menu
-
+    from ..common import get_full_config
     cm = get_context_menu()
+    if notes is None:
+        notes = [mw.col.get_note(nid) for nid in browser.selected_notes()]
+    if not notes:
+        return
+    config = get_config()
+    target_fields = _selected_target_fields(notes, config)
+    manual_fields = _selected_target_fields(notes, config, manual_only=True)
 
-    # User-defined workflows first — each is one menu entry.
+    full_config = get_full_config()
     for wf in get_workflows():
-        if not [s for s in wf.get("steps", []) if isinstance(s, dict)]:
+        steps = [s for s in wf.get("steps", []) if isinstance(s, dict)]
+        if not steps or not _workflow_matches(notes, steps, config, full_config):
             continue
-        name = wf.get("name", "Workflow")
-        wf_action = QAction(name, browser)
-        qconnect(
-            wf_action.triggered,
-            lambda _checked=False, w=wf: _on_workflow_browser(browser, w),
-        )
+        wf_action = QAction(wf.get("name", "Workflow"), browser)
+        wf_action.setToolTip(" → ".join(s.get("module", "?") for s in steps))
+        qconnect(wf_action.triggered,
+                 lambda _checked=False, w=wf: _on_workflow_browser(browser, w))
         menu.addAction(wf_action)
 
-    config = get_config()
-    target_fields = _all_configured_target_fields(config)
-    manual_fields = _all_configured_target_fields(config, manual_only=True)
+    def add_field_actions(submenu, fields, callback, prefix=""):
+        for field_name in fields:
+            action = QAction(f"{prefix}{field_name}", browser)
+            qconnect(action.triggered,
+                     lambda _checked=False, fn=field_name: callback(browser, fn))
+            submenu.addAction(action)
 
-    if cm.get("ai_fields", True):
-        gen_menu = menu.addMenu("Generuj pola")
-        all_action = QAction("Wszystkie puste", browser)
-        qconnect(all_action.triggered, lambda: _on_generate_browser(browser))
-        gen_menu.addAction(all_action)
-
-        if target_fields:
-            gen_menu.addSeparator()
-            for field_name in target_fields:
-                action = QAction(f"AI: {field_name}", browser)
-                qconnect(
-                    action.triggered,
-                    lambda _checked=False, fn=field_name:
-                        _on_generate_field_browser(browser, fn),
-                )
-                gen_menu.addAction(action)
-
-    if cm.get("ai_fields", True):
-        batch_menu = menu.addMenu("Batch API (Anthropic/OpenAI/OpenRouter, tańszy)")
-        submit_all = QAction("Wyślij zaznaczone — wszystkie pola", browser)
-        qconnect(submit_all.triggered, lambda: _on_batch_submit(browser))
-        batch_menu.addAction(submit_all)
-
-        if target_fields:
-            batch_menu.addSeparator()
-            for field_name in target_fields:
-                action = QAction(f"Batch: {field_name}", browser)
-                qconnect(
-                    action.triggered,
-                    lambda _checked=False, fn=field_name:
-                        _on_batch_submit(browser, only_fields={fn}),
-                )
-                batch_menu.addAction(action)
-
-        if manual_fields:
-            batch_menu.addSeparator()
-            blocked_all = QAction("Wyślij zaznaczone — wszystkie zablokowane", browser)
-            qconnect(
-                blocked_all.triggered,
-                lambda: _on_batch_submit(browser, only_fields=set(manual_fields)),
-            )
-            batch_menu.addAction(blocked_all)
-            for field_name in manual_fields:
-                action = QAction(f"Batch (zablokowane): {field_name}", browser)
-                qconnect(
-                    action.triggered,
-                    lambda _checked=False, fn=field_name:
-                        _on_batch_submit(browser, only_fields={fn}),
-                )
-                batch_menu.addAction(action)
-
-        batch_menu.addSeparator()
-        check_action = QAction("Sprawdź batche i zastosuj wyniki", browser)
-        qconnect(check_action.triggered, lambda: check_pending_batches(silent=False))
-        batch_menu.addAction(check_action)
+    if cm.get("ai_fields", True) and target_fields:
+        gen_menu = menu.addMenu("Uzupełnij puste pola AI")
+        action = QAction("Wszystkie pola automatyczne", browser)
+        qconnect(action.triggered, lambda: _on_generate_browser(browser))
+        gen_menu.addAction(action)
+        gen_menu.addSeparator()
+        add_field_actions(gen_menu, target_fields, _on_generate_field_browser)
 
     if cm.get("ai_blocked", True) and manual_fields:
-        blocked_menu = menu.addMenu("Generuj zablokowane")
-        all_blocked = QAction("Wszystkie zablokowane", browser)
-        qconnect(
-            all_blocked.triggered,
-            lambda: _run_batch(
-                browser, browser.selected_notes(), config,
-                only_fields=set(manual_fields),
-                label="AI: zablokowane",
-            ),
-        )
-        blocked_menu.addAction(all_blocked)
-        blocked_menu.addSeparator()
-        for field_name in manual_fields:
-            action = QAction(f"AI: {field_name}", browser)
-            qconnect(
-                action.triggered,
-                lambda _checked=False, fn=field_name:
-                    _on_generate_field_browser(browser, fn),
-            )
-            blocked_menu.addAction(action)
+        manual_menu = menu.addMenu("Generuj pola tylko na żądanie")
+        action = QAction("Uzupełnij wszystkie puste", browser)
+        qconnect(action.triggered, lambda: _run_batch(
+            browser, browser.selected_notes(), get_config(),
+            only_fields=set(manual_fields), label="AI: pola tylko na żądanie"))
+        manual_menu.addAction(action)
+        manual_menu.addSeparator()
+        add_field_actions(manual_menu, manual_fields, _on_generate_field_browser)
+
+    regenerate_fields = (target_fields if cm.get("ai_fields", True) else []) + (
+        manual_fields if cm.get("ai_blocked", True) else [])
+    if regenerate_fields:
+        regen_menu = menu.addMenu("Wygeneruj ponownie wybrane pole…")
+        add_field_actions(regen_menu, dict.fromkeys(regenerate_fields), _on_regenerate_field_browser)
+
+    api_fields = _selected_target_fields(notes, config, batch_api=True)
+    api_manual = _selected_target_fields(notes, config, manual_only=True, batch_api=True)
+    if cm.get("ai_fields", True) and (api_fields or (api_manual and cm.get("ai_blocked", True))):
+        batch_menu = menu.addMenu("Batch API")
+        if api_fields:
+            action = QAction("Wyślij wszystkie puste pola automatyczne", browser)
+            qconnect(action.triggered, lambda: _on_batch_submit(browser))
+            batch_menu.addAction(action)
+            add_field_actions(batch_menu, api_fields,
+                              lambda b, f: _on_batch_submit(b, only_fields={f}))
+        if api_manual and cm.get("ai_blocked", True):
+            batch_menu.addSeparator()
+            action = QAction("Wyślij puste pola tylko na żądanie", browser)
+            qconnect(action.triggered, lambda: _on_batch_submit(browser, only_fields=set(api_manual)))
+            batch_menu.addAction(action)
+            add_field_actions(batch_menu, api_manual,
+                              lambda b, f: _on_batch_submit(b, only_fields={f}), "Na żądanie: ")
+        batch_menu.addSeparator()
+        action = QAction("Pobierz i zastosuj wyniki Batch API", browser)
+        qconnect(action.triggered, lambda: check_pending_batches(silent=False))
+        batch_menu.addAction(action)

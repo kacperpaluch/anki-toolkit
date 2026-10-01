@@ -4,7 +4,7 @@ Wyrównuje głośność mediów Anki przez `ffmpeg` (EBU R128).
 
 Ustawienia (ścieżka `ffmpeg`, filtr, auto-normalizacja) są w **Narzędzia →
 Anki Toolkit → Ustawienia… → Normalizacja audio**, a ręczny skan całego katalogu mediów (po potwierdzeniu)
-w **Narzędzia → Anki Toolkit → Normalizuj audio (ffmpeg)…**.
+w **Narzędzia → Anki Toolkit → Operacje na kolekcji → Normalizuj audio (ffmpeg)…**.
 
 Z włączoną auto-normalizacją watcher obserwuje katalog mediów i ~3 s po zmianie
 normalizuje nowe pliki (TTS, słowniki, synchronizacja, ręczne dodanie). Włączenie

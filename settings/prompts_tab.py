@@ -327,7 +327,7 @@ class PromptsTab(QWidget):
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
-            "wskazanie: PPM na polu w edytorze albo submenu „Generuj zablokowane”\n"
+            "wskazanie: PPM na polu w edytorze albo submenu „Generuj pola tylko na żądanie”\n"
             "w przeglądarce. Pominięte przy „Wszystkie puste”, workflow\n"
             "oraz głównym przycisku AI w edytorze."
         )

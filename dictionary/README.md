@@ -37,6 +37,9 @@ Nazwa pliku audio jest deterministyczna: `dict_{źródło}_{słowo}_{skrót}.mp3
 
 Dzięki temu, gdy masz wiele kart z tym samym słowem (np. kilka „above"), audio z danego źródła pobierane jest z sieci **tylko raz** — kolejne karty (dziś, jutro, z edytora czy z batcha) reużywają tego samego pliku. Pobierane są jedynie te źródła, których brakuje. Aby wymusić świeże pobranie, usuń plik z folderu media kolekcji.
 
+
+Menu wymowy pojawia się tylko, gdy zaznaczone notatki mają skonfigurowane pola źródłowe i docelowe oraz istnieją włączone słowniki. Sekcję można ukryć w **Ustawienia → Workflowy**.
+
 ## Dostępne słowniki
 
 | Klucz | Słownik | Wariant |

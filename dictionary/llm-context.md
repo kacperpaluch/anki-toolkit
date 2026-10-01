@@ -4,6 +4,9 @@
 
 Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (przyciski w toolbarze) i przeglądarce przez menu kontekstowe **Anki Toolkit → Pobierz wymowę** dla zaznaczonych notatek.
 
+
+Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.dictionary`; submenu wymaga pól source/target w co najmniej jednej notatce oraz włączonych źródeł.
+
 ## Pliki
 
 | Plik | Rola |

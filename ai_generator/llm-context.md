@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (przyciski workflowów + pomocniczy przycisk AI) i przeglądarce (równoległy batch dla zaznaczonych notatek). Pomija pola, które już mają treść (poza PPM „Regeneruj”), a w trybie automatycznym także pola `manual_only` („Tylko na żądanie”).
+Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (przyciski workflowów + pomocniczy przycisk AI) i przeglądarce (równoległy batch dla zaznaczonych notatek). Pomija pola, które już mają treść (poza regenerowaniem w edytorze lub Browserze), a w trybie automatycznym także pola `manual_only` („Tylko na żądanie”).
 
 ## Pliki
 
@@ -11,12 +11,12 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `_generator.py` | Tylko `get_config()` — czyta sekcję `ai_generator` z configu wtyczki. Bez singletona: każde uruchomienie (przycisk, PPM, workflow, batch) tworzy własny `FieldGenerator(get_config())`, więc równoległe generowania nie współdzielą stanu błędów providerów, a zmiany ustawień działają od razu |
 | `editor_ui.py` | UI edytora — przyciski workflow (per workflow z `editor_button`), potem przycisk AI (wszystkie puste pola); wspólny `common.editor_operation` blokuje równoległe AI/TTS/słownik/workflow na tej samej instancji edytora; świeży `FieldGenerator(get_config())` per uruchomienie; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — workflowy, generowanie wybranych pól i Batch API. Notatki są wczytywane na głównym wątku, workery mutują je wyłącznie w pamięci, a wynik jest zapisywany jednym `CollectionOp`. |
+| `browser_ui.py` | UI przeglądarki — filtracja PPM względem zaznaczenia (`_selected_target_fields`, `_workflow_matches`), uzupełnianie i potwierdzona regeneracja jednego pola (`_run_batch(overwrite=...)`), workflowy, Batch API oraz `_show_run_report`. `detach_note` na głównym wątku, praca na kopiach, zapis przez `save_detached_notes` i jeden `CollectionOp`. |
 | `batch_backfill.py` | Orkiestracja Batch API bez szczegółów HTTP: budowanie pustych pól, grupowanie modeli, budżet tokenów i `_openai_blocked_until`, persistence `user_files/ai_batches.json`, joby, dispatch przez modułowe seamy `_submit_*`/`_poll_*`, polling oraz idempotentne `apply_results()`. Seamy są celowo wywoływane niekwalifikowanie, aby testy mogły patchować namespace `batch_backfill`. **Własność kolekcji:** store jest wspólny dla profili, więc rekordy i joby noszą `col` (= `mw.col.path`, czytane przez `current_col_id()`); `pending_batches()`/`active_jobs()` filtrują po nim (`_mine()`, rekordy bez `col` są wstrzymane do ręcznego przypisania), a `_all_pending()` celowo tego nie robi — limit kolejki tokenów OpenAI jest per organizacja. |
 | `batch_openai.py` | Mechanika sieciowa OpenAI Batch API: JSONL, multipart Files API, create/poll, pobranie wyników i cleanup plików. Budżet, backoff i persistence pozostają w `batch_backfill.py`. |
 | `batch_openrouter.py` | Mechanika sieciowa OpenRouter Batch API: inline JSON (bez uploadu plików), jeden model na batch, wyniki inline w obiekcie batcha. `endpoint`+`model` muszą być serializowane przed `requests` (stream-parse). Model batch jest wyprowadzany z skonfigurowanego przez `_batch_model()` (sufiks `:batch`), więc nie ma osobnego pola konfiguracji. |
 | `batch_anthropic.py` | Mechanika sieciowa Anthropic Batch API: inline requests, submit/poll i normalizacja odpowiedzi. |
-| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; selekcja pól wydzielona do modułowego `iter_note_fields(note, config, only_fields, overwrite)` (współdzielona z `batch_backfill`); niezależna od UI, rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model, temperature, reasoning_effort)`; per-prompt `temperature` nadpisuje domyślną dostawcy (przekazywana też do fallbacku); **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
+| `field_generator.py` | Logika generowania — `process_note(note, only_fields=None, overwrite=False)`; `only_fields` filtruje scope, `overwrite=True` nadpisuje pełne pola; selekcja pól wydzielona do modułowego `iter_note_fields(note, config, only_fields, overwrite)` (współdzielona z `batch_backfill`); niezależna od UI, `errors` zbiera błędy wszystkich pól bieżącego przebiegu (obok kompatybilnego `last_error`), rozwiązuje model promptu z fallbackiem do modelu domyślnego i cache'uje providery per `(provider, model, temperature, reasoning_effort)`; per-prompt `temperature` nadpisuje domyślną dostawcy (przekazywana też do fallbacku); **fallback modeli**: gdy `call_api()` zwróci `None`, sprawdza per-prompt `fallback_provider`+`fallback_model` (wyższy priorytet), potem per-dostawca `fallback_model`; fallback używa tego samego promptu, ale może użyć innego dostawcy; używa `common.clean_html_normalized()`, `common.safe_str()` |
 | `template_engine.py` | Silnik szablonów: `{{pole}}` i `{% if %}...{% endif %}`; `template_structure_problems()` — czysta walidacja struktury bloków używana przez edytor promptów |
 | `providers/__init__.py` | Rejestr `PROVIDERS`/`PROVIDER_LABELS`, wspólne poziomy `CLI_REASONING_EFFORTS` dla UI + fabryka `get_provider()`; definiuje też 2 cienkie klasy zgodne z OpenAI (`OpenAIProvider`, `OpenRouterProvider`) dziedziczące po `OpenAICompatProvider` — różnią się tylko `API_URL`, `LABEL` i (OpenRouter) `EXTRA_HEADERS` z atrybucją aplikacji (`HTTP-Referer`/`X-Title`) |
 | `providers/base.py` | ABC `BaseProvider` — flaga klasowa `REQUIRES_API_KEY` (False dla dostawców lokalnych; `field_generator` pomija dla nich wymóg klucza) + `self.options` z pełną sekcją configu dostawcy (ustawienia spoza wspólnego zestawu, np. `binary_path`) + interfejs + `_post(url, data, headers)` (POST z retry, deleguje do `common.http.post_json`) + `_post_with_reasoning_fallback()` (ponowna próba bez `reasoning_effort` gdy API zwróci błąd wspominający ten parametr) + wspólne parsery odpowiedzi `_parse_chat_completion()` (format OpenAI choices→message→content) i `_parse_messages()` (format Anthropic, pierwszy blok `type=="text"`); klasa `OpenAICompatProvider` z gotowym `call_api()` dla endpointów Bearer-auth Chat Completions |
@@ -65,11 +65,11 @@ PPM na polu w edytorze (gui_hooks.editor_will_show_context_menu → _on_editor_c
       → ten sam wspólny guard edytora + saveNow + editor.note is note co główny przycisk
       → process_note(note, only_fields={field_name}, overwrite=True)   # nadpisuje nawet pełne
 
-Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
-  → submenu zbudowane z _all_configured_target_fields(config) — spłaszczone po nazwie pola docelowego (wszystkie typy notatek)
-  → "Wszystkie puste" → _on_generate_browser() → _run_batch(only_fields=None)
-  → "AI: def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
-  → notatki wczytywane z mw.col.get_note(nid) NA GŁÓWNYM WĄTKU (kolekcja Anki jest jednowątkowa); note.note_type() rozgrzewa cache modeli — workery robią na nim już tylko odczyt z pamięci
+Batch w przeglądarce (menu kontekstowe → Uzupełnij puste pola AI ▸):
+  → submenu z `_selected_target_fields(notes, config)` — tylko pasujące pola zaznaczenia; Batch API wyklucza CLI; workflow widoczny gdy przynajmniej jeden krok pasuje
+  → "Wszystkie pola automatyczne" → _on_generate_browser() → _run_batch(only_fields=None)
+  → "def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
+  → notatki wczytywane z mw.col.get_note(nid) NA GŁÓWNYM WĄTKU (kolekcja Anki jest jednowątkowa); `detach_note()` zamraża model i kopiuje pola/tagi; worker nie odczytuje modelu z kolekcji
   → start_progress() (common/progress.py) = natywny pasek mw.progress.start(max=total, immediate=True) (NIE własny QProgressDialog)
       → celowo: trzyma Anki w stanie "busy", więc timer automatycznego backupu/synchronizacji odkłada się zamiast wyskakiwać własnym modalem NAD paskiem batcha i blokować Anuluj
       → anulowanie: update_progress() na głównym wątku czyta mw.progress.want_cancel() → ustawia cancel_flag; workery przerywają między chunkami
@@ -78,7 +78,7 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
       → chunk po batch_limit notatek (sleep batch_sleep między chunkami)
       → dla każdej (wczytanej wcześniej) notatki w chunku (równolegle w puli):
           → gen = FieldGenerator(config)                # NOWA instancja per notatka — provider trzyma last_error
-          → gen.process_note(note, only_fields=..., overwrite=False)   # mutuje notatkę tylko w pamięci, BEZ dostępu do mw.col; batch zawsze pomija wypełnione
+          → gen.process_note(note, only_fields=..., overwrite=False)   # mutuje notatkę tylko w pamięci, BEZ dostępu do mw.col; zwykłe uzupełnianie pomija wypełnione; regenerowanie jednego pola wymaga potwierdzenia liczby notatek i przekazuje overwrite=True
           → changed_notes.append(note) jeśli gen zmienił pola
       → zbiera changed_notes w liście (pod lockiem)
   → on_done (główny wątek):
@@ -87,6 +87,7 @@ Batch w przeglądarce (menu kontekstowe → Generuj pola ▸):
           → CollectionOp: notatki czytane na świeżo, zapis tylko pól zmienionych przez workery;
             notatka zmieniona w trakcie batcha jest pomijana (jej pola mogły być wejściem),
             inny profil niż przy starcie → nic nie zapisuje
+      → callback `on_saved(skipped)` otwiera raport dopiero po udanym zapisie; liczy faktycznie zapisane notatki, konflikty, błędy (także częściowy sukces), pominięcia i anulowanie; tekst kopiowalny, logowany na INFO
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
 Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
@@ -108,6 +109,56 @@ Przyciski workflowów w edytorze:
         wewnątrz kroku TTS pliki audio są generowane równolegle (tts.processor.process_single_note → ThreadPoolExecutor)
       → po KAŻDYM kroku scala i odświeża edytor przed kolejnym saveNow; po ostatnim tylko zwalnia guard i pokazuje podsumowanie
 ```
+
+## PPM Browsera i raport — niezmienniki
+
+- Root `_context()` wczytuje zaznaczone notatki raz na głównym wątku i przekazuje
+  je jako `notes=` wszystkim budowniczym menu. Przy braku zaznaczenia nie tworzy
+  submenu; usuwa też submenu, do którego żaden moduł nie dodał działań.
+- `_selected_target_fields()` współdzieli selekcję z `iter_note_fields()`:
+  jawny scope istniejących pól + `overwrite=True` pozwala pokazać także pełne
+  pola, ale nadal respektuje konfigurację typu, obecność targetu i `skip_tags`.
+  Dodatkowo wymaga wskazanego providera i rozdziela `manual_only`.
+- Batch API filtruje **głównego** providera do `openai/anthropic/openrouter`.
+  Fallback API nie kwalifikuje promptu CLI. Widoczność nie potwierdza klucza,
+  modelu ani pustego pola — weryfikacja wysyłki nadal należy do `build_items`
+  i backendów Batch API. „Wszystkie puste pola automatyczne” używa
+  `only_fields=None`, żeby nie włączać przypadkiem pól ręcznych o tej samej
+  nazwie w innym typie notatki.
+- `context_menu.ai_fields` steruje automatycznym AI i całym Batch API;
+  `ai_blocked` jest zachowanym kluczem konfiguracji dla pól „tylko na żądanie”.
+  Obie flagi ograniczają też listę regenerowania; ręczne pola Batch API wymagają
+  obu flag. Root respektuje `dictionary/tts/field_splitter`. Nie są to flagi
+  wyłączające moduły, przyciski edytora lub kroki workflow.
+- Workflow w PPM wymaga co najmniej jednego pasującego kroku; `_workflow_matches`
+  sprawdza pola i rodzaj akcji, nie stan ich wypełnienia, dostępność sieci czy
+  gotowość dostawcy. Sam przebieg wykonuje oryginalną listę kroków.
+- `_on_regenerate_field_browser()` liczy notatki przez `iter_note_fields` z
+  jednym targetem i `overwrite=True`; potwierdzenie ma `defaultno=True`.
+  Dopiero po zgodzie uruchamia `_run_batch`; inne targety nie są generowane.
+  Pusta/nieudana odpowiedź nie usuwa starej treści. Regeneracja używa tego
+  samego snapshotu, kontroli profilu/konfliktów i undo co uzupełnianie.
+- `FieldGenerator.errors` resetuje się na każdy `process_note()` i zbiera błędy
+  konfiguracji/odpowiedzi dla wszystkich nieudanych pól; `last_error` pozostaje
+  kompatybilnym ostatnim błędem. Workflow scala listę błędów bieżącego kroku.
+- Raport AI/workflow otwiera callback `save_detached_notes(..., on_saved=...)`
+  po sukcesie `CollectionOp`, a dla pustej listy zmian od razu. Lista `skipped`
+  zawiera notatki zmienione/usunięte przed zapisem. Nie wolno liczyć wygenerowanych
+  wyników jako zapisanych bez odjęcia tych konfliktów. Błąd zapisu/zmiana profilu
+  nie uruchamia callbacku sukcesu.
+- Liczniki raportu są per notatka, nie per pole; częściowy sukces może zwiększyć
+  zarówno zapisane, jak i błędy. Identyczny wynik nie liczy się jako zmiana.
+  Anulowanie kończy kolejne chunki; rozpoczęte wywołania mogą się zakończyć,
+  a ich poprawne wyniki trafiają do zapisu. `done/total` pokazuje zakres pracy.
+- Raport jest zwykłym tekstem (`showText(type="text", copyBtn=True)`), więc błąd
+  dostawcy nie staje się HTML. Jest logowany na INFO. Usunięty widget Browsera
+  jest zastępowany `mw` jako rodzic dialogu. Raport nie jest nowym formatem
+  danych persistent ani nowym panelem diagnostycznym.
+- `tests/test_content_regressions.py` sprawdza scope PPM, potwierdzenie,
+  zachowanie starego pola po błędzie i liczniki po konflikcie. Dwa testy Qt:
+  `tests/qt_browser_menu_smoke.py` (root dispatcher, menu Narzędzia, widoczność,
+  workflowy, raport), `tests/qt_ai_settings_smoke.py` (ustawienia, dziedziczenie).
+  Korzystają z syntetycznych danych, bez wywołań modeli i zapisu konfiguracji.
 
 ## Konfiguracja
 
@@ -267,7 +318,7 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - `common.editor_operation` zapisuje `(token, label)` na instancji edytora. AI, TTS, słownik i workflow współdzielą ten sam guard; inne okno edytora ma niezależny stan. Guard jest zwalniany tokenem dopiero po zastosowaniu wyniku, a nie po samym zakończeniu workera.
 - `editor.saveNow(start)` na początku `_on_generate_editor` — synchronizuje webview → `editor.note` PRZED startem zadania tła; `note = editor.note` jest czytany wewnątrz callbacku `start()`, dzięki czemu sprawdzenie pustości pól widzi rzeczywisty stan widoczny użytkownikowi
 - `fields_map` budowany przez `common.clean_html_normalized()` — pola notatki ze znacznikami HTML (`<div>`, `<br>`, `&nbsp;`) są oczyszczane przed wstawieniem do promptu; wyniki AI trafiają do karty surowo (bez strippowania HTML — AI powinno zwracać czysty tekst)
-- `process_note` zwraca `dict[str, str]` (nie `bool`) — pisze też wprost do notatki, którą dostała, dlatego edytor podaje jej kopię z `detach_note()`; browser_ui używa go jako truthy check, a notatki zmienione w batchu są zapisywane atomowo przez `CollectionOp(parent=browser, op=lambda col: col.update_notes(changed_notes))` (jeden krok undo), a nie per-note `mw.col.update_note`
+- `process_note` zwraca `dict[str, str]` (nie `bool`) i mutuje przekazaną notatkę. Edytor i Browser podają kopię z `detach_note()`. Browser zapisuje tylko faktyczne różnice pól przez `save_detached_notes` → `merge_detached_notes`: świeży odczyt, kontrola schematu i snapshotu, jeden `CollectionOp`/undo. Nie wolno zastąpić tego bezpośrednim `update_notes(changed_notes)` — utraciłoby ochronę przed zmianami użytkownika.
 - `FieldGenerator.last_error` przechowuje ostatni błąd providera/API; editor_ui pokazuje go także wtedy, gdy część pól się udała (wcześniej częściowa awaria wyglądała na czysty sukces), a browser_ui liczy błąd niezależnie od tego, czy notatka się zmieniła
 - `editor.saveNow(apply)` synchronizuje webview przed `merge_editor_note()`. Zmiana dowolnego pola unieważnia wyniki bieżącego kroku (pola mogą być wejściami promptu), a nazwy pominiętych pól wynikowych trafiają do tooltipa. Helper kontroluje tożsamość kolekcji i schemat; po przełączeniu edytora wczytuje świeżą notatkę. Zapis istniejącej notatki powiadamia Anki przez `on_op_finished`; webview odświeża się po każdym kroku. Nie wolno scalać po błędzie saveNow ani kontynuować workflow po błędzie zapisu.
 - Edytorowe ścieżki AI/TTS/słownika/workflow dzielą jeden wzorzec: `detach_note()` przed startem workera, `merge_editor_note()` po `saveNow`. Worker nigdy nie mutuje `editor.note` — `FieldGenerator.process_note`, `process_single_note` i `process_note_group` piszą do notatki, którą dostaną

@@ -13,9 +13,9 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
-| `__init__.py` | import modułów, hooki edytora/profilu, timer batchy, menu Narzędzia i PPM Browsera | — |
+| `__init__.py` | import modułów, hooki edytora/profilu, timer batchy, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`) | wszystkie |
-| `common/` | konfiguracja, HTTP (bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`), widżety ustawień | — |
+| `common/` | konfiguracja, HTTP (bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
 | `settings/` | panele „Tworzenie kart”: workflowy, AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
@@ -47,6 +47,14 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
   ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
 - `setConfigAction` musi zwracać `None` — `False` otwiera w Anki edytor JSON.
+
+- PPM Browsera ma jeden dispatcher w root: wczytuje zaznaczenie, przekazuje
+  `notes=` modułom, respektuje widoczność i usuwa puste submenu. Reguły AI,
+  regenerowania i Batch API są w `ai_generator/llm-context.md`.
+- `common.editor_operation.save_detached_notes(..., on_saved=None)` pozostaje
+  wspólną ścieżką Browsera: kontrola profilu, świeży odczyt, odrzucenie konfliktów,
+  jeden `CollectionOp`/undo. Callback raportu dostaje identyfikatory pominiętych
+  notatek dopiero po udanym zapisie; pozostałe moduły zachowują tooltipy.
 
 ## Niezmienniki małych modułów
 

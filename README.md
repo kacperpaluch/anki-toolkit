@@ -10,13 +10,18 @@ Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia w jednym oknie.
 |---|---|
 | **Ustawienia…** | Jedno okno z paskiem bocznym dla wszystkich modułów (ten sam dialog otwiera **Config** w **Narzędzia → Dodatki**) |
 | **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
-| **Sprawdź batche AI** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
-| **Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
-| **Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
-| **Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
+| **Pobierz i zastosuj wyniki Batch API** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
+| **Operacje na kolekcji → Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
+| **Operacje na kolekcji → Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
+| **Operacje na kolekcji → Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
 
 W Browserze PPM → **Anki Toolkit** zawiera workflowy, generowanie AI, wymowę,
-TTS i rozdzielanie pól dla zaznaczonych notatek. Edytor notatki ma przyciski
+TTS i rozdzielanie pól pasujące do zaznaczonych notatek. Sekcje można ukryć
+w **Ustawienia → Workflowy**; Batch API pojawia się tylko dla pasujących promptów API.
+AI rozróżnia uzupełnianie pustych pól od regenerowania jednego pola z potwierdzeniem
+nadpisania. Po generowaniu AI lub workflow w Browserze pojawia się raport
+zapisanych zmian, pominięć i błędów z identyfikatorami notatek oraz przyciskiem kopiowania.
+Edytor notatki ma przyciski
 workflowów, AI, słowników (np. **Diki**, **Oxford**) i TTS; okno **Dodaj** ma
 dodatkowo 📚 (kolejka słówek) i 👁 (ukryte pola).
 
@@ -99,7 +104,7 @@ manifest.json         manifest dodatku; config.json — szablon ustawień
 common/ settings/     współdzielone narzędzia i panele ustawień tworzenia kart
 ai_generator/ …       moduły dodatku (każdy z własnym README.md)
 workload_service/     niezależny klient headless dla limitów nowych kart (nie ładuje go Anki)
-tests/                testy czystej logiki (nie ładuje ich Anki)
+tests/                testy logiki i izolowane smoke testy Qt (nie ładuje ich Anki)
 AGENTS.md             zasady pracy w repozytorium
 llm-context.md        mapa modułów dla modeli AI
 ```
@@ -117,12 +122,18 @@ python3 -m compileall -q -f .
 git diff --check
 ```
 
-Panel ustawień AI i kolejki ma dodatkowy smoke test z rzeczywistymi widgetami
-Qt, bez połączeń z modelami i bez zapisu ustawień użytkownika. Na macOS, z Pythonem Anki:
+Dodatkowe smoke testy używają rzeczywistych widżetów Qt i syntetycznych notatek,
+bez połączeń z modelami, zmian w kolekcji ani zapisu ustawień użytkownika.
+Pierwszy sprawdza ustawienia AI/kolejki, drugi PPM, menu Narzędzia i raporty.
+Na macOS, z Pythonem Anki:
 
 ```bash
 QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/qt_ai_settings_smoke.py
+QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/qt_browser_menu_smoke.py
 ```
+
+Przy zmianach hooków, menu lub zapisu kolekcji sprawdź również działanie w Anki.
+Testy Qt nie zastępują testu z rzeczywistą kolekcją i dostawcą AI.
 
 ## Automatyczne limity przez synchronizację
 

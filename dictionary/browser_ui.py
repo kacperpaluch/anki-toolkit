@@ -113,7 +113,15 @@ def _on_fetch_audio_browser_for_button(browser: Browser, dictionaries: list[str]
     _run_browser_fetch(browser, [dictionaries])
 
 
-def add_to_context_menu(browser: Browser, menu):
+def add_to_context_menu(browser: Browser, menu, notes=None):
+    config = _get_config()
+    if notes is not None and not any(
+        config.get("source_field", "ang") in note and
+        config.get("target_field", "audio") in note for note in notes
+    ):
+        return
+    if not _get_enabled_button_configs(config):
+        return
     fetch_menu = menu.addMenu("Pobierz wymowę")
 
     action = QAction("Wszystkie włączone słowniki", browser)
