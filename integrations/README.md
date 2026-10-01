@@ -307,7 +307,12 @@ startuje od zera.
 Okno pokazuje **wszystkie** znaczenia z diki, ale zaznaczone jest tylko pierwsze
 N (**Domyślnie zaznacz znaczeń**, `ai_max_senses`, domyślnie 3) — diki podaje je od
 najczęstszych. Przy każdym widać, skąd jest definicja: *para ze słownika*,
-*definicję dobrało AI* albo *✗ bez definicji*. Puste polskie znaczenie blokuje
+*definicję dobrało AI* albo *✗ bez definicji*. Każde znaczenie ma też pole
+**Hasło angielskie** — wypełnione hasłem z kolejki, do poprawienia dla tej jednej
+karty (np. *salvage* → *salvage sth*); puste wraca do hasła z kolejki. Zmiana
+hasła nie cofa potwierdzenia definicji. Kolejka nadal rozpoznaje „mam już karty”
+po haśle z listy, więc słowa, którego wszystkie karty dostały zmienione hasło,
+nie pominie przy ponownym uruchomieniu. Puste polskie znaczenie blokuje
 zatwierdzenie zaznaczonej propozycji. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
 interpretacją jako HTML. Zatwierdzone znaczenia lądują jako osobne notatki
 w talii i typie wybranym w oknie „Dodaj”.

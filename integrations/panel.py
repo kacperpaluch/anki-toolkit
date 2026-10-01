@@ -1096,7 +1096,10 @@ class WordQueuePanel(QDockWidget):
         done_words = {p["row_id"]: p["word"] for p in proposals
                       if p["word"] in words and p.get("row_id") is not None}
         # Debt goes to disk BEFORE the transaction: a crash after commit still reaches n8n.
-        if not self._owe({row_id: word for row_id, word in done_words.items() if row_id not in self._marked}):
+        # The debt is settled by finding the cards, so it names a headword actually written.
+        written = {word: sense.get("word") or word for word, sense in reversed(chosen)}
+        if not self._owe({row_id: written[word] for row_id, word in done_words.items()
+                          if row_id not in self._marked}):
             for row_id in done_words:
                 self._state.data["owed"].pop(str(row_id), None)
             tooltip("AI: nie zapisano stanu kolejki na dysku — karty nie zostały dodane. "

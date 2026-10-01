@@ -22,6 +22,7 @@ try:
         QDialog,
         QDialogButtonBox,
         QFormLayout,
+        QLineEdit,
         QPlainTextEdit,
         QLabel,
         QScrollArea,
@@ -30,7 +31,7 @@ try:
     )
 except ImportError:  # pozwala odpalić testy bez Anki
     mw = None
-    QCheckBox = QDialogButtonBox = QLabel = QScrollArea = QVBoxLayout = QWidget = None
+    QCheckBox = QDialogButtonBox = QLabel = QLineEdit = QScrollArea = QVBoxLayout = QWidget = None
     QDialog = object
 
 log = logging.getLogger(__name__)
@@ -187,9 +188,13 @@ def parse_tags(value: str) -> list[str]:
 
 
 def note_fields(sense: dict, mapping: dict, word: str) -> dict:
-    """Znaczenie → {pole notatki: wartość}. Puste wartości nie trafiają do notatki."""
+    """Znaczenie → {pole notatki: wartość}. Puste wartości nie trafiają do notatki.
+
+    `sense["word"]` to hasło poprawione w oknie wyboru (np. „salvage sth”); `word`
+    zostaje hasłem z kolejki, po którym panel rozlicza wiersz.
+    """
     values = {
-        mapping.get("en"): word,
+        mapping.get("en"): sense.get("word") or word,
         mapping.get("pl"): sense.get("pl", ""),
         mapping.get("definition"): sense.get("en", ""),
     }
@@ -392,7 +397,9 @@ class SensePicker(QDialog):
                 box.setChecked(index <= checked)
                 inner_layout.addWidget(box)
                 form = QFormLayout()
-                fields = {}
+                # Hasło tej jednej karty; kolejka dalej zna wiersz po haśle z listy.
+                fields = {"word": QLineEdit(word)}
+                form.addRow("Hasło angielskie", fields["word"])
                 for key, label in (("pl", "Polskie znaczenie"), ("en", "Definicja angielska")):
                     edit = QPlainTextEdit()
                     edit.setPlainText(sense.get(key, ""))
@@ -411,8 +418,8 @@ class SensePicker(QDialog):
                     reviewed = QCheckBox("Sprawdziłem, że definicja pasuje do znaczenia")
                     reviewed.setChecked(True)  # most matches are right: unticking is the exception
                     inner_layout.addWidget(reviewed)
-                    for edit in fields.values():
-                        edit.textChanged.connect(lambda reviewed=reviewed: reviewed.setChecked(False))
+                    for key in ("pl", "en"):  # hasło nie zmienia dopasowania definicji
+                        fields[key].textChanged.connect(lambda reviewed=reviewed: reviewed.setChecked(False))
                 self._boxes.append((box, word, sense, fields, reviewed))
         inner_layout.addStretch()
         area = QScrollArea()
@@ -457,7 +464,8 @@ class SensePicker(QDialog):
 
     def selected(self) -> list[tuple[str, dict]]:
         """[(hasło, znaczenie)] — pary, bo jedno okno obsługuje kilka haseł."""
-        return [(word, {**edited_sense(sense, {key: edit.toPlainText() for key, edit in fields.items()}),
+        return [(word, {**edited_sense(sense, {key: fields[key].toPlainText() for key in ("pl", "en")}),
+                        "word": _flat(fields["word"].text()) or word,
                         "reviewed": bool(reviewed and reviewed.isChecked())})
                 for box, word, sense, fields, reviewed in self._boxes if box.isChecked()]
 

@@ -296,6 +296,10 @@ class AddNotesTests(unittest.TestCase):
         self.assertEqual(self.added[0][0]["def"], "covering a large area")
         self.assertEqual(self.added[0][0]["przyklad"], "")      # przykłady dodajesz sam
 
+    def test_headword_edited_in_the_picker_goes_on_that_card_only(self):
+        self.add([self.sense(word="sprawl out"), self.sense()])
+        self.assertEqual([note["ang"] for note, _deck in self.added], ["sprawl out", "sprawling"])
+
     def test_only_model_picked_definitions_wait_for_review(self):
         self.add([self.sense(), self.sense(by_ai=False), self.sense(en="", by_ai=False)])
         self.assertEqual([note.tags for note, _ in self.added],

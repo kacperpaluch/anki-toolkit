@@ -169,6 +169,10 @@ class QtIntegrationSmoke(unittest.TestCase):
             self.assertTrue(dialog.selected()[0][1]['reviewed'])    # ticked by default
             self.assertFalse(dialog.selected()[1][1]['reviewed'])   # no checkbox, no claim
             box, word, sense, fields, reviewed = dialog._boxes[0]
+            fields['word'].setText('  mother   sb ')
+            self.assertEqual(dialog.selected()[0], ('mother', {**senses[0], 'word': 'mother sb', 'reviewed': True}))
+            fields['word'].clear()                                   # a card needs a headword
+            self.assertEqual(dialog.selected()[0][1]['word'], 'mother')
             fields['pl'].setPlainText('mama')
             self.assertFalse(dialog.selected()[0][1]['reviewed'])
             fields['pl'].clear()

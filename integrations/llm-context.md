@@ -151,6 +151,14 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - SensePicker edytuje kopie propozycji i pokazuje wszystkie znaczenia, zaznaczając
   pierwsze `ai_max_senses`. Wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów
   zakładek (wiersz n8n albo szablon) dla `pl_src` i `src`, nigdy z odpowiedzi modelu.
+- Pole „Hasło angielskie” w SensePickerze trafia do znaczenia jako `sense["word"]`
+  (puste = hasło z kolejki) i tylko `note_fields` wpisuje je na kartę. Para
+  `(word, sense)` z `selected()` niesie NADAL hasło z kolejki — po nim panel wiąże
+  wiersz, drafty i odhaczenie; nie podmieniaj go edytowaną wartością. Dług `owed`
+  zapisuje nagłówek faktycznie wpisany na kartę, bo `_settle_owed` szuka kart po
+  nim. Edycja hasła nie resetuje `reviewed` (to potwierdzenie pary PL–definicja).
+  Kontrola „mam już karty” przed AI szuka po haśle z kolejki — karty ze zmienionym
+  hasłem jej nie zatrzymają (świadome ograniczenie).
 - Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
   Szukamy też wariantu z encjami (`&amp;`, a dla starszych notatek `&#x27;`/`&quot;`).
   `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd

@@ -677,6 +677,16 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(added, [])
         self.assertEqual(self.panel._state.data["owed"], {})
 
+    def test_debt_names_a_headword_that_was_written_to_a_card(self):
+        owed = []
+        self.module.ai_senses.existing_senses = lambda *a: []
+        self.module.ai_senses.pick_senses = lambda *a: [("mother", {"word": "mother sb"}), ("mother", {})]
+        self.panel._addcards.editor.note = {}
+        self.panel._set_busy = lambda busy: None
+        self.panel._owe = lambda rows: owed.append(rows) or False   # stop before the transaction
+        self.panel._finish_batch([{"word": "mother", "row_id": 3, "senses": []}], [], self.module.mw.col)
+        self.assertEqual(owed, [{3: "mother sb"}])   # found by `find_word_notes` after a lost PATCH
+
     def test_walking_the_list_does_not_ask_about_an_empty_note(self):
         """Hasło w polu wpisał panel przy poprzednim kliknięciu — nie ma czego bronić."""
         asked = []
