@@ -36,6 +36,10 @@ Okno ustawień grupuje moduły tak samo jak poniżej.
 Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
 i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
+Poziom **effort** ustawiasz domyślnie w **AI Generator → Dostawcy**, a osobno
+możesz go nadpisać przy prompcie (także dla fallbacku) i w **Kolejka słówek →
+AI: znaczenia**. Opcja „dziedzicz ustawienie dostawcy” korzysta z poziomu dostawcy;
+dostępność poziomów zależy od modelu i wersji CLI.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
@@ -106,6 +110,13 @@ Po zmianach w Pythonie uruchom:
 python3 -m unittest discover -s tests
 python3 -m compileall -q -f .
 git diff --check
+```
+
+Panel ustawień AI i kolejki ma dodatkowy smoke test z rzeczywistymi widgetami
+Qt, bez połączeń z modelami i bez zapisu ustawień użytkownika. Na macOS, z Pythonem Anki:
+
+```bash
+QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/qt_ai_settings_smoke.py
 ```
 
 ## Automatyczne limity przez synchronizację

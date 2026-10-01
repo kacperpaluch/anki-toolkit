@@ -198,6 +198,9 @@ def prepare_provider(cfg: dict):
         return None, f"dostawca „{name}” nie jest skonfigurowany w zakładce AI Generator"
     if cfg.get("ai_model"):
         provider_cfg["model"] = cfg["ai_model"]
+    effort = cfg.get("ai_reasoning_effort")
+    if name in ("codex_cli", "claude_cli") and isinstance(effort, str) and effort.strip():
+        provider_cfg["reasoning_effort"] = effort.strip().lower()
     try:
         return _providers().get_provider(name, provider_cfg, timeout=cfg.get("ai_timeout", 120)), None
     except Exception as error:  # noqa: BLE001 — zły provider w configu to komunikat, nie crash

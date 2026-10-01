@@ -34,6 +34,9 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   (starszy kod AI Generatora i Słownika czyta pełny config przez `ADDON_NAME`).
   Zapis poza oknem ustawień idzie przez `update_module_config`, który scala
   zmiany i zachowuje nieznane klucze.
+- Dostawcy CLI współdzielą konfigurację z `ai_generator.providers`; effort
+  dostawcy może być nadpisany dla promptu (główny/fallback osobno) i dla kolejki
+  słówek. Reguły dziedziczenia są w kontekstach `ai_generator/` i `integrations/`.
 - Panel ustawień: `__init__(cfg)` czyta pełny config, `apply(cfg)` zapisuje
   tylko własne sekcje, opcjonalne `validate() -> str | None` blokuje zapis.
   Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny

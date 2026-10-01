@@ -14,13 +14,13 @@ from ..common.ui import (
     _expanding_line_edit, _filterable_combo, _api_key_widget, _scrollable,
     hint_label, collapsible_section, set_special_value,
 )
-from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS
+from ..ai_generator.providers import PROVIDERS, PROVIDER_LABELS, CLI_REASONING_EFFORTS
 from .prompts_tab import PromptsTab
 
 _PROVIDER_NAMES = list(PROVIDERS)
 _OPENAI_REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"]
 # Poziomy rozumowania Codeksa — zwracane przez `model/list` app-servera.
-_CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"]
+_CODEX_REASONING_EFFORTS = CLI_REASONING_EFFORTS["codex_cli"]
 # Dostawcy lokalni: uwierzytelniają się własnym CLI, nie kluczem API.
 # Wartość to nazwa binarki — używana w etykietach i komunikatach.
 _LOCAL_PROVIDERS = {"codex_cli": "codex", "claude_cli": "claude"}
@@ -336,6 +336,16 @@ class AIGeneratorTab(QWidget):
                 widgets["binary_path"] = binary_path
                 widgets["cli_timeout"] = cli_timeout
                 widgets["status_label"] = status
+                reasoning_effort = QComboBox()
+                reasoning_effort.addItems([""] + CLI_REASONING_EFFORTS[name])
+                current_effort = str(p.get("reasoning_effort") or "").strip().lower()
+                reasoning_effort.setCurrentText(
+                    current_effort if current_effort in CLI_REASONING_EFFORTS[name] else "")
+                reasoning_effort.setToolTip(
+                    "Wysyłane jako --effort. Puste = domyślny poziom Claude CLI.\n"
+                    "Dostępne poziomy zależą od modelu i wersji CLI.")
+                prov_form.addRow("Poziom effort:", reasoning_effort)
+                widgets["reasoning_effort"] = reasoning_effort
                 system_prompt = _expanding_line_edit(p.get("system_prompt", ""))
                 system_prompt.setPlaceholderText(
                     "puste = domyślny prompt generatora fiszek")

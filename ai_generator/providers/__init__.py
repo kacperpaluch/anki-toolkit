@@ -39,6 +39,12 @@ PROVIDER_LABELS = {
 }
 
 
+CLI_REASONING_EFFORTS = {
+    "codex_cli": ["low", "medium", "high", "xhigh", "max", "ultra"],
+    "claude_cli": ["low", "medium", "high", "xhigh", "max"],
+}
+
+
 def get_provider(provider_name: str, provider_cfg: dict,
                  max_retries: int = 3, timeout: int = 30) -> BaseProvider:
     """Instantiate a provider by name using the given config section."""

@@ -81,8 +81,9 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   nie ma własnego klienta AI i nie powinno go dostać. `prepare_provider` należy
   do głównego wątku; w tle zostaje samo `generate`. Z sekcji `ai_generator`
   bierzemy klucze i listę dostawców, NIE modele per pole notatki — kolejka ma
-  jeden własny wybór (`ai_provider`/`ai_model`), a `provider_label` pokazuje go
-  w oknie wyboru.
+  jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
+  `provider_label` pokazuje dostawcę i model w oknie wyboru.
+- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
 

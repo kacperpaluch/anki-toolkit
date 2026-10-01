@@ -62,9 +62,15 @@ class IntegrationsTab(QWidget):
         self._model = QComboBox()
         self._model.setEditable(True)
         self._model.lineEdit().setPlaceholderText("puste = model domyślny dostawcy")
+        self._effort = QComboBox()
+        self._effort.setToolTip(
+            "Effort dla dopasowania definicji przez CLI. Dziedzicz = ustawienie\n"
+            "dostawcy w AI Generatorze. Poziomy zależą od modelu i wersji CLI.")
+        self._fill_effort(q.get("ai_reasoning_effort"))
+        self._provider.currentIndexChanged.connect(lambda _i: self._fill_effort())
         self._provider.currentIndexChanged.connect(lambda _i: self._fill_models())
         self._fill_models(q.get("ai_model", ""))
-        for combo in (self._provider, self._model):
+        for combo in (self._provider, self._model, self._effort):
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._senses = QSpinBox()
         self._senses.setRange(1, 10)
@@ -84,6 +90,7 @@ class IntegrationsTab(QWidget):
         self._definition = QLineEdit(fields.get("definition", "def"))
         self._example = QLineEdit(fields.get("example", "przyklad"))
         for label, widget in (("Dostawca AI:", self._provider), ("Model:", self._model),
+                              ("Effort (CLI):", self._effort),
                               ("Zaznaczone znaczenia:", self._senses),
                               ("Limit czasu:", self._timeout),
                               ("Tag kart z AI:", self._tag),
@@ -109,6 +116,16 @@ class IntegrationsTab(QWidget):
             "restarcie Anki.", small=True))
         layout.addWidget(bridge)
         layout.addStretch()
+
+    def _fill_effort(self, current=None):
+        levels = getattr(ai_senses._providers(), "CLI_REASONING_EFFORTS", {}).get(
+            self._provider.currentData(), [])
+        self._effort.clear()
+        self._effort.addItem("— dziedzicz ustawienie dostawcy", "")
+        for level in levels:
+            self._effort.addItem(level, level)
+        self._effort.setCurrentIndex(max(0, self._effort.findData(current or "")))
+        self._effort.setEnabled(bool(levels))
 
     def _fill_models(self, current=None):
         """Modele znane dla wybranego dostawcy. Pole zostaje edytowalne."""
@@ -151,4 +168,9 @@ class IntegrationsTab(QWidget):
                           "definition": self._definition.text().strip(),
                           "example": self._example.text().strip()},
         })
+        effort = self._effort.currentData()
+        if effort:
+            cfg["word_queue"]["ai_reasoning_effort"] = effort
+        else:
+            cfg["word_queue"].pop("ai_reasoning_effort", None)
         cfg.setdefault("web_bridge", {})["port"] = self._port.value()

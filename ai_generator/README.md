@@ -129,6 +129,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
         "api_key": "",
         "binary_path": "",
         "system_prompt": "",
+        "reasoning_effort": "",
         "model": "haiku",
         "cli_timeout": 180,
         "fallback_model": ""
@@ -143,8 +144,11 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 `reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
 - **openai / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
-- **codex_cli** — dropdown; wysyłany jako `-c model_reasoning_effort`, puste = domyślna wartość modelu.
-- **anthropic / claude_cli** — nie mają pola `reasoning_effort` w UI.
+- **codex_cli** — dropdown `low/medium/high/xhigh/max/ultra`; wysyłany jako `-c model_reasoning_effort`, puste = domyślna wartość modelu.
+- **claude_cli** — dropdown `low/medium/high/xhigh/max`; wysyłany jako `--effort`, puste = domyślny poziom CLI. Poziomy zależą od modelu i wersji CLI.
+- **anthropic** — nie ma pola `reasoning_effort` w UI.
+
+W zakładce **Prompty** pola **Effort (CLI)** i **Effort zapasowy (CLI)** nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz ustawienie dostawcy” usuwa nadpisanie. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
 
 `max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
@@ -287,6 +291,8 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - `fallback_provider` (opcjonalne) — dostawca zapasowy; puste/brak = ten sam dostawca co główny
 - `fallback_model` (opcjonalne) — model zapasowy; puste/brak = brak fallbacku per-prompt (użyty `fallback_model` z dostawcy, jeśli ustawiony). Edytor promptów zostawia puste pole puste; model podpowiada dopiero wybór dostawcy zapasowego
 - `temperature` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji/faktów, wyższa (0.7–1.0) dla przykładowych zdań; fallback promptu używa tej samej wartości
+- `reasoning_effort` (opcjonalne, tylko CLI) — poziom dla głównego modelu tego promptu; brak/puste = ustawienie dostawcy
+- `fallback_reasoning_effort` (opcjonalne, tylko CLI) — niezależny poziom dla modelu zapasowego; brak/puste = ustawienie dostawcy zapasowego
 - `prompt` — treść prompta z opcjonalnymi szablonami
 
 ## Fallback modeli
@@ -327,7 +333,7 @@ Przykład per-dostawca (ten sam provider, tańszy model):
 ```
 
 Właściwości:
-- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); reasoning_effort pochodzi z konfiguracji dostawcy fallbackowego
+- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); effort CLI pochodzi z `fallback_reasoning_effort` promptu lub, przy dziedziczeniu, z konfiguracji dostawcy fallbackowego
 - Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
 - Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
 - Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"
@@ -362,7 +368,7 @@ Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć 
 - **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
 - **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
-- **Ustaw te modele we wszystkich promptach…** — kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy bieżącego promptu do pozostałych promptów widocznych na liście (filtr typu notatki zawęża zakres); przed zmianą pyta o potwierdzenie, zapis dopiero przy zapisie ustawień
+- **Ustaw te modele we wszystkich promptach…** — kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy bieżącego promptu do pozostałych promptów widocznych na liście (filtr typu notatki zawęża zakres); przed zmianą pyta o potwierdzenie, zapis dopiero przy zapisie ustawień; jeśli zmienia dostawcę głównego lub zapasowego, usuwa odpowiednie nadpisanie effort, aby wrócić do dziedziczenia
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
 - Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
 - Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")

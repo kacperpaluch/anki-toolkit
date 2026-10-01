@@ -174,6 +174,8 @@ class ClaudeCLIProvider(BaseProvider):
         ]
         if self.model:
             args += ["--model", self.model]
+        if self.reasoning_effort:
+            args += ["--effort", self.reasoning_effort]
         return args
 
     def _run_once(self, binary: str, prompt: str,

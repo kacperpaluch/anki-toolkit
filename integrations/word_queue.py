@@ -68,6 +68,7 @@ _DEFAULTS = {
     # „AI: znaczenia" — dostawca z zakładki AI Generator (tam są klucze).
     "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
     "ai_model": "",            # puste = model domyślny dostawcy
+    "ai_reasoning_effort": "", # puste = effort dostawcy; nadpisanie tylko dla CLI
     "ai_max_senses": 3,        # ile pierwszych znaczeń z diki zaznaczyć w oknie wyboru
     "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
     "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)

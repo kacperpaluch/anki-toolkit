@@ -218,6 +218,7 @@
         "api_key": "",
         "binary_path": "",
         "system_prompt": "",
+        "reasoning_effort": "",
         "model": "haiku",
         "temperature": 0.2,
         "cli_timeout": 180,
@@ -231,6 +232,8 @@
       "angielski": {
         "cz_mowy": {
           "target": "cz_mowy",
+          "reasoning_effort": null,
+          "fallback_reasoning_effort": null,
           "provider": "openai",
           "model": "gpt-4o",
           "prompt": "++role++\nExpert linguist categorizing English vocabulary.\n\n++task++\nClassify English words/phrases into grammatical categories based on Polish translations.\n\n++goal++\nAccurately return one abbreviation indicating grammatical or expression type.\n\n++rules++\n- Use exactly ONE category from:\nn (noun), v (verb), adj (adjective), adv (adverb),\nprep (preposition), conj (conjunction), pron (pronoun),\nint (interjection), pv (phrasal verb),\ni (idiom), coll (collocation or expression)\n- NO punctuation, explanations, or commentary.\n- Polish translations clearly identify categories without ambiguity.\n\n++step-by-step instructions++\n1. Read provided English input and Polish meaning.\n2. Determine exact grammatical/expression category.\n3. Return exactly one matching abbreviation.\n\n++output format++\nONLY single abbreviation (no punctuation).\n\nExample format:\nEN: look forward to PL: czekać z niecierpliwością\npv\n\nEN: beautiful PL: piękny\nadj\n\nEN: he PL: on\npron\n\nInput:\nEN: {{ang}} PL: {{pol}}"
@@ -282,6 +285,7 @@
     "order": "id",
     "ai_provider": "",
     "ai_model": "",
+    "ai_reasoning_effort": "",
     "ai_max_senses": 3,
     "ai_timeout": 120,
     "ai_tag": "ai-auto",

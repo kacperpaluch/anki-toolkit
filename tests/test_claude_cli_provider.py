@@ -46,12 +46,17 @@ def _provider(**options):
     return cl.ClaudeCLIProvider(
         api_key="", model=options.pop("model", "haiku"),
         temperature=0.2, max_retries=3, timeout=30,
-        reasoning_effort=None, options=options,
+        reasoning_effort=options.pop("reasoning_effort", None), options=options,
     )
 
 
 class BuildArgsTests(unittest.TestCase):
     """Izolacja nie jest opcjonalna — pola notatki to dane niezaufane."""
+
+    def test_effort_override_and_default(self):
+        self.assertNotIn("--effort", _provider()._build_args("/bin/claude"))
+        args = _provider(reasoning_effort="high")._build_args("/bin/claude")
+        self.assertEqual(args[args.index("--effort") + 1], "high")
 
     def test_all_tools_are_disabled(self):
         args = _provider()._build_args("/bin/claude")

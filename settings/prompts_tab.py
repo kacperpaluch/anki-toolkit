@@ -25,7 +25,7 @@ from ..common.ui import (
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
 )
-from ..ai_generator.providers import PROVIDER_LABELS, PROVIDERS
+from ..ai_generator.providers import PROVIDER_LABELS, PROVIDERS, CLI_REASONING_EFFORTS
 
 _VAR_RE = re.compile(r'{{(.*?)}}')
 _IF_RE = re.compile(r'{%\s*if\s+([^%]+)%}')
@@ -190,6 +190,8 @@ class PromptsTab(QWidget):
                     "fallback_provider": field_cfg.get("fallback_provider", ""),
                     "fallback_model":    field_cfg.get("fallback_model", ""),
                     "temperature":       field_cfg.get("temperature"),
+                    "reasoning_effort": field_cfg.get("reasoning_effort"),
+                    "fallback_reasoning_effort": field_cfg.get("fallback_reasoning_effort"),
                 }
 
         # Default provider for a new prompt: first usable one. "Usable" is a
@@ -315,6 +317,12 @@ class PromptsTab(QWidget):
             "„— domyślna dostawcy” = użyj temperatury z karty dostawcy.\n"
             "Fallback tego promptu również używa tej temperatury."
         )
+        self._ed_effort = QComboBox()
+        self._ed_fallback_effort = QComboBox()
+        for combo in (self._ed_effort, self._ed_fallback_effort):
+            combo.setToolTip(
+                "Effort tylko dla CLI. Dziedzicz = ustawienie właściwego dostawcy.\n"
+                "Dostępność poziomów zależy od modelu i wersji CLI.")
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
@@ -355,9 +363,11 @@ class PromptsTab(QWidget):
         form.addRow("Dostawca AI:", self._ed_provider)
         form.addRow("Model AI:", model_row)
         form.addRow("Temperatura:", self._ed_temperature)
+        form.addRow("Effort (CLI):", self._ed_effort)
         form.addRow(self._ed_manual_only)
         form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
         form.addRow("Model zapasowy:", fb_model_row)
+        form.addRow("Effort zapasowy (CLI):", self._ed_fallback_effort)
         self._btn_apply_models = QPushButton("Ustaw te modele we wszystkich promptach…")
         self._btn_apply_models.setToolTip(
             "Kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy tego\n"
@@ -550,6 +560,8 @@ class PromptsTab(QWidget):
             "model":       self._ed_model.currentText().strip(),
             "prompt":      self._ed_prompt.toPlainText(),
             "manual_only": self._ed_manual_only.isChecked(),
+            "reasoning_effort": self._ed_effort.currentData() or None,
+            "fallback_reasoning_effort": self._ed_fallback_effort.currentData() or None,
             "fallback_provider": self._ed_fallback_provider.currentData() or "",
             "fallback_model":    self._ed_fallback_model.currentText().strip(),
             # Negative = the special "inherit provider default" spinbox value.
@@ -605,6 +617,11 @@ class PromptsTab(QWidget):
             entry.get("fallback_model", ""),
             use_default=False,
         )
+        self._set_effort_choices(entry["provider"], self._ed_effort,
+                                 entry.get("reasoning_effort"))
+        self._set_effort_choices(entry.get("fallback_provider") or entry["provider"],
+                                 self._ed_fallback_effort,
+                                 entry.get("fallback_reasoning_effort"))
         temp = entry.get("temperature")
         self._ed_temperature.setValue(
             temp if isinstance(temp, (int, float))
@@ -656,10 +673,27 @@ class PromptsTab(QWidget):
         if combo is self._ed_model:
             self._validate_prompt()
 
+    def _set_effort_choices(self, provider: str, combo: QComboBox,
+                            selected=None) -> None:
+        combo.clear()
+        combo.addItem("— dziedzicz ustawienie dostawcy", "")
+        for level in CLI_REASONING_EFFORTS.get(provider, []):
+            combo.addItem(level, level)
+        index = combo.findData(selected or "")
+        combo.setCurrentIndex(max(0, index))
+        combo.setEnabled(provider in CLI_REASONING_EFFORTS)
+
     def _on_provider_changed(self, _index: int = -1) -> None:
         self._set_model_choices(
             self._ed_provider.currentData() or "openai", self._ed_model
         )
+
+        self._set_effort_choices(self._ed_provider.currentData(), self._ed_effort)
+        self._set_effort_choices(
+            self._ed_fallback_provider.currentData() or self._ed_provider.currentData(),
+            self._ed_fallback_effort,
+            self._ed_fallback_effort.currentData()
+            if self._ed_fallback_provider.currentData() else None)
 
     def _on_fallback_provider_changed(self, _index: int = -1) -> None:
         fb_provider = self._ed_fallback_provider.currentData() or ""
@@ -669,6 +703,8 @@ class PromptsTab(QWidget):
             fb_provider or main_provider, self._ed_fallback_model,
             use_default=bool(fb_provider),
         )
+
+        self._set_effort_choices(fb_provider or main_provider, self._ed_fallback_effort)
 
     def _fetch_models(self) -> None:
         provider = self._ed_provider.currentData() or "openai"
@@ -940,6 +976,12 @@ class PromptsTab(QWidget):
         ):
             return
         for k in keys:
+            entry = self._data[k]
+            if entry["provider"] != source["provider"]:
+                entry.pop("reasoning_effort", None)
+            if (entry.get("fallback_provider") or entry["provider"]) != (
+                    source.get("fallback_provider") or source["provider"]):
+                entry.pop("fallback_reasoning_effort", None)
             for field in ("provider", "model", "fallback_provider", "fallback_model"):
                 self._data[k][field] = source.get(field, "")
 
@@ -987,6 +1029,8 @@ class PromptsTab(QWidget):
                 ("fallback_provider", entry.get("fallback_provider", "") or None),
                 ("fallback_model", entry.get("fallback_model", "") or None),
                 ("temperature", entry.get("temperature")),
+                ("reasoning_effort", entry.get("reasoning_effort") or None),
+                ("fallback_reasoning_effort", entry.get("fallback_reasoning_effort") or None),
             ):
                 if value is None:
                     field_cfg.pop(key, None)

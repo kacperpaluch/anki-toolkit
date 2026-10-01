@@ -292,8 +292,14 @@ Ustawienia → Kolejka słówek → sekcja *AI: znaczenia*: **Dostawca AI**
 Puste pole *Model* oznacza model domyślny wybranego dostawcy z **Ustawienia →
 AI Generator → Dostawcy**.
 
+**Effort (CLI)** ustawia poziom wysiłku osobno dla dopasowania definicji przez
+Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz ustawienie
+dostawcy” korzysta z poziomu w **AI Generator → Dostawcy**. Zmiana dostawcy resetuje
+nadpisanie. Dostępne poziomy zależą od modelu i wersji CLI; pole jest nieaktywne
+dla dostawców API.
+
 **Dostawca jest jeden, własny i osobny od AI Generatora.** Z zakładki AI
-Generator brane są tylko klucze API i lista dostawców — dzięki temu `claude_cli`
+Generator brane są klucze API, lista i domyślne ustawienia dostawców — dzięki temu `claude_cli`
 i `codex_cli` jadą na Twojej subskrypcji, bez klucza. **Modele wybrane w AI
 Generatorze per pole notatki nie mają tu zastosowania**; ten przycisk ma jedno
 ustawienie na całą swoją pracę.

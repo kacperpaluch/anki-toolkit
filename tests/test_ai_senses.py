@@ -152,6 +152,15 @@ class ProviderLookupTests(unittest.TestCase):
         self.assertEqual(provider, ("claude_cli", {"model": "sonnet"}, 30))
         self.assertEqual(self.settings["claude_cli"], {"model": "opus"})  # zapisany model nietknięty
 
+    def test_queue_effort_override_and_inheritance(self):
+        self.settings["claude_cli"]["reasoning_effort"] = "medium"
+        for effort, expected in (("high", "high"), ("", "medium"), (None, "medium")):
+            provider, error = self.m.prepare_provider(
+                {"ai_provider": "claude_cli", "ai_reasoning_effort": effort})
+            self.assertIsNone(error)
+            self.assertEqual(provider[1]["reasoning_effort"], expected)
+        self.assertEqual(self.settings["claude_cli"]["reasoning_effort"], "medium")
+
     def test_prepare_reports_missing_or_unconfigured_provider(self):
         self.assertIn("wybierz", self.m.prepare_provider({})[1])
         self.assertIn("nie jest skonfigurowany", self.m.prepare_provider({"ai_provider": "openai"})[1])

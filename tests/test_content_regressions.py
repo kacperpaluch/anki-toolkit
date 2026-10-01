@@ -637,5 +637,41 @@ class TestFieldSplitter(unittest.TestCase):
         self.assertEqual(result, {"p1": "A", "p2": "B", "p3": "C"})
 
 
+class TestCliPromptEffort(unittest.TestCase):
+    def test_inheritance_cache_and_independent_fallback(self):
+        fg = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
+        config = {"providers": {
+            "claude_cli": {"model": "opus", "reasoning_effort": "medium"},
+            "codex_cli": {"model": "gpt-test", "reasoning_effort": "low"},
+        }, "note_types": {"Test": {"task": {
+            "target": "def", "provider": "claude_cli", "prompt": "test",
+            "reasoning_effort": "high", "fallback_provider": "codex_cli",
+            "fallback_model": "gpt-test", "fallback_reasoning_effort": "xhigh",
+        }}}}
+        generator = fg.FieldGenerator(config)
+        default = generator._resolve_provider("claude_cli")
+        override = generator._resolve_provider("claude_cli", reasoning_effort="high")
+        self.assertEqual(default.reasoning_effort, "medium")
+        self.assertEqual(override.reasoning_effort, "high")
+        self.assertIsNot(default, override)
+        self.assertIs(override, generator._resolve_provider("claude_cli", reasoning_effort="high"))
+        note = FakeNote({"def": ""})
+        note.note_type = lambda: {"name": "Test"}
+        calls = []
+        def call(provider, prompt):
+            calls.append((provider.__class__.__name__, provider.reasoning_effort))
+            return None if isinstance(provider, fg.PROVIDERS["claude_cli"]) else "definition"
+        with patch.object(fg.PROVIDERS["claude_cli"], "call_api", call), \
+             patch.object(fg.PROVIDERS["codex_cli"], "call_api", call):
+            self.assertEqual(generator.process_note(note), {"def": "definition"})
+            self.assertEqual(calls, [("ClaudeCLIProvider", "high"), ("CodexCLIProvider", "xhigh")])
+            config["note_types"]["Test"]["task"].pop("fallback_reasoning_effort")
+            note["def"] = ""
+            calls.clear()
+            generator.process_note(note)
+            self.assertEqual(calls[-1], ("CodexCLIProvider", "low"))
+        self.assertEqual(config["providers"]["claude_cli"]["reasoning_effort"], "medium")
+
+
 if __name__ == "__main__":
     unittest.main()
