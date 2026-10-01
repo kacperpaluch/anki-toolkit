@@ -135,6 +135,19 @@ def collapsible_section(title: str, expanded: bool = False) -> tuple[QWidget, QV
     return container, body_layout
 
 
+def set_effort_choices(combo: QComboBox, levels: list[str], default=None, selected=None) -> None:
+    """Show the inherited level without converting it into an override."""
+    was_blocked = combo.blockSignals(True)
+    combo.clear()
+    label = f"Dziedzicz: {default or 'domyślny poziom CLI'}" if levels else "Nie dotyczy (API)"
+    combo.addItem(label, "")
+    for level in levels:
+        combo.addItem(level, level)
+    combo.setCurrentIndex(max(0, combo.findData(selected or "")))
+    combo.setEnabled(bool(levels))
+    combo.blockSignals(was_blocked)
+
+
 def _scrollable(inner: QWidget) -> QScrollArea:
     scroll = QScrollArea()
     scroll.setWidget(inner)

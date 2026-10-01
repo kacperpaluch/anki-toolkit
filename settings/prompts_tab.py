@@ -14,13 +14,14 @@ from aqt.qt import (
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
     QPushButton, Qt, QComboBox, QMenu, QPlainTextEdit,
     QSyntaxHighlighter, QTextCharFormat, QColor, QFont,
-    QDialog, QDialogButtonBox, QCheckBox, QDoubleSpinBox, QInputDialog,
+    QDialog, QDialogButtonBox, QCheckBox, QDoubleSpinBox, QInputDialog, QSizePolicy,
 )
 
 from ..common import clean_html_normalized
 from ..common.ui import (
     _expanding_line_edit, _filterable_combo, get_note_type_names,
     get_fields_for_note_type, get_sample_notes, palette, hint_label,
+    collapsible_section, _scrollable, set_effort_choices,
 )
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
@@ -321,7 +322,7 @@ class PromptsTab(QWidget):
         self._ed_fallback_effort = QComboBox()
         for combo in (self._ed_effort, self._ed_fallback_effort):
             combo.setToolTip(
-                "Effort tylko dla CLI. Dziedzicz = ustawienie właściwego dostawcy.\n"
+                "Poziom rozumowania dla CLI. Dziedzicz = ustawienie właściwego dostawcy.\n"
                 "Dostępność poziomów zależy od modelu i wersji CLI.")
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
         self._ed_manual_only.setToolTip(
@@ -357,24 +358,38 @@ class PromptsTab(QWidget):
         )
         fb_layout.addWidget(self._ed_fallback_model)
         fb_layout.addWidget(self._btn_fetch_fb_models)
-        form.addRow("Typ notatki:", self._ed_note_type)
-        form.addRow("Nazwa zadania:", self._ed_field)
+        for combo in (self._ed_target, self._ed_provider, self._ed_model,
+                      self._ed_effort, self._ed_fallback_provider,
+                      self._ed_fallback_model, self._ed_fallback_effort):
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        model_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        fb_model_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
         form.addRow("Model AI:", model_row)
-        form.addRow("Temperatura:", self._ed_temperature)
-        form.addRow("Effort (CLI):", self._ed_effort)
-        form.addRow(self._ed_manual_only)
-        form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
-        form.addRow("Model zapasowy:", fb_model_row)
-        form.addRow("Effort zapasowy (CLI):", self._ed_fallback_effort)
+        form.addRow("Poziom rozumowania:", self._ed_effort)
+        editor_form_layout.addLayout(form)
+
+        self._task_section, task_body = collapsible_section("Ustawienia zadania")
+        task_form = QFormLayout()
+        task_form.addRow("Typ notatki:", self._ed_note_type)
+        task_form.addRow("Nazwa zadania:", self._ed_field)
+        task_form.addRow("Temperatura (API):", self._ed_temperature)
+        task_form.addRow(self._ed_manual_only)
+        task_body.addLayout(task_form)
         self._btn_apply_models = QPushButton("Ustaw te modele we wszystkich promptach…")
         self._btn_apply_models.setToolTip(
-            "Kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy tego\n"
-            "promptu do wszystkich promptów widocznych na liście (wg filtra typu notatki)."
-        )
-        form.addRow(self._btn_apply_models)
-        editor_form_layout.addLayout(form)
+            "Kopiuje dostawcę i model główny oraz zapasowy do promptów widocznych na liście.")
+        task_body.addWidget(self._btn_apply_models)
+        editor_form_layout.addWidget(self._task_section)
+
+        self._fallback_section, fallback_body = collapsible_section("Model zapasowy")
+        fallback_form = QFormLayout()
+        fallback_form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
+        fallback_form.addRow("Model zapasowy:", fb_model_row)
+        fallback_form.addRow("Poziom rozumowania:", self._ed_fallback_effort)
+        fallback_body.addLayout(fallback_form)
+        editor_form_layout.addWidget(self._fallback_section)
 
         prompt_header = QHBoxLayout()
         prompt_header.addWidget(QLabel("Prompt:"))
@@ -397,9 +412,9 @@ class PromptsTab(QWidget):
 
         self._ed_prompt = QTextEdit()
         self._ed_prompt.setAcceptRichText(False)
-        self._ed_prompt.setMinimumHeight(200)
+        self._ed_prompt.setMinimumHeight(280)
         self._highlighter = _TemplateHighlighter(self._ed_prompt.document())
-        editor_form_layout.addWidget(self._ed_prompt)
+        editor_form_layout.addWidget(self._ed_prompt, 1)
 
         self._lbl_validation = QLabel("")
         self._lbl_validation.setWordWrap(True)
@@ -410,9 +425,9 @@ class PromptsTab(QWidget):
         self._editor_widget.setVisible(False)
 
         right_layout.addWidget(self._editor_placeholder)
-        right_layout.addWidget(self._editor_widget)
+        right_layout.addWidget(self._editor_widget, 1)
 
-        splitter.addWidget(right)
+        splitter.addWidget(_scrollable(right))
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
 
@@ -627,6 +642,7 @@ class PromptsTab(QWidget):
             temp if isinstance(temp, (int, float))
             else self._ed_temperature.minimum()
         )
+        self._update_temperature_state()
         self._ed_manual_only.setChecked(entry.get("manual_only", False))
         self._ed_prompt.setPlainText(entry["prompt"])
         self._editor_placeholder.setVisible(False)
@@ -675,13 +691,26 @@ class PromptsTab(QWidget):
 
     def _set_effort_choices(self, provider: str, combo: QComboBox,
                             selected=None) -> None:
-        combo.clear()
-        combo.addItem("— dziedzicz ustawienie dostawcy", "")
-        for level in CLI_REASONING_EFFORTS.get(provider, []):
-            combo.addItem(level, level)
-        index = combo.findData(selected or "")
-        combo.setCurrentIndex(max(0, index))
-        combo.setEnabled(provider in CLI_REASONING_EFFORTS)
+        set_effort_choices(combo, CLI_REASONING_EFFORTS.get(provider, []),
+                           self._provider_values(provider).get("reasoning_effort"), selected)
+
+    def refresh_provider_defaults(self, *_args) -> None:
+        self._set_effort_choices(self._ed_provider.currentData(), self._ed_effort,
+                                 self._ed_effort.currentData())
+        self._set_effort_choices(
+            self._ed_fallback_provider.currentData() or self._ed_provider.currentData(),
+            self._ed_fallback_effort, self._ed_fallback_effort.currentData())
+
+    def _update_temperature_state(self) -> None:
+        main = self._ed_provider.currentData()
+        fallback = self._ed_fallback_provider.currentData() or main
+        enabled = main not in CLI_REASONING_EFFORTS or fallback not in CLI_REASONING_EFFORTS
+        self._ed_temperature.setEnabled(enabled)
+        self._ed_temperature.setToolTip(
+            "CLI nie obsługuje temperatury. Wartość jest zachowana i dotyczy tylko wywołań API."
+            if not enabled else
+            "Temperatura dla API; CLI ją pomija. Dziedzicz = ustawienie dostawcy.\n"
+            "Model zapasowy korzystający z API również używa tej wartości.")
 
     def _on_provider_changed(self, _index: int = -1) -> None:
         self._set_model_choices(
@@ -694,6 +723,7 @@ class PromptsTab(QWidget):
             self._ed_fallback_effort,
             self._ed_fallback_effort.currentData()
             if self._ed_fallback_provider.currentData() else None)
+        self._update_temperature_state()
 
     def _on_fallback_provider_changed(self, _index: int = -1) -> None:
         fb_provider = self._ed_fallback_provider.currentData() or ""
@@ -705,6 +735,7 @@ class PromptsTab(QWidget):
         )
 
         self._set_effort_choices(fb_provider or main_provider, self._ed_fallback_effort)
+        self._update_temperature_state()
 
     def _fetch_models(self) -> None:
         provider = self._ed_provider.currentData() or "openai"
@@ -955,6 +986,7 @@ class PromptsTab(QWidget):
         self._filter_combo.setCurrentIndex(self._filter_combo.findData(key[0]))
         self._filter_combo.blockSignals(False)
         self._rebuild_list(select_key=key)
+        self._task_section.findChild(QPushButton).setChecked(True)
 
     def _on_apply_models_to_all(self) -> None:
         self._save_current_to_data(self._list.currentItem())

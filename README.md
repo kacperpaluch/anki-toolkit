@@ -36,10 +36,15 @@ Okno ustawień grupuje moduły tak samo jak poniżej.
 Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
 i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
-Poziom **effort** ustawiasz domyślnie w **AI Generator → Dostawcy**, a osobno
+Poziom rozumowania (**effort**) ustawiasz domyślnie w **AI Generator → Dostawcy**, a osobno
 możesz go nadpisać przy prompcie (także dla fallbacku) i w **Kolejka słówek →
-AI: znaczenia**. Opcja „dziedzicz ustawienie dostawcy” korzysta z poziomu dostawcy;
+AI: znaczenia**. Opcja „Dziedzicz: medium” pokazuje aktualny poziom dostawcy;
 dostępność poziomów zależy od modelu i wersji CLI.
+
+Edytor promptów zostawia więcej miejsca na tekst, a ustawienia zadania i modelu
+zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; połączenia
+i mapowanie pól są w osobnych zwijanych sekcjach. Panel kolejki rozdziela
+dodawanie i filtrowanie słów od działań AI, oznaczania jako zrobione i pomijania.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje

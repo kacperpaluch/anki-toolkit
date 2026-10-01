@@ -56,14 +56,18 @@ samo hasło nie poleci do modelu drugi raz.
 Wskaźnik checkboxa rysuje motyw Anki i przy kilkuset wierszach bywa praktycznie
 niewidoczny, dlatego wybór niesie też tekst pozycji — ten wyrenderuje się zawsze.
 
-**Stan „zrobione” zmieniasz** przyciskiem **Zrobione →** (odhacza i przechodzi
+Pasek panelu rozdziela dodawanie słów, filtrowanie i odświeżanie od działań
+**AI: znaczenia**, **Oznacz jako zrobione** i **Pomiń** w drugim rzędzie.
+**Wklej listę…** otwiera pole do wklejenia wielu słów.
+
+**Stan „zrobione” zmieniasz** przyciskiem **Oznacz jako zrobione** (odhacza i przechodzi
 dalej) albo prawym klikiem na pozycji: *Oznacz jako zrobione* / *Cofnij
-odhaczenie*. To samo menu czyści cały wybór do AI. **Następne** przechodzi dalej
+odhaczenie*. To samo menu czyści cały wybór do AI. **Pomiń** przechodzi dalej
 bez odhaczania, a *Ukryj zrobione* chowa szare pozycje, nie usuwając ich.
 
 Wiersz jest odhaczany automatycznie po dodaniu notatki powiązanej z tą pozycją
 i z odpowiadającym jej hasłem. Jeśli zmienisz formę hasła, np. z „sprawling” na
-„sprawl”, użyj ręcznie **Zrobione →**. Brak trafionego wiersza w n8n jest błędem,
+„sprawl”, użyj ręcznie **Oznacz jako zrobione**. Brak trafionego wiersza w n8n jest błędem,
 a nie sukcesem — panel cofa wtedy zmianę koloru i pokazuje dymek.
 
 ### Kolejność
@@ -253,7 +257,7 @@ startuje od zera.
 ### Okno wyboru
 
 Okno pokazuje **wszystkie** znaczenia z diki, ale zaznaczone jest tylko pierwsze
-N (**Zaznaczone znaczenia**, `ai_max_senses`, domyślnie 3) — diki podaje je od
+N (**Domyślnie zaznacz znaczeń**, `ai_max_senses`, domyślnie 3) — diki podaje je od
 najczęstszych. Przy każdym widać, skąd jest definicja: *para ze słownika*,
 *definicję dobrało AI* albo *✗ bez definicji*. Puste polskie znaczenie blokuje
 zatwierdzenie zaznaczonej propozycji. Anulowanie odrzuca poprawki. Zwykły tekst jest zabezpieczony przed
@@ -287,15 +291,20 @@ przyciski **+ przykład** na stronach słowników.
 
 ### Model
 
+Strona **Kolejka słówek** zaczyna się od ustawień **AI: znaczenia**. Mapowanie pól,
+tagi i limit czasu są w sekcji **Pola notatki, tagi i limit czasu**. Połączenie
+z n8n, Cloudflare Access i Web Bridge mają osobne, domyślnie zwinięte sekcje.
+Rozwinięcie sekcji nie zmienia zapisanych wartości.
+
 Ustawienia → Kolejka słówek → sekcja *AI: znaczenia*: **Dostawca AI**
 (rozwijanka) i **Model** (rozwijanka edytowalna — możesz wpisać dowolną nazwę).
 Puste pole *Model* oznacza model domyślny wybranego dostawcy z **Ustawienia →
 AI Generator → Dostawcy**.
 
-**Effort (CLI)** ustawia poziom wysiłku osobno dla dopasowania definicji przez
-Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz ustawienie
-dostawcy” korzysta z poziomu w **AI Generator → Dostawcy**. Zmiana dostawcy resetuje
-nadpisanie. Dostępne poziomy zależą od modelu i wersji CLI; pole jest nieaktywne
+**Poziom rozumowania** ustawia poziom wysiłku osobno dla dopasowania definicji przez
+Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) korzysta z poziomu w **AI Generator → Dostawcy**. Zmiana dostawcy resetuje
+nadpisanie. Etykieta dziedziczenia aktualizuje się również po niezapisanej zmianie poziomu dostawcy
+w tym samym oknie ustawień. Dostępne poziomy zależą od modelu i wersji CLI; pole jest nieaktywne
 dla dostawców API.
 
 **Dostawca jest jeden, własny i osobny od AI Generatora.** Z zakładki AI

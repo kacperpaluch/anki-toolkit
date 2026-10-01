@@ -98,8 +98,8 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | `diki_ipa_fallback` | `true` — gdy pobierasz audio z Diki, pobierz IPA z osobnego źródła |
 | `diki_ipa_fallback_source` | Źródło IPA dla Diki: `wiktionary`, `oxford` albo `cambridge` |
 | `max_retries` | Liczba prób przy błędach sieci — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
-| `page_timeout` | Timeout pobierania strony słownika w sekundach (domyślnie `10`) |
-| `mp3_timeout` | Timeout pobierania pliku MP3 w sekundach (domyślnie `10`) |
+| `page_timeout` | Limit czasu pobierania strony słownika w sekundach (domyślnie `10`) |
+| `mp3_timeout` | Limit czasu pobierania pliku MP3 w sekundach (domyślnie `10`) |
 | `buttons` | Lista przycisków w edytorze |
 
 ### Formaty IPA (`ipa_format`)

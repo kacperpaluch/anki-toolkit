@@ -41,6 +41,7 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   tylko własne sekcje, opcjonalne `validate() -> str | None` blokuje zapis.
   Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny
   nagłówek (ikona, tytuł, opis z `PAGES`).
+- `SettingsDialog` łączy żywe domyślne poziomy rozumowania dostawców z etykietami dziedziczenia w promptach i kolejce; zmiana etykiety nie zapisuje nadpisania.
 - `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)

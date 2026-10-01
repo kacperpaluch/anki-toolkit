@@ -139,7 +139,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 
 `fallback_model` (puste `""` = brak fallbacku na poziomie providera) — model zapasowy uruchamiany gdy główny model zawiedzie. Używa tego samego providera i klucza API. Prompt może nadpisać ten fallback własnym `fallback_provider` + `fallback_model` (patrz sekcja **Fallback modeli** poniżej).
 
-`temperature` to **temperatura domyślna** providera — używana przez prompty bez własnej wartości. Każdy prompt może ją nadpisać kluczem `temperature` w `note_types` (UI: Prompty → pole „Temperatura"; „— domyślna dostawcy" = dziedzicz).
+`temperature` to **temperatura domyślna** providera — używana przez prompty bez własnej wartości. Każdy prompt może ją nadpisać kluczem `temperature` w `note_types` (UI: Prompty → Ustawienia zadania → pole „Temperatura (API)"; „— domyślna dostawcy" = dziedzicz).
 
 `reasoning_effort` zachowuje się różnie w zależności od dostawcy:
 
@@ -148,7 +148,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 - **claude_cli** — dropdown `low/medium/high/xhigh/max`; wysyłany jako `--effort`, puste = domyślny poziom CLI. Poziomy zależą od modelu i wersji CLI.
 - **anthropic** — nie ma pola `reasoning_effort` w UI.
 
-W zakładce **Prompty** pola **Effort (CLI)** i **Effort zapasowy (CLI)** nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz ustawienie dostawcy” usuwa nadpisanie. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
+W zakładce **Prompty** pola **Poziom rozumowania** (główne i w sekcji **Model zapasowy**) nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) usuwa nadpisanie; etykieta aktualizuje się także po niezapisanej zmianie poziomu w zakładce Dostawcy. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
 
 `max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
@@ -364,7 +364,11 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:fr
 
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
-Edytor promptów (**Ustawienia → AI Generator → Prompty**) pomaga uniknąć literówek:
+Edytor promptów (**Ustawienia → AI Generator → Prompty**) pokazuje przede wszystkim pole docelowe, dostawcę, model, poziom rozumowania i treść promptu. Sekcje **Ustawienia zadania** (typ notatki, nazwa, temperatura, tryb ręczny, kopiowanie modeli) i **Model zapasowy** są domyślnie zwinięte. Przy dodawaniu zadania pierwsza sekcja otwiera się automatycznie. Po rozwinięciu sekcji edytor można przewijać.
+
+**Temperatura (API)** jest nieaktywna, gdy model główny i zapasowy korzystają z CLI. Jej wartość pozostaje zachowana; przy fallbacku do API można ją ustawić dla tego wywołania.
+
+Edytor pomaga uniknąć literówek:
 - **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
 - **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca

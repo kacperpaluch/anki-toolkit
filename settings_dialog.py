@@ -124,6 +124,14 @@ class SettingsDialog(QDialog):
                 self._sidebar.addItem(item)
                 self._rows[key] = self._sidebar.row(item)
                 self._panels.append(panel)
+        ai_panel = next(p for p in self._panels if isinstance(p, AIGeneratorTab))
+        queue_panel = next(p for p in self._panels if isinstance(p, IntegrationsTab))
+        queue_panel._provider_settings = ai_panel._current_provider_settings
+        queue_panel.refresh_provider_defaults()
+        for widgets in ai_panel._provider_widgets.values():
+            if "reasoning_effort" in widgets:
+                widgets["reasoning_effort"].currentTextChanged.connect(
+                    queue_panel.refresh_provider_defaults)
         self._sidebar.currentItemChanged.connect(self._show_page)
         self._sidebar.setCurrentRow(self._rows.get(page, self._rows["workflows"]))
 

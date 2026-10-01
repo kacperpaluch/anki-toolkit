@@ -82,7 +82,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań, brak klucza = dwa zadania domyślne |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
 | `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
-| `timeout` | `60` | Timeout pojedynczego żądania TTS w sekundach |
+| `timeout` | `60` | Limit czasu pojedynczego żądania TTS w sekundach |
 
 ## Zamiana wyrazów
 

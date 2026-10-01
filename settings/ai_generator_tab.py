@@ -97,6 +97,10 @@ class AIGeneratorTab(QWidget):
         tabs.addTab(providers_page, "Dostawcy")
 
         layout.addWidget(tabs)
+        for widgets in self._provider_widgets.values():
+            if "reasoning_effort" in widgets:
+                widgets["reasoning_effort"].currentTextChanged.connect(
+                    self._prompts.refresh_provider_defaults)
 
     # ------------------------------------------------------------------
     # Providers page
@@ -310,7 +314,7 @@ class AIGeneratorTab(QWidget):
                     "OpenAI reasoning_effort. Wysyłane tylko dla modeli OpenAI, "
                     "które obsługują reasoning."
                 )
-                prov_form.addRow("Poziom reasoning:", reasoning_effort)
+                prov_form.addRow("Poziom rozumowania:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
             elif name == "codex_cli":
                 widgets["binary_path"] = binary_path
@@ -329,7 +333,7 @@ class AIGeneratorTab(QWidget):
                     "zużywa mniej limitu planu.\n"
                     "Puste = model używa swojej wartości domyślnej."
                 )
-                prov_form.addRow("Poziom reasoning:", reasoning_effort)
+                prov_form.addRow("Poziom rozumowania:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
                 refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
             elif name == "claude_cli":
@@ -344,18 +348,16 @@ class AIGeneratorTab(QWidget):
                 reasoning_effort.setToolTip(
                     "Wysyłane jako --effort. Puste = domyślny poziom Claude CLI.\n"
                     "Dostępne poziomy zależą od modelu i wersji CLI.")
-                prov_form.addRow("Poziom effort:", reasoning_effort)
+                prov_form.addRow("Poziom rozumowania:", reasoning_effort)
                 widgets["reasoning_effort"] = reasoning_effort
                 system_prompt = _expanding_line_edit(p.get("system_prompt", ""))
                 system_prompt.setPlaceholderText(
                     "puste = domyślny prompt generatora fiszek")
                 system_prompt.setToolTip(
-                    "Zastępuje (nie rozszerza) systemowy prompt Claude Code.\n"
-                    "Dzięki temu wejście spada z ~2500 do ~280 tokenów na "
-                    "wywołanie — przy hurtowym generowaniu to różnica rzędu\n"
-                    "wielkości w zużyciu limitu planu."
+                    "Instrukcja wspólna dla generowanych pól. Puste = domyślna instrukcja wtyczki.\n"
+                    "Zastępuje systemowy prompt Claude Code."
                 )
-                prov_form.addRow("System prompt:", system_prompt)
+                prov_form.addRow("Instrukcja systemowa:", system_prompt)
                 widgets["system_prompt"] = system_prompt
                 refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
             self._provider_widgets[name] = widgets
@@ -404,7 +406,7 @@ class AIGeneratorTab(QWidget):
         self._request_timeout.setRange(5, 300)
         self._request_timeout.setSuffix(" s")
         self._request_timeout.setValue(ai.get("request_timeout", 30))
-        self._request_timeout.setToolTip("Timeout pojedynczego żądania do API (sekundy)")
+        self._request_timeout.setToolTip("Limit czasu pojedynczego żądania do API (sekundy)")
         self._openai_batch_budget = QSpinBox()
         self._openai_batch_budget.setRange(50_000, 50_000_000)
         self._openai_batch_budget.setSingleStep(50_000)
@@ -422,7 +424,7 @@ class AIGeneratorTab(QWidget):
         adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
         adv_form.addRow("Równoległe żądania:", self._parallel_requests)
         adv_form.addRow("Maks. prób:", self._ai_max_retries)
-        adv_form.addRow("Timeout żądania:", self._request_timeout)
+        adv_form.addRow("Limit czasu żądania:", self._request_timeout)
         adv_form.addRow("Budżet kolejki Batch API (OpenAI):", self._openai_batch_budget)
         adv_form.addRow(hint_label(
             "Limity RPM / równoległości ustawisz osobno dla każdego dostawcy "
@@ -471,6 +473,8 @@ class AIGeneratorTab(QWidget):
             "model": widgets["model"].currentText().strip(),
             "models": combo_models,
             "cached_models": combo_models,
+            "reasoning_effort": (widgets["reasoning_effort"].currentText()
+                                 if "reasoning_effort" in widgets else ""),
         }
 
     # ------------------------------------------------------------------

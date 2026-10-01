@@ -5,7 +5,7 @@ do okna „Dodaj": bierze wiersz z DataTable, wpisuje słówko do pola notatki
 i pokazuje diki / Longman / Oxford w zakładkach. Klikasz przyciski userscripta
 (te same, co w przeglądarce — gadają z mostkiem web_bridge), Enter, i wiersz
 jest odhaczany w n8n po `id`. Panel ZOSTAJE na słówku — jedno hasło bywa
-kilkoma kartami; dalej idziesz sam („Zrobione →" albo klik na liście).
+kilkoma kartami; dalej idziesz sam („Oznacz jako zrobione" albo klik na liście).
 
 Bez otwartego panelu hook nadal odhacza — dopasowując `word_column` do
 zawartości pola `word_field` (eq, wrażliwe na wielkość liter). To zawodzi,

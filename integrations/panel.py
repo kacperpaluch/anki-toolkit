@@ -12,11 +12,11 @@ ZOSTAJE na słówku — jedno hasło bywa kilkoma kartami (kilka znaczeń).
 Ptaszek przy słówku to WYBÓR DO AI, nie stan tabeli: zbierasz nim hasła przez
 całą listę, bo przewijanie i klikanie gdzie indziej go nie gubią (a podświetlenie
 tak). Stan „zrobione" z n8n widać kolorem — szare to odhaczone — i zmienia się
-go prawym klikiem albo przyciskiem „Zrobione →". Nic nie znika z listy samo;
+go prawym klikiem albo przyciskiem „Oznacz jako zrobione". Nic nie znika z listy samo;
 od chowania jest „Ukryj zrobione".
 
-Przyciski: „Zrobione →" = odhacz w n8n + skok dalej (koniec z tym hasłem),
-„Następne" = skok bez odhaczania (pominięcie).
+Przyciski: „Oznacz jako zrobione" = odhacz w n8n + skok dalej (koniec z tym hasłem),
+„Pomiń" = skok bez odhaczania (pominięcie).
 
 Wybór słówka ładuje WSZYSTKIE zakładki naraz (dwa słowniki PL, trzy EN —
 Cambridge liczy się do obu). Kosztuje to pamięć, bo Chromium bierze ~100 MB na
@@ -340,7 +340,7 @@ class WordQueuePanel(QDockWidget):
 
         self._word_input = QLineEdit()
         self._word_input.setPlaceholderText("własne hasło → Enter")
-        self._word_input.setMaximumWidth(200)
+        self._word_input.setMaximumWidth(280)
         self._word_input.setToolTip(
             "Hasła spoza kolejki n8n; kilka rozdziel przecinkiem.\n"
             "Trafiają do tabeli n8n i na listę, z tymi samymi zakładkami\n"
@@ -348,11 +348,12 @@ class WordQueuePanel(QDockWidget):
         self._word_input.returnPressed.connect(self._add_typed_word)
         bar.addWidget(self._word_input)
 
-        paste_btn = QPushButton("+ lista")
+        paste_btn = QPushButton("Wklej listę…")
         paste_btn.setToolTip("Wklej kolumnę haseł, po jednym na linię")
         paste_btn.clicked.connect(lambda _checked=False: self._paste_words())
         bar.addWidget(paste_btn)
 
+        actions = QHBoxLayout()
         self._ai_btn = QPushButton("AI: znaczenia")
         self._ai_btn.setToolTip(
             "Znaczenia z diki + angielska definicja (Cambridge, Oxford, LDoCE)\n"
@@ -360,23 +361,25 @@ class WordQueuePanel(QDockWidget):
             "Bierze zaptaszkowane hasła, a gdy nic nie zaptaszkowano — podświetlone."
         )
         self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
-        bar.addWidget(self._ai_btn)
+        actions.addWidget(self._ai_btn)
+        actions.addStretch()
 
-        done_btn = QPushButton("Zrobione →")
+        done_btn = QPushButton("Oznacz jako zrobione")
         done_btn.setToolTip("Odhacz w n8n i przejdź do następnego słówka")
         done_btn.clicked.connect(lambda _checked=False: self._done_and_next())
-        bar.addWidget(done_btn)
+        actions.addWidget(done_btn)
 
-        next_btn = QPushButton("Następne")
+        next_btn = QPushButton("Pomiń")
         next_btn.setToolTip("Przejdź dalej bez odhaczania (pominięcie)")
         next_btn.clicked.connect(lambda _checked=False: self.advance())
-        bar.addWidget(next_btn)
+        actions.addWidget(next_btn)
 
         reload_btn = QPushButton("Odśwież")
         reload_btn.setToolTip("Pobierz kolejkę z n8n od nowa")
         reload_btn.clicked.connect(self.refill)
         bar.addWidget(reload_btn)
         layout.addLayout(bar)
+        layout.addLayout(actions)
         recovery = QHBoxLayout()
         self._progress = QLabel("")
         self._progress.setWordWrap(True)
@@ -839,7 +842,7 @@ class WordQueuePanel(QDockWidget):
         field = self._cfg["word_field"]
         word = row.get(self._cfg["word_column"]) or ""
         if field not in note or clean_html_normalized(note[field]).casefold() != clean_html_normalized(word).casefold():
-            tooltip("n8n: inne hasło — wiersz nie został odhaczony. Użyj „Zrobione →”, jeśli to ta sama pozycja.", parent=mw)
+            tooltip("n8n: inne hasło — wiersz nie został odhaczony. Użyj „Oznacz jako zrobione”, jeśli to ta sama pozycja.", parent=mw)
             return
 
         # Anki wczytało już pustą notatkę (_load_new_note leci przed hookiem),

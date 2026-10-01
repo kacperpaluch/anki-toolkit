@@ -30,12 +30,12 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   (po to są), ale `_rebuild` przycina je do istniejących wierszy, a zapis kart
   je zdejmuje, żeby hasło nie poszło do modelu drugi raz.
 - Panel blokuje równoległe PATCH-e tego samego ID. `_set_row` to JEDYNE wejście
-  do flagi w n8n (przycisk „Zrobione →", hook po dodaniu notatki, zapis kart z AI,
+  do flagi w n8n (przycisk „Oznacz jako zrobione", hook po dodaniu notatki, zapis kart z AI,
   menu kontekstowe); sukces wymaga dokładnie jednego trafienia.
 - Starsze GET-y nie zastępują nowej listy ani wyniku PATCH-a. Przebudowa listy
   zachowuje wybrane ID i unieważnia stare callbacki wypełniania edytora.
 - Automatyczne odhaczenie wymaga powiązanej notatki, ID i zgodnego hasła;
-  zmienioną formę hasła użytkownik zatwierdza przez „Zrobione →”.
+  zmienioną formę hasła użytkownik zatwierdza przez „Oznacz jako zrobione”.
 - Zapamiętany host musi należeć do adresów przekazanej konfiguracji.
 - Nagłówki `CF-Access-Client-*` dokleja wyłącznie `_headers(cfg, url)` i tylko dla
   `https://` z kompletem id+secret — sekret nie może iść otwartym tekstem do
@@ -83,7 +83,8 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   bierzemy klucze i listę dostawców, NIE modele per pole notatki — kolejka ma
   jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
   `provider_label` pokazuje dostawcę i model w oknie wyboru.
-- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy.
+- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu, n8n, Cloudflare i Web Bridge są zwijane. Błąd mapowania otwiera sekcję pól. Panel kolejki rozdziela pasek źródeł od działań AI/oznaczania/pomijania.
+- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia AI Generatora, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
 
