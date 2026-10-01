@@ -323,10 +323,11 @@ się nie uda, paczka nie rusza. Przy odzyskanych propozycjach okno wyboru
 dodatkowo ostrzega na czerwono, jeśli karty z tym słowem powstały w międzyczasie.
 
 Każda karta dostaje **Tag kart z AI** (`ai_tag`, domyślnie `ai-auto`).
-**Tag do weryfikacji** (`ai_review_tag`, domyślnie `ai-review`) dostają tylko
-karty, których definicję dobrało AI — chyba że zaznaczysz przy nich
-**Sprawdziłem, że definicja pasuje do znaczenia**. Edycja pól cofa to
-potwierdzenie; definicja wpisana ręcznie przestaje być definicją AI. Pary ze
+Przy definicjach dobranych przez AI pole **Sprawdziłem, że definicja pasuje do
+znaczenia** jest domyślnie zaznaczone. **Tag do weryfikacji** (`ai_review_tag`,
+domyślnie `ai-review`) dostają tylko te z nich, przy których je odznaczysz albo
+zmienisz polskie znaczenie — edycja pól cofa potwierdzenie. Definicja wpisana
+ręcznie przestaje być definicją AI. Pary ze
 słownika i karty bez definicji nie mają czego weryfikować. Puste ustawienie
 tagu wyłącza go. Zmiana nie retaguje wcześniejszych notatek.
 

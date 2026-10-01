@@ -1121,7 +1121,7 @@ class WordQueuePanel(QDockWidget):
         from aqt.operations import on_op_finished
         on_op_finished(mw, result, self)
 
-        review = sum(1 for _word, sense in chosen if not sense.get("reviewed"))
+        review = sum(1 for _word, sense in chosen if ai_senses._by_ai(sense) and not sense.get("reviewed"))
         tag = self._cfg.get("ai_review_tag") or ""
         suffix = f", {review} do przejrzenia" + (f" (tag „{tag}”)" if tag else "") if review else ""
         subject = f"„{next(iter(words))}”" if len(words) == 1 else f"{len(words)} haseł"

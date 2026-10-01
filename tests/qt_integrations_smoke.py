@@ -166,10 +166,9 @@ class QtIntegrationSmoke(unittest.TestCase):
             self.assertEqual([s['pl'] for _w, s in dialog.selected()], ['matka', 'mama'])  # first N checked
             self.assertIsNone(dialog._boxes[1][4])          # dictionary pair: nothing to review
             self.assertIn('bez definicji', dialog._boxes[2][0].text())
-            self.assertFalse(dialog.selected()[0][1]['reviewed'])
+            self.assertTrue(dialog.selected()[0][1]['reviewed'])    # ticked by default
+            self.assertFalse(dialog.selected()[1][1]['reviewed'])   # no checkbox, no claim
             box, word, sense, fields, reviewed = dialog._boxes[0]
-            reviewed.setChecked(True)
-            self.assertTrue(dialog.selected()[0][1]['reviewed'])
             fields['pl'].setPlainText('mama')
             self.assertFalse(dialog.selected()[0][1]['reviewed'])
             fields['pl'].clear()

@@ -98,9 +98,11 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   Regresje kontraktu: `tests/test_ai_senses.py`, `tests/test_queue_recovery.py`;
   DOM i lokalność metadanych: `tests/qt_integrations_smoke.py` (syntetyczne strony).
 - `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki z przycisku;
-  `ai_review_tag` tylko przy `by_ai` (definicję przypisał model), chyba że
-  użytkownik potwierdził `reviewed`. Każda edycja cofa potwierdzenie; zmiana
-  definicji zdejmuje `by_ai`. Propozycje bez klucza `by_ai` (stare drafty) liczą
+  `ai_review_tag` tylko przy `by_ai` (definicję przypisał model) bez `reviewed`.
+  Checkbox `reviewed` jest DOMYŚLNIE zaznaczony (decyzja użytkownika: większość
+  dopasowań jest dobra), więc tag dostają karty odznaczone ręcznie albo edytowane —
+  każda edycja cofa potwierdzenie; zmiana definicji zdejmuje `by_ai`. Dymek po
+  zapisie liczy „do przejrzenia” tym samym warunkiem co `add_notes`. Propozycje bez klucza `by_ai` (stare drafty) liczą
   się jak AI, gdy mają definicję (`_by_ai`).
 - `add_notes` dopisuje każdej nowej notatce `ai-import::YYYY-MM-DD`.
   `date.today()` jest odczytane raz na głównym wątku przy przygotowaniu zapisu:

@@ -4,8 +4,8 @@ Every card text is copied from a dictionary by the userscript: diki meanings are
 the card units, Cambridge/Oxford/LDoCE give numbered English definitions. The
 model only answers "which E fits which D" — it never writes card text, so there
 is no generated card text; an invalid or incomplete mapping is an error.
-Only an explicit human `reviewed` checkbox removes the review tag from a
-model-picked definition. Providers come from ai_generator.
+The `reviewed` checkbox (ticked by default; unticked by hand or by any edit)
+keeps the review tag off a model-picked definition. Providers come from ai_generator.
 """
 
 from datetime import date
@@ -409,6 +409,7 @@ class SensePicker(QDialog):
                 reviewed = None
                 if _by_ai(sense):  # tylko przypisanie modelu wymaga przeglądu
                     reviewed = QCheckBox("Sprawdziłem, że definicja pasuje do znaczenia")
+                    reviewed.setChecked(True)  # most matches are right: unticking is the exception
                     inner_layout.addWidget(reviewed)
                     for edit in fields.values():
                         edit.textChanged.connect(lambda reviewed=reviewed: reviewed.setChecked(False))

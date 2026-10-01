@@ -65,7 +65,7 @@ class IntegrationsTab(QWidget):
         for field in (self._tag, self._review_tag):
             field.setPlaceholderText("puste = bez tagu")
             field.setToolTip("Kilka tagów rozdziel spacją lub przecinkiem.")
-        self._review_tag.setToolTip("Definicje dobrane przez AI; tag znika po ręcznym potwierdzeniu.\n"
+        self._review_tag.setToolTip("Definicje dobrane przez AI, przy których odznaczysz „Sprawdziłem…” albo zmienisz treść.\n"
                                     "Kilka tagów rozdziel spacją lub przecinkiem.")
         self._timeout = QSpinBox()
         self._timeout.setRange(10, 600)
