@@ -255,11 +255,14 @@ Nagłówek z zaślepką w diki (*give **something** up*) liczy się jak *give up
 Pojedyncze słowo przekierowane na formę podstawową (*went* → *go*) bierze
 pierwszy wpis strony; fraza (*give up*) nigdy nie spada do *give*. Błąd
 ładowania, CAPTCHA albo zmieniony układ strony oznaczają pominięcie źródła,
-nigdy zgadywanie z całej strony. Czy reguły nadal pasują, sprawdzisz poleceniem
-(wymaga sieci):
-`QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py`.
-Kod wyjścia 1 oznacza, że któraś reguła przestała pasować — to polecenie możesz
-uruchamiać cyklicznie (np. zadaniem `launchd` z powiadomieniem przez `osascript`).
+nigdy zgadywanie z całej strony. Czy zakładki nadal się ładują, a reguły pasują,
+sprawdzisz poleceniem (wymaga sieci; używa Qt z zainstalowanego Anki i tych
+samych ustawień zakładek co panel, łącznie z `page_js`):
+`QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/app_packages python3.13 tests/live_selectors.py 2>/dev/null`.
+Kod wyjścia 1 oznacza, że reguła przestała pasować, strona wymaga własnych
+skryptów albo jej proces padł (`PADŁ`). Uruchom je po każdej aktualizacji Anki;
+możesz też uruchamiać je cyklicznie (np. zadaniem `launchd` z powiadomieniem
+przez `osascript`).
 Oczekiwanie na ładowanie ma limit 20 sekund, a odczyt wpisów z silnika
 przeglądarki osobny limit 5 sekund. Nowy słownik w zakładkach wymaga reguły
 ekstrakcji w userscripcie, zanim trafi do AI.

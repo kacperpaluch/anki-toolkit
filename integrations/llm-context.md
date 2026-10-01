@@ -66,7 +66,9 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   Bez znaczeń z diki kartami są pary Cambridge (bez modelu); bez definicji — samo PL
   (bez modelu). Znaczenia spoza diki są pomijane celowo.
   Brak reguły/CAPTCHA/zmieniony HTML = `[]`, czyli brak źródła. Kanarek:
-  `tests/live_selectors.py` (sieć, kod wyjścia 1 = reguła nie pasuje).
+  `tests/live_selectors.py` (sieć) prowadzi prawdziwe `_DictTabs` z `page_js`
+  na żywych stronach; kod wyjścia 1 = reguła nie pasuje, strona wymaga swoich
+  skryptów albo renderer padł. Uruchamiaj po aktualizacji Anki, na jego Qt.
   Porównanie nagłówka normalizuje spacje i łączniki ASCII/Unicode do spacji
   (`brother in law` = `brother-in-law`), bez zmiany URL ani treści karty.
   Nagłówek porównujemy bez `.stopword` (diki: give *something* up = give up).

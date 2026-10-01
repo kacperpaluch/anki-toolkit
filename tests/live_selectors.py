@@ -1,19 +1,24 @@
-"""Manual canary: do the userscript selectors still match the live dictionaries?
+"""Manual canary: do the panel's dictionary tabs still load and yield entries?
 
-Run with Anki's Python (needs network, so it is not part of the unit suite):
-    QT_QPA_PLATFORM=offscreen "$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" tests/live_selectors.py
+Drives the real `integrations.panel._DictTabs` — same profile, userscript world and
+`page_js` setting as the Add window — against the live dictionaries. Run it after an
+Anki update, with the Qt that Anki ships (needs network, so not part of the unit suite):
+    QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/app_packages \\
+        python3.13 tests/live_selectors.py 2>/dev/null   # stderr is Chromium noise
 
 AI column:  OK = entry items found (diki: meanings, others: definitions).
-            EMPTY = nothing extracted (CAPTCHA, timeout or broken rule).
+            EMPTY = nothing extracted (CAPTCHA, timeout, broken rule, page needs its scripts).
+            PADŁ = the renderer process crashed on this page.
 Buttons:    OK = the searched word has a "→ hasło" button and other buttons exist.
             Inflected words (went) only need some headword button (often the lemma).
 Exit code 1 unless everything is OK.
 """
-import importlib.util
+import importlib
 from pathlib import Path
 import sys
+import types
 
-from aqt.qt import QApplication, QEventLoop, QTimer, QUrl, QWebEnginePage, QWebEngineProfile, sip
+from aqt.qt import QApplication, QEventLoop, QTimer, sip
 
 ROOT = Path(__file__).resolve().parents[1]
 WORDS = ["mother", "give up", "went"]  # plain word, phrasal verb, inflected form
@@ -25,15 +30,10 @@ BUTTONS = """(() => {
   return {heads: heads, other: all.length - heads.length};
 })()"""
 
-spec = importlib.util.spec_from_file_location("word_queue_live", ROOT / "integrations/word_queue.py")
-word_queue = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(word_queue)
-SCRIPT = (ROOT / "integrations/dictionaries-to-anki.user.js").read_text(encoding="utf-8")
 
-
-def wait(page_call, timeout_ms=20000):
+def wait(call, timeout_ms=20000):
     loop, out = QEventLoop(), []
-    page_call(lambda *value: (out.append(value[0] if value else None), loop.quit()))
+    call(lambda *value: (out.append(value[0] if value else None), loop.quit()))
     QTimer.singleShot(timeout_ms, loop.quit)
     loop.exec()
     return out[0] if out else None
@@ -41,21 +41,30 @@ def wait(page_call, timeout_ms=20000):
 
 def main():
     app = QApplication.instance() or QApplication(["live-selectors"])
-    profile = QWebEngineProfile()
-    page = QWebEnginePage(profile)
+    # The repository root is the add-on package; a bare stand-in avoids its menu wiring.
+    package = types.ModuleType("live_addon")
+    package.__path__ = [str(ROOT)]
+    sys.modules["live_addon"] = package
+    panel = importlib.import_module("live_addon.integrations.panel")
+    word_queue = panel.word_queue
+    cfg = word_queue._DEFAULTS
+    labels = word_queue.dict_labels(cfg)
+    tabs = panel._DictTabs(labels, cfg["page_js"])
+    tabs.resize(900, 700)
+    tabs.show()
+    crashed = set()
+    for index, view in enumerate(tabs._views):
+        view.renderProcessTerminated.connect(lambda *_a, i=index: crashed.add(i))
     failed = 0
     for word in WORDS:
-        for label, url in word_queue.dict_urls(word, word_queue._DEFAULTS).items():
-            def load(done, url=url):
-                page.loadFinished.connect(done)
-                page.load(QUrl(url))
-            loaded = wait(load)
-            page.loadFinished.disconnect()
-            value = wait(lambda done: page.runJavaScript(
-                SCRIPT + f"\nwindow.ankiDictionaryEntries({word!r})", done), 5000) if loaded else None
-            items = value if isinstance(value, list) else []
-            status = "OK" if items else ("EMPTY" if loaded else "EMPTY (load failed)")
-            buttons = (wait(lambda done: page.runJavaScript(BUTTONS, done), 5000) or {}) if loaded else {}
+        crashed.clear()
+        tabs.set_urls(word_queue.dict_urls(word, cfg), word)
+        entries = wait(tabs.entries, 30000) or {}
+        for index, label in enumerate(labels):
+            items = entries.get(label) or []
+            status = "PADŁ" if index in crashed else "OK" if items else "EMPTY"
+            buttons = wait(lambda done, i=index: tabs._views[i].page().runJavaScript(
+                BUTTONS, panel._WORLD, done), 5000) or {}
             heads = buttons.get("heads") or []
             if word in INFLECTED:  # the page may only point to the lemma ("past tense of go")
                 ok_buttons = bool(heads)
@@ -63,10 +72,10 @@ def main():
                 ok_buttons = word in heads and (buttons.get("other") or 0) > 0
             # An inflected form's page may only point to the lemma ("past tense of go").
             failed += (status != "OK" and word not in INFLECTED) or not ok_buttons
-            print(f"AI {status:8} przyciski {'OK' if ok_buttons else 'ZLE':3} {label:16} {word:8} "
+            js = "JS" if label in cfg["page_js"] else "  "
+            print(f"AI {status:8} przyciski {'OK' if ok_buttons else 'ZLE':3} {js} {label:16} {word:8} "
                   f"{len(items):3} poz.  hasło={sorted(set(heads))} inne={int(buttons.get('other') or 0)}", flush=True)
-    sip.delete(page)
-    sip.delete(profile)
+    sip.delete(tabs)
     return 1 if failed else 0
 
 
