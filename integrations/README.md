@@ -60,7 +60,11 @@ Lista używa stylu Qt Fusion, żeby checkbox był widoczny przy każdej pozycji
 również na macOS.
 
 Panel ma dwie kolumny: **słowa i działania po lewej**, **słowniki po prawej**.
-Nad listą są kolejność, **Odśwież**, filtr zrobionych i dodawanie słów.
+Nad listą są kolejność, **Odśwież**, filtr **Wszystkie / Niezrobione / Zrobione**, **Szukaj w kolejce…**
+i dodawanie słów. Domyślnie widać **Niezrobione**; **Wszystkie** pokazuje całą
+tabelę n8n, a **Zrobione** tylko odhaczone hasła. Wyszukiwarka filtruje po fragmencie hasła bez rozróżniania
+wielkości liter. Krzyżyk czyści filtr; wybór checkboxów zostaje zachowany,
+ale ukryte wyniki nie trafiają do AI.
 Pod listą opis wyboru pokazuje, czy AI bierze checkboxy, czy podświetlenie.
 **Utwórz karty z AI (n)** otwiera podgląd przed zapisem; bez wyboru jest wyłączony.
 **Wyczyść checkboxy** pojawia się po zebraniu paczki. Ręczne **Oznacz jako zrobione**
@@ -75,7 +79,7 @@ dodawanie słów i działania ręczne są wyłączone.
 **Stan „zrobione” zmieniasz** przyciskiem **Oznacz jako zrobione** (odhacza i przechodzi
 dalej) albo prawym klikiem na pozycji: *Oznacz jako zrobione* / *Cofnij
 odhaczenie*. To samo menu czyści cały wybór do AI. **Pomiń** przechodzi dalej
-bez odhaczania, a *Ukryj zrobione* chowa szare pozycje, nie usuwając ich.
+bez odhaczania, a filtr **Niezrobione** chowa szare pozycje, nie usuwając ich.
 
 Wiersz jest odhaczany automatycznie po dodaniu notatki powiązanej z tą pozycją
 i z odpowiadającym jej hasłem. Jeśli zmienisz formę hasła, np. z „sprawling” na
@@ -133,7 +137,9 @@ Gdy n8n nie przyjmie zapisu (offline, zła tabela), dostajesz dymek z powodem,
 a hasła wracają do pola **własne hasło** — nic nie trafia na listę, a ponowienie
 to Enter. Panel wymaga działającego n8n; pozycji offline nie ma.
 
-POST dopisujący hasła ma **jedną próbę**. Dostępny host jest wybierany przez
+POST dopisujący hasła ma **jedną próbę**. GET, POST i PATCH używają tego samego
+domyślnego User-Agent; odpowiedź HTTP 403 jest zgłaszana jako odrzucony zapis.
+Dostępny host jest wybierany przez
 GET przed zapisem. Przy utracie odpowiedzi dodatek sprawdza tabelę, ale nie
 powtarza POST-a na drugim adresie. Jeśli nie da się ustalić wyniku, pokazuje
 komunikat o niepewnym zapisie i oddaje hasła do pola — przed ponowieniem
@@ -219,10 +225,13 @@ edytora zostają takie, jakie były.
 ### Skąd biorą się znaczenia i definicje
 
 **Automatycznie przygotowana treść karty pochodzi ze słowników — model jej nie pisze.** Userscript
-wyciąga z każdej zakładki wyłącznie wpis z nagłówkiem zgodnym z hasłem.
+wyciąga wpis z nagłówkiem zgodnym z hasłem oraz dodatkowe pełne wpisy,
+których nagłówek zawiera szukane hasło jako całe słowa (np. *be in charge*
+przy *in charge*). Dodatkowe konstrukcje mają własne pole **Hasło (EN)**
+i są zawsze domyślnie odznaczone.
 Spacje i łączniki (także typograficzne) są równoważne przy porównaniu:
 `brother in law` pasuje do `brother-in-law`. Nie zmienia to zapisywanego hasła
-ani adresu strony; inna fraza nadal nie jest dopasowaniem. Źródła:
+ani adresu strony. Źródła:
 
 | Źródło | Co daje |
 |---|---|
@@ -288,13 +297,34 @@ ekstrakcji w userscripcie, zanim trafi do AI.
 Postęp i podgląd wskazują wykorzystane źródła; podgląd wymienia też pominięte
 i linkuje do słownika znaczenia i definicji.
 
+### Powiązane zwroty z diki
+
+Boczna lista diki (np. *mother tongue*, *single mother*) pojawia się w podglądzie
+w sekcji **Powiązane zwroty — wybierz ręcznie do kolejki**. Wszystkie checkboxy
+są domyślnie odznaczone. **Zaznacz wszystkie** dotyczy wyłącznie kart.
+Samo zaznaczenie zwrotu niczego nie zapisuje: dopiero **Dodaj wybrane zwroty do
+kolejki** dopisuje wybrane hasła do n8n. Pomijane są hasła już w kolejce lub
+mające karty w Anki. W wąskim panelu diki przenosi boczną kolumnę pod
+główne znaczenia — zwroty pozostają dostępne po przewinięciu i nadal są
+odczytywane do podglądu. To osobna akcja — anulowanie podglądu kart nie cofa
+zwrotów już dodanych do kolejki.
+
+Skrócone PL służy tylko do wyboru. Zwrot przechodzi zwykły proces na własnej
+stronie słownika dopiero po wybraniu go w kolejce do tworzenia kart. Nie ma
+automatycznego dodawania zwrotów ani rekurencyjnego przeglądania odsyłaczy.
+Starsze odzyskane propozycje nie zawierają nowych konstrukcji i odsyłaczy.
+Zaznacz takie hasło w kolejce i kliknij **Utwórz karty z AI** — starszy draft
+zostanie ponownie pobrany; nowe propozycje nadal są wykorzystywane bez dodatkowego
+pytania do modelu. **Odzyskane propozycje** otwierają zachowany podgląd.
+
 ### Przerwanie i odzyskiwanie
 
 **Zatrzymaj po bieżącym haśle** kończy bieżące zapytanie i otwiera wybór dla
 wyników już uzyskanych. Każde ukończone hasło jest zapisywane na dysku.
 **Odzyskane propozycje** pozwalają wrócić do wyników po anulowaniu podglądu,
 zamknięciu okna lub restarcie Anki. Ponowna paczka wykorzystuje zachowane
-propozycje tych samych haseł bez ponownego pytania modelu.
+propozycje tych samych haseł bez ponownego pytania modelu, z wyjątkiem
+starszych draftów sprzed obsługi powiązanych konstrukcji.
 Niezakończone zapytanie trzeba uruchomić ponownie. Robocze edycje w podglądzie
 nie są zapisywane przy anulowaniu. Po zapisie kart propozycje danego hasła
 znikają z odzyskiwania.
@@ -327,11 +357,12 @@ Jeśli zaznaczona karta nie ma polskiego znaczenia, okno przewija się do jej po
 i ustawia tam kursor. **Anuluj** wraca do kolejki bez zapisu kart.
 
 Okno pokazuje **wszystkie** znaczenia z diki, ale zaznaczone jest tylko pierwsze
-N (**Domyślnie zaznacz znaczeń**, `ai_max_senses`, domyślnie 3) — diki podaje je od
+N znaczeń dokładnego hasła (**Domyślnie zaznacz znaczeń**, `ai_max_senses`, domyślnie 3) — diki podaje je od
 najczęstszych. Przy każdym widać, skąd jest definicja: *para ze słownika*,
 *definicję dobrało AI* albo *✗ bez definicji*. Każde znaczenie ma też pole
-**Hasło (EN)** — wypełnione hasłem z kolejki, do poprawienia dla tej jednej
-karty (np. *salvage* → *salvage sth*); puste wraca do hasła z kolejki. Zmiana
+**Hasło (EN)** — wypełnione hasłem z kolejki albo nagłówkiem dodatkowej konstrukcji, do poprawienia dla tej jednej
+karty (np. *salvage* → *salvage sth*); puste wraca do nagłówka propozycji
+albo hasła z kolejki. Zmiana
 hasła nie cofa potwierdzenia definicji. Kolejka nadal rozpoznaje „mam już karty”
 po haśle z listy, więc słowa, którego wszystkie karty dostały zmienione hasło,
 nie pominie przy ponownym uruchomieniu. Puste polskie znaczenie blokuje

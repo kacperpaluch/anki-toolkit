@@ -15,7 +15,7 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 |---|---|---|
 | `__init__.py` | import modułów, hooki edytora/profilu, timer batchy, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`) | wszystkie |
-| `common/` | konfiguracja, HTTP (bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
+| `common/` | konfiguracja, HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
 | `settings/` | panele „Tworzenie kart”: workflowy, AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |

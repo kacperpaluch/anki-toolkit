@@ -51,9 +51,17 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   etykieta bez szablonu nie dostaje zakładki. Nowy słownik = jeden wpis w configu,
   bez zmian w DataTable.
 - „AI: znaczenia”: userscript (`window.ankiDictionaryEntries(word)`, ten sam plik co
-  przyciski) zwraca pozycje wpisu o pasującym nagłówku. Rolę wyznacza KSZTAŁT, nie
+  przyciski) zwraca pozycje wpisu o pasującym nagłówku i dodatkowych pełnych wpisów zawierających
+  szukane hasło jako całe słowa. Dodatkowe pozycje niosą `word`/`related`; `word`
+  jest kontekstem promptu i częścią klucza deduplikacji, a konstrukcje są domyślnie
+  odznaczone. Nagłówek przechodzi do `sense["word"]` i pola EN w podglądzie.
+  Boczne `.diki-results-right-column .fentry` zwracają `{related_word, pl}`:
+  `split_entries` je pomija, panel utrwala osobno w `proposal["related"]`.
+  Tylko ręczny wybór i osobny przycisk w pickerze wywołują `_add_related_words`
+  (kontrola Anki na głównym wątku) → istniejące `_add_words` (kontrola kolejki,
+  POST w tle). Checkboxy bocznych zwrotów nie należą do `_boxes` ani „Zaznacz wszystkie”. Rolę wyznacza KSZTAŁT, nie
   konfiguracja: `{pl}` bez `def` = znaczenie (diki, jednostka karty), `{def, pl?}` =
-  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki po tekście + `pos` + `labels` osobno dla D/E;
+  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki po tekście + `pos` + `labels` + opcjonalnym `word` osobno dla D/E;
   różne niepuste PL przy tym samym E pozostają oddzielne. Duplikat E uzupełnia
   brakujące PL i `pl_src`, zachowując pierwsze `src` definicji. Fallback bez D
   korzysta z `pl_src` tłumaczenia, które może różnić się od źródła definicji.
@@ -88,7 +96,8 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   (nazwa łacińska jako pierwsza, potem „także:" — `.hwLessPopularAlternative`),
   więc pierwszy `.hw` nie jest hasłem („hippophae" przy „sea buckthorn"). „→ oba"
   bierze nagłówek równy `?q=` (to samo porównanie co ekstrakcja), inaczej pierwszy.
-  Pole hasła dostaje zawsze JEDEN nagłówek; warianty nie trafiają na kartę (celowo).
+  Pole hasła dostaje zawsze JEDEN nagłówek; alternatywne nazwy tego samego wpisu
+  nie są sklejane na karcie. Dodatkowy pełny wpis ma własne propozycje kart.
   `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
   sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
   i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.
@@ -162,7 +171,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   pierwsze `ai_max_senses`. Wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów
   zakładek (wiersz n8n albo szablon) dla `pl_src` i `src`, nigdy z odpowiedzi modelu.
 - Pole „Hasło (EN)” w SensePickerze trafia do znaczenia jako `sense["word"]`
-  (puste = hasło z kolejki) i tylko `note_fields` wpisuje je na kartę. Para
+  (puste = nagłówek propozycji lub hasło z kolejki) i tylko `note_fields` wpisuje je na kartę. Para
   `(word, sense)` z `selected()` niesie NADAL hasło z kolejki — po nim panel wiąże
   wiersz, drafty i odhaczenie; nie podmieniaj go edytowaną wartością. Dług `owed`
   zapisuje nagłówek faktycznie wpisany na kartę, bo `_settle_owed` szuka kart po
@@ -192,6 +201,15 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   pola; surowy HTML tylko z `"html": true`. Separator zawsze jest HTML-em.
 - `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
   samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
+
+
+- Wyszukiwarka `_search` współdzieli `_apply_hiding` z filtrem `_status_filter` (Wszystkie / Niezrobione / Zrobione, domyślnie Niezrobione):
+  fragment hasła, casefold; wybór checkboxów zachowany, `_selected_rows` pomija ukryte.
+- Zwykłe AI ponownie pobiera stare drafty bez klucza `related`; nowe drafty
+  (również `related: []`) są używane bez ponownego pytania modelu. Odzyskiwanie nadal otwiera zachowane dane.
+- `common.http` dokłada domyślny User-Agent także dla `post_json`/`post_create`,
+  z możliwością nadpisania; bez tego POST/PATCH do n8n mogą dostać Cloudflare 1010.
+  `add_rows` traktuje HTTP 403 jako odrzucenie, bez ponowienia POST ani readbacku.
 
 
 ## Odzyskiwanie

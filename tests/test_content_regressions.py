@@ -548,6 +548,23 @@ class TestBatchStore(unittest.TestCase):
             self.backfill.poll_results({})
         self.assertEqual(self.backfill.pending_batches()[0]["poll_errors"], 0)
 
+    def test_all_http_methods_share_default_user_agent_and_allow_override(self):
+        from io import BytesIO
+        calls = []
+        def opener(request, timeout):
+            calls.append(request)
+            return BytesIO(b'{}')
+        with patch.object(http, 'urlopen', opener):
+            http.fetch_url('https://x/rows')
+            http.post_json('https://x/rows', b'{}', {})
+            http.post_json('https://x/rows', b'{}', {}, method='PATCH')
+            http.post_create('https://x/rows', b'{}', {})
+            http.post_json('https://x/rows', b'{}', {'User-Agent': 'custom'})
+        self.assertTrue(calls[0].get_header('User-agent'))
+        self.assertEqual([r.get_header('User-agent') for r in calls[:4]],
+                         [calls[0].get_header('User-agent')] * 4)
+        self.assertEqual(calls[-1].get_header('User-agent'), 'custom')
+
     def test_create_request_is_not_repeated_after_a_timeout(self):
         import urllib.error
         calls = []

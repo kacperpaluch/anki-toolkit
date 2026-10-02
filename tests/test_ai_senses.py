@@ -42,6 +42,19 @@ class Provider:
 
 
 class DefinitionMatchingTests(unittest.TestCase):
+    def test_related_headwords_remain_separate_and_sidebar_is_not_a_sense(self):
+        m = load()
+        units, definitions = m.split_entries({'diki': [
+            {'pl': 'odpowiedzialny'},
+            {'pl': 'odpowiedzialny', 'word': 'be in charge', 'related': True},
+            {'related_word': 'mother tongue', 'pl': 'język ojczysty'}],
+            'Oxford': [{'def': 'responsible'}, {'def': 'responsible', 'word': 'be in charge', 'related': True}]})
+        self.assertEqual(len(units), 2)
+        self.assertEqual(len(definitions), 2)
+        self.assertEqual(units[1]['word'], 'be in charge')
+        self.assertTrue(units[1]['related'])
+        self.assertIn('be in charge', m.build_prompt('in charge', units, definitions))
+
     def setUp(self):
         self.m = load()
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      4.9
+// @version      5.0
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -87,13 +87,37 @@
     if (!rule) return [];
     const [entrySelector, headSelector, senseSelector, item] = rule;
     const entries = [...document.querySelectorAll(entrySelector)];
-    let matched = entries.filter((entry) =>
-      [...entry.querySelectorAll(headSelector)].some((head) => headword(head) === norm(word)));
-    // Inflected single words (went → go): dictionaries redirect to the lemma, so trust the
-    // first entry. Never for phrases: "give up" must not fall back to "give".
+    const exact = (entry) => [...entry.querySelectorAll(headSelector)]
+      .some((head) => headword(head) === norm(word));
+    let matched = entries.filter(exact);
+    // Inflected single words still use the first entry; phrases never fall back.
     if (!matched.length && !/\s/.test(norm(word))) matched = entries.slice(0, 1);
-    return matched.flatMap((entry) => [...entry.querySelectorAll(senseSelector)].map((node) => item(node, entry)))
-      .filter((found) => ('def' in found ? found.def : found.pl));
+    const additional = entries.filter((entry) => !matched.includes(entry)
+      && [...entry.querySelectorAll(headSelector)].some((head) =>
+        (` ${headword(head)} `).includes(` ${norm(word)} `)));
+    const found = [...matched, ...additional].flatMap((entry) => {
+      const head = [...entry.querySelectorAll(headSelector)].find((h) => headword(h) === norm(word))
+        || entry.querySelector(headSelector);
+      return [...entry.querySelectorAll(senseSelector)].map((node) => ({
+        ...item(node, entry),
+        ...(additional.includes(entry) ? {word: text(head), related: true} : {})
+      }));
+    }).filter((found) => ('def' in found ? found.def : found.pl));
+    // Sidebar summaries are queue suggestions, never card meanings or model input.
+    if (location.hostname === 'www.diki.pl') {
+      const seen = new Set();
+      document.querySelectorAll('.diki-results-right-column .fentry').forEach((entry) => {
+        const pl = [...entry.querySelectorAll(':scope > .hw')].map(text).filter(Boolean).join(', ');
+        entry.querySelectorAll('.fentrymain .hw a').forEach((link) => {
+          const value = text(link);
+          if (value && norm(value) !== norm(word) && !seen.has(norm(value))) {
+            seen.add(norm(value));
+            found.push({related_word: value, pl});
+          }
+        });
+      });
+    }
+    return found;
   };
 
   // Menedżery userscriptów: GM_xmlhttpRequest (Tampermonkey) lub GM.xmlHttpRequest

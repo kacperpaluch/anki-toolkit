@@ -74,6 +74,19 @@ class RecoveryTests(unittest.TestCase):
             self.assertIn('niepewny', error)
             post.assert_called_once()
 
+    def test_forbidden_post_is_rejected_and_never_repeated(self):
+        m = load('word_queue')
+        cfg = {**m._DEFAULTS, 'n8n_url': 'https://primary', 'table_id': '1', 'api_key': 'test'}
+        with patch.object(m, '_get_json', return_value=({'data': []}, None)), \
+             patch.object(m, 'post_json', return_value=(None, '403 - error code: 1010')) as post, \
+             patch.object(m, 'fetch_queue') as readback:
+            rows, error = m.add_rows(['mother'], cfg)
+        self.assertEqual(rows, [])
+        self.assertIn('odrzucony', error)
+        self.assertNotIn('niepewny', error)
+        post.assert_called_once()
+        readback.assert_not_called()
+
     def test_incomplete_queue_is_not_reported_as_complete(self):
         m = load('word_queue')
         cfg = {**m._DEFAULTS, 'n8n_url': 'https://primary', 'max_rows': 1}

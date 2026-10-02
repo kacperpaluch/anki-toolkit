@@ -299,6 +299,8 @@ def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
         return [], error
     rows, error = call(base)
     if error:
+        if error.startswith("403 -"):
+            return [], f"zapis odrzucony (HTTP 403) — {error}"
         # A lost response may hide a committed POST. Read back, NEVER repeat it.
         recovered, read_error = fetch_queue(cfg)
         by_word = {}

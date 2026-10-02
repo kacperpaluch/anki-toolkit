@@ -184,7 +184,8 @@ class PanelTests(unittest.TestCase):
         self.panel._suspend = False
         self.panel._cfg = {"word_field": "ang", "word_column": "Slowko", "flag_column": "Anki",
                             "ai_fields": {"pl": "pol"}}
-        self.panel._hide_done = types.SimpleNamespace(isChecked=lambda: False)
+        self.panel._status_filter = types.SimpleNamespace(currentData=lambda: "all")
+        self.panel._search = types.SimpleNamespace(text=lambda: "")
         self.panel._counter = types.SimpleNamespace(setText=lambda _: None)
         self.panel._ai_btn = types.SimpleNamespace(setText=lambda _: None, setEnabled=lambda on: None)
         self.panel._mark_row_done = lambda *a: (1, None)
@@ -400,6 +401,22 @@ class PanelTests(unittest.TestCase):
         with self.assertLogs(level="ERROR"):
             self.panel._ai_senses()
         self.assertEqual((self.loaded, self.jobs), ([], []))
+
+    def test_legacy_draft_is_refetched_but_new_draft_is_reused(self):
+        self.batch_panel(["mother"])
+        draft = {"row_id": 1, "word": "mother", "senses": [{"pl": "matka"}]}
+        self.panel._state.data["drafts"] = [draft]
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]):
+            self.panel._ai_senses()
+            self.assertEqual(self.loaded, ["mother"])
+            self.assertEqual(len(self.jobs), 1)
+            self.answer("matka")
+        self.loaded.clear()
+        self.jobs.clear()
+        with patch.object(self.module.ai_senses, "pick_senses", return_value=[]):
+            self.panel._ai_senses()
+        self.assertEqual(self.loaded, [])
+        self.assertEqual(self.jobs, [])
 
     def test_batch_walks_words_one_at_a_time_and_shows_one_picker(self):
         """Kolejno, nie równolegle: następne hasło rusza dopiero po wyniku poprzedniego."""

@@ -15,7 +15,7 @@ Ptaszek przy słówku to WYBÓR DO AI, nie stan tabeli: zbierasz nim hasła prze
 całą listę, bo przewijanie i klikanie gdzie indziej go nie gubią (a podświetlenie
 tak). Stan „zrobione" z n8n widać kolorem — szare to odhaczone — i zmienia się
 go prawym klikiem albo przyciskiem „Oznacz jako zrobione". Nic nie znika z listy samo;
-od chowania jest „Ukryj zrobione".
+od chowania jest filtr „Niezrobione”.
 
 Przyciski: „Oznacz jako zrobione" = odhacz w n8n + skok dalej (koniec z tym hasłem),
 „Pomiń" = skok bez odhaczania (pominięcie).
@@ -377,11 +377,19 @@ class WordQueuePanel(QDockWidget):
         filters.addWidget(reload_btn)
         controls.addLayout(filters)
 
-        self._hide_done = QCheckBox("Ukryj zrobione")
-        self._hide_done.setToolTip("Szare słowa są zrobione w n8n. Prawy klik pozwala cofnąć oznaczenie.")
-        self._hide_done.setChecked(True)
-        self._hide_done.toggled.connect(lambda _c: self._apply_hiding())
-        controls.addWidget(self._hide_done)
+        self._status_filter = QComboBox()
+        self._status_filter.setToolTip("Status hasła w n8n")
+        for label, value in (("Wszystkie", "all"), ("Niezrobione", "todo"), ("Zrobione", "done")):
+            self._status_filter.addItem(label, value)
+        self._status_filter.setCurrentIndex(1)
+        self._status_filter.currentIndexChanged.connect(lambda _index: self._apply_hiding())
+        controls.addWidget(self._status_filter)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Szukaj w kolejce…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(lambda _text: self._apply_hiding())
+        controls.addWidget(self._search)
 
         adding = QHBoxLayout()
         self._word_input = QLineEdit()
@@ -555,6 +563,20 @@ class WordQueuePanel(QDockWidget):
         mw.taskman.run_in_background(
             lambda: word_queue.add_rows(fresh, self._cfg), done,
             uses_collection=False)
+
+    def _add_related_words(self, words: list[str]) -> None:
+        """Explicit picker action; collection lookup stays on the main thread."""
+        if sip.isdeleted(self) or mw.col is not self._collection:
+            return
+        try:
+            fresh = [word for word in words if not ai_senses.find_word_notes(word, self._cfg)]
+        except Exception:
+            log.exception("word_queue: sprawdzanie powiązanych zwrotów")
+            tooltip("Nie udało się sprawdzić kart — nie dodano zwrotów do kolejki.", parent=mw)
+            return
+        if len(fresh) != len(words):
+            tooltip("Pominięto zwroty, które mają już karty w Anki.", parent=mw)
+        self._add_words(fresh)
 
     def _append_rows(self, fresh: list[dict]) -> None:
         if not fresh:
@@ -836,11 +858,16 @@ class WordQueuePanel(QDockWidget):
             self._suspend = previous
 
     def _apply_hiding(self) -> None:
-        hide = self._hide_done.isChecked()
+        status = self._status_filter.currentData()
+        query = self._search.text().strip().casefold()
         for i in range(self._list.count()):
             item = self._list.item(i)
             row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
-            item.setHidden(hide and row_id in self._marked)
+            row = item.data(Qt.ItemDataRole.UserRole) or {}
+            word = clean_html_normalized(row.get(self._cfg["word_column"]) or "").casefold()
+            done = row_id in self._marked
+            item.setHidden((status == "todo" and done) or (status == "done" and not done)
+                           or query not in word)
         self._update_ai_label()
 
     def advance(self) -> None:
@@ -976,6 +1003,7 @@ class WordQueuePanel(QDockWidget):
         cached = {p["row_id"]: p for p in self._state.data["drafts"]}
         errors: list[tuple[str, str]] = []
         source_texts = {}
+        related_words = {}
         provider_name = ai_senses.provider_label(self._cfg)
 
         def valid():
@@ -993,7 +1021,7 @@ class WordQueuePanel(QDockWidget):
                 step(index + 1)
                 return
             cached_proposal = cached.get(rows[index]["id"])
-            if cached_proposal and cached_proposal["word"] == word:
+            if cached_proposal and cached_proposal["word"] == word and "related" in cached_proposal:
                 proposals.append(cached_proposal)
                 QTimer.singleShot(0, lambda: step(index + 1))
                 return
@@ -1008,7 +1036,10 @@ class WordQueuePanel(QDockWidget):
                     errors.append((word, "żaden słownik nie ma tego hasła (albo się nie wczytał)"))
                     step(index + 1)
                     return
-                source_texts[index] = list(entries)
+                related_words[index] = [item for items in entries.values() for item in items
+                                        if isinstance(item, dict) and item.get("related_word")]
+                source_texts[index] = [label for label, items in entries.items()
+                                       if any("related_word" not in item for item in items)]
                 self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}; źródła: {', '.join(entries)}")
                 mw.taskman.run_in_background(
                     lambda: ai_senses.generate(provider, word, entries, self._cfg),
@@ -1034,6 +1065,7 @@ class WordQueuePanel(QDockWidget):
                                   "urls": word_queue.dict_urls(word, self._cfg, rows[index]),
                                   "row_id": rows[index].get("id"),
                                   "sources": source_texts[index],
+                                  "related": related_words.get(index, []),
                                   "provider": provider_name})
                 self._state.data["drafts"] = [p for p in self._state.data["drafts"]
                                                if p["row_id"] != rows[index]["id"]] + [proposals[-1]]
@@ -1114,7 +1146,7 @@ class WordQueuePanel(QDockWidget):
 
         for proposal in proposals:
             proposal["existing"] = ai_senses.existing_senses(proposal["word"], self._cfg)
-        chosen = ai_senses.pick_senses(proposals, self, self._cfg)
+        chosen = ai_senses.pick_senses(proposals, self, self._cfg, self._add_related_words)
         if not chosen:
             return
         # Okno wyboru bywa otwarte długo. Cel zapisu sprawdzamy PO nim, nie przed:

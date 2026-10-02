@@ -149,7 +149,7 @@ def post_create(
     for attempt in range(max_retries):
         last = attempt == max_retries - 1
         try:
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            req = urllib.request.Request(url, data=payload, headers=dict(_DEFAULT_HEADERS, **headers), method="POST")
             with urlopen(req, timeout=timeout) as response:
                 return response.read(), None, False
         except urllib.error.HTTPError as e:
@@ -195,7 +195,7 @@ def post_json(
         log = logger
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(url, data=payload, headers=headers, method=method)
+            req = urllib.request.Request(url, data=payload, headers=dict(_DEFAULT_HEADERS, **headers), method=method)
             with urlopen(req, timeout=timeout) as response:
                 return response.read(), None
         except urllib.error.HTTPError as e:

@@ -63,6 +63,21 @@ class QtIntegrationSmoke(unittest.TestCase):
                 for index in range(1, 4):
                     panel._list.item(index).setCheckState(Qt.CheckState.Checked)
                 self.assertEqual(panel._ai_btn.text(), 'Utwórz karty z AI (4)')
+                panel._search.setText('WORD 2')
+                self.assertEqual([row['Slowko'] for row in panel._selected_rows()], ['word 2'])
+                self.assertEqual(panel._ai_btn.text(), 'Utwórz karty z AI (1)')
+                panel._search.clear()
+                self.assertEqual(len(panel._selected_rows()), 4)
+                panel._marked.add(2)
+                panel._status_filter.setCurrentIndex(2)  # only done
+                self.assertEqual([row['id'] for row in panel._selected_rows()], [2])
+                panel._search.setText('mother')
+                self.assertEqual(panel._selected_rows(), [])
+                panel._search.clear()
+                panel._status_filter.setCurrentIndex(0)  # all
+                self.assertEqual(len(panel._selected_rows()), 4)
+                panel._marked.clear()
+                panel._status_filter.setCurrentIndex(1)  # only todo
                 self.assertEqual([panel._list.item(i).checkState() for i in range(4)],
                                  [Qt.CheckState.Checked] * 4)
                 panel._set_busy(True)
@@ -153,6 +168,59 @@ class QtIntegrationSmoke(unittest.TestCase):
             from aqt.qt import sip
             sip.delete(page)
             sip.delete(profile)
+
+    def test_related_entries_and_explicit_queue_selection(self):
+        script = (ROOT / 'integrations/dictionaries-to-anki.user.js').read_text()
+        html = '<div class="dictionaryEntity"><div class="hws"><b class="hw">in charge</b></div><ol class="foreignToNativeMeanings"><li><span class="hw">pod kontrolą</span></li></ol></div>'
+        html += '<div class="dictionaryEntity"><div class="hws"><b class="hw">be in charge</b></div><ol class="foreignToNativeMeanings"><li><span class="hw">być odpowiedzialnym</span></li></ol></div>'
+        html += '<div class="diki-results-right-column"><div class="dictionaryEntity"><div class="fentry"><span class="fentrymain"><span class="hw"><a>mother tongue</a></span></span> = <span class="hw">język ojczysty</span></div></div></div>'
+        profile = QWebEngineProfile()
+        page = QWebEnginePage(profile)
+        loop = QEventLoop()
+        result = []
+        try:
+            page.loadFinished.connect(loop.quit)
+            page.setHtml(html, QUrl('https://www.diki.pl/'))
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            page.runJavaScript(script + '\nwindow.ankiDictionaryEntries("in charge")',
+                               lambda value: (result.append(value), loop.quit()))
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            self.assertEqual(result, [[{'pl': 'pod kontrolą'},
+                                       {'pl': 'być odpowiedzialnym', 'word': 'be in charge', 'related': True},
+                                       {'related_word': 'mother tongue', 'pl': 'język ojczysty'}]])
+        finally:
+            from aqt.qt import sip
+            sip.delete(page)
+            sip.delete(profile)
+        spec = importlib.util.spec_from_file_location('related_senses_smoke', ROOT / 'integrations/ai_senses.py')
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        senses, error = m.generate(None, 'in charge', {'diki': result[0]}, {})
+        self.assertIsNone(error)
+        self.assertEqual(len(senses), 2)  # sidebar never becomes a card
+        queued = []
+        dialog = m.SensePicker([{'word': 'in charge', 'senses': senses, 'related': [result[0][-1]]}],
+                               None, {'ai_max_senses': 3}, queued.extend)
+        try:
+            self.assertEqual([sense['word'] for _, sense in dialog.selected()], ['in charge'])
+            self.assertFalse(dialog._related_boxes[0][0].isChecked())
+            from aqt.qt import QPushButton
+            button = next(b for b in dialog.findChildren(QPushButton)
+                          if b.text() == 'Dodaj wybrane zwroty do kolejki')
+            self.assertFalse(button.isEnabled())
+            dialog._all.click()
+            self.assertEqual([sense['word'] for _, sense in dialog.selected()], ['in charge', 'be in charge'])
+            self.assertFalse(button.isEnabled())  # select-all only concerns cards
+            self.assertEqual(queued, [])
+            dialog._related_boxes[0][0].setChecked(True)
+            self.assertEqual(queued, [])  # checkbox alone never writes to n8n
+            button.click()
+            self.assertEqual(queued, ['mother tongue'])
+            self.assertFalse(dialog._related_boxes[0][0].isChecked())
+        finally:
+            dialog.close()
 
     def test_diki_buttons_cover_every_headword(self):
         # diki "sea buckthorn": a latin name comes first, alternatives follow „także:”.
