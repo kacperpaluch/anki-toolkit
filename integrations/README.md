@@ -42,22 +42,34 @@ Na liście działają dwa niezależne stany:
 
 | Sygnał | Znaczenie | Gdzie żyje |
 |---|---|---|
-| „☑” przed hasłem + pogrubienie | wybrane do AI | tylko w panelu |
+| checkbox + pogrubienie | wybrane do AI | tylko w panelu |
 | szary tekst | zrobione (flaga w n8n) | tabela n8n |
 
 **Checkbox zbiera hasła dla przycisku AI**, a nie oznacza zrobionych. Zaznaczasz
 je przez całą listę, przewijasz, klikasz gdzie indziej — wybór zostaje, bo
 w odróżnieniu od podświetlenia nie gubi się przy pierwszym kliknięciu obok.
-Licznik pokazuje, ile zebrałeś, a przycisk **AI: znaczenia (n)** bierze dokładnie
+Licznik pokazuje, ile zebrałeś, a przycisk **Utwórz karty z AI (n)** bierze dokładnie
 te pozycje. Gdy nic nie jest zaptaszkowane, działa podświetlenie (Ctrl/Shift) —
-dla jednorazówek. Po dodaniu kart ptaszki zebranych haseł znikają same, więc to
-samo hasło nie poleci do modelu drugi raz.
+dla jednorazówek. Po dodaniu kart albo wybraniu **Oznacz jako zrobione** checkbox danego hasła
+zostaje wyczyszczony. Ręczne oznaczanie zwalnia wybór do AI również przy
+braku połączenia z n8n; szary kolor pojawia się dopiero po potwierdzeniu serwera.
+Ukryte wiersze nie trafiają do AI, a liczba na przycisku odpowiada faktycznej paczce.
 
-Wskaźnik checkboxa rysuje motyw Anki i przy kilkuset wierszach bywa praktycznie
-niewidoczny, dlatego wybór niesie też tekst pozycji — ten wyrenderuje się zawsze.
+Wybrane hasło jest dodatkowo pogrubione; tekst nie zawiera drugiego checkboxa.
+Lista używa stylu Qt Fusion, żeby checkbox był widoczny przy każdej pozycji
+również na macOS.
 
-Pasek panelu rozdziela dodawanie słów, filtrowanie i odświeżanie od działań
-**AI: znaczenia**, **Oznacz jako zrobione** i **Pomiń** w drugim rzędzie.
+Panel ma dwie kolumny: **słowa i działania po lewej**, **słowniki po prawej**.
+Nad listą są kolejność, **Odśwież**, filtr zrobionych i dodawanie słów.
+Pod listą opis wyboru pokazuje, czy AI bierze checkboxy, czy podświetlenie.
+**Utwórz karty z AI (n)** otwiera podgląd przed zapisem; bez wyboru jest wyłączony.
+**Wyczyść checkboxy** pojawia się po zebraniu paczki. Ręczne **Oznacz jako zrobione**
+i **Pomiń** dotyczą bieżącego słowa, nie całej paczki.
+
+Błąd pobrania n8n pozostaje widoczny nad listą; ponowienie to **Odśwież**.
+**Zatrzymaj po bieżącym haśle** widać tylko podczas pracy AI, a **Odzyskane
+propozycje** tylko wtedy, gdy są zapisane wyniki. W czasie pracy filtry,
+dodawanie słów i działania ręczne są wyłączone.
 **Wklej listę…** otwiera pole do wklejenia wielu słów.
 
 **Stan „zrobione” zmieniasz** przyciskiem **Oznacz jako zrobione** (odhacza i przechodzi
@@ -150,7 +162,7 @@ nie tworzy zakładki.
 
 **Wybór słówka ładuje wszystkie cztery zakładki naraz**, zaczynając od widocznej.
 Kosztuje to pamięć — Chromium bierze ~100 MB na zakładkę — ale przeglądanie nie
-czeka na wczytanie po każdym kliknięciu w zakładkę, a **AI: znaczenia** ma
+czeka na wczytanie po każdym kliknięciu w zakładkę, a **Utwórz karty z AI** ma
 zwykle komplet stron gotowy, zanim go naciśniesz.
 
 Na stronach działają przyciski userscriptu — te same, co w przeglądarce.
@@ -164,7 +176,7 @@ hasło; pozostałe warianty nie są dopisywane.
 **Skrypty samej strony działają tylko na zakładkach z listy `page_js`**
 (domyślnie `["diki"]`). Pozostałe zakładki pokazują treść słownika bez nich:
 nie ma reklam ani okien zgód, ale nie działają też przyciski odsłuchu, rozwijane
-sekcje i wyszukiwarka strony. Przyciski userscriptu i **AI: znaczenia** działają
+sekcje i wyszukiwarka strony. Przyciski userscriptu i **Utwórz karty z AI** działają
 na każdej zakładce. Powód: QtWebEngine 6.11.2 (Anki 26.09) wywraca proces strony
 na każdym pliku w starym kodowaniu znaków (windows-1250, ISO-8859-x), a takie
 skrypty doładowują reklamy Cambridge, Oxfordu i LDoCE — strona pokazywała się
@@ -183,7 +195,7 @@ i definicją. Przykładów nie wypełnia — dodajesz je przyciskami **+ przykł
 ### Paczka
 
 Zaptaszkuj kilka haseł (albo zaznacz Ctrl/Shift) — przycisk pokaże ich liczbę,
-np. **AI: znaczenia (3)** — i cała paczka idzie do **jednego okna wyboru**,
+np. **Utwórz karty z AI (3)** — i cała paczka idzie do **jednego okna wyboru**,
 z sekcją na hasło i checkboxem *Zaznacz wszystkie* u góry. Zatwierdzasz raz,
 karty powstają jedną transakcją i jednym krokiem cofania, a odhaczane są tylko
 te hasła, z których faktycznie powstały karty.
@@ -304,11 +316,21 @@ startuje od zera.
 
 ### Okno wyboru
 
+Okno **Wybierz karty do dodania** grupuje propozycje według haseł.
+Każda karta ma osobną ramkę: checkbox **Dodaj kartę**, informację o pochodzeniu
+definicji oraz pola **Hasło (EN)**, **Znaczenie (PL)** i **Definicja (EN)**.
+Odznaczenie wyłącza edycję tej propozycji; jej treść pozostaje zachowana.
+U góry widać licznik **Wybrane: n z wszystkich**, a checkbox **Zaznacz wszystkie**
+pokazuje też częściowy wybór. Przycisk **Dodaj karty (n)** podaje liczbę kart,
+które zostaną zapisane, i jest wyłączony przy pustym wyborze.
+Jeśli zaznaczona karta nie ma polskiego znaczenia, okno przewija się do jej pola
+i ustawia tam kursor. **Anuluj** wraca do kolejki bez zapisu kart.
+
 Okno pokazuje **wszystkie** znaczenia z diki, ale zaznaczone jest tylko pierwsze
 N (**Domyślnie zaznacz znaczeń**, `ai_max_senses`, domyślnie 3) — diki podaje je od
 najczęstszych. Przy każdym widać, skąd jest definicja: *para ze słownika*,
 *definicję dobrało AI* albo *✗ bez definicji*. Każde znaczenie ma też pole
-**Hasło angielskie** — wypełnione hasłem z kolejki, do poprawienia dla tej jednej
+**Hasło (EN)** — wypełnione hasłem z kolejki, do poprawienia dla tej jednej
 karty (np. *salvage* → *salvage sth*); puste wraca do hasła z kolejki. Zmiana
 hasła nie cofa potwierdzenia definicji. Kolejka nadal rozpoznaje „mam już karty”
 po haśle z listy, więc słowa, którego wszystkie karty dostały zmienione hasło,
@@ -336,7 +358,7 @@ ręcznie przestaje być definicją AI. Pary ze
 słownika i karty bez definicji nie mają czego weryfikować. Puste ustawienie
 tagu wyłącza go. Zmiana nie retaguje wcześniejszych notatek.
 
-Każda notatka zapisana przez **AI: znaczenia** dostaje również automatyczny tag
+Każda notatka zapisana przez **Utwórz karty z AI** dostaje również automatyczny tag
 **`ai-import::YYYY-MM-DD`**, np. `ai-import::2026-10-01`. Data to lokalny dzień
 zapisu kart, również przy zapisie odzyskanych propozycji. Wszystkie notatki
 w jednej zatwierdzonej paczce mają tę samą datę; nie ma identyfikatora paczki.
@@ -398,14 +420,3 @@ i `max_rows` nie mają pól w oknie ustawień — zmienisz je, edytując `meta.j
 dodatku przy zamkniętym Anki (przycisk **Config** w menedżerze dodatków otwiera
 okno ustawień, a nie edytor JSON). Klucze, token i pozostałe
 dane prywatne trafiają do `meta.json`, które nie jest wersjonowane.
-
-### Otwarte zgłoszenie: znikający podgląd słowników
-
-Na Anki 26.09.3 / Qt 6.11.2 / macOS 27.0.1 zgłoszono pusty widok
-Cambridge, Oxford i LDoCE po chwilowym wyświetleniu strony, przy działającym
-diki. Problem pozostaje niewyjaśniony. Poprawka rozpoznawania łączników
-w hasłach nie jest poprawką renderowania.
-
-Osobne testy Qt potwierdziły odczyt wpisów, ale nie odtworzyły znikania stron.
-Do porównania można wybrać sterownik wideo **Software** w preferencjach Anki
-i uruchomić Anki ponownie; wynik tego testu nie jest jeszcze znany.

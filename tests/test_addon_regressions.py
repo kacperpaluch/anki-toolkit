@@ -163,8 +163,13 @@ class PanelTests(unittest.TestCase):
         self.panel._collection = self.module.mw.col
         self.panel._stop_requested = False
         self.panel._progress = types.SimpleNamespace(setText=lambda text: None)
-        self.panel._stop_btn = types.SimpleNamespace(setEnabled=lambda on: None)
-        self.panel._resume_btn = types.SimpleNamespace(setEnabled=lambda on: None)
+        self.panel._stop_btn = types.SimpleNamespace(setEnabled=lambda on: None, setVisible=lambda on: None)
+        self.panel._resume_btn = types.SimpleNamespace(setEnabled=lambda on: None, setVisible=lambda on: None)
+        self.panel._clear_btn = types.SimpleNamespace(setEnabled=lambda on: None, setVisible=lambda on: None)
+        self.panel._queue_controls = types.SimpleNamespace(setEnabled=lambda on: None)
+        self.panel._manual_controls = types.SimpleNamespace(setEnabled=lambda on: None)
+        self.panel._selection_hint = types.SimpleNamespace(setText=lambda text: None)
+        self.panel._queue_status = types.SimpleNamespace(setText=lambda text: None)
         self.panel._marked = set()
         self.panel._picked = set()
         self.panel._adding = set()
@@ -181,6 +186,7 @@ class PanelTests(unittest.TestCase):
                             "ai_fields": {"pl": "pol"}}
         self.panel._hide_done = types.SimpleNamespace(isChecked=lambda: False)
         self.panel._counter = types.SimpleNamespace(setText=lambda _: None)
+        self.panel._ai_btn = types.SimpleNamespace(setText=lambda _: None, setEnabled=lambda on: None)
         self.panel._mark_row_done = lambda *a: (1, None)
         self.editor = Editor()
         self.panel._addcards = types.SimpleNamespace(editor=self.editor)
@@ -309,7 +315,6 @@ class PanelTests(unittest.TestCase):
             count=lambda: len(items), item=lambda i: items[i],
             currentItem=lambda: items[0], selectedItems=lambda: items,
             setEnabled=lambda on: None, setCurrentRow=lambda i: None)
-        self.panel._update_ai_label = lambda: None
         self.enabled = []
         # Kolekcja w tych testach jest atrapą — kontrola duplikatów ma własny test.
         self.module.ai_senses.existing_senses = lambda word, cfg: []
@@ -384,7 +389,8 @@ class PanelTests(unittest.TestCase):
         self.batch_panel(["mother"])
         self.module.ai_senses.find_word_notes = lambda word, cfg: [7]
         self.panel._ai_senses()
-        self.assertEqual((self.loaded, self.jobs, self.enabled), ([], [], []))
+        self.assertEqual((self.loaded, self.jobs), ([], []))
+        self.assertFalse(self.panel._busy)
 
     def test_failed_duplicate_check_stops_the_batch(self):
         self.batch_panel(["mother"])
@@ -559,8 +565,7 @@ class PanelTests(unittest.TestCase):
         self.panel._on_item_checked(self.item)
         self.assertIsNotNone(self.item.roles[2])          # FontRole: pogrubione
         self.assertIsNone(self.item.roles[1])             # ForegroundRole: nie zrobione
-        # Wskaźnik checkboxa rysuje motyw i bywa niewidoczny — tekst renderuje się zawsze
-        self.assertEqual(self.item.text, "☑ word")
+        self.assertEqual(self.item.text, "word")  # jeden checkbox, bez drugiego w tekście
         self.item.checked = False
         self.panel._on_item_checked(self.item)
         self.assertIsNone(self.item.roles[2])
@@ -584,12 +589,36 @@ class PanelTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in self.panel._selected_rows()], [1])  # bez ptaszków
         self.panel._picked = {2}
         self.assertEqual([r["id"] for r in self.panel._selected_rows()], [2])
+        items[1].setHidden(True)
+        self.assertEqual([r["id"] for r in self.panel._selected_rows()], [1])
+
+    def test_manual_done_releases_ai_pick_even_without_n8n(self):
+        items = self.batch_panel(["mother", "father"])
+        self.panel._picked = {1}
+        items[0].checked = True
+        self.panel._set_row(items[0], True)
+        self.finish((0, "offline"))
+        self.assertEqual(self.panel._picked, set())
+        self.assertFalse(items[0].checked)
+        self.assertEqual(self.panel._marked, set())  # brak potwierdzenia n8n
+        self.panel._list.selectedItems = lambda: [items[1]]
+        self.assertEqual([r["id"] for r in self.panel._selected_rows()], [2])
 
     def test_old_refill_cannot_overwrite_new_refill(self):
         self.panel._rebuild = lambda rows: self.assertEqual(rows, [{"id": 2}])
         self.panel.refill(); self.panel.refill()
         future = Future(); future.set_result(([{"id": 1}], None)); self.jobs[0][1](future)
         future = Future(); future.set_result(([{"id": 2}], None)); self.jobs[1][1](future)
+
+    def test_n8n_error_stays_visible_and_keeps_current_list(self):
+        messages = []
+        self.panel._queue_status = types.SimpleNamespace(setText=messages.append)
+        self.panel.refill()
+        self.assertIn("Pobieranie", messages[-1])
+        self.finish(([], "serwer w konserwacji"))
+        self.assertIn("serwer w konserwacji", messages[-1])
+        self.assertIn("Odśwież", messages[-1])
+        self.assertIs(self.panel._list.item(0), self.item)
 
     def test_prefill_preserves_unsaved_fields_and_confirms_replacement(self):
         self.module.askUser = lambda *a, **k: False

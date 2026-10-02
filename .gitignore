@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
+venv/
+.venv/
+*.egg-info/
+htmlcov/
+coverage.xml
+.coverage
+*.tmp
 
 # Anki runtime (także workload_service/user_files) — klucze API i dane użytkownika, NIE commitować
 meta.json

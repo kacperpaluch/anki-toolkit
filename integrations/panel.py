@@ -51,6 +51,7 @@ from aqt.qt import (
     QMenu,
     QPushButton,
     QSplitter,
+    QStyleFactory,
     Qt,
     QTabWidget,
     QTimer,
@@ -296,6 +297,7 @@ class WordQueuePanel(QDockWidget):
         self.refill()
 
     def _save_state(self) -> bool:
+        self._resume_btn.setVisible(not self._busy and bool(self._state.data["drafts"]))
         try:
             self._state.save()
             return True
@@ -348,102 +350,114 @@ class WordQueuePanel(QDockWidget):
         layout = QVBoxLayout(root)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        bar = QHBoxLayout()
+        split = QSplitter(Qt.Orientation.Horizontal, root)
+        sidebar = QWidget(split)
+        sidebar.setMinimumWidth(310)
+        queue = QVBoxLayout(sidebar)
+        queue.setContentsMargins(0, 0, 6, 0)
+        queue.addWidget(QLabel("<b>Słowa do opracowania</b>"))
         self._counter = QLabel("")
-        bar.addWidget(self._counter)
-        bar.addStretch()
+        queue.addWidget(self._counter)
 
+        self._queue_controls = QWidget(sidebar)
+        controls = QVBoxLayout(self._queue_controls)
+        controls.setContentsMargins(0, 0, 0, 0)
+        filters = QHBoxLayout()
         self._order = QComboBox()
-        self._order.setToolTip("Kolejność listy. „Najnowsze” pokazuje na górze hasła\n"
-                               "dopisane ostatnio — te z dzisiejszej wklejki.")
+        self._order.setToolTip("Kolejność słów na liście")
         for label, value in (("Od początku", "id"), ("Najnowsze", "new"), ("Losowo", "random")):
             self._order.addItem(label, value)
         index = self._order.findData(self._cfg.get("order") or "id")
         self._order.setCurrentIndex(index if index >= 0 else 0)
         self._order.currentIndexChanged.connect(lambda _i: self._on_order_changed())
-        bar.addWidget(self._order)
-
-        self._hide_done = QCheckBox("Ukryj zrobione")
-        self._hide_done.setToolTip("Schowaj zrobione (szare). Nie usuwa ich —\n"
-                                  "prawy klik na pozycji cofa odhaczenie.")
-        self._hide_done.setChecked(True)  # domyślnie widzisz tylko to, co zostało
-        self._hide_done.toggled.connect(lambda _c: self._apply_hiding())
-        bar.addWidget(self._hide_done)
-
-        self._word_input = QLineEdit()
-        self._word_input.setPlaceholderText("własne hasło → Enter")
-        self._word_input.setMaximumWidth(280)
-        self._word_input.setToolTip(
-            "Hasła spoza kolejki n8n; kilka rozdziel przecinkiem.\n"
-            "Trafiają do tabeli n8n i na listę, z tymi samymi zakładkami\n"
-            "oraz „AI: znaczenia”. Nieudany zapis wraca do tego pola.")
-        self._word_input.returnPressed.connect(self._add_typed_word)
-        bar.addWidget(self._word_input)
-
-        paste_btn = QPushButton("Wklej listę…")
-        paste_btn.setToolTip("Wklej kolumnę haseł, po jednym na linię")
-        paste_btn.clicked.connect(lambda _checked=False: self._paste_words())
-        bar.addWidget(paste_btn)
-
-        actions = QHBoxLayout()
-        self._ai_btn = QPushButton("AI: znaczenia")
-        self._ai_btn.setToolTip(
-            "Znaczenia z diki + angielska definicja (Cambridge, Oxford, LDoCE)\n"
-            "wskazana przez AI; po jednej karcie na każde zaznaczone znaczenie.\n"
-            "Bierze zaptaszkowane hasła, a gdy nic nie zaptaszkowano — podświetlone."
-        )
-        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
-        actions.addWidget(self._ai_btn)
-        actions.addStretch()
-
-        done_btn = QPushButton("Oznacz jako zrobione")
-        done_btn.setToolTip("Odhacz w n8n i przejdź do następnego słówka")
-        done_btn.clicked.connect(lambda _checked=False: self._done_and_next())
-        actions.addWidget(done_btn)
-
-        next_btn = QPushButton("Pomiń")
-        next_btn.setToolTip("Przejdź dalej bez odhaczania (pominięcie)")
-        next_btn.clicked.connect(lambda _checked=False: self.advance())
-        actions.addWidget(next_btn)
-
+        filters.addWidget(self._order, 1)
         reload_btn = QPushButton("Odśwież")
         reload_btn.setToolTip("Pobierz kolejkę z n8n od nowa")
         reload_btn.clicked.connect(self.refill)
-        bar.addWidget(reload_btn)
-        layout.addLayout(bar)
-        layout.addLayout(actions)
-        recovery = QHBoxLayout()
-        self._progress = QLabel("")
-        self._progress.setWordWrap(True)
-        recovery.addWidget(self._progress, 1)
-        self._stop_btn = QPushButton("Zatrzymaj po bieżącym haśle")
-        self._stop_btn.setEnabled(False)
-        self._stop_btn.clicked.connect(lambda: self._stop_batch())
-        recovery.addWidget(self._stop_btn)
-        self._resume_btn = QPushButton("Odzyskane propozycje")
-        self._resume_btn.setEnabled(bool(self._state.data["drafts"]))
-        self._resume_btn.clicked.connect(lambda: self._resume_drafts())
-        recovery.addWidget(self._resume_btn)
-        layout.addLayout(recovery)
+        filters.addWidget(reload_btn)
+        controls.addLayout(filters)
 
-        split = QSplitter(Qt.Orientation.Horizontal, root)
+        self._hide_done = QCheckBox("Ukryj zrobione")
+        self._hide_done.setToolTip("Szare słowa są zrobione w n8n. Prawy klik pozwala cofnąć oznaczenie.")
+        self._hide_done.setChecked(True)
+        self._hide_done.toggled.connect(lambda _c: self._apply_hiding())
+        controls.addWidget(self._hide_done)
 
-        self._list = QListWidget(split)
-        self._list.setMinimumWidth(160)
+        adding = QHBoxLayout()
+        self._word_input = QLineEdit()
+        self._word_input.setPlaceholderText("Dodaj słowo — Enter")
+        self._word_input.setToolTip("Kilka słów rozdziel przecinkiem. Zapis do kolejki wymaga połączenia z n8n.")
+        self._word_input.returnPressed.connect(self._add_typed_word)
+        adding.addWidget(self._word_input, 1)
+        paste_btn = QPushButton("Wklej listę…")
+        paste_btn.setToolTip("Dodaj do n8n wiele słów, po jednym na linię")
+        paste_btn.clicked.connect(lambda _checked=False: self._paste_words())
+        adding.addWidget(paste_btn)
+        controls.addLayout(adding)
+        queue.addWidget(self._queue_controls)
+
+        self._queue_status = QLabel("")
+        self._queue_status.setWordWrap(True)
+        queue.addWidget(self._queue_status)
+        self._list = QListWidget(sidebar)
+        # macOS style can omit indicators after the first checked row.
+        checkbox_style = QStyleFactory.create("Fusion")
+        checkbox_style.setParent(self._list)
+        self._list.setStyle(checkbox_style)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._list.currentItemChanged.connect(self._on_item_changed)
         self._list.itemChanged.connect(self._on_item_checked)
         self._list.itemSelectionChanged.connect(self._update_ai_label)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._list_menu)
-        split.addWidget(self._list)
+        queue.addWidget(self._list, 1)
+
+        self._selection_hint = QLabel("Kliknij słowo, aby zobaczyć słowniki. Checkboxy wybierają paczkę do AI.")
+        self._selection_hint.setWordWrap(True)
+        queue.addWidget(self._selection_hint)
+        self._ai_btn = QPushButton("Utwórz karty z AI")
+        self._ai_btn.setToolTip("Znaczenia z diki i definicje ze słowników. Przed zapisem wybierzesz i poprawisz karty.")
+        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
+        queue.addWidget(self._ai_btn)
+        self._clear_btn = QPushButton("Wyczyść checkboxy")
+        self._clear_btn.clicked.connect(lambda _checked=False: self._clear_picks())
+        self._clear_btn.setVisible(False)
+        queue.addWidget(self._clear_btn)
+
+        self._manual_controls = QWidget(sidebar)
+        manual = QHBoxLayout(self._manual_controls)
+        manual.setContentsMargins(0, 0, 0, 0)
+        done_btn = QPushButton("Oznacz jako zrobione")
+        done_btn.setToolTip("Dotyczy bieżącego słowa: oznacz w n8n i przejdź dalej. Nie tworzy kart.")
+        done_btn.clicked.connect(lambda _checked=False: self._done_and_next())
+        manual.addWidget(done_btn)
+        next_btn = QPushButton("Pomiń")
+        next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n")
+        next_btn.clicked.connect(lambda _checked=False: self.advance())
+        manual.addWidget(next_btn)
+        queue.addWidget(self._manual_controls)
+        split.addWidget(sidebar)
 
         self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), self._cfg.get("page_js") or [], split)
         split.addWidget(self._tabs)
-        split.setStretchFactor(1, 1)  # zakładki zjadają całą nadmiarową szerokość
-        split.setSizes([220, 880])
+        split.setStretchFactor(1, 1)
+        split.setSizes([330, 770])
+        layout.addWidget(split, 1)
 
-        layout.addWidget(split)
+        recovery = QHBoxLayout()
+        self._progress = QLabel("")
+        self._progress.setWordWrap(True)
+        recovery.addWidget(self._progress, 1)
+        self._stop_btn = QPushButton("Zatrzymaj po bieżącym haśle")
+        self._stop_btn.setVisible(False)
+        self._stop_btn.clicked.connect(lambda: self._stop_batch())
+        recovery.addWidget(self._stop_btn)
+        self._resume_btn = QPushButton("Odzyskane propozycje")
+        self._resume_btn.setVisible(bool(self._state.data["drafts"]))
+        self._resume_btn.clicked.connect(lambda: self._resume_drafts())
+        recovery.addWidget(self._resume_btn)
+        layout.addLayout(recovery)
+        self._update_ai_label()
         return root
 
     # -- kolejka ------------------------------------------------------------
@@ -575,6 +589,7 @@ class WordQueuePanel(QDockWidget):
             return
         self._refill_generation += 1
         generation = self._refill_generation
+        self._queue_status.setText("Pobieranie kolejki z n8n…")
         def done(future):
             if sip.isdeleted(self) or generation != self._refill_generation:
                 return
@@ -582,8 +597,10 @@ class WordQueuePanel(QDockWidget):
                 rows, error = future.result()
             except Exception:
                 log.exception("word_queue: pobieranie kolejki rzuciło wyjątkiem")
+                self._queue_status.setText("Nie pobrano kolejki. Spróbuj ponownie przez Odśwież.")
                 return
             if error:
+                self._queue_status.setText(f"Nie pobrano kolejki z n8n: {error}. Spróbuj przez Odśwież.")
                 tooltip(f"n8n: nie pobrano kolejki — {error}", parent=mw, period=5000)
                 return
             if sip.isdeleted(self):
@@ -598,6 +615,7 @@ class WordQueuePanel(QDockWidget):
             late = [row for row_id, row in self._added.items() if row_id not in fetched]
             self._done_count = 0  # licznik jest per sesja, nie per tabela
             self._rebuild(self._ordered(rows + late))
+            self._queue_status.setText("" if rows or late else "Kolejka jest pusta. Dodaj słowo lub wklej listę.")
             self._settle_owed()
 
         mw.taskman.run_in_background(lambda: self._fetch_queue(self._cfg), done,
@@ -735,6 +753,8 @@ class WordQueuePanel(QDockWidget):
             return
         if row_id in self._pending:
             return
+        if done:
+            self._finish_rows({row_id}, mark=False)
         previous = row_id in self._marked
         if previous == done:
             if item is not None:
@@ -784,12 +804,9 @@ class WordQueuePanel(QDockWidget):
             finished(failed)
 
     def _style_item(self, item: QListWidgetItem) -> None:
-        """Szare = zrobione w n8n, „☑" i pogrubienie = wybrane do AI.
+        """Szare = zrobione w n8n, checkbox i pogrubienie = wybrane do AI.
 
-        Wskaźnik checkboxa rysuje motyw i na liście kilkuset pozycji potrafi być
-        niewidoczny — dlatego wybór niesie też TEKST pozycji, który wyrenderuje
-        się zawsze. Wszystkie trzy sygnały czytamy z `self`, więc nie da się ich
-        rozjechać z listy wywołań. setData emituje itemChanged, stąd wyciszenie.
+        setData emituje itemChanged, stąd wyciszenie.
         """
         row = item.data(Qt.ItemDataRole.UserRole) or {}
         row_id = row.get("id")
@@ -802,7 +819,7 @@ class WordQueuePanel(QDockWidget):
             font.setBold(True)
         with self._silent():
             waiting = str(row_id) in self._state.data["owed"] and row_id not in self._marked
-            item.setText((f"☑ {word}" if picked else word) + (" · karty są, czeka n8n" if waiting else ""))
+            item.setText(word + (" · karty są, czeka n8n" if waiting else ""))
             # Rola = None przywraca domyślny wygląd motywu (jasny i ciemny).
             item.setData(Qt.ItemDataRole.ForegroundRole,
                          QBrush(Qt.GlobalColor.gray) if done else None)
@@ -824,6 +841,7 @@ class WordQueuePanel(QDockWidget):
             item = self._list.item(i)
             row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
             item.setHidden(hide and row_id in self._marked)
+        self._update_ai_label()
 
     def advance(self) -> None:
         """Następna WIDOCZNA pozycja. Nic nie odhacza — od tego jest ptaszek."""
@@ -1037,7 +1055,7 @@ class WordQueuePanel(QDockWidget):
         Schowane (zrobione) pomijamy — Ctrl+A zaznacza też je.
         """
         rows = [self._list.item(i).data(Qt.ItemDataRole.UserRole)
-                for i in range(self._list.count())]
+                for i in range(self._list.count()) if not self._list.item(i).isHidden()]
         picked = [row for row in rows if (row or {}).get("id") in self._picked]
         if picked:
             return picked
@@ -1046,8 +1064,17 @@ class WordQueuePanel(QDockWidget):
                 if item is not None and not item.isHidden()]
 
     def _update_ai_label(self) -> None:
-        count = len(self._picked) or len(self._list.selectedItems())
-        self._ai_btn.setText("AI: znaczenia" + (f" ({count})" if count > 1 else ""))
+        selected = self._selected_rows()
+        count = len(selected)
+        self._ai_btn.setText(f"Utwórz karty z AI ({count})" if count else "Wybierz słowa do AI")
+        self._ai_btn.setEnabled(not self._busy and count > 0)
+        self._clear_btn.setVisible(bool(self._picked))
+        self._clear_btn.setEnabled(not self._busy)
+        self._selection_hint.setText(
+            f"Do AI: {count} (wybór z checkboxów). Klikanie innych słów nie zmienia paczki."
+            if any(row["id"] in self._picked for row in selected) else
+            f"Do AI: {count} (podświetlenie). Checkboxy pozwalają zebrać paczkę."
+            if count else "Kliknij słowo, aby zobaczyć słowniki. Checkboxy wybierają paczkę do AI.")
 
     def _unfreeze(self) -> None:
         """Paczka przerwana (inny profil, zamknięta kolekcja) nie może zostawić
@@ -1058,14 +1085,19 @@ class WordQueuePanel(QDockWidget):
     def _set_busy(self, busy: bool) -> None:
         """Paczka w toku: lista i wszystko, co przebudowuje panel, czeka."""
         self._busy = busy
-        self._ai_btn.setEnabled(not busy)
+        self._update_ai_label()
+        self._queue_controls.setEnabled(not busy)
+        self._manual_controls.setEnabled(not busy)
         self._list.setEnabled(not busy)
         self._tabs.setEnabled(not busy)
         self._stop_btn.setEnabled(busy)
+        self._stop_btn.setVisible(busy)
         self._resume_btn.setEnabled(not busy and bool(self._state.data["drafts"]))
+        self._resume_btn.setVisible(not busy and bool(self._state.data["drafts"]))
 
     def _ai_failed(self, message: str) -> None:
         self._set_busy(False)
+        self._progress.setText(f"AI: {message}")
         tooltip(f"AI: {message}", parent=mw, period=6000)
 
     def _finish_batch(self, proposals: list[dict], errors: list[tuple[str, str]],
@@ -1120,6 +1152,7 @@ class WordQueuePanel(QDockWidget):
             return
         self._state.drop_drafts(done_words)
         self._save_state()
+        self._progress.setText(f"Zapisano {added} kart. Wybierz kolejne słowa.")
 
         from aqt.operations import on_op_finished
         on_op_finished(mw, result, self)
@@ -1148,13 +1181,12 @@ class WordQueuePanel(QDockWidget):
             if mark and row_id not in self._marked:
                 self._set_row(item, True)
         self._update_ai_label()
+        self._update_counter()
 
     def _update_counter(self) -> None:
         left = sum((self._list.item(i).data(Qt.ItemDataRole.UserRole) or {}).get("id") not in self._marked
                    for i in range(self._list.count()))
-        picked = f" · ☑ {len(self._picked)} do AI" if self._picked else ""
-        self._counter.setText(
-            f"{left} do zrobienia{picked} · ✓ {self._done_count} w tej sesji")
+        self._counter.setText(f"Pozostało: {left} · Zrobione w tej sesji: {self._done_count}")
 
     # -- pomocnicze ---------------------------------------------------------
 

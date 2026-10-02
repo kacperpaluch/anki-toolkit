@@ -21,13 +21,17 @@ try:
         QCheckBox,
         QDialog,
         QDialogButtonBox,
+        QFrame,
         QFormLayout,
+        QGroupBox,
+        QHBoxLayout,
         QLineEdit,
         QPlainTextEdit,
         QLabel,
         QScrollArea,
         QVBoxLayout,
         QWidget,
+        Qt,
     )
 except ImportError:  # pozwala odpalić testy bez Anki
     mw = None
@@ -352,20 +356,21 @@ class SensePicker(QDialog):
         # Pokazujemy wszystkie znaczenia ze słownika, zaznaczone jest tylko pierwsze N.
         checked = int(cfg.get("ai_max_senses", 3) or 3)
         words = [proposal["word"] for proposal in proposals]
-        self.setWindowTitle(f"AI: znaczenia „{words[0]}”" if len(words) == 1
-                            else f"AI: znaczenia — {len(words)} haseł")
-        self.resize(720, 700)
+        self.setWindowTitle(f"Wybierz karty do dodania — {words[0]}" if len(words) == 1
+                            else f"Wybierz karty do dodania — {len(words)} haseł")
+        self.resize(820, 740)
         self._boxes = []
+        self._all = None
 
         layout = QVBoxLayout(self)
-        hint = QLabel("Wybierz znaczenia i popraw treść przed zapisem. Polskie znaczenie jest wymagane. "
-                      "Ocena AI nie zastępuje ręcznej weryfikacji.")
+        hint = QLabel("Jedno znaczenie = jedna karta. Zaznacz karty, które chcesz dodać, i popraw ich treść. "
+                      "Znaczenie po polsku jest wymagane.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
         source = " · ".join(dict.fromkeys(p["provider"] for p in proposals if p.get("provider"))) or provider_label(cfg)
         if source:
-            who = QLabel(f"Policzone przez: {escape(source)}")
+            who = QLabel(f"Dopasowanie definicji: {escape(source)}")
             who.setStyleSheet("color: gray;")
             layout.addWidget(who)
 
@@ -373,17 +378,16 @@ class SensePicker(QDialog):
         inner_layout = QVBoxLayout(inner)
         for proposal in proposals:
             word = proposal["word"]
-            if len(proposals) > 1:
-                header = QLabel(f"<b>{escape(word)}</b>")
-                header.setWordWrap(True)
-                inner_layout.addWidget(header)
+            section = QGroupBox(word.replace("&", "&&"))
+            section_layout = QVBoxLayout(section)
+            inner_layout.addWidget(section)
             if "sources" in proposal:
                 used = set(proposal["sources"])
                 missing = set(proposal.get("urls", {})) - used
                 status = QLabel("Wykorzystane źródła: " + escape(", ".join(proposal["sources"]))
                                 + (" · Pominięte: " + escape(", ".join(sorted(missing))) if missing else ""))
                 status.setWordWrap(True)
-                inner_layout.addWidget(status)
+                section_layout.addWidget(status)
             existing = proposal.get("existing") or ()
             if existing:
                 # Ostrzeżenie, nie blokada — nowe znaczenie istniejącego hasła jest OK.
@@ -391,47 +395,68 @@ class SensePicker(QDialog):
                     len(existing), escape(word), escape(" · ".join(filter(None, existing)))))
                 known.setWordWrap(True)
                 known.setStyleSheet("color: #c0392b;")
-                inner_layout.addWidget(known)
+                section_layout.addWidget(known)
             for index, sense in enumerate(proposal["senses"], 1):
-                box = QCheckBox(f"{index}. Dodaj znaczenie — {self.origin(sense)}")
+                card = QFrame()
+                card.setFrameShape(QFrame.Shape.StyledPanel)
+                card_layout = QVBoxLayout(card)
+                section_layout.addWidget(card)
+                heading = QHBoxLayout()
+                box = QCheckBox(f"{index}. Dodaj kartę")
                 box.setChecked(index <= checked)
-                inner_layout.addWidget(box)
+                heading.addWidget(box)
+                origin = QLabel(self.origin(sense))
+                origin.setWordWrap(True)
+                heading.addWidget(origin, 1)
+                card_layout.addLayout(heading)
+                content = QWidget()
+                content_layout = QVBoxLayout(content)
+                content_layout.setContentsMargins(0, 0, 0, 0)
+                card_layout.addWidget(content)
+                content.setEnabled(box.isChecked())
+                box.toggled.connect(content.setEnabled)
                 form = QFormLayout()
+                form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
                 # Hasło tej jednej karty; kolejka dalej zna wiersz po haśle z listy.
                 fields = {"word": QLineEdit(word)}
-                form.addRow("Hasło angielskie", fields["word"])
-                for key, label in (("pl", "Polskie znaczenie"), ("en", "Definicja angielska")):
+                form.addRow("Hasło (EN)", fields["word"])
+                for key, label in (("pl", "Znaczenie (PL)"), ("en", "Definicja (EN)")):
                     edit = QPlainTextEdit()
                     edit.setPlainText(sense.get(key, ""))
                     edit.setFixedHeight(64)
                     form.addRow(label, edit)
                     fields[key] = edit
-                inner_layout.addLayout(form)
+                content_layout.addLayout(form)
                 links = source_links(sense, proposal.get("urls") or {})
                 if links:
                     source = QLabel(links)
                     source.setOpenExternalLinks(True)
                     source.setWordWrap(True)
-                    inner_layout.addWidget(source)
+                    content_layout.addWidget(source)
                 reviewed = None
                 if _by_ai(sense):  # tylko przypisanie modelu wymaga przeglądu
                     reviewed = QCheckBox("Sprawdziłem, że definicja pasuje do znaczenia")
                     reviewed.setChecked(True)  # most matches are right: unticking is the exception
-                    inner_layout.addWidget(reviewed)
+                    content_layout.addWidget(reviewed)
                     for key in ("pl", "en"):  # hasło nie zmienia dopasowania definicji
                         fields[key].textChanged.connect(lambda reviewed=reviewed: reviewed.setChecked(False))
                 self._boxes.append((box, word, sense, fields, reviewed))
         inner_layout.addStretch()
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        area.setWidget(inner)
+        self._area = QScrollArea()
+        self._area.setWidgetResizable(True)
+        self._area.setWidget(inner)
 
+        selection = QHBoxLayout()
         if len(self._boxes) > 1:
             self._all = QCheckBox(f"Zaznacz wszystkie ({len(self._boxes)})")
-            self._all.setChecked(all(box.isChecked() for box, *_rest in self._boxes))
-            self._all.toggled.connect(self._toggle_all)
-            layout.addWidget(self._all)
-        layout.addWidget(area)
+            self._all.setTristate(True)
+            self._all.clicked.connect(self._toggle_all)
+            selection.addWidget(self._all)
+        self._summary = QLabel()
+        selection.addWidget(self._summary)
+        selection.addStretch()
+        layout.addLayout(selection)
+        layout.addWidget(self._area)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -439,9 +464,14 @@ class SensePicker(QDialog):
         self._error = QLabel()
         self._error.setWordWrap(True)
         layout.addWidget(self._error)
+        self._add_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Anuluj")
         buttons.accepted.connect(self._accept_selected)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        for box, *_rest in self._boxes:
+            box.toggled.connect(self._update_selection)
+        self._update_selection()
 
     @staticmethod
     def origin(sense: dict) -> str:
@@ -455,11 +485,25 @@ class SensePicker(QDialog):
         for box, _word, _sense, _fields, _reviewed in self._boxes:
             box.setChecked(checked)
 
+    def _update_selection(self) -> None:
+        count = sum(box.isChecked() for box, *_rest in self._boxes)
+        self._summary.setText(f"Wybrane: {count} z {len(self._boxes)}")
+        self._add_btn.setText(f"Dodaj karty ({count})")
+        self._add_btn.setEnabled(count > 0)
+        if self._all is not None:
+            state = (Qt.CheckState.Unchecked if not count else Qt.CheckState.Checked
+                     if count == len(self._boxes) else Qt.CheckState.PartiallyChecked)
+            self._all.setCheckState(state)
+
     def _accept_selected(self):
-        if any(box.isChecked() and not fields["pl"].toPlainText().strip()
-               for box, _word, _sense, fields, _reviewed in self._boxes):
-            self._error.setText("Uzupełnij polskie znaczenie lub odznacz tę propozycję.")
+        if not any(box.isChecked() for box, *_rest in self._boxes):
             return
+        for box, _word, _sense, fields, _reviewed in self._boxes:
+            if box.isChecked() and not fields["pl"].toPlainText().strip():
+                self._error.setText("Uzupełnij polskie znaczenie lub odznacz tę propozycję.")
+                self._area.ensureWidgetVisible(fields["pl"])
+                fields["pl"].setFocus()
+                return
         self.accept()
 
     def selected(self) -> list[tuple[str, dict]]:

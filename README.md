@@ -48,11 +48,14 @@ dostępność poziomów zależy od modelu i wersji CLI.
 
 Edytor promptów zostawia więcej miejsca na tekst, a ustawienia zadania i modelu
 zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; połączenia
-i mapowanie pól są w osobnych zwijanych sekcjach. Panel kolejki rozdziela
-dodawanie i filtrowanie słów od działań AI, oznaczania jako zrobione i pomijania.
+i mapowanie pól są w osobnych zwijanych sekcjach. Panel kolejki ma listę i działania
+po lewej, słowniki po prawej. Checkboxy zbierają słowa do AI, a opis wyboru
+i przycisk **Utwórz karty z AI (n)** pokazują faktyczną paczkę. Ręczne oznaczenie
+jako zrobione zwalnia wybór również przy błędzie n8n; błąd pobrania kolejki
+pozostaje widoczny nad listą.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
-Nowe notatki z **AI: znaczenia** mają tag dnia `ai-import::YYYY-MM-DD`;
+Nowe notatki z **Utwórz karty z AI** mają tag dnia `ai-import::YYYY-MM-DD`;
 szczegóły dopasowania opisuje dokumentacja modułu. Skrypty samych stron działają
 tylko na zakładkach z `page_js` (domyślnie diki) — obejście błędu QtWebEngine 6.11.2,
 przez który strony Cambridge, Oxfordu i LDoCE znikały po chwili.
@@ -60,9 +63,12 @@ Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
 wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje
 adres główny i zapasowy n8n oraz Cloudflare Access (service token). Web Bridge przyjmuje dane
-z userscriptu słownika. **AI: znaczenia** robi po jednej karcie na znaczenie
+z userscriptu słownika. **Utwórz karty z AI** robi po jednej karcie na znaczenie
 z diki; model tylko wskazuje pasującą definicję z Cambridge, Oxfordu lub LDoCE,
 więc cała treść karty pochodzi ze słowników.
+Okno **Wybierz karty do dodania** grupuje znaczenia według haseł, pokazuje każdą
+propozycję osobno i liczy zaznaczone karty na przycisku **Dodaj karty (n)**.
+Brak polskiego znaczenia kieruje do pola wymagającego poprawy.
 
 **Porządki**
 

@@ -24,11 +24,16 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   „zrobione" z n8n to `_marked` i kolor pozycji — dwie różne rzeczy na jednej
   liście, nie sklejaj ich z powrotem. Oba stany rysuje `_style_item` czytając
   `self`, a nie argumenty — inaczej rozjeżdżają się między ścieżkami wywołań.
-  Wybór niesie TEKST pozycji („☑ hasło"), nie tylko wskaźnik checkboxa: ten
-  rysuje motyw Anki i bywa niewidoczny. Dlatego `_make_item` tworzy pozycję bez
-  etykiety — jedynym miejscem, które ją ustawia, jest `_style_item`. Ptaszki przeżywają przebudowę listy
-  (po to są), ale `_rebuild` przycina je do istniejących wierszy, a zapis kart
-  je zdejmuje, żeby hasło nie poszło do modelu drugi raz.
+  Wybrany wiersz ma checkbox i pogrubienie, bez dodatkowego ptaszka
+  w tekście. Tylko lista używa `QStyleFactory.create("Fusion")`: styl macOS
+  potrafi pominąć wskaźniki kolejnych zaznaczonych wierszy. Styl ma rodzica
+  ustawionego na listę, więc pozostaje żywy przez cały czas jej działania.
+  `_make_item` ustawia etykietę wyłącznie przez `_style_item`.
+  Ptaszki przeżywają przebudowę listy, ale `_rebuild` przycina je do istniejących
+  wierszy. Zapis kart i `_set_row(done=True)` zdejmują wybór do AI; ręczne
+  oznaczenie zwalnia wybór nawet przy błędzie HTTP, bez udawania sukcesu n8n.
+  `_selected_rows` pomija ukryte wiersze także dla ptaszków, a licznik przycisku
+  korzysta z tego samego wyboru.
 - Panel blokuje równoległe PATCH-e tego samego ID. `_set_row` to JEDYNE wejście
   do flagi w n8n (przycisk „Oznacz jako zrobione", hook po dodaniu notatki, zapis kart z AI,
   menu kontekstowe); sukces wymaga dokładnie jednego trafienia.
@@ -121,7 +126,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   bierzemy klucze i listę dostawców, NIE modele per pole notatki — kolejka ma
   jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
   `provider_label` pokazuje dostawcę i model w oknie wyboru.
-- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu, n8n, Cloudflare i Web Bridge są zwijane. Błąd mapowania otwiera sekcję pól. Panel kolejki rozdziela pasek źródeł od działań AI/oznaczania/pomijania.
+- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu, n8n, Cloudflare i Web Bridge są zwijane. Błąd mapowania otwiera sekcję pól. Panel kolejki ma sterowanie i listę po lewej, słowniki po prawej. Przycisk „Utwórz karty z AI” i opis wyboru korzystają z `_selected_rows`; bez wyboru AI jest wyłączone. Status pobierania n8n zostaje nad listą. Stop jest widoczny podczas pracy, odzyskiwanie tylko przy draftach (`_save_state` i `_set_busy` odświeżają widoczność).
 - `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia AI Generatora, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
@@ -148,10 +153,15 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   escapowane jako HTML bez cudzysłowów (`quote=False`, jak edytor Anki), bo
   wyszukiwarka porównuje surowy HTML pola.
 
+- SensePicker grupuje hasła w `QGroupBox`, a karty w osobne ramki. Checkbox
+  karty włącza jej pola, licznik i przycisk „Dodaj karty (n)” korzystają z tego
+  samego wyboru. `_all` pokazuje stan częściowy; tylko `clicked` zmienia wybór,
+  dzięki czemu programowe odświeżenie stanu nie wybiera pozostałych kart.
+  Pusty wybór nie zatwierdza okna, brak PL przewija i skupia wadliwe pole.
 - SensePicker edytuje kopie propozycji i pokazuje wszystkie znaczenia, zaznaczając
   pierwsze `ai_max_senses`. Wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów
   zakładek (wiersz n8n albo szablon) dla `pl_src` i `src`, nigdy z odpowiedzi modelu.
-- Pole „Hasło angielskie” w SensePickerze trafia do znaczenia jako `sense["word"]`
+- Pole „Hasło (EN)” w SensePickerze trafia do znaczenia jako `sense["word"]`
   (puste = hasło z kolejki) i tylko `note_fields` wpisuje je na kartę. Para
   `(word, sense)` z `selected()` niesie NADAL hasło z kolejki — po nim panel wiąże
   wiersz, drafty i odhaczenie; nie podmieniaj go edytowaną wartością. Dług `owed`

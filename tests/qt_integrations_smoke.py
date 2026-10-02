@@ -3,8 +3,13 @@
 Real QtWebEngine DOM extraction and picker widgets; synthetic pages, no network.
 """
 import importlib.util
+import importlib
 from pathlib import Path
+import sys
+import tempfile
+import types
 import unittest
+from unittest.mock import patch
 
 from aqt.qt import QApplication, QEventLoop, QTimer, QUrl, QWebEnginePage, QWebEngineProfile
 
@@ -13,6 +18,69 @@ APP = QApplication.instance() or QApplication(["qt-integrations-smoke"])
 
 
 class QtIntegrationSmoke(unittest.TestCase):
+    def test_queue_layout_and_action_states_without_n8n(self):
+        from aqt.qt import QDockWidget, QTabWidget, Qt, sip
+        # Import the real panel without registering add-on hooks or using a profile.
+        package = types.ModuleType('queue_preview')
+        package.__path__ = [str(ROOT)]
+        integrations = types.ModuleType('queue_preview.integrations')
+        integrations.__path__ = [str(ROOT / 'integrations')]
+        with patch.dict(sys.modules, {'queue_preview': package,
+                                     'queue_preview.integrations': integrations}):
+            module = importlib.import_module('queue_preview.integrations.panel')
+        panel = module.WordQueuePanel.__new__(module.WordQueuePanel)
+        QDockWidget.__init__(panel)
+        with tempfile.TemporaryDirectory() as folder:
+            panel._state = module.QueueState('/test/collection.anki2', {}, folder)
+            panel._cfg = {'word_column': 'Slowko', 'flag_column': 'Anki', 'order': 'id'}
+            panel._picked = set()
+            panel._marked = set()
+            panel._pending = {}
+            panel._busy = panel._suspend = False
+            panel._done_count = 0
+            try:
+                with patch.object(module, '_DictTabs', side_effect=lambda *args: QTabWidget(args[-1])):
+                    panel.setWidget(panel._build_ui())
+                panel.resize(1100, 750)
+                panel.show()
+                APP.processEvents()
+                self.assertFalse(panel._ai_btn.isEnabled())
+                self.assertTrue(panel._stop_btn.isHidden())
+                self.assertTrue(panel._resume_btn.isHidden())
+                self.assertEqual(panel._list.style().objectName().lower(), 'fusion')
+                # Silence navigation so this test never touches an editor or a dictionary.
+                with panel._silent():
+                    item = panel._make_item({'id': 1, 'Slowko': 'mother'})
+                    panel._list.addItem(item)
+                item.setCheckState(Qt.CheckState.Checked)
+                self.assertEqual(panel._ai_btn.text(), 'Utwórz karty z AI (1)')
+                self.assertTrue(panel._ai_btn.isEnabled())
+                self.assertIn('checkboxów', panel._selection_hint.text())
+                self.assertFalse(panel._clear_btn.isHidden())
+                with panel._silent():
+                    for row_id in range(2, 5):
+                        panel._list.addItem(panel._make_item({'id': row_id, 'Slowko': f'word {row_id}'}))
+                for index in range(1, 4):
+                    panel._list.item(index).setCheckState(Qt.CheckState.Checked)
+                self.assertEqual(panel._ai_btn.text(), 'Utwórz karty z AI (4)')
+                self.assertEqual([panel._list.item(i).checkState() for i in range(4)],
+                                 [Qt.CheckState.Checked] * 4)
+                panel._set_busy(True)
+                self.assertFalse(panel._queue_controls.isEnabled())
+                self.assertFalse(panel._manual_controls.isEnabled())
+                self.assertFalse(panel._stop_btn.isHidden())
+                panel._state.data['drafts'] = [{'row_id': 1, 'word': 'mother'}]
+                panel._set_busy(False)
+                self.assertFalse(panel._resume_btn.isHidden())
+                panel._state.data['drafts'] = []
+                panel._save_state()
+                self.assertTrue(panel._resume_btn.isHidden())
+                panel._clear_picks()
+                self.assertTrue(panel._clear_btn.isHidden())
+                self.assertFalse(panel._ai_btn.isEnabled())
+            finally:
+                sip.delete(panel)
+
     def test_dictionary_entries_and_challenges(self):
         script = (ROOT / 'integrations/dictionaries-to-anki.user.js').read_text()
         cases = [
@@ -165,7 +233,22 @@ class QtIntegrationSmoke(unittest.TestCase):
         try:
             self.assertEqual([s['pl'] for _w, s in dialog.selected()], ['matka', 'mama'])  # first N checked
             self.assertIsNone(dialog._boxes[1][4])          # dictionary pair: nothing to review
-            self.assertIn('bez definicji', dialog._boxes[2][0].text())
+            self.assertIn('bez definicji', dialog.origin(dialog._boxes[2][2]))
+            from aqt.qt import Qt
+            self.assertEqual(dialog._summary.text(), 'Wybrane: 2 z 3')
+            self.assertEqual(dialog._add_btn.text(), 'Dodaj karty (2)')
+            self.assertEqual(dialog._all.checkState(), Qt.CheckState.PartiallyChecked)
+            self.assertFalse(dialog._boxes[2][3]['pl'].isEnabled())
+            dialog._all.click()  # partial selection → all cards
+            self.assertEqual(len(dialog.selected()), 3)
+            self.assertTrue(dialog._boxes[2][3]['pl'].isEnabled())
+            dialog._all.click()  # all cards → none
+            self.assertEqual(dialog.selected(), [])
+            self.assertFalse(dialog._add_btn.isEnabled())
+            dialog._accept_selected()
+            self.assertEqual(dialog.result(), 0)
+            dialog._boxes[0][0].setChecked(True)
+            dialog._boxes[1][0].setChecked(True)
             self.assertTrue(dialog.selected()[0][1]['reviewed'])    # ticked by default
             self.assertFalse(dialog.selected()[1][1]['reviewed'])   # no checkbox, no claim
             box, word, sense, fields, reviewed = dialog._boxes[0]
@@ -178,6 +261,7 @@ class QtIntegrationSmoke(unittest.TestCase):
             fields['pl'].clear()
             dialog._accept_selected()
             self.assertTrue(dialog._error.text())
+            self.assertEqual(dialog.result(), 0)
         finally:
             dialog.close()
 
