@@ -71,8 +71,9 @@ propozycję osobno i liczy zaznaczone karty na przycisku **Dodaj karty (n)**.
 Brak polskiego znaczenia kieruje do pola wymagającego poprawy.
 Kolejkę przeszukasz po fragmencie hasła i przefiltrujesz przez **Wszystkie /
 Niezrobione / Zrobione**. Dodatkowe pełne konstrukcje mają własne EN i są
-domyślnie odznaczone. Boczne zwroty diki dodajesz do n8n wyłącznie po ręcznym
-wyborze i kliknięciu **Dodaj wybrane zwroty do kolejki**.
+domyślnie odznaczone. Ręcznie zaznaczone boczne zwroty diki trafiają do kolejki
+n8n przy zatwierdzeniu **Dodaj karty**; osobny przycisk **Dodaj wybrane zwroty do
+kolejki** pozwala dopisać je wcześniej, bez zatwierdzania kart.
 
 **Porządki**
 

@@ -370,6 +370,7 @@ class SensePicker(QDialog):
         self._boxes = []
         self._all = None
         self._related_boxes = []
+        self._add_related = add_related
 
         layout = QVBoxLayout(self)
         hint = QLabel("Jedno znaczenie = jedna karta. Zaznacz karty, które chcesz dodać, i popraw ich treść. "
@@ -456,6 +457,10 @@ class SensePicker(QDialog):
             if proposal.get("related") and add_related:
                 related_group = QGroupBox("Powiązane zwroty — wybierz ręcznie do kolejki")
                 related_layout = QVBoxLayout(related_group)
+                related_hint = QLabel('Zaznaczone zwroty trafią do kolejki n8n po kliknięciu „Dodaj karty”. '
+                                      'Przycisk poniżej pozwala dodać je osobno, od razu.')
+                related_hint.setWordWrap(True)
+                related_layout.addWidget(related_hint)
                 related_boxes = []
                 for entry in proposal["related"]:
                     label = entry["related_word"] + (" → " + entry["pl"] if entry.get("pl") else "")
@@ -468,13 +473,8 @@ class SensePicker(QDialog):
                 for choice, _value in related_boxes:
                     choice.toggled.connect(lambda _checked, b=enqueue, choices=related_boxes:
                                            b.setEnabled(any(c.isChecked() for c, _ in choices)))
-                def enqueue_selected(_checked=False, choices=related_boxes):
-                    selected = [value for choice, value in choices if choice.isChecked()]
-                    if selected:
-                        add_related(selected)
-                        for choice, _value in choices:
-                            choice.setChecked(False)
-                enqueue.clicked.connect(enqueue_selected)
+                enqueue.clicked.connect(lambda _checked=False, choices=related_boxes:
+                                        self._enqueue_related(choices))
                 related_layout.addWidget(enqueue)
                 section_layout.addWidget(related_group)
         inner_layout.addStretch()
@@ -531,6 +531,13 @@ class SensePicker(QDialog):
                      if count == len(self._boxes) else Qt.CheckState.PartiallyChecked)
             self._all.setCheckState(state)
 
+    def _enqueue_related(self, choices):
+        selected = [value for choice, value in choices if choice.isChecked()]
+        if selected and self._add_related:
+            self._add_related(selected)
+            for choice, _value in choices:
+                choice.setChecked(False)
+
     def _accept_selected(self):
         if not any(box.isChecked() for box, *_rest in self._boxes):
             return
@@ -540,6 +547,7 @@ class SensePicker(QDialog):
                 self._area.ensureWidgetVisible(fields["pl"])
                 fields["pl"].setFocus()
                 return
+        self._enqueue_related(self._related_boxes)
         self.accept()
 
     def selected(self) -> list[tuple[str, dict]]:

@@ -63,7 +63,9 @@ Panel ma dwie kolumny: **słowa i działania po lewej**, **słowniki po prawej**
 Nad listą są kolejność, **Odśwież**, filtr **Wszystkie / Niezrobione / Zrobione**, **Szukaj w kolejce…**
 i dodawanie słów. Domyślnie widać **Niezrobione**; **Wszystkie** pokazuje całą
 tabelę n8n, a **Zrobione** tylko odhaczone hasła. Wyszukiwarka filtruje po fragmencie hasła bez rozróżniania
-wielkości liter. Krzyżyk czyści filtr; wybór checkboxów zostaje zachowany,
+wielkości liter. Wpisanie `ble` lub `blea` znajdzie `sun-bleached`, ale `blee`
+nie pasuje — wyszukiwanie nie poprawia literówek. Filtr **Wszystkie** pozwala
+szukać także w odhaczonych hasłach. Krzyżyk czyści filtr; wybór checkboxów zostaje zachowany,
 ale ukryte wyniki nie trafiają do AI.
 Pod listą opis wyboru pokazuje, czy AI bierze checkboxy, czy podświetlenie.
 **Utwórz karty z AI (n)** otwiera podgląd przed zapisem; bez wyboru jest wyłączony.
@@ -302,12 +304,14 @@ i linkuje do słownika znaczenia i definicji.
 Boczna lista diki (np. *mother tongue*, *single mother*) pojawia się w podglądzie
 w sekcji **Powiązane zwroty — wybierz ręcznie do kolejki**. Wszystkie checkboxy
 są domyślnie odznaczone. **Zaznacz wszystkie** dotyczy wyłącznie kart.
-Samo zaznaczenie zwrotu niczego nie zapisuje: dopiero **Dodaj wybrane zwroty do
-kolejki** dopisuje wybrane hasła do n8n. Pomijane są hasła już w kolejce lub
+**Dodaj karty** zapisuje karty i dopisuje zaznaczone zwroty do kolejki n8n.
+Osobny przycisk **Dodaj wybrane zwroty do kolejki** pozwala dopisać je od razu,
+bez zatwierdzania kart; te zwroty zostają odznaczone, żeby nie wysłać ich ponownie.
+Pomijane są hasła już w kolejce lub
 mające karty w Anki. W wąskim panelu diki przenosi boczną kolumnę pod
 główne znaczenia — zwroty pozostają dostępne po przewinięciu i nadal są
-odczytywane do podglądu. To osobna akcja — anulowanie podglądu kart nie cofa
-zwrotów już dodanych do kolejki.
+odczytywane do podglądu. Anulowanie podglądu kart nie wysyła zaznaczonych
+zwrotów i nie cofa tych już dopisanych osobnym przyciskiem.
 
 Skrócone PL służy tylko do wyboru. Zwrot przechodzi zwykły proces na własnej
 stronie słownika dopiero po wybraniu go w kolejce do tworzenia kart. Nie ma

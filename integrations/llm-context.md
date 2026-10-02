@@ -57,7 +57,8 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   odznaczone. Nagłówek przechodzi do `sense["word"]` i pola EN w podglądzie.
   Boczne `.diki-results-right-column .fentry` zwracają `{related_word, pl}`:
   `split_entries` je pomija, panel utrwala osobno w `proposal["related"]`.
-  Tylko ręczny wybór i osobny przycisk w pickerze wywołują `_add_related_words`
+  Ręcznie zaznaczone zwroty wysyła zatwierdzenie kart (po walidacji PL) lub
+  osobny przycisk w pickerze; oba używają `_enqueue_related` → `_add_related_words`
   (kontrola Anki na głównym wątku) → istniejące `_add_words` (kontrola kolejki,
   POST w tle). Checkboxy bocznych zwrotów nie należą do `_boxes` ani „Zaznacz wszystkie”. Rolę wyznacza KSZTAŁT, nie
   konfiguracja: `{pl}` bez `def` = znaczenie (diki, jednostka karty), `{def, pl?}` =

@@ -201,7 +201,8 @@ class QtIntegrationSmoke(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(len(senses), 2)  # sidebar never becomes a card
         queued = []
-        dialog = m.SensePicker([{'word': 'in charge', 'senses': senses, 'related': [result[0][-1]]}],
+        related = [result[0][-1], {'related_word': 'bleaching agent'}, {'related_word': 'bleach out'}]
+        dialog = m.SensePicker([{'word': 'in charge', 'senses': senses, 'related': related}],
                                None, {'ai_max_senses': 3}, queued.extend)
         try:
             self.assertEqual([sense['word'] for _, sense in dialog.selected()], ['in charge'])
@@ -219,6 +220,17 @@ class QtIntegrationSmoke(unittest.TestCase):
             button.click()
             self.assertEqual(queued, ['mother tongue'])
             self.assertFalse(dialog._related_boxes[0][0].isChecked())
+            for choice, _word in dialog._related_boxes[1:]:
+                choice.setChecked(True)
+            fields = dialog._boxes[0][3]
+            original_pl = fields['pl'].toPlainText()
+            fields['pl'].setPlainText('')
+            dialog._accept_selected()
+            self.assertEqual(queued, ['mother tongue'])  # invalid cards do not submit words
+            fields['pl'].setPlainText(original_pl)
+            dialog._add_btn.click()
+            self.assertEqual(queued, ['mother tongue', 'bleaching agent', 'bleach out'])
+            self.assertFalse(any(choice.isChecked() for choice, _word in dialog._related_boxes))
         finally:
             dialog.close()
 
