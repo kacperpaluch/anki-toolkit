@@ -78,6 +78,8 @@ def _run_editor_generation(editor: Editor, label: str, only_fields=None,
                 try:
                     skipped = merge_editor_note(editor, note, clone, before)
                     _report(len(ai_results), skipped, gen.last_error)
+                except Exception as e:
+                    tooltip(f"AI: nie zapisano wyniku — {e}", period=8000)
                 finally:
                     finish_editor_operation(editor, token)
 

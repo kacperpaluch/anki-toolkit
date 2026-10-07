@@ -132,6 +132,8 @@ def _start_tts_editor(editor: Editor, token):
                     msg += (" Pominięto pola zmienione w trakcie: "
                             + ", ".join(skipped) + ".")
                 tooltip(msg, period=8000)
+            except Exception as e:
+                tooltip(f"TTS: nie zapisano wyniku — {e}", period=8000)
             finally:
                 finish_editor_operation(editor, token)
 
@@ -145,7 +147,7 @@ def _start_tts_editor(editor: Editor, token):
             raise
 
     try:
-        mw.taskman.run_in_background(bg_task, on_done)
+        mw.taskman.run_in_background(bg_task, on_done, uses_collection=False)
     except Exception:
         finish_editor_operation(editor, token)
         raise
@@ -230,6 +232,8 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
                         msg += (" Pominięto pola zmienione w trakcie: "
                                 + ", ".join(skipped) + ".")
                     tooltip(msg, period=8000)
+                except Exception as e:
+                    tooltip(f"TTS ({label}): nie zapisano wyniku — {e}", period=8000)
                 finally:
                     finish_editor_operation(editor, token)
 
@@ -242,7 +246,7 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
                 finish_editor_operation(editor, token)
                 raise
 
-        mw.taskman.run_in_background(bg_task, on_done)
+        mw.taskman.run_in_background(bg_task, on_done, uses_collection=False)
 
     def start():
         try:

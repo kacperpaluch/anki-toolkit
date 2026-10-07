@@ -95,6 +95,21 @@ def login_status(binary: str = "") -> tuple[bool, str]:
     return True, f"subskrypcja {subscription}{f' — {email}' if email else ''}"
 
 
+_LOGIN_TTL = 300
+_login_ok_until: dict[str, float] = {}
+
+
+def _logged_in(binary: str) -> tuple[bool, str]:
+    """login_status() with a short positive cache — it spawns a process, and a
+    batch would otherwise pay for one before every generated field."""
+    if time.monotonic() < _login_ok_until.get(binary, 0):
+        return True, ""
+    ok, detail = login_status(binary)
+    if ok:
+        _login_ok_until[binary] = time.monotonic() + _LOGIN_TTL
+    return ok, detail
+
+
 def fetch_models(binary: str = "", api_key: str = "") -> list[str]:
     """Aliasy + pełne ID modeli.
 
@@ -134,7 +149,7 @@ class ClaudeCLIProvider(BaseProvider):
             self.logger.error(self.last_error)
             return None
 
-        logged_in, detail = login_status(binary)
+        logged_in, detail = _logged_in(binary)
         if not logged_in:
             self.last_error = f"Claude CLI nie jest zalogowany: {detail}."
             self.logger.error(self.last_error)

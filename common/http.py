@@ -80,7 +80,7 @@ def fetch_url(
                 continue
             logger.error(f"HTTP {e.code} fetching {url}: {e.reason}")
             return None
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (OSError, http.client.HTTPException) as e:  # incl. resets while reading the body
             if attempt < max_retries - 1:
                 delay = 2 ** (attempt + 1)
                 logger.warning(
@@ -166,7 +166,7 @@ def post_create(
                 continue
             log.error(f"Connection error POST {url}: {e}")
             return None, f"Connection error: {e}", not unsent
-        except (TimeoutError, ConnectionError, http.client.HTTPException) as e:
+        except (OSError, http.client.HTTPException) as e:
             log.error(f"Connection error POST {url}: {e}")
             return None, f"Connection error: {e}", True
     return None, "request failed after retries", False
@@ -210,7 +210,7 @@ def post_json(
             err = extract_http_error(e)
             log.error(f"{method} {url} failed: {err}")
             return None, err
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (OSError, http.client.HTTPException) as e:  # incl. resets while reading the body
             if attempt < max_retries - 1:
                 delay = 2 ** (attempt + 1)
                 log.warning(

@@ -38,26 +38,30 @@ def resolve_openrouter_key(config: dict) -> str:
 
 
 def _warn(msg: str) -> None:
-    # validate_config may run from a background thread (e.g. workflow step) —
-    # Qt UI calls must always happen on the main thread.
+    # Qt UI calls must always happen on the main thread; workers use config_error().
     from aqt import mw
     from aqt.utils import showWarning
     mw.taskman.run_on_main(lambda: showWarning(msg))
 
 
-def validate_config(config: dict) -> bool:
+def config_error(config: dict) -> str | None:
+    """Why TTS cannot run, or None. No UI — safe from a worker thread."""
     if not resolve_openrouter_key(config):
-        _warn(
+        return (
             "Brak klucza API OpenRouter.\n"
             "Wpisz klucz w ustawieniach TTS lub zaznacz "
             "\"Użyj klucza z AI Generatora\"."
         )
-        return False
-    voices = unique(config.get("voices", []))
-    if not voices:
-        _warn("Nie zaznaczono żadnego głosu w ustawieniach TTS.")
-        return False
-    return True
+    if not unique(config.get("voices", [])):
+        return "Nie zaznaczono żadnego głosu w ustawieniach TTS."
+    return None
+
+
+def validate_config(config: dict) -> bool:
+    error = config_error(config)
+    if error:
+        _warn(error)
+    return not error
 
 
 def get_tasks(config: dict) -> list[dict]:

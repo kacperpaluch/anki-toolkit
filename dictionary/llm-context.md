@@ -30,8 +30,7 @@ Kliknięcie przycisku/menu
       → CACHE (media folder = cache): dla każdego źródła sprawdź os.path.exists(media_dir / dict_{source}_{safe_word}.mp3)
           # trafienie → reuse istniejącego pliku, bez sieci; tylko missing_sources idą do fetch_audio_group
           # deterministyczna nazwa + dedup Anki = persistencja cross-run (kolejne karty tego samego słowa nie pobierają ponownie)
-      → dictionary_service.fetch_audio_group(word, missing_sources, max_retries, page_timeout, mp3_timeout, batch_cache)
-          # batch_cache: dict wspólny dla całego batcha — pomija re-fetch tego samego słowa (komplementarny do cache media)
+      → dictionary_service.fetch_audio_group(word, missing_sources, max_retries, page_timeout, mp3_timeout)
           # pobiera stronę raz na słownik, uruchamia parsery UK i US na tym samym HTML
           → fetch_text(url, max_retries, timeout=page_timeout)  # 1× GET na słownik (Oxford/Cambridge/Longman)
           → _get_{oxford,cambridge,longman}_audio_url()   # parser UK na tym HTML
@@ -105,7 +104,7 @@ Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw za
 
 `fetch_audio_group` grupuje sources po base dictionary i pobiera stronę HTML **raz na słownik**, nawet gdy button ma `["oxford_uk", "oxford_us"]`. Wynikowy `page_cache` jest przekazywany do `ipa_service.fetch_ipa(html=...)`, który pomija własny GET gdy HTML jest dostępny.
 
-W trybie batch (`browser_ui`) `batch_cache: dict = {}` jest tworzony raz przed pętlą po notatkach i przekazywany do `process_note_group(batch_cache=...)`. Klucz cache: `(word, tuple(sorted(sources)))`. Notatki z tym samym słowem nie generują ponownych requestów HTTP.
+Batch nie ma osobnego cache'u w pamięci: trzymał HTML i MP3 każdego hasła do końca przebiegu (setki MB przy dużym zaznaczeniu), a powtórzone hasło i tak trafia w plik w folderze mediów. Nie przywracaj go.
 
 | Słownik | Sources w buttonie | Requesty (strona + MP3) |
 |---|---|---|
@@ -138,6 +137,6 @@ Każdy słownik ma własną klasę parsera dziedziczącą po `html.parser.HTMLPa
 - `ipa_service` używa `fetch_text()` z `common.http`; parametry przekazywane przez `fetch_ipa()` z `service.py`; IPA respektuje te same limity co audio
 - IPA fallback: gdy primary source (oxford/cambridge) zwraca `None`, automatycznie próbuje Wiktionary; wynik z Wiktionary jest oznaczony `source="wiktionary"` w `IPAResult`
 - Wiktionary API: waliduje klucz `"*"` w `wikitext` przed dostępem
-- Sygnatura `fetch_audio_group`: `(word, sources, max_retries=3, page_timeout=10, mp3_timeout=10, batch_cache=None)` — wartości domyślne jako bezpieczny fallback
+- Sygnatura `fetch_audio_group`: `(word, sources, max_retries=3, page_timeout=10, mp3_timeout=10)` — wartości domyślne jako bezpieczny fallback
 - `ProcessNoteResult.audio_skipped = True` gdy pole audio ma treść → editor_ui wyświetla osobny tooltip
 - Nazwa pliku audio jest sanityzowana (`re.sub(r"[^\w-]+", "_", word)`) — znaki typu `/` lub `"` w polu źródłowym nie psują zapisu do mediów

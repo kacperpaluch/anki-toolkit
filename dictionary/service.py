@@ -36,8 +36,7 @@ def _get_ipa_source_for_dictionary(dictionary: str) -> Optional[str]:
     return None
 
 
-def process_note_group(note, config: dict, dictionaries: list[str],
-                       batch_cache: Optional[dict] = None) -> ProcessNoteResult:
+def process_note_group(note, config: dict, dictionaries: list[str]) -> ProcessNoteResult:
     source_field = config.get("source_field", "English")
     target_field = config.get("target_field", "Pronunciation")
     ipa_field = config.get("ipa_field", "")
@@ -86,7 +85,6 @@ def process_note_group(note, config: dict, dictionaries: list[str],
             audio_results, page_cache = dictionary_service.fetch_audio_group(
                 word, missing_sources,
                 max_retries=max_retries, page_timeout=page_timeout, mp3_timeout=mp3_timeout,
-                batch_cache=batch_cache,
             )
             for audio_result in audio_results:
                 if mw.col is not col:

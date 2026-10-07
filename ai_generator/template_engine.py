@@ -16,6 +16,8 @@ IF_PATTERN = re.compile(
     re.DOTALL
 )
 
+_TOKEN_PATTERN = re.compile(IF_PATTERN.pattern + r'|{{([^\n]*?)}}', re.DOTALL)
+
 _BLOCK_TOKEN_PATTERN = re.compile(r'{%\s*(if\b[^%]*?|else|endif)\s*%}')
 
 
@@ -59,7 +61,9 @@ def render_template(template: str, fields: Dict[str, str], _depth: int = 0) -> s
     if _depth > MAX_DEPTH:
         return template
 
-    def replace_if(match):
+    def replace(match):
+        if match.group(4) is not None:
+            return fields.get(match.group(4).strip(), match.group(0))
         field_name = match.group(1).strip()
         if_content = match.group(2)
         else_content = match.group(3) if match.group(3) else ""
@@ -69,11 +73,5 @@ def render_template(template: str, fields: Dict[str, str], _depth: int = 0) -> s
         else:
             return render_template(else_content, fields, _depth + 1)
 
-    template = IF_PATTERN.sub(replace_if, template)
-
-    def replace_var(match):
-        var_name = match.group(1).strip()
-        return fields.get(var_name, match.group(0))
-
-    template = re.sub(r'{{(.*?)}}', replace_var, template)
-    return template
+    # One pass: a substituted field value is never scanned for {{...}} again.
+    return _TOKEN_PATTERN.sub(replace, template)

@@ -136,14 +136,8 @@ class DictionaryService:
     def fetch_audio_group(
         self, word: str, sources: list[str],
         max_retries: int = 3, page_timeout: int = 10, mp3_timeout: int = 10,
-        batch_cache: Optional[dict] = None,
     ) -> tuple[list[DictionaryAudioResult], dict[str, str]]:
         """Fetch audio for all given sources, using at most one page request per dictionary.
-
-        Args:
-            batch_cache: Optional dict shared across calls in a browser batch. When provided,
-                         results for identical (word, sources) combinations are returned from
-                         cache instead of repeating HTTP requests.
 
         Returns:
             results:    list of audio results
@@ -151,10 +145,6 @@ class DictionaryService:
                         the fetched HTML, so callers can reuse it (e.g. for IPA) without
                         issuing another HTTP request.
         """
-        cache_key = (word, tuple(sorted(sources)))
-        if batch_cache is not None and cache_key in batch_cache:
-            return batch_cache[cache_key]
-
         results: list[DictionaryAudioResult] = []
         page_cache: dict[str, str] = {}
 
@@ -189,10 +179,7 @@ class DictionaryService:
             if audio:
                 results.append(DictionaryAudioResult(data=audio, source=source))
 
-        result_tuple = (results, page_cache)
-        if batch_cache is not None:
-            batch_cache[cache_key] = result_tuple
-        return result_tuple
+        return results, page_cache
 
     def _fetch_diki_audio(self, word: str, source: str, max_retries: int = 3, timeout: int = 10) -> Optional[bytes]:
         base = word.lower().replace(' ', '_').replace("'", "")

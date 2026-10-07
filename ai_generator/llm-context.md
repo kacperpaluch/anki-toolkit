@@ -112,8 +112,11 @@ Przyciski workflowów w edytorze:
 
 ## PPM Browsera i raport — niezmienniki
 
-- Root `_context()` wczytuje zaznaczone notatki raz na głównym wątku i przekazuje
-  je jako `notes=` wszystkim budowniczym menu. Przy braku zaznaczenia nie tworzy
+- Root `_context()` wczytuje raz na głównym wątku po jednej notatce na parę
+  (typ notatki, tagi) z zaznaczenia i przekazuje je jako `notes=` wszystkim
+  budowniczym menu — widoczność pozycji zależy tylko od typu i tagów, a czytanie
+  całego zaznaczenia zamrażało prawy klik. Budowniczy nie mogą zakładać, że
+  `notes` to komplet zaznaczenia. Przy braku zaznaczenia nie tworzy
   submenu; usuwa też submenu, do którego żaden moduł nie dodał działań.
 - `_selected_target_fields()` współdzieli selekcję z `iter_note_fields()`:
   jawny scope istniejących pól + `overwrite=True` pozwala pokazać także pełne
@@ -229,7 +232,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
 {% if def %}...{% else %}...{% endif %}  → z fallbackiem
 ```
 
-**Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane — regex dopasowuje pierwszy napotkany `{% endif %}`. Rekurencja z limitem `MAX_DEPTH = 50` dotyczy tylko renderowania zawartości bloków.
+**Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane — regex dopasowuje pierwszy napotkany `{% endif %}`. Rekurencja z limitem `MAX_DEPTH = 50` dotyczy tylko renderowania zawartości bloków. Bloki i `{{pola}}` idą jednym przebiegiem (`_TOKEN_PATTERN`): wstawiona wartość pola nie jest skanowana ponownie, także wewnątrz `{% if %}`.
 
 ## Fallback modeli
 
@@ -324,3 +327,7 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - Edytorowe ścieżki AI/TTS/słownika/workflow dzielą jeden wzorzec: `detach_note()` przed startem workera, `merge_editor_note()` po `saveNow`. Worker nigdy nie mutuje `editor.note` — `FieldGenerator.process_note`, `process_single_note` i `process_note_group` piszą do notatki, którą dostaną
 - Pola konfiguracyjne note-type (`target`, `provider`, `prompt`) są normalizowane przez `safe_str()` z `common.text` przed użyciem; wartości liczbowe (`batch_sleep`, `temperature`) pochodzą z widgetów Qt (zakresy wymuszone w UI) lub z `.get()` z wartością domyślną
 - Throttling: paczki na poziomie przeglądarki (sleep co `batch_limit` notatek) + per-dostawca tempo/jednoczesność przez `RateLimiter.slot()` w `field_generator` (patrz „Rate limiter per dostawca")
+- `_advance_jobs` kończy zadanie po pełnym okrążeniu listy bez pola do wysłania; licznik `_scan_clean` żyje między tickami, bo jeden tick czyta najwyżej 500 notatek.
+- Edytorowe zadania tła (AI, workflow, TTS, słownik) idą z `uses_collection=False`; zapis mediów serializuje backend. Wyjątek z `merge_editor_note()` (np. zamknięte okno „Dodaj”) kończy się tooltipem, nie oknem błędu Anki.
+- `claude_cli._logged_in()` pamięta udany `claude auth status` przez 5 minut; ustawienia sprawdzają status dostawców CLI w tle (`_check_local_status`), z uwzględnieniem wpisanej ścieżki binarki.
+- `common.http`: `fetch_url`/`post_json`/`post_create` traktują każdy `OSError` i `HTTPException` (także zerwanie w trakcie `read()`) jak nieudane żądanie — wywołujący dostają `None`/błąd, nie wyjątek.

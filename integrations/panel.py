@@ -68,7 +68,7 @@ from aqt.qt import (
 from aqt.utils import askUser, tooltip
 
 from ..common import clean_html_normalized, update_module_config
-from . import ai_senses, word_queue
+from . import ai_senses, bridge, word_queue
 from .queue_state import QueueState
 
 log = logging.getLogger(__name__)
@@ -101,7 +101,10 @@ def _dict_profile() -> QWebEngineProfile:
     _profile = QWebEngineProfile("ankitoolkit-dict", mw)
     script = QWebEngineScript()
     script.setName("dictionaries-to-anki")
-    script.setSourceCode(_USERSCRIPT_PATH.read_text(encoding="utf-8"))
+    # The file carries the default port (it is also the Tampermonkey copy).
+    port = bridge._bound_port or bridge._port()
+    script.setSourceCode(_USERSCRIPT_PATH.read_text(encoding="utf-8").replace(
+        f"http://{bridge.HOST}:{bridge.DEFAULT_PORT}", f"http://{bridge.HOST}:{port}"))
     script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
     script.setWorldId(_WORLD)
     script.setRunsOnSubFrames(False)

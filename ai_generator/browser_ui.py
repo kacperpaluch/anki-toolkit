@@ -449,6 +449,7 @@ def _write_batch_results(active_col, expected_col, ended):
 # profile open) — two concurrent submits would double-send the same fields.
 _advance_running = False
 _scan_offsets = {}  # in-memory cursors; restarting simply rescans from the start
+_scan_clean = {}    # notes in a row with nothing left to send; a full lap ends the job
 
 
 def _advance_jobs(config: dict):
@@ -497,16 +498,15 @@ def _advance_jobs(config: dict):
             batch_backfill.finish_job(job["id"])  # 24h window up → stop retrying
             continue
         only = set(job["only_fields"]) if job.get("only_fields") else None
-        found = capped = False
         # Build note-by-note and stop at the token budget — rendering prompts
         # for the WHOLE remainder (tens of thousands of fields) every poll
         # tick just to defer them again froze the UI for no gain.
         nids = job.get("nids", [])
         cursor = (col_id, job["id"])
         offset = _scan_offsets.get(cursor, 0)
+        clean = _scan_clean.get(cursor, 0)
         for position in range(len(nids)):
             if scanned >= scan_cap or scanned_notes >= 500:
-                capped = True
                 break
             index = (offset + position) % len(nids)
             nid = nids[index]
@@ -515,10 +515,11 @@ def _advance_jobs(config: dict):
             try:
                 note = mw.col.get_note(nid)
             except Exception:
+                clean += 1
                 continue
             raw, _skipped = batch_backfill.build_items([note], config, only_fields=only)
+            clean = 0 if raw else clean + 1
             for i in raw:
-                found = True
                 est = batch_backfill.est_item_tokens(i, config)
                 scanned += est
                 key = (i["nid"], i["field"])
@@ -528,14 +529,17 @@ def _advance_jobs(config: dict):
                 # Always let the first item into an empty bucket, so one
                 # oversized prompt can't wedge the queue for good.
                 if caps[b] <= 0 or (used[b] and used[b] + est > caps[b]):
-                    capped = True   # bucket full — next tick picks it up
-                    continue
+                    continue  # bucket full — next tick picks it up
                 seen.add(key)
                 to_send.append(i)
                 used[b] += est
-        if not found and not capped:
+        # Counted across ticks: one tick scans at most 500 notes, so a bigger
+        # job never completes a lap inside a single call.
+        _scan_clean[cursor] = clean
+        if clean >= len(nids):
             batch_backfill.finish_job(job["id"])  # every field filled → done
             _scan_offsets.pop(cursor, None)
+            _scan_clean.pop(cursor, None)
     if not to_send:
         return
     for n, item in enumerate(to_send):  # unique custom_ids across the combined submit

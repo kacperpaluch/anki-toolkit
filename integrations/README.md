@@ -13,7 +13,8 @@ Bridge): **Narzędzia → Anki Toolkit → Ustawienia… → Kolejka słówek**.
 Mostek słucha na `127.0.0.1:8767` (pole **Port** w ustawieniach, klucz
 `web_bridge.port`; zmiana działa po restarcie Anki). Ten sam port musi być
 w stałej `ENDPOINT` userscriptu — po zmianie przeładuj
-`dictionaries-to-anki.user.js` w menedżerze userscriptów. 8765 i 8766 należą do
+`dictionaries-to-anki.user.js` w menedżerze userscriptów (panel w Anki
+dostaje port z ustawień sam). 8765 i 8766 należą do
 AnkiConnect i jego forków; gdy port jest zajęty, Anki pokazuje ostrzeżenie przy
 starcie profilu.
 

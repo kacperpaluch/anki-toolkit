@@ -165,7 +165,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 - czy jest klucz OpenRoutera (`openrouter_api_key` albo, przy `use_ai_openrouter_key`, klucz z AI Generatora)
 - czy `voices` nie jest pusta
 
-Ostrzeżenia (`showWarning`) są wysyłane przez `mw.taskman.run_on_main` — `validate_config()` może być wywołane z wątku tła (np. krok TTS w workflow), a wywołania Qt UI muszą iść z głównego wątku.
+`config_error()` zwraca sam komunikat (bez UI) i jest jedyną kontrolą dozwoloną w wątku roboczym: `process_single_note()` oddaje go jako `(False, błąd)`, więc krok TTS w workflow Browsera trafia do raportu zamiast otwierać okno na każdą notatkę. `validate_config()` (komunikat + `showWarning`) wołają tylko ścieżki startujące na głównym wątku.
 
 ## OpenRouter TTS API
 

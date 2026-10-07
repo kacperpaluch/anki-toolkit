@@ -1,4 +1,5 @@
 """Anki Toolkit — one add-on: card content, word queue and upkeep."""
+from anki.utils import ids2str
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
 
@@ -26,7 +27,10 @@ def _context(browser, menu):
     nids = browser.selected_notes()
     if not nids or mw.col is None:
         return
-    notes = [mw.col.get_note(nid) for nid in nids]
+    # The menus depend only on note type and tags, so one note per combination
+    # stands for the selection — reading 30k selected notes froze the right click.
+    notes = [mw.col.get_note(nid) for nid in mw.col.db.list(
+        f"select min(id) from notes where id in {ids2str(nids)} group by mid, tags")]
     sub = menu.addMenu("Anki Toolkit")
     cm = get_context_menu()
     ai_generator.add_to_context_menu(browser, sub, notes=notes)

@@ -83,6 +83,8 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
                         tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
                     elif result.audio_requested and not result.audio_found:
                         tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
+                except Exception as e:
+                    tooltip(f"Wymowa: nie zapisano wyniku — {e}", parent=mw, period=8000)
                 finally:
                     finish_editor_operation(editor, token)
 
@@ -97,7 +99,7 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
                 finish_editor_operation(editor, token)
                 raise
 
-        mw.taskman.run_in_background(task, on_done)
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
 
     def start():

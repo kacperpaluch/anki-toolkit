@@ -383,6 +383,8 @@ class TTSTab(QWidget):
                         if m["id"] == current:
                             self._or_model.setCurrentIndex(i)
                             break
+                    else:
+                        self._or_model.setEditText(current)  # not listed: keep it
                 self._or_model.blockSignals(False)
 
                 self._update_voice_checklist()

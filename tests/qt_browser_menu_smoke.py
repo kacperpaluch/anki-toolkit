@@ -63,12 +63,13 @@ config = {
     "context_menu": {},
 }
 manager = types.SimpleNamespace(getConfig=lambda _: copy.deepcopy(config))
-mw = types.SimpleNamespace(col=types.SimpleNamespace(get_note=lambda nid: notes[nid]), addonManager=manager)
+mw = types.SimpleNamespace(col=types.SimpleNamespace(
+    get_note=lambda nid: notes[nid], db=types.SimpleNamespace(list=lambda _sql: list(notes))), addonManager=manager)
 
 # Exercise the real root dispatcher without registering hooks/timers.
 root_source = ast.parse((ROOT / "__init__.py").read_text())
 context = next(n for n in root_source.body if isinstance(n, ast.FunctionDef) and n.name == "_context")
-namespace = {"__package__": "menu_smoke", "mw": mw, "ai_generator": ai,
+namespace = {"__package__": "menu_smoke", "mw": mw, "ai_generator": ai, "ids2str": lambda ids: str(tuple(ids)),
              "dictionary": dictionary, "tts": tts, "field_splitter": splitter}
 exec(compile(ast.Module(body=[context], type_ignores=[]), str(ROOT / "__init__.py"), "exec"), namespace)
 

@@ -232,7 +232,7 @@ def _execute_steps(editor: Editor, note, steps: list, token):
                 tooltip(f"Workflow przerwany: {e}", period=8000)
 
         try:
-            mw.taskman.run_in_background(bg_task, on_done)
+            mw.taskman.run_in_background(bg_task, on_done, uses_collection=False)
         except Exception as e:
             finish_editor_operation(editor, token)
             tooltip(f"Błąd workflow: {e}", period=5000)

@@ -17,7 +17,8 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - Bridge przechwytuje sesję edytora przez `editor_did_load_note`. Zmiana wymaga
   `saveNow`, żywego celu i niewygasłego żądania; timeout obejmuje także callback zapisu.
 - Port bierze się z `web_bridge.port` (domyślnie 8767) i musi zgadzać się ze stałą
-  `ENDPOINT` w userscripcie. Nie wracaj na 8765/8766 — tam siedzi AnkiConnect
+  `ENDPOINT` w userscripcie z przeglądarki. Kopia wstrzykiwana do panelu dostaje
+  bieżący port w `_dict_profile()` (podmiana stałej w źródle), więc plik zostaje jeden. Nie wracaj na 8765/8766 — tam siedzi AnkiConnect
   i jego forki (np. „Agent Connect"), a zajęty port kończy się cichym brakiem
   mostka. Dlatego nieudany bind woła `showWarning`, nie tylko `logger`.
 - Ptaszek = `_picked`, czyli wybór do AI, wyłącznie w pamięci panelu. Stan

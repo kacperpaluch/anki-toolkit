@@ -45,16 +45,22 @@ def _local_provider_module(name: str):
     return mod
 
 
-def _local_status_text(name: str) -> tuple[bool, str]:
-    """(gotowy, opis) — instalacja i logowanie CLI, bez czytania tokenu."""
+def _local_status_text(name: str, configured: str = "", home: str = "") -> tuple[bool, str]:
+    """(gotowy, opis) — instalacja i logowanie CLI, bez czytania tokenu.
+
+    Wątek roboczy: `claude auth status` to podproces z limitem 30 s.
+    """
     mod = _local_provider_module(name)
     binary_name = _LOCAL_PROVIDERS.get(name, name)
-    binary = mod.find_binary()
+    binary = mod.find_binary(configured)
     if binary is None:
         return False, f"✗ Nie znaleziono binarki `{binary_name}`"
     # Codex czyta `auth_mode` z auth.json, Claude woła `claude auth status`;
     # żadna z tych dróg nie zwraca tokenu.
-    ok, detail = mod.login_status()
+    if name == "codex_cli":
+        ok, detail = mod.login_status(mod.codex_home(home))
+    else:
+        ok, detail = mod.login_status(binary)
     return ok, f"{'✓' if ok else '✗'} {binary}\n{detail}"
 
 
@@ -320,6 +326,7 @@ class AIGeneratorTab(QWidget):
                 widgets["binary_path"] = binary_path
                 widgets["cli_timeout"] = cli_timeout
                 widgets["status_label"] = status
+                widgets["codex_home"] = p.get("codex_home", "")
                 reasoning_effort = QComboBox()
                 reasoning_effort.addItems([""] + _CODEX_REASONING_EFFORTS)
                 current_effort = p.get("reasoning_effort", "low")
@@ -443,15 +450,35 @@ class AIGeneratorTab(QWidget):
         widgets = self._provider_widgets[name]
         if widgets.get("is_local"):
             # Gotowość providera lokalnego to stan instalacji i logowania
-            # Codeksa, nie zawartość pola klucza.
-            ready, text = _local_status_text(name)
-            label = widgets.get("status_label")
-            if label is not None:
-                label.setText(text)
-        else:
-            ready = _has_real_key(widgets["api_key"].text())
-        icon = "✓" if ready else "○"
+            # CLI, nie zawartość pola klucza — sprawdzany w tle.
+            self._check_local_status(item, name, widgets)
+            return
+        icon = "✓" if _has_real_key(widgets["api_key"].text()) else "○"
         item.setText(f"{icon} {PROVIDER_LABELS.get(name, name)}")
+
+    def _check_local_status(self, item, name: str, widgets: dict) -> None:
+        from aqt import mw
+
+        label = widgets["status_label"]
+        binary = widgets["binary_path"].text().strip()
+        home = widgets.get("codex_home", "")
+        item.setText(f"○ {PROVIDER_LABELS.get(name, name)}")
+        label.setText("Sprawdzanie…")
+
+        def on_done(fut):
+            try:
+                ready, text = fut.result()
+            except Exception as e:
+                ready, text = False, f"✗ {e}"
+            try:
+                label.setText(text)
+                item.setText(f"{'✓' if ready else '○'} {PROVIDER_LABELS.get(name, name)}")
+            except RuntimeError:
+                pass  # dialog was closed while checking
+
+        if getattr(mw, "taskman", None) is not None:  # absent in the Qt smoke test
+            mw.taskman.run_in_background(
+                lambda: _local_status_text(name, binary, home), on_done, uses_collection=False)
 
     def _on_provider_key_changed(self, row: int, name: str, _text: str = "") -> None:
         self._update_provider_item(row, name)
@@ -543,9 +570,7 @@ class AIGeneratorTab(QWidget):
                 combo.clear()
                 for mid in models:
                     combo.addItem(mid)
-                idx = combo.findText(current)
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
+                combo.setCurrentText(current)  # also when it is not on the fetched list
                 combo.blockSignals(False)
             except RuntimeError:
                 pass  # dialog was closed while fetching

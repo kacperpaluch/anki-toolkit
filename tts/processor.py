@@ -23,7 +23,7 @@ from ..common import (
 
 from ..common.editor_operation import save_detached_notes, snapshot_fields
 from .api import generate_audio
-from .config import get_tts_config, validate_config, get_tasks
+from .config import get_tts_config, validate_config, get_tasks, config_error
 
 logger = logging.getLogger(__name__)
 
@@ -432,8 +432,10 @@ def process_single_note(note, config: dict = None,
     """
     if config is None:
         config = get_tts_config()
-    if not validate_config(config):
-        return False, None
+    # Runs once per note in a workflow batch: report, never open a dialog here.
+    error = config_error(config)
+    if error:
+        return False, " ".join(error.split())
 
     if tasks is None:
         tasks = get_tasks(config)

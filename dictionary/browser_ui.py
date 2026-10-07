@@ -50,7 +50,6 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
 
     def task():
         nonlocal missing_audio_count
-        batch_cache: dict = {}
         for i, note in enumerate(notes):
             if cancel_flag["cancelled"]:
                 break
@@ -60,7 +59,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
             note_modified = False
             note_missing_audio = False
             for dictionaries in dictionary_groups:
-                result = process_note_group(note, config, dictionaries, batch_cache=batch_cache)
+                result = process_note_group(note, config, dictionaries)
                 if result.note_modified:
                     note_modified = True
                 elif result.audio_requested and not result.audio_found:

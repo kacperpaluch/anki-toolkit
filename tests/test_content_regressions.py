@@ -631,6 +631,21 @@ class TestBatchStore(unittest.TestCase):
             browser._advance_jobs({})
         self.assertEqual([item["provider"] for item in sent], ["openrouter"])
 
+    def test_filled_job_over_scan_cap_finishes_on_a_later_tick(self):
+        browser = _load("ai_generator.browser_ui", "ai_generator/browser_ui.py")
+        finished = []
+        with patch.object(browser.mw, "col", types.SimpleNamespace(path=self.col, get_note=lambda nid: nid)), \
+                patch.multiple(browser.batch_backfill,
+                               active_jobs=lambda: [{"id": "big", "nids": list(range(600))}],
+                               openai_budget_left=lambda cfg: 0, slice_tokens=lambda cfg: 1,
+                               job_expired=lambda job: False, inflight_fields=lambda: set(),
+                               finish_job=finished.append,
+                               build_items=lambda notes, cfg, **kw: ([], 0)):
+            browser._advance_jobs({})
+            self.assertEqual(finished, [])  # 500 of 600 notes seen
+            browser._advance_jobs({})
+        self.assertEqual(finished, ["big"])
+
 
 # ---------------------------------------------------------------------------
 # Field Splitter
@@ -755,6 +770,30 @@ class TestBrowserAiActions(unittest.TestCase):
             self.assertEqual(generator.process_note(self.note, {"def"}, overwrite=True), {})
         self.assertEqual(self.note["def"], "old")
         self.assertIn("timeout", generator.errors[0])
+
+
+class TestReviewFixes(unittest.TestCase):
+    def test_reset_while_reading_body_is_a_failed_fetch_not_an_exception(self):
+        class Broken:
+            def __enter__(self): return self
+            def __exit__(self, *exc): return False
+            def read(self): raise ConnectionResetError("reset")
+        with patch.object(http, "urlopen", lambda request, timeout: Broken()):
+            self.assertIsNone(http.fetch_url("https://x/a.mp3", max_retries=1))
+            self.assertIsNone(http.post_json("https://x", b"{}", {}, max_retries=1)[0])
+            self.assertTrue(http.post_create("https://x", b"{}", {}, max_retries=1)[2])
+
+    def test_field_value_inside_if_block_is_not_rendered_twice(self):
+        engine = _load("ai_generator.template_engine", "ai_generator/template_engine.py")
+        fields = {"def": "see {{ang}}", "ang": "SECRET"}
+        self.assertEqual(engine.render_template("{% if def %}{{def}}{% endif %} {{ang}}", fields),
+                         "see {{ang}} SECRET")
+
+    def test_tts_without_key_reports_instead_of_opening_a_dialog_per_note(self):
+        # A dialog would crash here: the stubbed mw has no taskman.
+        changed, error = processor.process_single_note(None, {"voices": ["a"], "openrouter_api_key": ""})
+        self.assertFalse(changed)
+        self.assertIn("Brak klucza", error)
 
 
 if __name__ == "__main__":
