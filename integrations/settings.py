@@ -2,7 +2,7 @@
 
 Lista dostawców i modeli pochodzi z sekcji `ai_generator` — tam są klucze.
 """
-from aqt.qt import QPushButton, QComboBox, QFormLayout, QGroupBox, QLineEdit, QSizePolicy, QSpinBox, QWidget
+from aqt.qt import QHBoxLayout, QPushButton, QComboBox, QFormLayout, QGroupBox, QLineEdit, QSizePolicy, QSpinBox, QWidget
 
 from ..common.ui import (
     _api_key_widget, hint_label, scroll_panel, collapsible_section, set_effort_choices,
@@ -15,6 +15,7 @@ class IntegrationsTab(QWidget):
         super().__init__()
         layout = scroll_panel(self)
         q = cfg.get("word_queue") or {}
+        self._model_options = {}
         self._providers = dict((cfg.get("ai_generator") or {}).get("providers") or {})
         self._provider_settings = provider_settings or (
             lambda name: self._providers.get(name, {}))
@@ -37,8 +38,16 @@ class IntegrationsTab(QWidget):
             "dostawcy w AI Generatorze. Dostępność poziomów zależy od modelu i wersji CLI.")
         self._fill_effort(q.get("ai_reasoning_effort"))
         self._provider.currentIndexChanged.connect(lambda _i: self._fill_effort())
-        self._provider.currentIndexChanged.connect(lambda _i: self._fill_models())
+        self._provider.currentIndexChanged.connect(lambda _i: self._fill_models(""))
         self._fill_models(q.get("ai_model", ""))
+        model_row = QWidget()
+        model_layout = QHBoxLayout(model_row)
+        model_layout.setContentsMargins(0, 0, 0, 0)
+        self._fetch_models_btn = QPushButton("Odśwież")
+        self._fetch_models_btn.setToolTip("Pobiera listę modeli wybranego dostawcy.")
+        self._fetch_models_btn.clicked.connect(self._fetch_models)
+        model_layout.addWidget(self._model)
+        model_layout.addWidget(self._fetch_models_btn)
         self._senses = QSpinBox()
         self._senses.setRange(1, 10)
         self._senses.setMaximumWidth(100)
@@ -46,7 +55,7 @@ class IntegrationsTab(QWidget):
         self._senses.setToolTip("Pozostałe znaczenia nadal widzisz i możesz zaznaczyć ręcznie.")
         for combo in (self._provider, self._model, self._effort):
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        for label, widget in (("Dostawca AI:", self._provider), ("Model:", self._model),
+        for label, widget in (("Dostawca AI:", self._provider), ("Model:", model_row),
                               ("Poziom rozumowania:", self._effort),
                               ("Domyślnie zaznacz znaczeń:", self._senses)):
             form.addRow(label, widget)
@@ -137,12 +146,59 @@ class IntegrationsTab(QWidget):
         """Modele znane dla wybranego dostawcy. Pole zostaje edytowalne."""
         if current is None:
             current = self._model.currentText()
-        cfg = self._providers.get(self._provider.currentData() or "", {})
-        known = {cfg.get("model", "")} | set(cfg.get("cached_models") or [])
+        name = self._provider.currentData() or ""
+        cfg = self._provider_settings(name)
+        known = {cfg.get("model", "")} | set(
+            self._model_options.get(name) or cfg.get("models") or cfg.get("cached_models") or [])
         self._model.clear()
         self._model.addItem("")
         self._model.addItems(sorted(m for m in known if m))
         self._model.setCurrentText(current or "")
+
+    def _fetch_models(self):
+        from aqt import mw
+        from aqt.utils import showWarning
+
+        name = self._provider.currentData() or ""
+        if not name:
+            return
+        cfg = {**self._providers.get(name, {}), **self._provider_settings(name)}
+        key_source = "anthropic" if name == "claude_cli" else name
+        api_key = str(self._provider_settings(key_source).get("api_key") or "").strip()
+        self._fetch_models_btn.setEnabled(False)
+        self._fetch_models_btn.setText("…")
+
+        def task():
+            from ..ai_generator.providers import claude_cli, codex_cli
+            from ..ai_generator.providers.model_discovery import fetch_models
+
+            if name == "claude_cli":
+                return claude_cli.fetch_models(cfg.get("binary_path", ""), api_key)
+            if name == "codex_cli":
+                return codex_cli.fetch_models(cfg.get("binary_path", ""))
+            return fetch_models(name, api_key, force=True)
+
+        def on_done(fut):
+            try:
+                models = fut.result()
+            except Exception:
+                models = []
+            try:
+                self._fetch_models_btn.setEnabled(True)
+                self._fetch_models_btn.setText("Odśwież")
+                if not models:
+                    showWarning(
+                        f"Nie udało się pobrać modeli dla {name}.\n"
+                        "Sprawdź konfigurację dostawcy w AI Generatorze i połączenie; "
+                        "dla CLI także instalację i logowanie.")
+                    return
+                self._model_options[name] = models
+                if self._provider.currentData() == name:
+                    self._fill_models()
+            except RuntimeError:
+                pass  # dialog was closed while fetching
+
+        mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
     def validate(self):
         error = ai_senses.validate_mapping({

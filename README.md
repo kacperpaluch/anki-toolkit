@@ -45,6 +45,8 @@ Poziom rozumowania (**effort**) ustawiasz domyślnie w **AI Generator → Dostaw
 możesz go nadpisać przy prompcie (także dla fallbacku) i w **Kolejka słówek →
 AI: znaczenia**. Opcja „Dziedzicz: medium” pokazuje aktualny poziom dostawcy;
 dostępność poziomów zależy od modelu i wersji CLI.
+W **Kolejka słówek → AI: znaczenia** zmiana dostawcy przywraca jego domyślny
+model, a przycisk **Odśwież** pobiera listę modeli bez zmiany bieżącego wyboru.
 
 Edytor promptów zostawia więcej miejsca na tekst, a ustawienia zadania i modelu
 zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; połączenia

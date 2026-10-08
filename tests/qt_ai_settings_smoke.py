@@ -3,6 +3,8 @@
 Real settings widgets; no collection, CLI requests, or user configuration writes.
 """
 import copy
+from concurrent.futures import Future
+from unittest.mock import patch
 import importlib
 import json
 from pathlib import Path
@@ -65,9 +67,53 @@ try:
     assert prompts._ed_effort.isEnabled()
     assert prompts._ed_effort.findData("ultra") >= 0
     queue_module = importlib.import_module("effort_smoke.integrations.settings")
-    saved["word_queue"].update({"ai_provider": "claude_cli", "ai_reasoning_effort": "high"})
+    saved["word_queue"].update({"ai_provider": "claude_cli", "ai_model": "claude-custom", "ai_reasoning_effort": "high"})
     queue = queue_module.IntegrationsTab(copy.deepcopy(saved), tab._current_provider_settings)
     try:
+        assert queue._model.currentText() == "claude-custom"
+        queue._provider.setCurrentIndex(queue._provider.findData("codex_cli"))
+        assert queue._model.currentText() == ""
+        assert "claude-custom" not in [queue._model.itemText(i) for i in range(queue._model.count())]
+        queue.apply(saved)
+        assert saved["word_queue"]["ai_model"] == ""
+        pending = []
+        def background(task, on_done, **kwargs):
+            assert kwargs == {"uses_collection": False}
+            future = Future()
+            try:
+                future.set_result(task())
+            except Exception as error:
+                future.set_exception(error)
+            pending.append((on_done, future))
+        codex = importlib.import_module("effort_smoke.ai_generator.providers.codex_cli")
+        queue._model.setCurrentText("codex-custom")
+        with patch("aqt.mw", types.SimpleNamespace(taskman=types.SimpleNamespace(run_in_background=background))), \
+             patch.object(codex, "fetch_models", return_value=["codex-fresh"]) as fetch:
+            queue._fetch_models_btn.click()
+            assert not queue._fetch_models_btn.isEnabled()
+            fetch.assert_called_once()
+            callback, future = pending.pop()
+            callback(future)
+            assert queue._fetch_models_btn.isEnabled()
+            assert queue._model.findText("codex-fresh") >= 0
+            assert queue._model.currentText() == "codex-custom"
+            queue._fetch_models_btn.click()
+            queue._provider.setCurrentIndex(queue._provider.findData("claude_cli"))
+            callback, future = pending.pop()
+            callback(future)
+            assert queue._model.findText("codex-fresh") == -1
+            assert queue._model.currentText() == ""
+        with patch("aqt.mw", types.SimpleNamespace(taskman=types.SimpleNamespace(run_in_background=background))), \
+             patch("effort_smoke.ai_generator.providers.claude_cli.fetch_models", side_effect=RuntimeError("test failure")), \
+             patch("aqt.utils.showWarning") as warning:
+            before = [queue._model.itemText(i) for i in range(queue._model.count())]
+            queue._fetch_models_btn.click()
+            callback, future = pending.pop()
+            callback(future)
+            warning.assert_called_once()
+            assert queue._fetch_models_btn.isEnabled()
+            assert before == [queue._model.itemText(i) for i in range(queue._model.count())]
+        queue._effort.setCurrentIndex(queue._effort.findData("high"))
         assert not queue._fields_section.findChild(QPushButton).isChecked()
         assert queue._effort.currentData() == "high"
         queue.apply(saved)

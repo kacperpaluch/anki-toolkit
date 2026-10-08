@@ -422,7 +422,9 @@ Rozwinięcie sekcji nie zmienia zapisanych wartości.
 Ustawienia → Kolejka słówek → sekcja *AI: znaczenia*: **Dostawca AI**
 (rozwijanka) i **Model** (rozwijanka edytowalna — możesz wpisać dowolną nazwę).
 Puste pole *Model* oznacza model domyślny wybranego dostawcy z **Ustawienia →
-AI Generator → Dostawcy**.
+AI Generator → Dostawcy**. Zmiana dostawcy czyści wybór poprzedniego modelu,
+przywracając dziedziczenie domyślnego modelu nowego dostawcy. Przycisk **Odśwież**
+pobiera jego listę modeli w tle i zachowuje aktualny wybór.
 
 **Poziom rozumowania** ustawia poziom wysiłku osobno dla dopasowania definicji przez
 Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) korzysta z poziomu w **AI Generator → Dostawcy**. Zmiana dostawcy resetuje

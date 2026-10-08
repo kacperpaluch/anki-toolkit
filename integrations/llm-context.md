@@ -138,6 +138,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
   `provider_label` pokazuje dostawcę i model w oknie wyboru.
 - Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu, n8n, Cloudflare i Web Bridge są zwijane. Błąd mapowania otwiera sekcję pól. Panel kolejki ma sterowanie i listę po lewej, słowniki po prawej. Przycisk „Utwórz karty z AI” i opis wyboru korzystają z `_selected_rows`; bez wyboru AI jest wyłączone. Status pobierania n8n zostaje nad listą. Stop jest widoczny podczas pracy, odzyskiwanie tylko przy draftach (`_save_state` i `_set_busy` odświeżają widoczność).
+- Lista modeli kolejki korzysta z żywych ustawień dostawcy; zmiana dostawcy czyści nadpisanie modelu. „Odśwież” korzysta z istniejących fetcherów AI Generatora w tle (`uses_collection=False`); wynik jest przypisany do dostawcy i nie podmienia listy po przełączeniu na innego.
 - `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia AI Generatora, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
