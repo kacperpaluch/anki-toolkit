@@ -14,10 +14,13 @@ Buttons:    OK = the searched word has a "→ hasło" button and other buttons e
 Exit code 1 unless everything is OK.
 """
 import importlib
+import os
 from pathlib import Path
 import sys
 import types
 
+# Offscreen + the default Qt Quick backend segfaults in QtWebEngine's updatePaintNode.
+os.environ.setdefault("QT_QUICK_BACKEND", "software")
 from aqt.qt import QApplication, QEventLoop, QTimer, sip
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +49,8 @@ def main():
     package.__path__ = [str(ROOT)]
     sys.modules["live_addon"] = package
     panel = importlib.import_module("live_addon.integrations.panel")
+    # No `mw` here, so the bridge cannot read its port from config; use the default.
+    panel.bridge._bound_port = panel.bridge.DEFAULT_PORT
     word_queue = panel.word_queue
     cfg = word_queue._DEFAULTS
     labels = word_queue.dict_labels(cfg)
