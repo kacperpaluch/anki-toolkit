@@ -2,7 +2,7 @@
 
 Łączy Word Queue (n8n DataTable, panel, adres zapasowy i Cloudflare Access) z Web Bridge
 (lokalny endpoint dla userscriptu). `word_queue.py` (HTTP n8n, konfiguracja,
-przycisk 📚) i `panel.py` (Qt) obsługują kolejkę; `ai_senses.py` — „AI:
+pozycja menu „Toolkit ▾” przełączająca panel 📚) i `panel.py` (Qt) obsługują kolejkę; `ai_senses.py` — „AI:
 znaczenia” (numerowane dopasowanie definicji, okno wyboru, zapis notatek); `bridge.py`
 endpoint; `settings.py` — panel „Kolejka słówek” we wspólnym oknie ustawień;
 `__init__.py` tylko rejestruje hooki. `dictionaries-to-anki.user.js` jest jednym
@@ -137,9 +137,9 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   bierzemy klucze i listę dostawców, NIE modele per pole notatki — kolejka ma
   jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
   `provider_label` pokazuje dostawcę i model w oknie wyboru.
-- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu, n8n, Cloudflare i Web Bridge są zwijane. Błąd mapowania otwiera sekcję pól. Panel kolejki ma sterowanie i listę po lewej, słowniki po prawej. Przycisk „Utwórz karty z AI” i opis wyboru korzystają z `_selected_rows`; bez wyboru AI jest wyłączone. Status pobierania n8n zostaje nad listą. Stop jest widoczny podczas pracy, odzyskiwanie tylko przy draftach (`_save_state` i `_set_busy` odświeżają widoczność).
+- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu i Web Bridge są zwijane. Połączenie n8n (adresy, klucz, tabela, kolumny) i Cloudflare Access edytuje i zapisuje strona Konta i klucze (`settings/accounts_tab.py`) — `IntegrationsTab.apply` nie zapisuje tych kluczy. Panel 📚 przełącza pozycja `word_queue.editor_actions` w menu „Toolkit ▾” (tylko okno Dodaj). Błąd mapowania otwiera sekcję pól. Panel kolejki ma sterowanie i listę po lewej, słowniki po prawej. Przycisk „Utwórz karty z AI” i opis wyboru korzystają z `_selected_rows`; bez wyboru AI jest wyłączone. Status pobierania n8n zostaje nad listą. Stop jest widoczny podczas pracy, odzyskiwanie tylko przy draftach (`_save_state` i `_set_busy` odświeżają widoczność).
 - Lista modeli kolejki korzysta z żywych ustawień dostawcy; zmiana dostawcy czyści nadpisanie modelu. „Odśwież” korzysta z istniejących fetcherów AI Generatora w tle (`uses_collection=False`); wynik jest przypisany do dostawcy i nie podmienia listy po przełączeniu na innego.
-- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia AI Generatora, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
+- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia dostawców ze strony Konta i klucze, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
 - Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
   `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
 

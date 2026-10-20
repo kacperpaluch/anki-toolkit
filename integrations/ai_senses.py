@@ -214,7 +214,7 @@ def note_fields(sense: dict, mapping: dict, word: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# dostawca AI — ten sam, który konfigurujesz w zakładce „AI Generator”
+# dostawca AI — ten sam, który konfigurujesz na stronie „Konta i klucze”
 # ---------------------------------------------------------------------------
 
 def _providers():
@@ -246,7 +246,7 @@ def prepare_provider(cfg: dict):
         return None, "wybierz dostawcę AI w Ustawieniach (np. claude_cli)"
     provider_cfg = _provider_settings(name)
     if not provider_cfg:
-        return None, f"dostawca „{name}” nie jest skonfigurowany w zakładce AI Generator"
+        return None, f"dostawca „{name}” nie jest skonfigurowany w Ustawienia → Konta i klucze"
     if cfg.get("ai_model"):
         provider_cfg["model"] = cfg["ai_model"]
     effort = cfg.get("ai_reasoning_effort")

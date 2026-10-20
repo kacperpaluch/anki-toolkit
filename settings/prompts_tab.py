@@ -324,12 +324,12 @@ class PromptsTab(QWidget):
             combo.setToolTip(
                 "Poziom rozumowania dla CLI. Dziedzicz = ustawienie właściwego dostawcy.\n"
                 "Dostępność poziomów zależy od modelu i wersji CLI.")
-        self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj w batchu i workflow)")
+        self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj przy uzupełnianiu wszystkich pól i w sekwencjach)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
-            "wskazanie: PPM na polu w edytorze albo submenu „Generuj pola tylko na żądanie”\n"
-            "w przeglądarce. Pominięte przy „Wszystkie puste”, workflow\n"
-            "oraz głównym przycisku AI w edytorze."
+            "wskazanie: PPM na polu w edytorze albo zaznaczenie w oknie „Wygeneruj pola AI…”\n"
+            "w przeglądarce. Pominięte w sekwencjach i przy „Uzupełnij puste pola AI”\n"
+            "w menu „Toolkit ▾”."
         )
         # Fallback (per-prompt override). Empty = inherit provider-level fallback_model.
         self._ed_fallback_provider = QComboBox()
@@ -348,8 +348,8 @@ class PromptsTab(QWidget):
         self._ed_fallback_model.setMinimumWidth(200)
         self._ed_fallback_model.setToolTip(
             "Model zapasowy uruchamiany gdy główny model zawiedzie (błąd API,\n"
-            "rate limit, brak środków, brak treści). Puste = brak fallbacku\n"
-            "per-prompt; wtedy używany jest fallback z konfiguracji dostawcy."
+            "rate limit, brak środków, brak treści). Puste = bez modelu zapasowego\n"
+            "w prompcie; wtedy używany jest model zapasowy dostawcy."
         )
         self._btn_fetch_fb_models = QPushButton("Pobierz")
         self._btn_fetch_fb_models.setFixedWidth(70)

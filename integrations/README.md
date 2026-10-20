@@ -4,9 +4,10 @@ Panel 📚 przy oknie **Dodaj**: kolejka słówek z n8n DataTable, cztery słown
 w zakładkach, tworzenie kart przez AI i lokalny Web Bridge, który wpisuje dane
 ze stron słownikowych do otwartej notatki.
 
-Panel otwiera przycisk 📚 w oknie **Dodaj** albo **Narzędzia → Anki Toolkit →
-Kolejka słówek (n8n)…**. Ustawienia (połączenie z n8n, AI: znaczenia, Web
-Bridge): **Narzędzia → Anki Toolkit → Ustawienia… → Kolejka słówek**.
+Panel otwiera **Toolkit ▾ → 📚 Kolejka słówek (pokaż/ukryj)** w oknie **Dodaj** albo
+**Narzędzia → Anki Toolkit → Kolejka słówek (n8n)…**. Ustawienia (AI: znaczenia,
+pola, Web Bridge): **Ustawienia… → Kolejka słówek**; połączenie z n8n i Cloudflare
+Access: **Ustawienia… → Konta i klucze**.
 
 ## Web Bridge
 
@@ -106,7 +107,7 @@ tylko jeśli nadal figuruje w aktualnej konfiguracji.
 **Cloudflare Access.** Gdy n8n stoi za Cloudflare Access, utwórz w Zero Trust
 *service token*, a w aplikacji Access dla tej domeny dodaj regułę z akcją
 **Service Auth** (zwykła reguła „Allow” przekierowuje na stronę logowania).
-Client ID i Client Secret wpisz w ustawieniach Kolejki — trafiają do nagłówków
+Client ID i Client Secret wpisz w **Konta i klucze → Kolejka słówek — Cloudflare Access** — trafiają do nagłówków
 `CF-Access-Client-Id` / `CF-Access-Client-Secret`, wyłącznie na adresy `https`,
 więc adres lokalny ich nie dostaje. Klucz API n8n nadal jest wymagany. Jeśli
 zamiast danych przyjdzie strona HTML, panel zgłasza błąd tokenu Access. Gdy w
@@ -415,34 +416,36 @@ przyciski **+ przykład** na stronach słowników.
 ### Model
 
 Strona **Kolejka słówek** zaczyna się od ustawień **AI: znaczenia**. Mapowanie pól,
-tagi i limit czasu są w sekcji **Pola notatki, tagi i limit czasu**. Połączenie
-z n8n, Cloudflare Access i Web Bridge mają osobne, domyślnie zwinięte sekcje.
+tagi i limit czasu są w sekcji **Pola notatki, tagi i limit czasu**, a Web Bridge
+w zwiniętej sekcji **Połączenie ze stronami słowników (Web Bridge)**. Połączenie
+z n8n i Cloudflare Access są na stronie **Konta i klucze** (zwinięte sekcje
+*Kolejka słówek — …*).
 Rozwinięcie sekcji nie zmienia zapisanych wartości.
 
 Ustawienia → Kolejka słówek → sekcja *AI: znaczenia*: **Dostawca AI**
 (rozwijanka) i **Model** (rozwijanka edytowalna — możesz wpisać dowolną nazwę).
 Puste pole *Model* oznacza model domyślny wybranego dostawcy z **Ustawienia →
-AI Generator → Dostawcy**. Zmiana dostawcy czyści wybór poprzedniego modelu,
+Konta i klucze → Dostawcy AI**. Zmiana dostawcy czyści wybór poprzedniego modelu,
 przywracając dziedziczenie domyślnego modelu nowego dostawcy. Przycisk **Odśwież**
 pobiera jego listę modeli w tle i zachowuje aktualny wybór.
 
 **Poziom rozumowania** ustawia poziom wysiłku osobno dla dopasowania definicji przez
-Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) korzysta z poziomu w **AI Generator → Dostawcy**. Zmiana dostawcy resetuje
+Codex CLI lub Claude CLI (`word_queue.ai_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) korzysta z poziomu w **Konta i klucze → Dostawcy AI**. Zmiana dostawcy resetuje
 nadpisanie. Etykieta dziedziczenia aktualizuje się również po niezapisanej zmianie poziomu dostawcy
 w tym samym oknie ustawień. Dostępne poziomy zależą od modelu i wersji CLI; pole jest nieaktywne
 dla dostawców API.
 
-**Dostawca jest jeden, własny i osobny od AI Generatora.** Z zakładki AI
-Generator brane są klucze API, lista i domyślne ustawienia dostawców — dzięki temu `claude_cli`
-i `codex_cli` jadą na Twojej subskrypcji, bez klucza. **Modele wybrane w AI
-Generatorze per pole notatki nie mają tu zastosowania**; ten przycisk ma jedno
+**Dostawca jest jeden, własny i osobny od promptów AI.** Ze strony Konta
+i klucze brane są klucze API, lista i domyślne ustawienia dostawców — dzięki temu `claude_cli`
+i `codex_cli` jadą na Twojej subskrypcji, bez klucza. **Modele wybrane w Promptach
+AI per pole notatki nie mają tu zastosowania**; ten przycisk ma jedno
 ustawienie na całą swoją pracę.
 
 Okno wyboru pokazuje u góry, czym faktycznie policzono (np. *Policzone przez:
 Claude CLI · opus*). Po zmianie ustawień zamknij okno „Dodaj” i otwórz panel
 ponownie.
 
-Reszta pól (audio, IPA, TTS, przykłady) to zadanie dla workflowu: zaznacz
+Reszta pól (audio, IPA, TTS, przykłady) to zadanie dla sekwencji: zaznacz
 świeże notatki w Browserze i uruchom go na zaznaczeniu.
 
 ## Konfiguracja

@@ -27,9 +27,12 @@ and routes to domain context. Keep this file focused on working agreements.
   single collection executor.
 - Prefer `CollectionOp` for collection changes initiated from the UI.
 - Return appropriate `OpChanges` after manual collection mutations.
-- The Tools menu, the Browser context menu and the config action are registered
-  only in the root `__init__.py`; modules expose callables for them. Modules
-  register their own editor, Add Cards and profile hooks when imported.
+- The Tools menu, the Browser context menu, the single editor button
+  („Toolkit ▾”) and the config action are registered only in the root
+  `__init__.py`; modules expose callables for them (`add_to_context_menu`,
+  `editor_actions`). Modules register their own editor context-menu, Add Cards
+  and profile hooks when imported. Do not add editor toolbar buttons from a
+  module — add an `editor_actions` entry instead.
 - Preserve unknown configuration keys when saving a section.
 - Runtime-generated persistent data belongs in `user_files/`.
 - Never commit `meta.json`, API keys, user data, logs, or generated media.
@@ -44,7 +47,10 @@ config in `__init__`, writes only its own sections in `apply(cfg)` and may veto
 saving with `validate()`.
 
 Do not add a sidebar page for a small feature — extend the panel of the module it
-belongs to. Do not give a module its own dialog or Tools-menu entry.
+belongs to. Do not give a module its own dialog or Tools-menu entry. API keys and
+connection settings go on the „Konta i klucze” page (`settings/accounts_tab.py`);
+technical options (limits, retries, timeouts, paths) go in a collapsed
+„Zaawansowane” section. User-facing labels are Polish.
 
 ## Implementation guidance
 

@@ -46,7 +46,6 @@
     ]
   },
   "tts": {
-    "button_label": "TTS",
     "openrouter_api_key": "",
     "use_ai_openrouter_key": false,
     "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
@@ -162,7 +161,6 @@
     "overwrite": true
   },
   "ai_generator": {
-    "button_label": "AI",
     "skip_tags": [
       "skip-ai"
     ],

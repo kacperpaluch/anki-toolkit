@@ -144,7 +144,7 @@ class ClaudeCLIProvider(BaseProvider):
             self.last_error = (
                 "Nie znaleziono binarki `claude`. Zainstaluj Claude Code "
                 "(https://claude.com/claude-code) albo podaj ścieżkę "
-                "w Ustawienia → AI Generator → Dostawcy → Claude CLI."
+                "w Ustawienia → Konta i klucze → Claude CLI."
             )
             self.logger.error(self.last_error)
             return None

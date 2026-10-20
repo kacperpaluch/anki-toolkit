@@ -22,11 +22,11 @@ Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; m
 
 | Plik | Rola |
 |---|---|
-| `__init__.py` | Hooki Anki — dynamiczne submenu `TTS` w przeglądarce + eksport `on_editor_buttons_init` |
+| `__init__.py` | Hooki Anki — dynamiczne submenu „Nagraj audio (TTS)” w przeglądarce + eksport `editor_actions` (pozycja menu „Toolkit ▾”) |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
 | `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje POST z retry do `common.http.post_json()` (zwraca `(bytes\|None, err\|None)`); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` **nie rusza notatki przed czasem**: `build_note_work_items(..., overwrite=True)` odkłada stare tagi do `split_contexts["prev"]`/`["prev_tags"]`, a `apply_results_to_note()` podmienia je wyłącznie tam, gdzie powstał nowy plik (nieudany segment zachowuje swoje nagranie); generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
-| `editor_ui.py` | Przycisk TTS w toolbarze edytora — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(clone, tasks=[task], overwrite=...)` na kopii z `detach_note()`, a wynik wraca przez `merge_editor_note()` |
+| `editor_ui.py` | `editor_actions(editor)` → „Nagraj audio (TTS)” w menu „Toolkit ▾” (gdy notatka ma pola zadania) — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Generuj/Regeneruj TTS: [label]" (Regeneruj = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(clone, tasks=[task], overwrite=...)` na kopii z `detach_note()`, a wynik wraca przez `merge_editor_note()` |
 
 ## Przepływ danych
 
@@ -136,7 +136,6 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
   "voices": ["af_bella", "af_heart", "bm_lewis"],
   "replacements": {"sb": "somebody", "sth": "something"},
   "speed": 0.9,
-  "button_label": "TTS",
   "max_workers": 12,
   "max_retries": 3,
   "timeout": 60,
@@ -147,9 +146,8 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 }
 ```
 
-- `button_label` — etykieta przycisku TTS w edytorze
 - `openrouter_api_key` — klucz API z https://openrouter.ai/keys
-- `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`
+- `use_ai_openrouter_key` — gdy `true`, TTS używa klucza OpenRouter z sekcji `ai_generator.providers.openrouter`. Oba klucze edytuje strona Konta i klucze (`settings/accounts_tab.py`); panel TTS czyta je przez `_key_settings` podpięte przez `SettingsDialog` (podgląd głosów używa niezapisanego klucza)
 - `openrouter_model` — ID modelu TTS
 - `openrouter_provider` — pusty string = routing OpenRoutera; slug endpointu (`tag`, np. `deepinfra/us`) = preferencja wysyłana w żądaniu, której OpenRouter dla TTS nie honoruje
 - `voices` — lista głosów do losowania

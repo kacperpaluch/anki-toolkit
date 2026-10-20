@@ -4,7 +4,6 @@ from ..common import get_module_config, unique, normalize_float
 
 
 _DEFAULTS = {
-    "button_label":          "TTS",
     "openrouter_api_key":    "",
     "use_ai_openrouter_key": False,
     "openrouter_model":      "openai/gpt-4o-mini-tts-2025-12-15",
@@ -49,11 +48,11 @@ def config_error(config: dict) -> str | None:
     if not resolve_openrouter_key(config):
         return (
             "Brak klucza API OpenRouter.\n"
-            "Wpisz klucz w ustawieniach TTS lub zaznacz "
-            "\"Użyj klucza z AI Generatora\"."
+            "Wpisz klucz w Ustawienia → Konta i klucze lub zaznacz "
+            "„Użyj klucza OpenRouter z dostawców AI”."
         )
     if not unique(config.get("voices", [])):
-        return "Nie zaznaczono żadnego głosu w ustawieniach TTS."
+        return "Nie zaznaczono żadnego głosu (Ustawienia → Nagrania)."
     return None
 
 

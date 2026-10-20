@@ -17,9 +17,9 @@ from ..ai_generator.workflow import DEFAULT_CONTEXT_MENU
 
 _CONTEXT_LABELS = {
     "dictionary": "Pobierz wymowę (słowniki)",
-    "tts": "TTS (zadania audio)",
-    "ai_fields": "Uzupełnij puste pola AI",
-    "ai_blocked": "Generuj pola tylko na żądanie (AI)",
+    "tts": "Nagraj audio (TTS)",
+    "ai_fields": "Wygeneruj pola AI… — pola automatyczne",
+    "ai_blocked": "Wygeneruj pola AI… — pola tylko na żądanie",
     "field_splitter": "Rozdziel pole",
 }
 
@@ -156,7 +156,7 @@ class WorkflowEditDialog(QDialog):
 
     def __init__(self, parent, workflow: dict | None, dict_buttons: list[dict]):
         super().__init__(parent)
-        self.setWindowTitle("Edytuj workflow" if workflow else "Nowy workflow")
+        self.setWindowTitle("Edytuj sekwencję" if workflow else "Nowa sekwencja")
         self.setMinimumWidth(440)
         self._dict_buttons = dict_buttons
 
@@ -166,7 +166,7 @@ class WorkflowEditDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._name = _expanding_line_edit(workflow.get("name", "") if workflow else "")
         form.addRow("Nazwa (w menu):", self._name)
-        self._editor_btn = QCheckBox("Pokaż jako przycisk w edytorze")
+        self._editor_btn = QCheckBox("Osobny przycisk w edytorze (poza menu „Toolkit ▾”)")
         self._editor_btn.setChecked(bool(workflow.get("editor_button")) if workflow else False)
         form.addRow(self._editor_btn)
         layout.addLayout(form)
@@ -182,8 +182,8 @@ class WorkflowEditDialog(QDialog):
         bh.setSpacing(4)
         for label, mod, act in (
             ("+ AI", "ai", "generate"),
-            ("+ Słownik", "dictionary", "fetch"),
-            ("+ TTS", "tts", "generate"),
+            ("+ Wymowa", "dictionary", "fetch"),
+            ("+ Nagranie", "tts", "generate"),
             ("+ Rozdziel", "field_splitter", "split"),
         ):
             b = QPushButton(label)
@@ -297,7 +297,7 @@ class WorkflowsTab(QWidget):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(12, 12, 12, 12)
 
-        layout.addWidget(QLabel("Workflowy (każdy to pozycja w menu PPM, kolejność = kolejność w menu):"))
+        layout.addWidget(QLabel("Sekwencje (każda to pozycja w menu „Toolkit ▾” i w prawym kliku; kolejność = kolejność w menu):"))
         self._list = QListWidget()
         self._list.setMaximumHeight(180)
         self._list.itemDoubleClicked.connect(self._edit)
@@ -339,7 +339,7 @@ class WorkflowsTab(QWidget):
             vis_layout.addWidget(cb)
         vis_layout.addWidget(hint_label(
             "Te sekcje generują się automatycznie (z pól AI, zadań TTS, słowników).\n"
-            "Odznacz, by ukryć je w menu — workflowy nie podlegają tym przełącznikom; pojawiają się, gdy pasują do zaznaczenia."
+            "Odznacz, by ukryć je w menu — sekwencje nie podlegają tym przełącznikom; pojawiają się, gdy pasują do zaznaczenia."
         ))
         layout.addWidget(vis_group)
         layout.addStretch()
@@ -368,10 +368,10 @@ class WorkflowsTab(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             wf = dlg.get_workflow()
             if not wf["name"]:
-                showWarning("Workflow musi mieć nazwę.")
+                showWarning("Sekwencja musi mieć nazwę.")
                 return
             if not wf["steps"]:
-                showWarning("Workflow musi mieć przynajmniej jeden krok.")
+                showWarning("Sekwencja musi mieć przynajmniej jeden krok.")
                 return
             self._workflows.append(wf)
             self._refresh()
@@ -379,13 +379,13 @@ class WorkflowsTab(QWidget):
     def _edit(self, _item=None):
         idx = self._list.currentRow()
         if idx < 0:
-            showWarning("Zaznacz workflow do edycji.")
+            showWarning("Zaznacz sekwencję do edycji.")
             return
         dlg = WorkflowEditDialog(self, self._workflows[idx], self._dict_buttons)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             wf = dlg.get_workflow()
             if not wf["name"] or not wf["steps"]:
-                showWarning("Workflow musi mieć nazwę i przynajmniej jeden krok.")
+                showWarning("Sekwencja musi mieć nazwę i przynajmniej jeden krok.")
                 return
             self._workflows[idx] = wf
             self._refresh()
@@ -393,7 +393,7 @@ class WorkflowsTab(QWidget):
     def _remove(self):
         idx = self._list.currentRow()
         if idx < 0:
-            showWarning("Zaznacz workflow do usunięcia.")
+            showWarning("Zaznacz sekwencję do usunięcia.")
             return
         del self._workflows[idx]
         self._refresh()

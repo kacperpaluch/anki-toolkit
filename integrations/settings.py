@@ -1,11 +1,11 @@
-"""Panel ustawień: kolejka słówek n8n, „AI: znaczenia” i Web Bridge.
+"""Panel ustawień: kolejka słówek — „AI: znaczenia”, pola i Web Bridge.
 
-Lista dostawców i modeli pochodzi z sekcji `ai_generator` — tam są klucze.
+Połączenie z n8n i klucze są na stronie „Konta i klucze” (`settings/accounts_tab.py`).
 """
 from aqt.qt import QHBoxLayout, QPushButton, QComboBox, QFormLayout, QGroupBox, QLineEdit, QSizePolicy, QSpinBox, QWidget
 
 from ..common.ui import (
-    _api_key_widget, hint_label, scroll_panel, collapsible_section, set_effort_choices,
+    hint_label, scroll_panel, collapsible_section, set_effort_choices,
 )
 from . import ai_senses
 
@@ -35,7 +35,7 @@ class IntegrationsTab(QWidget):
         self._effort = QComboBox()
         self._effort.setToolTip(
             "Poziom rozumowania dla dopasowania definicji. Dziedzicz = ustawienie\n"
-            "dostawcy w AI Generatorze. Dostępność poziomów zależy od modelu i wersji CLI.")
+            "dostawcy z „Konta i klucze”. Dostępność poziomów zależy od modelu i wersji CLI.")
         self._fill_effort(q.get("ai_reasoning_effort"))
         self._provider.currentIndexChanged.connect(lambda _i: self._fill_effort())
         self._provider.currentIndexChanged.connect(lambda _i: self._fill_models(""))
@@ -89,38 +89,7 @@ class IntegrationsTab(QWidget):
         body.addLayout(form)
         layout.addWidget(self._fields_section)
 
-        queue, body = collapsible_section("Połączenie z n8n")
-        form = QFormLayout()
-        self._url = QLineEdit(q.get("n8n_url", ""))
-        self._fallback = QLineEdit(q.get("fallback_url", ""))
-        key_widget, self._key = _api_key_widget(q.get("api_key", ""))
-        self._table = QLineEdit(q.get("table_id", ""))
-        self._word = QLineEdit(q.get("word_column", "Slowko"))
-        self._flag = QLineEdit(q.get("flag_column", "Anki"))
-        for label, widget in (("Adres główny:", self._url), ("Adres zapasowy:", self._fallback),
-                              ("Klucz API n8n:", key_widget), ("ID tabeli:", self._table),
-                              ("Kolumna słowa:", self._word), ("Kolumna flagi:", self._flag)):
-            form.addRow(label, widget)
-        body.addLayout(form)
-        body.addWidget(hint_label("Zmiany połączenia działają po ponownym otwarciu panelu kolejki.", small=True))
-        layout.addWidget(queue)
-
-        access, body = collapsible_section("Cloudflare Access")
-        form = QFormLayout()
-        self._cf_id = QLineEdit(q.get("cf_client_id", ""))
-        self._cf_id.setPlaceholderText("puste = bez Cloudflare Access")
-        secret_widget, self._cf_secret = _api_key_widget(q.get("cf_client_secret", ""))
-        form.addRow("Client ID:", self._cf_id)
-        form.addRow("Client Secret:", secret_widget)
-        body.addLayout(form)
-        info, info_body = collapsible_section("Więcej informacji")
-        info_body.addWidget(hint_label(
-            "Token jest wysyłany tylko przez HTTPS. Reguła Access dla domeny musi mieć akcję „Service Auth”.",
-            small=True))
-        body.addWidget(info)
-        layout.addWidget(access)
-
-        bridge, body = collapsible_section("Web Bridge")
+        bridge, body = collapsible_section("Połączenie ze stronami słowników (Web Bridge)")
         form = QFormLayout()
         self._port = QSpinBox()
         self._port.setRange(1024, 65535)
@@ -189,7 +158,7 @@ class IntegrationsTab(QWidget):
                 if not models:
                     showWarning(
                         f"Nie udało się pobrać modeli dla {name}.\n"
-                        "Sprawdź konfigurację dostawcy w AI Generatorze i połączenie; "
+                        "Sprawdź konfigurację dostawcy w „Konta i klucze” i połączenie; "
                         "dla CLI także instalację i logowanie.")
                     return
                 self._model_options[name] = models
@@ -214,15 +183,7 @@ class IntegrationsTab(QWidget):
     def apply(self, cfg: dict) -> None:
         fields = cfg.setdefault("word_queue", {}).setdefault("ai_fields", {})
         cfg["word_queue"].update({
-            "n8n_url": self._url.text().strip(),
-            "fallback_url": self._fallback.text().strip(),
-            "api_key": self._key.text().strip(),
-            "cf_client_id": self._cf_id.text().strip(),
-            "cf_client_secret": self._cf_secret.text().strip(),
-            "table_id": self._table.text().strip(),
             "word_field": self._field.text().strip(),
-            "word_column": self._word.text().strip(),
-            "flag_column": self._flag.text().strip(),
             "ai_provider": self._provider.currentData() or "",
             "ai_model": self._model.currentText().strip(),
             "ai_max_senses": self._senses.value(),

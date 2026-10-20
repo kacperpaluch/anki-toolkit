@@ -17,30 +17,37 @@ from .common.ui import hint_label
 from .field_hider.settings import FieldHiderTab
 from .html_cleanup.settings import HtmlCleanupTab
 from .integrations.settings import IntegrationsTab
+from .settings.accounts_tab import AccountsTab
 from .settings.ai_generator_tab import AIGeneratorTab
 from .settings.dictionary_tab import DictionaryTab
 from .settings.logs_tab import LogsTab
 from .settings.narzedzia_tab import FieldSplitterSettings
+from .settings.overview_tab import OverviewTab
 from .settings.tts_tab import TTSTab
 from .settings.workflows_tab import WorkflowsTab
 
 # (grupa, [(klucz strony, ikona, tytuł, opis, panel)])
 PAGES = [
+    ("Start", [
+        ("overview", "🏠", "Przegląd",
+         "Gdzie są funkcje wtyczki i co jest skonfigurowane. Kliknij wiersz, by przejść do strony.",
+         OverviewTab),
+    ]),
     ("Tworzenie kart", [
-        ("workflows", "⚙️", "Workflowy",
-         "Nazwane sekwencje kroków AI, słownika, TTS i rozdzielania — w menu PPM i jako przyciski edytora.",
+        ("workflows", "⚙️", "Sekwencje",
+         "Nazwane ciągi kroków (AI, wymowa, nagrania, rozdzielanie) — w menu „Toolkit ▾” i prawym kliku.",
          WorkflowsTab),
-        ("ai_generator", "🤖", "AI Generator",
-         "Prompty dla pól notatek i dostawcy modeli językowych.", AIGeneratorTab),
-        ("tts", "🔊", "TTS", "Nagrania przez API TTS OpenRoutera.", TTSTab),
-        ("dictionary", "📖", "Słownik",
-         "Wymowa i IPA z Diki, Oxford, Cambridge i Longman.", DictionaryTab),
+        ("ai_generator", "🤖", "Prompty AI",
+         "Co AI wpisuje w które pole notatki. Klucze i modele dostawców: „Konta i klucze”.", AIGeneratorTab),
+        ("tts", "🔊", "Nagrania (TTS)", "Głosy i zadania nagrań przez OpenRouter.", TTSTab),
+        ("dictionary", "📖", "Wymowa ze słowników",
+         "Audio i IPA z Diki, Oxford, Cambridge i Longman.", DictionaryTab),
         ("field_splitter", "✂️", "Rozdzielanie pól",
          "Kopiuje kolejne części pola źródłowego do pól docelowych.", FieldSplitterSettings),
     ]),
     ("Źródła", [
         ("integrations", "📚", "Kolejka słówek",
-         "Kolejka z n8n, AI: znaczenia i Web Bridge dla userscriptu słownika.", IntegrationsTab),
+         "Kolejka z n8n, AI: znaczenia i połączenie ze stronami słowników.", IntegrationsTab),
     ]),
     ("Porządki", [
         ("audio_normalizer", "🎚️", "Normalizacja audio",
@@ -50,7 +57,9 @@ PAGES = [
         ("field_hider", "👁", "Ukrywanie pól",
          "Pola pomocnicze schowane tylko w oknie „Dodaj”.", FieldHiderTab),
     ]),
-    ("Inne", [
+    ("Konfiguracja", [
+        ("accounts", "🔑", "Konta i klucze",
+         "Wszystkie klucze API i połączenia: dostawcy AI, nagrania, n8n.", AccountsTab),
         ("logs", "🩺", "Diagnostyka", "Logi wtyczki i tryb debugowania.", LogsTab),
     ]),
 ]
@@ -124,16 +133,17 @@ class SettingsDialog(QDialog):
                 self._sidebar.addItem(item)
                 self._rows[key] = self._sidebar.row(item)
                 self._panels.append(panel)
-        ai_panel = next(p for p in self._panels if isinstance(p, AIGeneratorTab))
-        queue_panel = next(p for p in self._panels if isinstance(p, IntegrationsTab))
-        queue_panel._provider_settings = ai_panel._current_provider_settings
-        queue_panel.refresh_provider_defaults()
-        for widgets in ai_panel._provider_widgets.values():
-            if "reasoning_effort" in widgets:
-                widgets["reasoning_effort"].currentTextChanged.connect(
-                    queue_panel.refresh_provider_defaults)
+        by_type = {type(p): p for p in self._panels}
+        accounts = by_type[AccountsTab]
+        # Feature panels read keys and provider defaults live from Konta i klucze.
+        for user in (by_type[AIGeneratorTab]._prompts, by_type[IntegrationsTab]):
+            user._provider_settings = accounts.provider_settings
+            user.refresh_provider_defaults()
+            accounts.providers.on_effort_changed(user.refresh_provider_defaults)
+        by_type[TTSTab]._key_settings = accounts.tts_key_settings
+        by_type[OverviewTab].go_to = lambda key: self._sidebar.setCurrentRow(self._rows[key])
         self._sidebar.currentItemChanged.connect(self._show_page)
-        self._sidebar.setCurrentRow(self._rows.get(page, self._rows["workflows"]))
+        self._sidebar.setCurrentRow(self._rows.get(page, self._rows["overview"]))
 
         body = QHBoxLayout()
         body.addWidget(self._sidebar)

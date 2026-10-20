@@ -1,11 +1,11 @@
-"""AI Generator tab — providers, model discovery, and prompts editor."""
+"""Prompty AI page (prompts + generation settings) and the AI providers box for Konta i klucze."""
 
 from functools import partial
 
 from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
     QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox, QPushButton, QTabWidget,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QMenu,
     QStackedWidget, QSizePolicy, Qt,
 )
 from aqt.utils import showWarning
@@ -81,60 +81,128 @@ def _has_real_key(value: str) -> bool:
 
 
 class AIGeneratorTab(QWidget):
+    """Prompts and generation settings. Providers live on the Konta i klucze page;
+    SettingsDialog points `_prompts._provider_settings` at them."""
+
     def __init__(self, cfg: dict):
         super().__init__()
         ai = cfg.get("ai_generator", {})
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-
         tabs = QTabWidget()
-
-        # Build provider widgets first so the prompts tab can read unsaved keys/defaults.
-        providers_page = self._build_providers_page(ai)
-
-        # Workflows now live in their own top-level "Workflowy" tab.
-
-        # -- Sub-tab: Prompts --
-        self._prompts = PromptsTab(cfg, self._current_provider_settings)
+        self._prompts = PromptsTab(cfg)
         tabs.addTab(self._prompts, "Prompty")
-
-        # -- Sub-tab: Providers + General --
-        tabs.addTab(providers_page, "Dostawcy")
-
+        tabs.addTab(self._build_general_page(ai), "Ogólne")
         layout.addWidget(tabs)
-        for widgets in self._provider_widgets.values():
-            if "reasoning_effort" in widgets:
-                widgets["reasoning_effort"].currentTextChanged.connect(
-                    self._prompts.refresh_provider_defaults)
 
-    # ------------------------------------------------------------------
-    # Providers page
-    # ------------------------------------------------------------------
-
-    def _build_providers_page(self, ai: dict) -> QWidget:
-        providers = ai.get("providers", {})
-
+    def _build_general_page(self, ai: dict) -> QWidget:
         inner = QWidget()
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(12, 12, 12, 12)
-
-        gen_group = QGroupBox("Podstawowe")
-        gen_form = QFormLayout(gen_group)
-        gen_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._label = _expanding_line_edit(ai.get("button_label", "AI"))
+        gen_form = QFormLayout()
         self._skip_tag = _expanding_line_edit(", ".join(ai.get("skip_tags", ["skip-ai"])))
         self._skip_tag.setToolTip(
             "Tagi wykluczające — oddziel przecinkami (np. skip-ai, pomin). "
             "Zostaw puste żeby wyłączyć."
         )
-        gen_form.addRow("Etykieta przycisku AI:", self._label)
         gen_form.addRow("Tagi wykluczające:", self._skip_tag)
-        layout.addWidget(gen_group)
+        layout.addLayout(gen_form)
         layout.addSpacing(8)
 
-        prov_group = QGroupBox("Dostawcy AI")
-        prov_layout = QHBoxLayout(prov_group)
+        adv_container, adv_body = collapsible_section("Zaawansowane (wydajność, limity, sieć)")
+        adv_form = QFormLayout()
+        adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self._batch_limit = QSpinBox()
+        self._batch_limit.setRange(1, 9999)
+        self._batch_limit.setValue(ai.get("batch_limit", 3))
+        self._batch_sleep = QDoubleSpinBox()
+        self._batch_sleep.setRange(0.0, 30.0)
+        self._batch_sleep.setSingleStep(0.1)
+        self._batch_sleep.setValue(ai.get("batch_sleep", 1.0))
+        self._parallel_requests = QSpinBox()
+        self._parallel_requests.setRange(1, 16)
+        self._parallel_requests.setValue(int(ai.get("parallel_requests", 3)))
+        self._parallel_requests.setToolTip(
+            "Liczba notatek przetwarzanych równolegle w batchu przeglądarki.\n"
+            "Wyższe wartości = szybciej, ale łatwiej o limity API (429)."
+        )
+        self._ai_max_retries = QSpinBox()
+        self._ai_max_retries.setRange(1, 10)
+        self._ai_max_retries.setValue(ai.get("max_retries", 3))
+        self._ai_max_retries.setToolTip("Liczba prób przy błędach API (429, 5xx)")
+        self._request_timeout = QSpinBox()
+        self._request_timeout.setRange(5, 300)
+        self._request_timeout.setSuffix(" s")
+        self._request_timeout.setValue(ai.get("request_timeout", 30))
+        self._request_timeout.setToolTip("Limit czasu pojedynczego żądania do API (sekundy)")
+        self._openai_batch_budget = QSpinBox()
+        self._openai_batch_budget.setRange(50_000, 50_000_000)
+        self._openai_batch_budget.setSingleStep(50_000)
+        self._openai_batch_budget.setGroupSeparatorShown(True)
+        self._openai_batch_budget.setSuffix(" tok.")
+        self._openai_batch_budget.setValue(int(ai.get("openai_batch_token_budget", 1_500_000)))
+        self._openai_batch_budget.setToolTip(
+            "Budżet tokenów kolejki Batch API OpenAI (szacowany rozmiar paczki\n"
+            "i łączny limit naszych batchy w locie). Ustaw poniżej limitu\n"
+            "„enqueued tokens” Twojej organizacji dla używanego modelu —\n"
+            "np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln (wtedy zostaw margines,\n"
+            "np. 750 tys. / 1,5 mln)."
+        )
+        adv_form.addRow("Limit paczki:", self._batch_limit)
+        adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
+        adv_form.addRow("Równoległe żądania:", self._parallel_requests)
+        adv_form.addRow("Maks. prób:", self._ai_max_retries)
+        adv_form.addRow("Limit czasu żądania:", self._request_timeout)
+        adv_form.addRow("Budżet kolejki Batch API (OpenAI):", self._openai_batch_budget)
+        adv_form.addRow(hint_label(
+            "Limity RPM / równoległości ustawisz osobno dla każdego dostawcy "
+            "na stronie „Konta i klucze” (sekcja „Zaawansowane” dostawcy)."
+        ))
+        adv_body.addLayout(adv_form)
+        layout.addWidget(adv_container)
+        layout.addStretch()
+
+        return _scrollable(inner)
+
+    # ------------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------------
+
+    def apply(self, cfg: dict) -> None:
+        ai = cfg.setdefault("ai_generator", {})
+        ai["skip_tags"] = [t.strip() for t in self._skip_tag.text().split(",") if t.strip()]
+        ai["batch_limit"] = self._batch_limit.value()
+        ai["batch_sleep"] = round(self._batch_sleep.value(), 2)
+        ai["parallel_requests"] = self._parallel_requests.value()
+        ai["max_retries"] = self._ai_max_retries.value()
+        ai["request_timeout"] = self._request_timeout.value()
+        ai["openai_batch_token_budget"] = self._openai_batch_budget.value()
+        self._prompts.apply(cfg)
+
+
+def used_providers(cfg: dict) -> set:
+    """Providers with a real key or chosen by any prompt or the word queue."""
+    ai = cfg.get("ai_generator") or {}
+    used = {name for name, p in (ai.get("providers") or {}).items()
+            if name not in _LOCAL_PROVIDERS and _has_real_key((p or {}).get("api_key", ""))}
+    for fields in (ai.get("note_types") or {}).values():
+        for entry in (fields or {}).values() if isinstance(fields, dict) else ():
+            if isinstance(entry, dict):
+                used |= {entry.get("provider"), entry.get("fallback_provider")}
+    used.add((cfg.get("word_queue") or {}).get("ai_provider"))
+    return used & set(_PROVIDER_NAMES)
+
+
+class AIProvidersBox(QGroupBox):
+    """AI provider list + detail. Unused providers stay hidden until added."""
+
+    def __init__(self, cfg: dict):
+        super().__init__("Dostawcy AI")
+        providers = (cfg.get("ai_generator") or {}).get("providers", {})
+        layout = QVBoxLayout(self)
+        detail = QWidget()
+        layout.addWidget(detail)
+        prov_layout = QHBoxLayout(detail)
         prov_layout.setSpacing(8)
 
         # List + detail instead of a third level of tabs. ✓ marks providers
@@ -152,6 +220,9 @@ class AIGeneratorTab(QWidget):
             page = QWidget()
             prov_form = QFormLayout(page)
             prov_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+            adv_container, adv_body = collapsible_section("Zaawansowane")
+            adv_form = QFormLayout()
+            adv_body.addLayout(adv_form)
             p = providers.get(name, {})
             api_key_container, api_key_field = _api_key_widget(p.get("api_key", ""))
             is_local = name in _LOCAL_PROVIDERS
@@ -190,13 +261,13 @@ class AIGeneratorTab(QWidget):
             )
 
             fallback_model = _expanding_line_edit(p.get("fallback_model", ""))
-            fallback_model.setPlaceholderText("np. gpt-4o-mini (puste = brak fallbacku)")
+            fallback_model.setPlaceholderText("np. gpt-4o-mini (puste = bez modelu zapasowego)")
             fallback_model.setToolTip(
                 "Model zapasowy uruchamiany gdy główny model zawiedzie "
                 "(błąd API, rate limit, brak środków, brak treści).\n"
                 "Używa tego samego providera i tego samego klucza API.\n"
-                "Puste pole = brak fallbacku na poziomie providera.\n"
-                "Prompt może nadpisać ten fallback własnym."
+                "Puste pole = bez modelu zapasowego na poziomie dostawcy.\n"
+                "Prompt może ustawić własny model zapasowy."
             )
 
             if is_local:
@@ -230,7 +301,7 @@ class AIGeneratorTab(QWidget):
                     "wykrywanie automatyczne: najpierw PATH, potem typowa "
                     "lokalizacja instalacji."
                 )
-                prov_form.addRow(f"Ścieżka do {binary_name}:", binary_path)
+                adv_form.addRow(f"Ścieżka do {binary_name}:", binary_path)
 
                 cli_timeout = QSpinBox()
                 cli_timeout.setRange(30, 900)
@@ -241,7 +312,7 @@ class AIGeneratorTab(QWidget):
                     "Rozumowanie trwa dłużej niż zwykłe żądanie HTTP, więc "
                     "globalny timeout z sekcji Zaawansowane jest tu za krótki."
                 )
-                prov_form.addRow("Limit czasu:", cli_timeout)
+                adv_form.addRow("Limit czasu:", cli_timeout)
             else:
                 prov_form.addRow("Klucz API:", api_key_container)
             model_combo.setToolTip(
@@ -255,8 +326,8 @@ class AIGeneratorTab(QWidget):
                 # nadal je odczytuje, więc musi zostać przy życiu.
                 _keep_alive(page, temp)
             else:
-                prov_form.addRow("Temperatura domyślna:", temp)
-            prov_form.addRow("Model zapasowy:", fallback_model)
+                adv_form.addRow("Temperatura domyślna:", temp)
+            adv_form.addRow("Model zapasowy:", fallback_model)
 
             # --- Rate limit (per provider) -------------------------------
             _is_or = name == "openrouter"
@@ -281,8 +352,8 @@ class AIGeneratorTab(QWidget):
                 "Maks. równoległych żądań do tego dostawcy.\n"
                 "0 = bez limitu. Darmowe API zwykle wymagają 1."
             )
-            prov_form.addRow("Limit RPM:", rpm)
-            prov_form.addRow("Maks. równoległych:", max_conc)
+            adv_form.addRow("Limit RPM:", rpm)
+            adv_form.addRow("Maks. równoległych:", max_conc)
 
             widgets = {
                 "api_key": api_key_field,
@@ -305,7 +376,7 @@ class AIGeneratorTab(QWidget):
                     "— płatne modele OpenRoutera nie są dławione.\n"
                     "Odznaczone: limit dotyczy wszystkich żądań OpenRoutera."
                 )
-                prov_form.addRow("", free_only)
+                adv_form.addRow("", free_only)
                 widgets["rate_limit_free_only"] = free_only
             if name in ("openai", "openrouter"):
                 reasoning_effort = QComboBox()
@@ -364,9 +435,10 @@ class AIGeneratorTab(QWidget):
                     "Instrukcja wspólna dla generowanych pól. Puste = domyślna instrukcja wtyczki.\n"
                     "Zastępuje systemowy prompt Claude Code."
                 )
-                prov_form.addRow("Instrukcja systemowa:", system_prompt)
+                adv_form.addRow("Instrukcja systemowa:", system_prompt)
                 widgets["system_prompt"] = system_prompt
                 refresh_btn.clicked.connect(partial(self._refresh_local_status, i, name))
+            prov_form.addRow(adv_container)
             self._provider_widgets[name] = widgets
 
             item = QListWidgetItem()
@@ -385,63 +457,38 @@ class AIGeneratorTab(QWidget):
         self._prov_list.setCurrentRow(current_provider_tab)
         prov_layout.addWidget(self._prov_list)
         prov_layout.addWidget(self._prov_stack, 1)
-        layout.addWidget(prov_group)
-        layout.addSpacing(8)
 
-        adv_container, adv_body = collapsible_section("Zaawansowane (wydajność, limity, sieć)")
-        adv_form = QFormLayout()
-        adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._batch_limit = QSpinBox()
-        self._batch_limit.setRange(1, 9999)
-        self._batch_limit.setValue(ai.get("batch_limit", 3))
-        self._batch_sleep = QDoubleSpinBox()
-        self._batch_sleep.setRange(0.0, 30.0)
-        self._batch_sleep.setSingleStep(0.1)
-        self._batch_sleep.setValue(ai.get("batch_sleep", 1.0))
-        self._parallel_requests = QSpinBox()
-        self._parallel_requests.setRange(1, 16)
-        self._parallel_requests.setValue(int(ai.get("parallel_requests", 3)))
-        self._parallel_requests.setToolTip(
-            "Liczba notatek przetwarzanych równolegle w batchu przeglądarki.\n"
-            "Wyższe wartości = szybciej, ale łatwiej o limity API (429)."
-        )
-        self._ai_max_retries = QSpinBox()
-        self._ai_max_retries.setRange(1, 10)
-        self._ai_max_retries.setValue(ai.get("max_retries", 3))
-        self._ai_max_retries.setToolTip("Liczba prób przy błędach API (429, 5xx)")
-        self._request_timeout = QSpinBox()
-        self._request_timeout.setRange(5, 300)
-        self._request_timeout.setSuffix(" s")
-        self._request_timeout.setValue(ai.get("request_timeout", 30))
-        self._request_timeout.setToolTip("Limit czasu pojedynczego żądania do API (sekundy)")
-        self._openai_batch_budget = QSpinBox()
-        self._openai_batch_budget.setRange(50_000, 50_000_000)
-        self._openai_batch_budget.setSingleStep(50_000)
-        self._openai_batch_budget.setGroupSeparatorShown(True)
-        self._openai_batch_budget.setSuffix(" tok.")
-        self._openai_batch_budget.setValue(int(ai.get("openai_batch_token_budget", 1_500_000)))
-        self._openai_batch_budget.setToolTip(
-            "Budżet tokenów kolejki Batch API OpenAI (szacowany rozmiar paczki\n"
-            "i łączny limit naszych batchy w locie). Ustaw poniżej limitu\n"
-            "„enqueued tokens” Twojej organizacji dla używanego modelu —\n"
-            "np. gpt-5.5: 900 tys., gpt-5.4-mini: 2 mln (wtedy zostaw margines,\n"
-            "np. 750 tys. / 1,5 mln)."
-        )
-        adv_form.addRow("Limit paczki:", self._batch_limit)
-        adv_form.addRow("Przerwa między paczkami:", self._batch_sleep)
-        adv_form.addRow("Równoległe żądania:", self._parallel_requests)
-        adv_form.addRow("Maks. prób:", self._ai_max_retries)
-        adv_form.addRow("Limit czasu żądania:", self._request_timeout)
-        adv_form.addRow("Budżet kolejki Batch API (OpenAI):", self._openai_batch_budget)
-        adv_form.addRow(hint_label(
-            "Limity RPM / równoległości ustawisz osobno dla każdego dostawcy "
-            "wyżej (sekcja „Dostawcy AI”)."
-        ))
-        adv_body.addLayout(adv_form)
-        layout.addWidget(adv_container)
-        layout.addStretch()
+        used = used_providers(cfg) or set(_PROVIDER_NAMES)
+        for row, name in enumerate(_PROVIDER_NAMES):
+            self._prov_list.setRowHidden(row, name not in used)
+        if self._prov_list.isRowHidden(self._prov_list.currentRow()):
+            self._prov_list.setCurrentRow(next(r for r, n in enumerate(_PROVIDER_NAMES) if n in used))
+        self._add_btn = QPushButton("+ Dodaj dostawcę")
+        self._add_btn.clicked.connect(self._show_add_menu)
+        add_row = QHBoxLayout()
+        add_row.addWidget(self._add_btn)
+        add_row.addStretch()
+        layout.addLayout(add_row)
+        self._add_btn.setVisible(len(used) < len(_PROVIDER_NAMES))
 
-        return _scrollable(inner)
+    def _show_add_menu(self):
+        menu = QMenu(self)
+        for row, name in enumerate(_PROVIDER_NAMES):
+            if self._prov_list.isRowHidden(row):
+                menu.addAction(PROVIDER_LABELS.get(name, name)).triggered.connect(
+                    partial(self._add_provider, row))
+        menu.exec(self._add_btn.mapToGlobal(self._add_btn.rect().bottomLeft()))
+        menu.deleteLater()
+
+    def _add_provider(self, row: int, *_):
+        self._prov_list.setRowHidden(row, False)
+        self._prov_list.setCurrentRow(row)
+        self._add_btn.setVisible(any(self._prov_list.isRowHidden(r) for r in range(self._prov_list.count())))
+
+    def on_effort_changed(self, callback) -> None:
+        for widgets in self._provider_widgets.values():
+            if "reasoning_effort" in widgets:
+                widgets["reasoning_effort"].currentTextChanged.connect(callback)
 
     def _update_provider_item(self, row: int, name: str) -> None:
         item = self._prov_list.item(row)
@@ -577,21 +624,8 @@ class AIGeneratorTab(QWidget):
 
         mw.taskman.run_in_background(task, on_done, uses_collection=False)
 
-    # ------------------------------------------------------------------
-    # Save
-    # ------------------------------------------------------------------
-
     def apply(self, cfg: dict) -> None:
-        cfg.setdefault("ai_generator", {})
-        ai = cfg["ai_generator"]
-        ai["button_label"] = self._label.text().strip()
-        ai["skip_tags"] = [t.strip() for t in self._skip_tag.text().split(",") if t.strip()]
-        ai["batch_limit"] = self._batch_limit.value()
-        ai["batch_sleep"] = round(self._batch_sleep.value(), 2)
-        ai["parallel_requests"] = self._parallel_requests.value()
-        ai["max_retries"] = self._ai_max_retries.value()
-        ai["request_timeout"] = self._request_timeout.value()
-        ai["openai_batch_token_budget"] = self._openai_batch_budget.value()
+        ai = cfg.setdefault("ai_generator", {})
         ai.setdefault("providers", {})
         for name, w in self._provider_widgets.items():
             ai["providers"].setdefault(name, {})
@@ -619,5 +653,3 @@ class AIGeneratorTab(QWidget):
                     ai["providers"][name]["reasoning_effort"] = re_widget.currentText()
                 else:
                     ai["providers"][name]["reasoning_effort"] = re_widget.text().strip()
-
-        self._prompts.apply(cfg)

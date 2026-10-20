@@ -116,23 +116,16 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
         raise
 
 
-def on_editor_buttons_init(buttons: list, editor: Editor):
+def editor_actions(editor: Editor) -> list:
+    """(label, callback) per enabled dictionary group, when the note has both fields."""
+    note = getattr(editor, "note", None)
     config = _get_config()
-
-    enabled = [(b.get("label", "Audio"), b.get("dictionaries", []))
-               for b in config.get("buttons", [])
-               if b.get("enabled") and b.get("dictionaries")]
-
-    # One button per enabled dictionary group
-    for label, dicts in enabled:
-        btn = editor.addButton(
-            None,
-            f"fetch_{'_'.join(dicts)}",
-            lambda ed=editor, d=dicts: _on_fetch_audio_editor(ed, d),
-            tip=label,
-            label=label,
-        )
-        buttons.append(btn)
+    if note is None or config.get("source_field", "ang") not in note \
+            or config.get("target_field", "audio") not in note:
+        return []
+    return [(f"Wymowa: {b.get('label', 'Audio')}",
+             lambda d=b["dictionaries"]: _on_fetch_audio_editor(editor, d))
+            for b in config.get("buttons", []) if b.get("enabled") and b.get("dictionaries")]
 
 
 # ---------------------------------------------------------------------------

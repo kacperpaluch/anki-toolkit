@@ -1,13 +1,13 @@
-# Słownik (`dictionary/`) — wymowa i IPA
+# Wymowa ze słowników (`dictionary/`) — audio i IPA
 
 Pobiera pliki audio MP3 z wymową oraz transkrypcje IPA z czterech słowników online. Działa w edytorze kart i przeglądarce.
 
-Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Słownik**. Krok „Słownik” jest też dostępny w workflowach.
+Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Wymowa ze słowników** (limity sieci w zwiniętej sekcji *Zaawansowane*). Krok „Wymowa” jest też dostępny w sekwencjach.
 
 ## Jak używać
 
 ### Edytor kart
-Przyciski słownikowe pojawiają się w toolbarze edytora. Kliknięcie przycisku (np. **Diki**) najpierw zapisuje bieżące pola (świeżo wpisane słowo jest od razu widoczne), pobiera audio w tle — Anki nie zamarza — i automatycznie je odtwarza. Jeśli na tym samym edytorze trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
+Włączone słowniki są w menu **Toolkit ▾** edytora jako **Wymowa: Diki**, **Wymowa: Oxford** itd. (gdy notatka ma pola źródłowe i docelowe). Wybranie pozycji najpierw zapisuje bieżące pola (świeżo wpisane słowo jest od razu widoczne), pobiera audio w tle — Anki nie zamarza — i automatycznie je odtwarza. Jeśli na tym samym edytorze trwa już AI, nagranie, pobieranie wymowy albo sekwencja, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
 
 **PPM na polu źródłowym lub docelowym** (np. `ang`, `audio`) — gdy pole źródłowe ma treść, pojawiają się pozycje „Pobierz wymowę: Diki", „Pobierz wymowę: Oxford" itd. (tylko włączone słowniki). Działa też w oknie dodawania nowej karty (AddCards).
 
@@ -38,7 +38,7 @@ Nazwa pliku audio jest deterministyczna: `dict_{źródło}_{słowo}_{skrót}.mp3
 Dzięki temu, gdy masz wiele kart z tym samym słowem (np. kilka „above"), audio z danego źródła pobierane jest z sieci **tylko raz** — kolejne karty (dziś, jutro, z edytora czy z batcha) reużywają tego samego pliku. Pobierane są jedynie te źródła, których brakuje. Aby wymusić świeże pobranie, usuń plik z folderu media kolekcji.
 
 
-Menu wymowy pojawia się tylko, gdy zaznaczone notatki mają skonfigurowane pola źródłowe i docelowe oraz istnieją włączone słowniki. Sekcję można ukryć w **Ustawienia → Workflowy**.
+Menu wymowy pojawia się tylko, gdy zaznaczone notatki mają skonfigurowane pola źródłowe i docelowe oraz istnieją włączone słowniki. Sekcję można ukryć w **Ustawienia → Sekwencje**.
 
 ## Dostępne słowniki
 
@@ -103,7 +103,7 @@ Wiktionary używa oficjalnego REST API (`en.wiktionary.org/w/api.php`) — nie s
 | `max_retries` | Liczba prób przy błędach sieci — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `page_timeout` | Limit czasu pobierania strony słownika w sekundach (domyślnie `10`) |
 | `mp3_timeout` | Limit czasu pobierania pliku MP3 w sekundach (domyślnie `10`) |
-| `buttons` | Lista przycisków w edytorze |
+| `buttons` | Grupy słowników; włączone są pozycjami „Wymowa: …” w menu **Toolkit ▾** i w PPM przeglądarki |
 
 ### Formaty IPA (`ipa_format`)
 

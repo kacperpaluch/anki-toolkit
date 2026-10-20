@@ -22,22 +22,12 @@ from ..common.editor_operation import (
 
 logger = logging.getLogger(__name__)
 
-def on_editor_buttons_init(buttons: list, editor: Editor):
-    config = get_tts_config()
-    tasks = get_tasks(config)
-    if not tasks:
-        return
-
-    label = config.get("button_label", "TTS")
-
-    btn = editor.addButton(
-        None,
-        "tts_gen",
-        lambda ed=editor: _on_tts_editor(ed),
-        tip="Generuj audio TTS dla tej notatki",
-        label=label,
-    )
-    buttons.append(btn)
+def editor_actions(editor: Editor) -> list:
+    note = getattr(editor, "note", None)
+    if note is None or not any(task.get("source_field", "") in note and task.get("target_field", "") in note
+                               for task in get_tasks(get_tts_config())):
+        return []
+    return [("Nagraj audio (TTS)", lambda: _on_tts_editor(editor))]
 
 
 def _on_tts_editor(editor: Editor):

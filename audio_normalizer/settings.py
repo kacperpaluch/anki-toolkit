@@ -1,6 +1,6 @@
 from aqt.qt import QCheckBox, QFormLayout, QGroupBox, QLineEdit, QSpinBox, QWidget
 
-from ..common.ui import hint_label, scroll_panel
+from ..common.ui import collapsible_section, hint_label, scroll_panel
 from .config import LOUDNORM_OPTS
 
 
@@ -24,12 +24,16 @@ class AudioNormalizerTab(QWidget):
         self._auto.setChecked(config["auto_normalize"])
         self._notice = QCheckBox("Pokazuj powiadomienie po auto-normalizacji")
         self._notice.setChecked(config["show_tooltip"])
-        form.addRow("Ścieżka ffmpeg (puste = wykryj):", self._path)
-        form.addRow("Filtr loudnorm:", self._opts)
-        form.addRow("Równoległe procesy:", self._workers)
         form.addRow("", self._auto)
         form.addRow("", self._notice)
         layout.addWidget(group)
+        advanced, body = collapsible_section("Zaawansowane (ffmpeg)")
+        adv_form = QFormLayout()
+        adv_form.addRow("Ścieżka ffmpeg (puste = wykryj):", self._path)
+        adv_form.addRow("Filtr loudnorm:", self._opts)
+        adv_form.addRow("Równoległe procesy:", self._workers)
+        body.addLayout(adv_form)
+        layout.addWidget(advanced)
         layout.addStretch()
 
     def apply(self, cfg: dict) -> None:

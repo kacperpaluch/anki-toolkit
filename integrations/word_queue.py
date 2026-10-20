@@ -68,7 +68,7 @@ _DEFAULTS = {
     # `id` rośnie z każdym dodanym wierszem, więc jest zarazem datą dodania —
     # sortowanie po `createdAt` dałoby to samo, tylko zależne od nazwy kolumny.
     "order": "id",
-    # „AI: znaczenia" — dostawca z zakładki AI Generator (tam są klucze).
+    # „AI: znaczenia" — dostawca ze strony „Konta i klucze”.
     "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
     "ai_model": "",            # puste = model domyślny dostawcy
     "ai_reasoning_effort": "", # puste = effort dostawcy; nadpisanie tylko dla CLI
@@ -438,20 +438,11 @@ def _forget_panel(*_args) -> None:
     _panel = None
 
 
-def on_editor_buttons_init(buttons, editor):
-    """editor_did_init_buttons — przycisk 📚 tylko w oknie „Dodaj" (panel nie ma sensu w przeglądarce)."""
+def editor_actions(editor) -> list:
+    """Pozycja menu „Toolkit ▾” tylko w oknie „Dodaj" (panel nie ma sensu w przeglądarce)."""
     if not getattr(editor, "addMode", False):
-        return buttons
-    buttons.append(
-        editor.addButton(
-            icon=None,
-            cmd="wq_toggle",
-            func=lambda _ed: _toggle_panel(_ed.parentWindow),
-            tip="Kolejka słówek z n8n (pokaż/ukryj)",
-            label="📚",
-        )
-    )
-    return buttons
+        return []
+    return [("📚 Kolejka słówek (pokaż/ukryj)", lambda: _toggle_panel(editor.parentWindow))]
 
 
 if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez sieci)

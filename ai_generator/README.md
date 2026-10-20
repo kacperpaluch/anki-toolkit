@@ -1,59 +1,60 @@
-# AI Generator (`ai_generator/`)
+# Prompty AI (`ai_generator/`)
 
 Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje wielu dostawców AI — każde pole karty może korzystać z innego modelu.
 
-Ścieżki „**Ustawienia → …**” w tym pliku oznaczają **Narzędzia → Anki Toolkit → Ustawienia…**, grupa „Tworzenie kart”.
+Ścieżki „**Ustawienia → …**” w tym pliku oznaczają **Narzędzia → Anki Toolkit → Ustawienia…**. Prompty są na stronie **Prompty AI**, a klucze, modele domyślne i limity dostawców — na stronie **Konta i klucze**.
 
 ## Jak używać
 
 ### Edytor kart
-Toolbar edytora ma najpierw przyciski workflowów oznaczonych „Pokaż jako przycisk w edytorze” (w szablonie: **Generuj fiszkę** = AI → Słownik → TTS), a potem przycisk **AI**, który wypełnia wszystkie skonfigurowane **puste** pola AI aktualnie otwartej karty.
+Edytor ma jeden przycisk **Toolkit ▾**. Jego menu zaczyna się od sekwencji pasujących do notatki, a pozycja **Uzupełnij puste pola AI** wypełnia wszystkie skonfigurowane **puste** pola AI aktualnie otwartej karty (pojawia się tylko, gdy typ notatki ma prompty). Sekwencja z opcją **Osobny przycisk w edytorze** ma dodatkowo własny przycisk obok (w szablonie: **Generuj fiszkę** = AI → Wymowa → Nagranie).
 
 Dodatkowo: **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
 
 Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
 - Edytor odświeża się automatycznie po zakończeniu generowania
-- Przycisk **AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem workflow „tylko na żądanie”. PPM → „Regeneruj” nadpisuje pełne pole
+- **Uzupełnij puste pola AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem sekwencji „tylko na żądanie”. PPM → „Regeneruj” nadpisuje pełne pole
 - **To, co wpiszesz w trakcie generowania, wygrywa** — generowanie pracuje na kopii notatki. Jeśli zmienisz dowolne pole, wynik bieżącej operacji/kroku zostanie pominięty: mógł korzystać z nieaktualnego źródła. Tooltip wymieni pominięte pola wynikowe. Ta sama zasada obowiązuje w TTS, słowniku i workflow; kolejny krok workflow widzi już aktualne dane.
 - Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd — **także wtedy, gdy część pól się udała, a część nie**; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
 - Gdy na tej samej notatce trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest ignorowana z krótkim komunikatem. Inne okno edytora może pracować równolegle.
 - Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej
 
-### Workflowy
+### Sekwencje
 
-Workflow to nazwana sekwencja kroków (AI / Słownik / TTS / Rozdziel pole). Każdy workflow jest pozycją w menu PPM przeglądarki, a z flagą **„Pokaż jako przycisk w edytorze”** — także przyciskiem w toolbarze edytora. Konfiguracja w **Ustawienia → Workflowy**:
-- Dodawaj kroki przyciskami **+ AI**, **+ Słownik**, **+ TTS**, **+ Rozdziel**
-- Przy **+ Słownik** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / tylko na żądanie / konkretne)
-- Zmieniaj kolejność ▲▼, usuwaj kroki. Podpowiedź pozycji na liście pokazuje sekwencję kroków. Workflow **Przygotuj fiszki** zachowuje kolejność: AI (puste) → TTS → rozdzielanie → AI (tylko na żądanie).
+Sekwencja (w configu `workflows`) to nazwany ciąg kroków (AI / Wymowa / Nagranie / Rozdziel pole). Każda sekwencja jest pozycją w menu **Toolkit ▾** edytora i w menu PPM przeglądarki, a z flagą **„Osobny przycisk w edytorze”** — także własnym przyciskiem w toolbarze edytora. Konfiguracja w **Ustawienia → Sekwencje**:
+- Dodawaj kroki przyciskami **+ AI**, **+ Wymowa**, **+ Nagranie**, **+ Rozdziel**
+- Przy **+ Wymowa** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / tylko na żądanie / konkretne)
+- Zmieniaj kolejność ▲▼, usuwaj kroki. Podpowiedź pozycji na liście pokazuje sekwencję kroków. Sekwencja **Przygotuj fiszki** zachowuje kolejność: AI (puste) → TTS → rozdzielanie → AI (tylko na żądanie).
 
-W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie workflow — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce workflow przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
+W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie sekwencji — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce sekwencja przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
 
 ### Przeglądarka (batch)
 Zaznacz notatki → **menu kontekstowe → Anki Toolkit**:
 
-- **Uzupełnij puste pola AI → Wszystkie pola automatyczne** — puste pola bez flagi „Tylko na żądanie”. Możesz też wybrać jedno pole.
-- **Generuj pola tylko na żądanie** — osobno uzupełnia puste pola z flagą `manual_only`.
-- **Wygeneruj ponownie wybrane pole… → `<pole>`** — generuje wskazane pole również w notatkach z istniejącą treścią. Potwierdzenie podaje liczbę pasujących notatek; domyślną odpowiedzią jest odmowa. Błąd generowania pozostawia dotychczasową treść pola. Pozostałe pola nie są generowane.
+**Wygeneruj pola AI…** otwiera jedno okno dla wszystkich działań AI:
+
+- **Lista pól** — pola automatyczne są zaznaczone z góry, pola z flagą „Tylko na żądanie” (`manual_only`) są na liście z dopiskiem i trzeba je zaznaczyć ręcznie. Zwykłe uzupełnianie dotyczy tylko pustych pól.
+- **Nadpisz pola, które mają już treść** — generuje zaznaczone pola również w notatkach z istniejącą treścią. Potwierdzenie podaje liczbę pasujących notatek; domyślną odpowiedzią jest odmowa. Błąd generowania pozostawia dotychczasową treść pola. Pozostałe pola nie są generowane.
+- **Tryb tańszy (Batch API)** — widoczny, gdy któreś pole ma dostawcę `openai`, `anthropic` albo `openrouter`; po zaznaczeniu pola innych dostawców są nieaktywne. Wyklucza się z nadpisywaniem (Batch API wypełnia tylko puste pola). Szczegóły niżej.
 
 Menu pokazuje tylko pola obecne i skonfigurowane w zaznaczonych notatkach,
 z uwzględnieniem tagów wykluczających AI. Przy mieszanym zaznaczeniu każdy typ
 notatki korzysta z własnego promptu; niepasujące notatki są pomijane.
-Workflowy są widoczne, gdy przynajmniej jeden ich krok pasuje do zaznaczenia.
-Widocznością sekcji sterujesz w **Ustawienia → Workflowy**.
+Sekwencje są widoczne, gdy przynajmniej jeden ich krok pasuje do zaznaczenia.
 
-**Widoczność PPM** ustawiasz w **Ustawienia → Workflowy**. Przełączniki nie
-wyłączają modułów ani kroków workflow — dotyczą tylko wbudowanych sekcji menu:
+**Widoczność PPM** ustawiasz w **Ustawienia → Sekwencje**. Przełączniki nie
+wyłączają modułów ani kroków sekwencji — dotyczą tylko wbudowanych sekcji menu:
 
 | Ustawienie | Widoczne działania |
 |---|---|
-| Uzupełnij puste pola AI | Pola automatyczne, ich regenerowanie oraz całe submenu Batch API |
-| Generuj pola tylko na żądanie (AI) | Pola `manual_only`, ich regenerowanie oraz ręczne pola w Batch API (jeśli pierwsza sekcja też jest włączona) |
+| Wygeneruj pola AI… — pola automatyczne | Pola automatyczne w oknie **Wygeneruj pola AI…** (także w trybie tańszym) |
+| Wygeneruj pola AI… — pola tylko na żądanie | Pola `manual_only` w tym samym oknie |
 | Pobierz wymowę (słowniki) | Włączone grupy słowników, jeśli istnieją wymagane pola |
-| TTS (zadania audio) | Zadania z polami obecnymi w zaznaczeniu |
+| Nagraj audio (TTS) | Zadania z polami obecnymi w zaznaczeniu |
 | Rozdziel pole | Rozdzielanie, jeśli istnieje źródło i przynajmniej jedno inne pole docelowe |
 
-Workflowy mają własne pozycje i pojawiają się, gdy przynajmniej jeden ich krok
-pasuje do zaznaczenia. To sprawdzenie nie usuwa pozostałych kroków z workflow.
+Sekwencje mają własne pozycje i pojawiają się, gdy przynajmniej jeden ich krok
+pasuje do zaznaczenia. To sprawdzenie nie usuwa pozostałych kroków z sekwencji.
 Bez zaznaczenia lub przy braku pasujących działań submenu Anki Toolkit jest ukryte.
 
 Praca przebiega w tle z natywnym paskiem postępu Anki i możliwością anulowania.
@@ -85,27 +86,26 @@ Raport jest przeznaczony dla zwykłego generowania AI, regenerowania oraz
 workflowów w przeglądarce. Batch API, samodzielne TTS i pobieranie wymowy
 zachowują swoje dotychczasowe podsumowania.
 
-### Batch API (masowy backfill, ~50% taniej — Anthropic, OpenAI i OpenRouter)
+### Tryb tańszy — Batch API (masowy backfill, ~50% taniej — Anthropic, OpenAI i OpenRouter)
 
-Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Batch API ▸**. Menu pojawia się tylko dla pasujących pól dostawców API; przy samych promptach CLI jest ukryte.
+Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Wygeneruj pola AI…** → **Tryb tańszy (Batch API)**. Opcja pojawia się tylko dla pasujących pól dostawców API; przy samych promptach CLI jest ukryta.
 
-Warunki pojawienia się submenu:
+Warunki pojawienia się opcji:
 
 1. Zaznaczona notatka ma skonfigurowane pole docelowe i to pole faktycznie istnieje.
 2. Główny dostawca tego promptu to `openai`, `anthropic` albo `openrouter`; sam fallback API przy głównym CLI nie wystarcza.
 3. Notatka nie ma tagu wykluczającego AI (`skip_tags`).
-4. W widoczności PPM włączone jest **Uzupełnij puste pola AI**. Jeśli pasują tylko pola `manual_only`, włączone musi być również **Generuj pola tylko na żądanie (AI)**.
+4. W widoczności PPM włączona jest sekcja odpowiadająca polu: **pola automatyczne** albo **pola tylko na żądanie**.
 
 Widoczność nie zależy od tego, czy pole jest puste, czy jest podany poprawny
 klucz API lub czy dany model obsługuje Batch API. To sprawdzane jest podczas
-budowania zapytań i wysyłki. Menu może więc być widoczne przy pełnych polach,
+budowania zapytań i wysyłki. Opcja może więc być widoczna przy pełnych polach,
 a wysyłka nie znajdzie żadnej pracy. Nie jest to błąd generowania.
 
-Działania w submenu:
+Działania:
 
-- **Wyślij wszystkie puste pola automatyczne** / **`<pole>`** — wysyła puste pola (wszystkie albo wybrane) do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
-- **Wyślij puste pola tylko na żądanie** / **Na żądanie: `<pole>`** — to samo dla pól oflagowanych „Tylko na żądanie" (`manual_only`), które tryb „wszystkie pola" pomija. Pozycje pojawiają się tylko gdy takie pola istnieją w konfiguracji promptów.
-- **Pobierz i zastosuj wyniki Batch API** (także **Narzędzia → Anki Toolkit → Pobierz i zastosuj wyniki Batch API**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
+- **Generuj** w oknie z zaznaczonym trybem tańszym — wysyła puste zaznaczone pola do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
+- **Pobierz wyniki trybu tańszego (Batch API)** w menu PPM (także **Narzędzia → Anki Toolkit → Pobierz wyniki trybu tańszego (Batch API)**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
 
 Szczegóły:
 - Starsze rekordy i zadania **bez `col` pozostają zachowane, ale są wstrzymane** — nie można bezpiecznie zgadnąć, do którego profilu należą. Po ustaleniu właściwego profilu, przy zamkniętym Anki i po zrobieniu kopii `user_files/ai_batches.json`, przypisz jego pełną ścieżkę `collection.anki2` jako `col` wyłącznie do należących do niego rekordów i zadań. Tak samo postępuj po przeniesieniu lub zmianie nazwy profilu. Nie przypisuj automatycznie całego pliku do aktualnego profilu.
@@ -113,7 +113,7 @@ Szczegóły:
 - Trafienie wyniku w pole jest **deterministyczne** — mapa `custom_id → (notatka, pole)` zapisywana jest w `user_files/ai_batches.json` (przeżywa restart). Wynik wpisywany jest **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania); usunięta notatka / zmienione pole → wynik pomijany.
 - **Batche i zadania należą do konkretnej kolekcji.** Plik `ai_batches.json` jest wspólny dla wszystkich profili, więc każdy wpis zapamiętuje ścieżkę kolekcji, w której powstał. Po otwarciu innego profilu jego batche są niewidoczne — nie zostaną zastosowane do cudzych notatek ani oznaczone jako zrobione; czekają na powrót do swojego profilu. (Licznik kolejki tokenów OpenAI jest jedynym wyjątkiem — limit jest per organizacja, więc sumuje batche ze wszystkich profili.)
 - Wspólny rdzeń (wybór pól, mapa, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: **Anthropic** wysyła zapytania inline i pobiera wynik z `results_url`; **OpenAI** uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a jego batch wymaga jednego modelu, więc zapytania OpenAI są grupowane po modelu (osobny batch na model); **OpenRouter** wysyła zapytania inline (bez uploadu pliku) i zwraca wyniki wewnątrz samego obiektu batcha (jeden model na batch, więc też grupowany). OpenRouter używa **osobnego modelu batch** — wtyczka automatycznie dopisuje sufiks `:batch` do skonfigurowanego modelu (np. `google/gemini-3.7-flash` → `google/gemini-3.7-flash:batch`), więc w konfiguracji podajesz ten sam model co dla zwykłego generowania.
-- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → AI Generator → Dostawcy → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"**) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a timer co minutę pobiera wyniki i automatycznie dosyła kolejny plaster pustych pól. Dostawcy bez limitu kolejki (Anthropic, OpenRouter) mają własny budżet na turę — pełna kolejka OpenAI ich nie blokuje. Postęp każdej tury („Auto-dosłano… Zadanie: X/Y zapytań") trafia do tooltipa i do **Ustawienia → Diagnostyka**.
+- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → Prompty AI → Ogólne → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"**) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a timer co minutę pobiera wyniki i automatycznie dosyła kolejny plaster pustych pól. Dostawcy bez limitu kolejki (Anthropic, OpenRouter) mają własny budżet na turę — pełna kolejka OpenAI ich nie blokuje. Postęp każdej tury („Auto-dosłano… Zadanie: X/Y zapytań") trafia do tooltipa i do **Ustawienia → Diagnostyka**.
 - **Brak podwójnych opłat przy zerwanym połączeniu.** Żądanie tworzące batch jest ponawiane tylko wtedy, gdy dostawca na pewno go nie przyjął (429, odmowa połączenia, nieznany host). Timeout, zerwanie połączenia albo 5xx oznaczają wynik niepewny: wpis dostaje status `uncertain`, jego pola liczą się jako „w kolejce”, a kolejne sprawdzenie szuka batcha na liście dostawcy (OpenAI po pliku wejściowym; Anthropic i OpenRouter po czasie utworzenia i liczbie zapytań). Odnaleziony batch jest dalej odpytywany normalnie. Jeśli lista pokazuje, że batch nie powstał, pola wracają do kolejki. Gdy listy nie da się pobrać przez 25 h, wpis jest zamykany (`not_created`).
 - **Awaria sieci nie porzuca wyników.** Batch jest oznaczany jako wygasły dopiero po co najmniej 60 nieudanych odpytaniach w ciągu co najmniej 3 dni ciągłych błędów albo po 30 dniach od wysyłki (Anthropic trzyma wyniki 29 dni). Anki zamknięte przez tydzień nie traci już opłaconych wyników.
 - Wysyłka w całości odłożona przez pełną kolejkę OpenAI też zapisuje zadanie i ruszy sama, gdy zwolni się miejsce. Prawdziwy błąd (np. zły klucz) zadania nie tworzy.
@@ -125,7 +125,6 @@ Szczegóły:
 
 ```json
 "ai_generator": {
-    "button_label": "AI",
     "skip_tags": ["skip-ai"],
     "batch_limit": 3,
     "batch_sleep": 1.0,
@@ -140,7 +139,6 @@ Szczegóły:
 
 | Pole | Opis |
 |---|---|
-| `button_label` | Etykieta przycisku w edytorze |
 | `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji); `[]` wyłącza funkcję |
 | `batch_limit` | Liczba kart w jednej grupie — po każdej grupie następuje przerwa `batch_sleep` |
 | `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
@@ -154,7 +152,7 @@ Szczegóły:
 
 ### Konfiguracja dostawców
 
-W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawca ma pozycję na liście (✓ = gotowy do użycia) i własny formularz z kluczem API i modelem domyślnym. Konkretny model wybiera się per prompt; model domyślny jest fallbackiem dla starszej konfiguracji i nowych promptów. Limity paczek, przerwy, ponowienia i timeouty są w sekcji **Zaawansowane**.
+W UI dostawcy są w **Ustawienia → Konta i klucze → Dostawcy AI**. Lista pokazuje tylko używanych dostawców (z kluczem albo wybranych w prompcie lub kolejce słówek); pozostałych dodasz przyciskiem **+ Dodaj dostawcę**. Każdy dostawca ma pozycję na liście (✓ = gotowy do użycia) i formularz z kluczem API (albo statusem CLI), modelem domyślnym i poziomem rozumowania; temperatura, model zapasowy, limity RPM i równoległości oraz ścieżka i limit czasu CLI są w zwiniętej sekcji **Zaawansowane** dostawcy. Konkretny model wybiera się per prompt; model domyślny jest modelem zapasowym dla starszej konfiguracji i nowych promptów. Tagi wykluczające oraz limity paczek, przerwy, ponowienia i timeouty są w **Prompty AI → Ogólne**.
 
 ```json
 "providers": {
@@ -204,7 +202,7 @@ W UI dostawcy są w **Ustawienia → AI Generator → Dostawcy**. Każdy dostawc
 - **claude_cli** — dropdown `low/medium/high/xhigh/max`; wysyłany jako `--effort`, puste = domyślny poziom CLI. Poziomy zależą od modelu i wersji CLI.
 - **anthropic** — nie ma pola `reasoning_effort` w UI.
 
-W zakładce **Prompty** pola **Poziom rozumowania** (główne i w sekcji **Model zapasowy**) nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) usuwa nadpisanie; etykieta aktualizuje się także po niezapisanej zmianie poziomu w zakładce Dostawcy. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
+W zakładce **Prompty** pola **Poziom rozumowania** (główne i w sekcji **Model zapasowy**) nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) usuwa nadpisanie; etykieta aktualizuje się także po niezapisanej zmianie poziomu na stronie Konta i klucze. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
 
 `max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
@@ -226,7 +224,7 @@ Obaj dostawcy zachowują się tak samo w tych punktach:
 
 - **Wykrywanie binarki.** Puste `binary_path` = autodetekcja. Przeszukiwany jest `PATH` **rozszerzony** o typowe katalogi instalacji (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/bin`), a potem lokalizacje charakterystyczne dla danego klienta. Rozszerzenie jest konieczne, bo aplikacja GUI na macOS nie dziedziczy `PATH`-u z powłoki: Anki uruchomione z Findera dostaje z launchd tylko `/usr/bin:/bin:/usr/sbin:/sbin` i bez tego nie znalazłoby niczego z Homebrew.
 - **Środowisko procesu.** Wycięte do `PATH`, `HOME`, `USER`/`LOGNAME` i kilku zmiennych regionalnych — pozostałe klucze API z tej wtyczki nie trafiają w zasięg uruchamianego CLI. `USER`/`LOGNAME` muszą zostać, bo bez nich odczyt keychaina na macOS zawodzi i zalogowane CLI raportuje brak logowania.
-- **Status w UI.** Ustawienia → AI Generator → Dostawcy pokazują wykrytą ścieżkę i stan logowania (przycisk **Odśwież**); ✓ na liście dostawców oznacza gotowość, nie obecność klucza.
+- **Status w UI.** Ustawienia → Konta i klucze → Dostawcy AI pokazują wykrytą ścieżkę i stan logowania (przycisk **Odśwież**); ✓ na liście dostawców oznacza gotowość, nie obecność klucza.
 - **Ograniczenia.** `temperature` jest ignorowana (żaden z klientów jej nie wystawia), Batch API nie działa (wymaga klucza), a prompt idzie przez stdin, nie przez `argv`.
 
 #### Codex CLI (subskrypcja ChatGPT)
@@ -357,8 +355,8 @@ Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, 
 
 | Poziom | Pola | Gdzie w UI |
 |---|---|---|
-| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → AI Generator → Prompty |
-| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → AI Generator → Dostawcy |
+| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → Prompty AI → Prompty |
+| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → Konta i klucze → dostawca → Zaawansowane |
 
 Priorytetyzacja:
 1. Jeśli prompt ma `fallback_model` → użyj go (z `fallback_provider` lub tym samym dostawcą)
@@ -396,7 +394,7 @@ Właściwości:
 
 ## Rate limiter per dostawca
 
-Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit na swojej karcie w **Ustawienia → AI Generator → Dostawcy**:
+Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit w **Ustawienia → Konta i klucze → dostawca → Zaawansowane**:
 
 - **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (OpenRouter domyślnie `20`)
 - **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
@@ -420,13 +418,13 @@ Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:fr
 
 Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
 
-Edytor promptów (**Ustawienia → AI Generator → Prompty**) pokazuje przede wszystkim pole docelowe, dostawcę, model, poziom rozumowania i treść promptu. Sekcje **Ustawienia zadania** (typ notatki, nazwa, temperatura, tryb ręczny, kopiowanie modeli) i **Model zapasowy** są domyślnie zwinięte. Przy dodawaniu zadania pierwsza sekcja otwiera się automatycznie. Po rozwinięciu sekcji edytor można przewijać.
+Edytor promptów (**Ustawienia → Prompty AI → Prompty**) pokazuje przede wszystkim pole docelowe, dostawcę, model, poziom rozumowania i treść promptu. Sekcje **Ustawienia zadania** (typ notatki, nazwa, temperatura, tryb ręczny, kopiowanie modeli) i **Model zapasowy** są domyślnie zwinięte. Przy dodawaniu zadania pierwsza sekcja otwiera się automatycznie. Po rozwinięciu sekcji edytor można przewijać.
 
 **Temperatura (API)** jest nieaktywna, gdy model główny i zapasowy korzystają z CLI. Jej wartość pozostaje zachowana; przy fallbacku do API można ją ustawić dla tego wywołania.
 
 Edytor pomaga uniknąć literówek:
 - **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
-- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona z zakładką Dostawcy
+- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona ze stroną Konta i klucze
 - **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
 - **Ustaw te modele we wszystkich promptach…** — kopiuje dostawcę, model, dostawcę zapasowego i model zapasowy bieżącego promptu do pozostałych promptów widocznych na liście (filtr typu notatki zawęża zakres); przed zmianą pyta o potwierdzenie, zapis dopiero przy zapisie ustawień; jeśli zmienia dostawcę głównego lub zapasowego, usuwa odpowiednie nadpisanie effort, aby wrócić do dziedziczenia
 - **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki

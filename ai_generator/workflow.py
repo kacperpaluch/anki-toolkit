@@ -124,11 +124,11 @@ def run_workflow_editor(editor: Editor, workflow: dict):
     """Run one workflow's steps sequentially on the current editor note."""
     steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
     if not steps:
-        tooltip("Brak kroków w tym workflow. Sprawdź ustawienia.")
+        tooltip("Brak kroków w tej sekwencji. Sprawdź ustawienia.")
         return
 
     token = begin_editor_operation(
-        editor, f"workflow „{workflow.get('name', 'Workflow')}”"
+        editor, f"sekwencja „{workflow.get('name', 'Sekwencja')}”"
     )
     if token is None:
         tooltip(
@@ -146,7 +146,7 @@ def run_workflow_editor(editor: Editor, workflow: dict):
             _execute_steps(editor, note, steps, token)
         except Exception as e:
             finish_editor_operation(editor, token)
-            tooltip(f"Błąd workflow: {e}", period=5000)
+            tooltip(f"Błąd sekwencji: {e}", period=5000)
 
     try:
         editor.saveNow(start)
@@ -177,7 +177,7 @@ def _execute_steps(editor: Editor, note, steps: list, token):
     def run_step(i: int):
         if i >= total:
             finish_editor_operation(editor, token)
-            msg = (f"Workflow zakończony. Wykonano {total} "
+            msg = (f"Sekwencja zakończona. Wykonano {total} "
                    f"{plural_pl(total, 'krok', 'kroki', 'kroków')}.")
             if skipped_fields:
                 msg += (" Pominięto pola zmienione w trakcie: "
@@ -213,11 +213,11 @@ def _execute_steps(editor: Editor, note, steps: list, token):
                     skipped_fields.extend(merge_editor_note(editor, note, clone, before))
                 except Exception as e:
                     finish_editor_operation(editor, token)
-                    tooltip(f"Workflow przerwany: {e}", period=8000)
+                    tooltip(f"Sekwencja przerwana: {e}", period=8000)
                     return
                 if err:
                     logger.error(f"Workflow: krok {i + 1}/{total} ({module}/{action}): {err}")
-                    tooltip(f"Workflow krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
+                    tooltip(f"Sekwencja, krok {i+1}/{total} ({module}/{action}): {err}", period=5000)
                 run_step(i + 1)
 
             # Flush the webview into the note first, so merge_note() can tell
@@ -229,12 +229,12 @@ def _execute_steps(editor: Editor, note, steps: list, token):
                     commit()
             except Exception as e:
                 finish_editor_operation(editor, token)
-                tooltip(f"Workflow przerwany: {e}", period=8000)
+                tooltip(f"Sekwencja przerwana: {e}", period=8000)
 
         try:
             mw.taskman.run_in_background(bg_task, on_done, uses_collection=False)
         except Exception as e:
             finish_editor_operation(editor, token)
-            tooltip(f"Błąd workflow: {e}", period=5000)
+            tooltip(f"Błąd sekwencji: {e}", period=5000)
 
     run_step(0)

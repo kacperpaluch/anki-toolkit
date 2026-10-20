@@ -8,9 +8,6 @@ from . import audio_normalizer, field_hider, html_cleanup, integrations
 from .common import setup_logging
 
 setup_logging()
-gui_hooks.editor_did_init_buttons.append(ai_generator.on_editor_buttons_init)
-gui_hooks.editor_did_init_buttons.append(dictionary.on_editor_buttons_init)
-gui_hooks.editor_did_init_buttons.append(tts.on_editor_buttons_init)
 gui_hooks.profile_did_open.append(lambda: ai_generator.check_pending_batches(silent=True))
 # Batche kończą się w ciągu godzin, a zadanie wygasa po 24h — bez cyklicznego
 # sprawdzania wyniki czekałyby do następnego startu Anki, a reszta zadania
@@ -20,6 +17,35 @@ _batch_timer = QTimer(mw)
 _batch_timer.setInterval(60000)
 _batch_timer.timeout.connect(lambda: ai_generator.check_pending_batches(silent=True))
 _batch_timer.start()
+
+
+def _show_editor_menu(editor):
+    """One editor button: actions that fit the current note, grouped."""
+    from aqt.qt import QCursor, QMenu
+    from .settings_dialog import open_settings
+    menu = QMenu(editor.widget)
+    groups = (ai_generator.workflow_actions(editor),
+              ai_generator.editor_actions(editor) + dictionary.editor_actions(editor)
+              + tts.editor_actions(editor),
+              integrations.editor_actions(editor) + field_hider.editor_actions(editor),
+              [("Ustawienia…", open_settings)])
+    for group in filter(None, groups):
+        if menu.actions():
+            menu.addSeparator()
+        for label, callback in group:
+            menu.addAction(label).triggered.connect(lambda _checked=False, cb=callback: cb())
+    menu.exec(QCursor.pos())
+    menu.deleteLater()
+
+
+def _editor_buttons(buttons, editor):
+    ai_generator.on_editor_buttons_init(buttons, editor)  # workflows with their own button
+    buttons.append(editor.addButton(
+        None, "anki_toolkit_menu", _show_editor_menu, tip="Anki Toolkit",
+        label="Toolkit ▾", disables=False))  # usable before any field has focus
+
+
+gui_hooks.editor_did_init_buttons.append(_editor_buttons)
 
 
 def _context(browser, menu):
@@ -62,7 +88,7 @@ def _setup_menu(*_):
     ))
     menu.addSeparator()
     add_actions(menu, (
-        ("Pobierz i zastosuj wyniki Batch API", lambda: ai_generator.check_pending_batches(silent=False)),
+        ("Pobierz wyniki trybu tańszego (Batch API)", lambda: ai_generator.check_pending_batches(silent=False)),
     ))
     operations = menu.addMenu("Operacje na kolekcji")
     add_actions(operations, (

@@ -201,7 +201,7 @@ class FieldGenerator:
 
         if provider_cfg is None:
             self.last_error = (f"Provider '{provider_name}' nie istnieje w sekcji "
-                               f"dostawców AI — sprawdź Ustawienia → AI Generator.")
+                               f"dostawców AI — sprawdź Ustawienia → Konta i klucze.")
             logger.error(self.last_error)
             self._providers[cache_key] = None
             return None
@@ -213,7 +213,7 @@ class FieldGenerator:
         api_key = provider_cfg.get("api_key", "")
         if requires_key and (not api_key or api_key.startswith("YOUR_")):
             self.last_error = (f"Brak klucza API dla providera '{provider_name}' — "
-                               f"uzupełnij w Ustawienia → AI Generator → Dostawcy.")
+                               f"uzupełnij w Ustawienia → Konta i klucze.")
             logger.error(self.last_error)
             self._providers[cache_key] = None
             return None

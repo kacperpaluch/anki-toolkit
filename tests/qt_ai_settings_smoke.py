@@ -32,17 +32,23 @@ cfg["ai_generator"]["note_types"] = {"Test": {"task": {
     "unknown_setting": "preserve",
 }}}
 tab = module.AIGeneratorTab(copy.deepcopy(cfg))
+accounts = importlib.import_module("effort_smoke.settings.accounts_tab").AccountsTab(copy.deepcopy(cfg))
 try:
     prompts = tab._prompts
+    # Same wiring as SettingsDialog: prompts read provider defaults live from Konta i klucze.
+    prompts._provider_settings = accounts.provider_settings
+    accounts.providers.on_effort_changed(prompts.refresh_provider_defaults)
+    widgets = accounts.providers._provider_widgets
     prompts._load_key_to_editor(("Test", "task"))
     assert not prompts._ed_temperature.isEnabled()
     assert not prompts._task_section.findChild(QPushButton).isChecked()
     assert not prompts._fallback_section.findChild(QPushButton).isChecked()
     assert prompts._ed_effort.currentData() == "high"
     assert prompts._ed_fallback_effort.currentData() == "xhigh"
-    tab._provider_widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
+    widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
     saved = copy.deepcopy(cfg)
     tab.apply(saved)
+    accounts.apply(saved)
     task = saved["ai_generator"]["note_types"]["Test"]["task"]
     assert task["reasoning_effort"] == "high"
     assert task["fallback_reasoning_effort"] == "xhigh"
@@ -51,10 +57,10 @@ try:
     assert saved["ai_generator"]["providers"]["claude_cli"]["reasoning_effort"] == "medium"
     prompts._ed_effort.setCurrentIndex(0)
     assert prompts._ed_effort.currentText() == "Dziedzicz: medium"
-    tab._provider_widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
+    widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
     assert prompts._ed_effort.currentText() == "Dziedzicz: high"
     assert prompts._ed_effort.currentData() == ""
-    tab._provider_widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
+    widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
     prompts._ed_fallback_effort.setCurrentIndex(0)
     tab.apply(saved)
     task = saved["ai_generator"]["note_types"]["Test"]["task"]
@@ -68,7 +74,7 @@ try:
     assert prompts._ed_effort.findData("ultra") >= 0
     queue_module = importlib.import_module("effort_smoke.integrations.settings")
     saved["word_queue"].update({"ai_provider": "claude_cli", "ai_model": "claude-custom", "ai_reasoning_effort": "high"})
-    queue = queue_module.IntegrationsTab(copy.deepcopy(saved), tab._current_provider_settings)
+    queue = queue_module.IntegrationsTab(copy.deepcopy(saved), accounts.provider_settings)
     try:
         assert queue._model.currentText() == "claude-custom"
         queue._provider.setCurrentIndex(queue._provider.findData("codex_cli"))
@@ -125,11 +131,11 @@ try:
         queue._field.setText(original_field)
         queue._effort.setCurrentIndex(0)
         assert queue._effort.currentText() == "Dziedzicz: medium"
-        tab._provider_widgets["claude_cli"]["reasoning_effort"].currentTextChanged.connect(
+        widgets["claude_cli"]["reasoning_effort"].currentTextChanged.connect(
             queue.refresh_provider_defaults)
-        tab._provider_widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
+        widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
         assert queue._effort.currentText() == "Dziedzicz: high"
-        tab._provider_widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
+        widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
         queue.apply(saved)
         assert "ai_reasoning_effort" not in saved["word_queue"]
         queue._provider.setCurrentIndex(queue._provider.findData("codex_cli"))
@@ -139,6 +145,14 @@ try:
         assert queue._effort.currentData() == ""
     finally:
         queue.close()
+    # Unused providers are hidden until added; the claude_cli prompt and codex fallback keep theirs.
+    rows = {name: r for r, name in enumerate(module._PROVIDER_NAMES)}
+    hidden = [n for n, r in rows.items() if accounts.providers._prov_list.isRowHidden(r)]
+    assert "claude_cli" not in hidden and "codex_cli" not in hidden
+    for name in hidden:
+        accounts.providers._add_provider(rows[name])
+    assert not accounts.providers._add_btn.isVisibleTo(accounts.providers)
     print("Qt AI settings and word queue smoke: OK")
 finally:
     tab.close()
+    accounts.close()

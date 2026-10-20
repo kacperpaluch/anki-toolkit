@@ -196,7 +196,7 @@ class CodexCLIProvider(BaseProvider):
             self.last_error = (
                 "Nie znaleziono binarki `codex`. Zainstaluj Codex CLI "
                 "(https://developers.openai.com/codex) albo podaj ścieżkę "
-                "w Ustawienia → AI Generator → Dostawcy → Codex CLI."
+                "w Ustawienia → Konta i klucze → Codex CLI."
             )
             self.logger.error(self.last_error)
             return None

@@ -26,7 +26,7 @@ class LogsTab(QWidget):
         layout.addWidget(self._debug_cb)
 
         layout.addWidget(hint_label(
-            "Logi modułów wtyczki (TTS, AI Generator, słownik...). Bufor trzymany w pamięci "
+            "Logi modułów wtyczki (AI, nagrania, słowniki...). Bufor trzymany w pamięci "
             "(ostatnie 2000 wpisów), czyszczony przy restarcie Anki. Bez trybu debugowania "
             "rejestrowane są INFO/WARNING/ERROR. Widok odświeża się automatycznie co 2 s.",
             small=True,

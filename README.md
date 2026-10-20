@@ -2,7 +2,11 @@
 
 Anki Toolkit to jeden dodatek do Anki, wspierający cały proces tworzenia kart:
 od pobrania słowa, przez wypełnienie treści i wymowę, po utrzymanie mediów.
-Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia w jednym oknie.
+Wszystko jest w trzech miejscach, a ustawienia w jednym oknie:
+
+- **edytor** (Dodaj / Edytuj) — jeden przycisk **Toolkit ▾**,
+- **przeglądarka kart** — prawy klik → **Anki Toolkit**,
+- **Narzędzia → Anki Toolkit** — kolejka słówek, ustawienia i operacje na całej kolekcji.
 
 ## Menu
 
@@ -10,47 +14,57 @@ Wszystko jest pod **Narzędzia → Anki Toolkit**, a ustawienia w jednym oknie.
 |---|---|
 | **Ustawienia…** | Jedno okno z paskiem bocznym dla wszystkich modułów (ten sam dialog otwiera **Config** w **Narzędzia → Dodatki**) |
 | **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
-| **Pobierz i zastosuj wyniki Batch API** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania |
+| **Pobierz wyniki trybu tańszego (Batch API)** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania (dzieje się też samo co minutę) |
 | **Operacje na kolekcji → Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
 | **Operacje na kolekcji → Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
 | **Operacje na kolekcji → Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
 
-W Browserze PPM → **Anki Toolkit** zawiera workflowy, generowanie AI, wymowę,
-TTS i rozdzielanie pól pasujące do zaznaczonych notatek. Sekcje można ukryć
-w **Ustawienia → Workflowy**; Batch API pojawia się tylko dla pasujących promptów API.
-AI rozróżnia uzupełnianie pustych pól od regenerowania jednego pola z potwierdzeniem
-nadpisania. Po generowaniu AI lub workflow w Browserze pojawia się raport
-zapisanych zmian, pominięć i błędów z identyfikatorami notatek oraz przyciskiem kopiowania.
-Edytor notatki ma przyciski
-workflowów, AI, słowników (np. **Diki**, **Oxford**) i TTS; okno **Dodaj** ma
-dodatkowo 📚 (kolejka słówek) i 👁 (ukryte pola).
+W przeglądarce kart prawy klik → **Anki Toolkit** zawiera sekwencje, **Wygeneruj pola AI…**,
+wymowę, nagrania (TTS) i rozdzielanie pól — tylko to, co pasuje do zaznaczonych notatek.
+**Wygeneruj pola AI…** otwiera jedno okno: zaznaczasz pola (puste pola automatyczne są
+zaznaczone z góry, pola „tylko na żądanie” można dołączyć), opcjonalnie **Nadpisz pola,
+które mają już treść** (z potwierdzeniem) albo **Tryb tańszy (Batch API)** dla promptów
+OpenAI, Anthropic i OpenRoutera. Sekcje menu można ukryć w **Ustawienia → Sekwencje**.
+Po generowaniu AI lub sekwencji pojawia się raport zapisanych zmian, pominięć i błędów
+z identyfikatorami notatek oraz przyciskiem kopiowania.
+
+Edytor ma jeden przycisk **Toolkit ▾**. Jego menu pokazuje to, co pasuje do bieżącej
+notatki: sekwencje, **Uzupełnij puste pola AI**, **Wymowa: Diki / Oxford / …**,
+**Nagraj audio (TTS)**, a w oknie **Dodaj** także **📚 Kolejka słówek** i **Pokaż/ukryj
+schowane pola**; na końcu **Ustawienia…**. Sekwencja z opcją **Osobny przycisk w edytorze**
+ma dodatkowo własny przycisk obok.
 
 ## Moduły
 
-Okno ustawień grupuje moduły tak samo jak poniżej.
+Okno ustawień otwiera się na stronie **Przegląd** (gdzie co jest i co jest skonfigurowane;
+kliknięcie wiersza przenosi na stronę). Wszystkie klucze API i połączenia (dostawcy AI,
+klucz OpenRouter dla nagrań, n8n, Cloudflare Access) są na jednej stronie **Konta
+i klucze**; dostawcy AI, których nie używasz, są ukryci do czasu **+ Dodaj dostawcę**.
+Ustawienia techniczne (limity, ponowienia, model zapasowy, temperatura, ffmpeg) są
+w zwiniętych sekcjach **Zaawansowane**. Moduły są pogrupowane tak samo jak poniżej.
 
 **Tworzenie kart**
 
 | Moduł | Do czego służy |
 |---|---|
-| [AI Generator](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, workflowy, Batch API i fallback modeli |
-| [Słownik](dictionary/README.md) | Audio MP3 z wymową oraz IPA z czterech słowników online |
-| [TTS](tts/README.md) | Audio z API TTS OpenRoutera |
+| [Prompty AI](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, sekwencje, tryb tańszy (Batch API) i modele zapasowe |
+| [Wymowa ze słowników](dictionary/README.md) | Audio MP3 z wymową oraz IPA z czterech słowników online |
+| [Nagrania (TTS)](tts/README.md) | Audio z API TTS OpenRoutera |
 | [Rozdzielanie pól](field_splitter/README.md) | Części pola źródłowego (po separatorze) w kolejnych polach |
 
 Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
 i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
-Poziom rozumowania (**effort**) ustawiasz domyślnie w **AI Generator → Dostawcy**, a osobno
-możesz go nadpisać przy prompcie (także dla fallbacku) i w **Kolejka słówek →
+Poziom rozumowania (**effort**) ustawiasz domyślnie w **Konta i klucze → Dostawcy AI**, a osobno
+możesz go nadpisać przy prompcie (także dla modelu zapasowego) i w **Kolejka słówek →
 AI: znaczenia**. Opcja „Dziedzicz: medium” pokazuje aktualny poziom dostawcy;
 dostępność poziomów zależy od modelu i wersji CLI.
 W **Kolejka słówek → AI: znaczenia** zmiana dostawcy przywraca jego domyślny
 model, a przycisk **Odśwież** pobiera listę modeli bez zmiany bieżącego wyboru.
 
 Edytor promptów zostawia więcej miejsca na tekst, a ustawienia zadania i modelu
-zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; połączenia
-i mapowanie pól są w osobnych zwijanych sekcjach. Panel kolejki ma listę i działania
+zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; mapowanie pól
+i Web Bridge są zwijane, a połączenie z n8n jest w **Konta i klucze**. Panel kolejki ma listę i działania
 po lewej, słowniki po prawej. Checkboxy zbierają słowa do AI, a opis wyboru
 i przycisk **Utwórz karty z AI (n)** pokazują faktyczną paczkę. Ręczne oznaczenie
 jako zrobione zwalnia wybór również przy błędzie n8n; błąd pobrania kolejki

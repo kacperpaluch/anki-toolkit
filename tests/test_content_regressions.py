@@ -740,12 +740,12 @@ class TestBrowserAiActions(unittest.TestCase):
              patch.object(self.browser, "get_config", return_value=self.config), \
              patch.object(self.browser, "askUser", return_value=False) as ask, \
              patch.object(self.browser, "_run_batch") as run:
-            self.browser._on_regenerate_field_browser(b, "def")
+            self.browser._on_regenerate_browser(b, ["def"])
             run.assert_not_called()
             self.assertIn("1 notatkach", ask.call_args.args[0])
             self.assertTrue(ask.call_args.kwargs["defaultno"])
             ask.return_value = True
-            self.browser._on_regenerate_field_browser(b, "def")
+            self.browser._on_regenerate_browser(b, ["def"])
             self.assertEqual(run.call_args.args[1], [1])
             self.assertEqual(run.call_args.kwargs["only_fields"], {"def"})
             self.assertTrue(run.call_args.kwargs["overwrite"])

@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (przyciski workflowów + pomocniczy przycisk AI) i przeglądarce (równoległy batch dla zaznaczonych notatek). Pomija pola, które już mają treść (poza regenerowaniem w edytorze lub Browserze), a w trybie automatycznym także pola `manual_only` („Tylko na żądanie”).
+Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dostawcę, model i prompt. Działa w edytorze (menu „Toolkit ▾” + opcjonalne przyciski workflowów) i przeglądarce (równoległy batch dla zaznaczonych notatek). Pomija pola, które już mają treść (poza regenerowaniem w edytorze lub Browserze), a w trybie automatycznym także pola `manual_only` („Tylko na żądanie”).
 
 ## Pliki
 
@@ -10,8 +10,9 @@ Generuje treść pól kart przez AI. Każde pole karty może mieć własnego dos
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `_generator.py` | Tylko `get_config()` — czyta sekcję `ai_generator` z configu wtyczki. Bez singletona: każde uruchomienie (przycisk, PPM, workflow, batch) tworzy własny `FieldGenerator(get_config())`, więc równoległe generowania nie współdzielą stanu błędów providerów, a zmiany ustawień działają od razu |
-| `editor_ui.py` | UI edytora — przyciski workflow (per workflow z `editor_button`), potem przycisk AI (wszystkie puste pola); wspólny `common.editor_operation` blokuje równoległe AI/TTS/słownik/workflow na tej samej instancji edytora; świeży `FieldGenerator(get_config())` per uruchomienie; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
-| `browser_ui.py` | UI przeglądarki — filtracja PPM względem zaznaczenia (`_selected_target_fields`, `_workflow_matches`), uzupełnianie i potwierdzona regeneracja jednego pola (`_run_batch(overwrite=...)`), workflowy, Batch API oraz `_show_run_report`. `detach_note` na głównym wątku, praca na kopiach, zapis przez `save_detached_notes` i jeden `CollectionOp`. |
+| `editor_ui.py` | UI edytora — własne przyciski tylko dla workflow z `editor_button`; `workflow_actions(editor)` (workflowy pasujące do notatki, przez `browser_ui._workflow_matches`) i `editor_actions(editor)` („Uzupełnij puste pola AI”, gdy typ notatki ma prompty) zasilają jeden przycisk „Toolkit ▾” z root `__init__.py`; wspólny `common.editor_operation` blokuje równoległe AI/TTS/słownik/workflow na tej samej instancji edytora; świeży `FieldGenerator(get_config())` per uruchomienie; `saveNow(start)` zapewnia świeży stan note przed zadaniem; rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na polu dodaje „Wygeneruj/Regeneruj `pole` przez AI" (tylko pola ze skonfigurowanym promptem); `_on_generate_field_editor` woła `process_note(note, only_fields={field}, overwrite=True)` |
+| `browser_ui.py` | UI przeglądarki — filtracja PPM względem zaznaczenia (`_selected_target_fields`, `_workflow_matches`); jedna pozycja „Wygeneruj pola AI…” → `_on_fields_dialog` rozdziela wybór z `fields_dialog.FieldsDialog` na `_run_batch` (puste), `_on_regenerate_browser` (nadpisanie z potwierdzeniem, `_run_batch(overwrite=True)`) albo `_on_batch_submit` (tryb tańszy); workflowy, Batch API oraz `_show_run_report`. `detach_note` na głównym wątku, praca na kopiach, zapis przez `save_detached_notes` i jeden `CollectionOp`. |
+| `fields_dialog.py` | Okno wyboru pól dla PPM: pola automatyczne zaznaczone, `manual_only` z dopiskiem; „Nadpisz” i „Tryb tańszy (Batch API)” wzajemnie się wykluczają, w trybie tańszym pola bez dostawcy batch są nieaktywne |
 | `batch_backfill.py` | Orkiestracja Batch API bez szczegółów HTTP: budowanie pustych pól, grupowanie modeli, budżet tokenów i `_openai_blocked_until`, persistence `user_files/ai_batches.json`, joby, dispatch przez modułowe seamy `_submit_*`/`_poll_*`, polling oraz idempotentne `apply_results()`. Seamy są celowo wywoływane niekwalifikowanie, aby testy mogły patchować namespace `batch_backfill`. **Własność kolekcji:** store jest wspólny dla profili, więc rekordy i joby noszą `col` (= `mw.col.path`, czytane przez `current_col_id()`); `pending_batches()`/`active_jobs()` filtrują po nim (`_mine()`, rekordy bez `col` są wstrzymane do ręcznego przypisania), a `_all_pending()` celowo tego nie robi — limit kolejki tokenów OpenAI jest per organizacja. |
 | `batch_openai.py` | Mechanika sieciowa OpenAI Batch API: JSONL, multipart Files API, create/poll, pobranie wyników i cleanup plików. Budżet, backoff i persistence pozostają w `batch_backfill.py`. |
 | `batch_openrouter.py` | Mechanika sieciowa OpenRouter Batch API: inline JSON (bez uploadu plików), jeden model na batch, wyniki inline w obiekcie batcha. `endpoint`+`model` muszą być serializowane przed `requests` (stream-parse). Model batch jest wyprowadzany z skonfigurowanego przez `_batch_model()` (sufiks `:batch`), więc nie ma osobnego pola konfiguracji. |
@@ -65,7 +66,7 @@ PPM na polu w edytorze (gui_hooks.editor_will_show_context_menu → _on_editor_c
       → ten sam wspólny guard edytora + saveNow + editor.note is note co główny przycisk
       → process_note(note, only_fields={field_name}, overwrite=True)   # nadpisuje nawet pełne
 
-Batch w przeglądarce (menu kontekstowe → Uzupełnij puste pola AI ▸):
+Batch w przeglądarce (menu kontekstowe → Wygeneruj pola AI… → okno wyboru pól):
   → submenu z `_selected_target_fields(notes, config)` — tylko pasujące pola zaznaczenia; Batch API wyklucza CLI; workflow widoczny gdy przynajmniej jeden krok pasuje
   → "Wszystkie pola automatyczne" → _on_generate_browser() → _run_batch(only_fields=None)
   → "def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
@@ -99,7 +100,7 @@ Batch workflow w przeglądarce (menu kontekstowe → <nazwa workflowu>):
   → zapis i routing jak wyżej (save_detached_notes)
 
 Przyciski workflowów w edytorze:
-  → editor_ui.on_editor_buttons_init() dodaje po jednym przycisku na każdy workflow z `editor_button=true` i niepustymi `steps` (przed przyciskiem AI)
+  → editor_ui.on_editor_buttons_init() dodaje po jednym przycisku na każdy workflow z `editor_button=true` i niepustymi `steps` (przed przyciskiem „Toolkit ▾”); wszystkie pasujące workflowy są też w menu „Toolkit ▾”
   → workflow.run_workflow_editor(editor, workflow)
       → wspólny guard zatrzymuje przebieg, jeśli AI/TTS/słownik/workflow już działa na tym edytorze
       → saveNow → notatka jest łapana RAZ na starcie — wszystkie kroki działają na niej,
@@ -160,15 +161,18 @@ Przyciski workflowów w edytorze:
 - `tests/test_content_regressions.py` sprawdza scope PPM, potwierdzenie,
   zachowanie starego pola po błędzie i liczniki po konflikcie. Dwa testy Qt:
   `tests/qt_browser_menu_smoke.py` (root dispatcher, menu Narzędzia, widoczność,
-  workflowy, raport), `tests/qt_ai_settings_smoke.py` (ustawienia, dziedziczenie).
+  workflowy, okno wyboru pól, raport), `tests/qt_editor_menu_smoke.py` (menu „Toolkit ▾”),
+  `tests/qt_ai_settings_smoke.py` (ustawienia, dziedziczenie, ukrywanie dostawców)
+  i `tests/qt_settings_dialog_smoke.py` (całe okno, wiązania między panelami, zapis).
   Korzystają z syntetycznych danych, bez wywołań modeli i zapisu konfiguracji.
 
 ## Konfiguracja
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit → Ustawienia…** (grupa „Tworzenie kart”):
-- Strona **Workflowy** (osobna pozycja paska bocznego) — lista nazwanych workflowów (nazwa, flaga przycisku edytora, kroki z parametrami) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
-- Zakładka **AI Generator → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, temperatura, effort CLI główny/zapasowy, prompt) po prawej; ustawienia zadania i model zapasowy w zwijanych sekcjach; treść promptu rozciąga się, a rozwinięty formularz można przewijać; temperatura per prompt z wartością specjalną „— domyślna dostawcy" (dziedziczenie z karty dostawcy); model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; przycisk „Ustaw te modele we wszystkich promptach…” (`_on_apply_models_to_all`) kopiuje provider/model/fallback_provider/fallback_model bieżącego promptu do promptów widocznych wg filtra typu notatki — tylko w `self._data`, zapis przy `apply()`; zmiana dostawcy usuwa odpowiednie nadpisanie effort; „Pobierz” dla `claude_cli` używa klucza dostawcy `anthropic` (tylko do listy pełnych ID); typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
-- Zakładka **AI Generator → Dostawcy** — sekcja Podstawowe zawiera etykietę przycisku i `skip_tags`; lista dostawców (✓ = gotowy) z formularzem: klucz API, model domyślny, fallback, temperatura, limity RPM/równoległości; pole „Poziom rozumowania” dla OpenAI/OpenRouter i Codex CLI/Claude CLI; ścieżka binarki, limit czasu i status logowania dla dostawców CLI. `max_tokens` ustawia się tylko w `config.json`. Sekcja Zaawansowane zawiera limity batcha, równoległość, retry, timeout i budżet OpenAI Batch.
+- Strona **Sekwencje** (w UI „sekwencja” = workflow) — lista nazwanych workflowów (nazwa, flaga przycisku edytora, kroki z parametrami) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
+- Strona **Prompty AI → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, temperatura, effort CLI główny/zapasowy, prompt) po prawej; ustawienia zadania i model zapasowy w zwijanych sekcjach; treść promptu rozciąga się, a rozwinięty formularz można przewijać; temperatura per prompt z wartością specjalną „— domyślna dostawcy" (dziedziczenie z karty dostawcy); model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; przycisk „Ustaw te modele we wszystkich promptach…” (`_on_apply_models_to_all`) kopiuje provider/model/fallback_provider/fallback_model bieżącego promptu do promptów widocznych wg filtra typu notatki — tylko w `self._data`, zapis przy `apply()`; zmiana dostawcy usuwa odpowiednie nadpisanie effort; „Pobierz” dla `claude_cli` używa klucza dostawcy `anthropic` (tylko do listy pełnych ID); typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
+- Strona **Prompty AI → Ogólne** — `skip_tags` i zwinięta sekcja Zaawansowane (limity batcha, równoległość, retry, timeout, budżet OpenAI Batch).
+- Strona **Konta i klucze** (`settings/accounts_tab.py`) — `AIProvidersBox` z `ai_generator_tab.py`: lista dostawców (✓ = gotowy; nieużywani wg `used_providers()` ukryci do „+ Dodaj dostawcę”) z formularzem: klucz API albo status CLI, model domyślny, „Poziom rozumowania”; temperatura, fallback, RPM/równoległość, ścieżka binarki, limit czasu i instrukcja systemowa w zwiniętej sekcji Zaawansowane. Ukrycie wiersza nie zmienia zapisu — `apply()` zapisuje wszystkich dostawców. `SettingsDialog` podpina `AccountsTab.provider_settings` pod edytor promptów i kolejkę oraz `on_effort_changed` pod ich `refresh_provider_defaults`. `max_tokens` ustawia się tylko w `config.json`.
 
 Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomienie generowania tworzy świeży `FieldGenerator(get_config())`, więc kolejne użycie czyta aktualną konfigurację.
 
@@ -176,7 +180,6 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
 
 ```json
 {
-  "button_label": "AI",
   "skip_tags": ["skip-ai"],
   "batch_limit": 3,
   "batch_sleep": 1.0,

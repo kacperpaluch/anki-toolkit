@@ -15,7 +15,7 @@ from aqt import mw
 from aqt.sound import av_player
 
 from ..common.ui import (
-    _expanding_line_edit, _api_key_widget, _scrollable, hint_label,
+    _expanding_line_edit, _scrollable, hint_label,
     collapsible_section, _filterable_combo, get_all_field_names,
 )
 
@@ -92,6 +92,10 @@ class TTSTab(QWidget):
         super().__init__()
         t = cfg.get("tts", {})
         self._or_models = []
+        # Key lives on the Konta i klucze page; SettingsDialog swaps in its live values.
+        self._key_settings = lambda: {
+            "openrouter_api_key": t.get("openrouter_api_key", ""),
+            "use_ai_openrouter_key": t.get("use_ai_openrouter_key", False)}
 
         inner = QWidget()
         layout = QVBoxLayout(inner)
@@ -103,18 +107,6 @@ class TTSTab(QWidget):
         orl.setContentsMargins(0, 0, 0, 0)
         orf = QFormLayout()
         orf.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self._or_key_container, self._or_key = _api_key_widget(
-            t.get("openrouter_api_key", "")
-        )
-        orf.addRow("Klucz API:", self._or_key_container)
-
-        self._or_use_ai_key = QCheckBox("Użyj klucza OpenRouter z AI Generatora")
-        self._or_use_ai_key.setChecked(t.get("use_ai_openrouter_key", False))
-        self._or_use_ai_key.toggled.connect(self._on_use_ai_key_toggled)
-        orf.addRow(self._or_use_ai_key)
-
-        self._on_use_ai_key_toggled()
-
         model_row = QWidget()
         mh = QHBoxLayout(model_row)
         mh.setContentsMargins(0, 0, 0, 0)
@@ -247,7 +239,7 @@ class TTSTab(QWidget):
         layout.addWidget(repl_group)
 
         # -- Tasks --
-        tasks_group = QGroupBox("Zadania TTS")
+        tasks_group = QGroupBox("Zadania nagrań")
         tasks_layout = QVBoxLayout(tasks_group)
 
         self._task_list = QListWidget()
@@ -271,8 +263,8 @@ class TTSTab(QWidget):
         tasks_layout.addWidget(btn_row)
 
         tasks_layout.addWidget(hint_label(
-            "Zadania definiują pozycje w menu TTS. Każde zadanie ma etykietę,"
-            " pole źródłowe, docelowe i tryb (single/split).\n"
+            "Zadania definiują pozycje w menu „Nagraj audio (TTS)”. Każde zadanie ma etykietę,"
+            " pole źródłowe, docelowe i tryb (pojedyncze/dzielone).\n"
             "Menu jest budowane dynamicznie — możesz dodawać własne zadania."
         ))
 
@@ -306,7 +298,7 @@ class TTSTab(QWidget):
         self._tts_timeout.setValue(t.get("timeout", 60))
         self._tts_timeout.setToolTip("Limit czasu pojedynczego żądania TTS (sekundy)")
         perf_form.addRow("Maks. wątków:", self._tts_max_workers)
-        perf_form.addRow("Maks. prób (retry):", self._tts_max_retries)
+        perf_form.addRow("Maks. prób:", self._tts_max_retries)
         perf_form.addRow("Limit czasu żądania:", self._tts_timeout)
         perf_body.addLayout(perf_form)
         layout.addWidget(perf_container)
@@ -322,17 +314,6 @@ class TTSTab(QWidget):
         manual = self._or_voice_list.rowCount() == 0
         self._voices_label.setVisible(manual)
         self._voices.setVisible(manual)
-
-    def _on_use_ai_key_toggled(self):
-        use_shared = self._or_use_ai_key.isChecked()
-        self._or_key.setEnabled(not use_shared)
-        # Also disable the show/hide button in the container
-        container = self._or_key_container
-        if container and hasattr(container, "layout"):
-            for i in range(container.layout().count()):
-                w = container.layout().itemAt(i).widget()
-                if w and w is not self._or_key:
-                    w.setEnabled(not use_shared)
 
     # ------------------------------------------------------------------
     # OpenRouter: fetch models, model selection, voice checklist
@@ -660,8 +641,7 @@ class TTSTab(QWidget):
     def _build_preview_config(self) -> dict:
         """Build a TTS config dict from current (unsaved) UI state."""
         config = {
-            "openrouter_api_key": self._or_key.text().strip(),
-            "use_ai_openrouter_key": self._or_use_ai_key.isChecked(),
+            **self._key_settings(),
             "openrouter_provider": self._or_provider.currentData() or "",
             "speed": self._speed.value(),
             "max_retries": 2,
@@ -726,8 +706,6 @@ class TTSTab(QWidget):
     def apply(self, cfg: dict) -> None:
         cfg.setdefault("tts", {})
         t = cfg["tts"]
-        t["openrouter_api_key"] = self._or_key.text().strip()
-        t["use_ai_openrouter_key"] = self._or_use_ai_key.isChecked()
         t["openrouter_provider"] = self._or_provider.currentData() or ""
         # currentData() is only trustworthy when the visible text still matches
         # the selected item — the combo is editable, so the user may have typed

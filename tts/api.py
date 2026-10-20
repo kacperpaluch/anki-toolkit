@@ -30,7 +30,7 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
 
     api_key = resolve_openrouter_key(config)
     if not api_key:
-        raise Exception("Brak klucza API OpenRouter w ustawieniach TTS.")
+        raise Exception("Brak klucza API OpenRouter (Ustawienia → Konta i klucze).")
 
     model = config.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")
     payload = {

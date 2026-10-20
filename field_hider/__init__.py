@@ -59,22 +59,11 @@ def _toggle_hidden_fields(editor) -> None:
     editor.web.eval("document.body.classList.toggle('atk-fh-reveal');")
 
 
-def on_editor_buttons_init(buttons, editor):
-    """Add a temporary reveal button only in Add Cards."""
+def editor_actions(editor) -> list:
+    """Reveal toggle for the Toolkit editor menu — only in Add Cards."""
     if not getattr(editor, "addMode", False):
-        return buttons
-    buttons.append(
-        editor.addButton(
-            icon=None,
-            cmd="anki_toolkit_field_hider_toggle",
-            func=_toggle_hidden_fields,
-            tip="Pokaż/ukryj schowane pola",
-            label="👁",
-            disables=False,  # usable before any field has focus
-        )
-    )
-    return buttons
+        return []
+    return [("Pokaż/ukryj schowane pola", lambda: _toggle_hidden_fields(editor))]
 
 
 gui_hooks.editor_did_load_note.append(on_editor_load_note)
-gui_hooks.editor_did_init_buttons.append(on_editor_buttons_init)

@@ -1,24 +1,25 @@
-# TTS (`tts/`) — nagrania przez OpenRouter
+# Nagrania (TTS) (`tts/`) — przez OpenRouter
 
 Generuje pliki audio MP3 dla kart Anki przez API TTS OpenRoutera (płatne per
 znak). Dostępne są tam m.in. modele OpenAI TTS i Kokoro (`hexgrad/kokoro-82m`).
 
 ## Wymagania
 
-Klucz API z https://openrouter.ai/keys (albo klucz OpenRoutera z AI Generatora).
+Klucz API z https://openrouter.ai/keys (albo klucz OpenRoutera dostawców AI).
 Żadnych innych zależności.
 
-Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → TTS** — sekcje
-*OpenRouter*, *Głosy*, *Zamiana wyrazów*, *Zadania TTS* i zwijana *Wydajność
-i sieć* (wątki, próby, timeout).
+Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Nagrania (TTS)** — sekcje
+*OpenRouter* (model, dostawca modelu, głosy), *Zamiana wyrazów*, *Zadania nagrań*
+i zwijana *Wydajność i sieć* (wątki, próby, timeout). Klucz API jest na stronie
+**Konta i klucze → Nagrania (TTS) — OpenRouter**.
 
 
-Menu Browsera pokazuje tylko zadania, których pola źródłowe i docelowe istnieją w zaznaczonych notatkach. „Uruchom wszystkie” dotyczy zadań widocznych w tym menu. Sekcję można ukryć w **Ustawienia → Workflowy**.
+Menu Browsera pokazuje tylko zadania, których pola źródłowe i docelowe istnieją w zaznaczonych notatkach. „Uruchom wszystkie” dotyczy zadań widocznych w tym menu. Sekcję można ukryć w **Ustawienia → Sekwencje**.
 
 ## Jak używać
 
 ### Przeglądarka (batch)
-W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki Toolkit → TTS**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań TTS**:
+W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki Toolkit → Nagraj audio (TTS)**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań nagrań**:
 
 | Element menu | Opis |
 |---|---|
@@ -26,7 +27,7 @@ W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki T
 | `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei jako jedną operację z jednym paskiem postępu i jednym podsumowaniem (widoczne tylko gdy >1 zadanie) |
 
 ### Edytor kart (pojedyncza notatka)
-Przycisk **TTS** w toolbarze edytora. Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, TTS albo workflow, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
+**Toolkit ▾ → Nagraj audio (TTS)** w edytorze (pozycja jest widoczna, gdy notatka ma pola któregoś zadania). Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, nagranie albo sekwencja, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
 
 **PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio zostaje zastąpione nowym). **Stare nagranie znika dopiero wtedy, gdy nowe faktycznie powstanie**: gdy API padnie, pole zostaje nietknięte, a przy częściowym sukcesie segmenty, których nie udało się wygenerować, zachowują dotychczasowe audio. Działa też w oknie dodawania nowej karty (AddCards).
 
@@ -54,7 +55,6 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 
 ```json
 "tts": {
-    "button_label": "TTS",
     "openrouter_api_key": "",
     "use_ai_openrouter_key": false,
     "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
@@ -74,13 +74,12 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
-| `button_label` | `"TTS"` | Etykieta przycisku w edytorze kart (bez pola w oknie ustawień — zmienisz w `meta.json`) |
 | `openrouter_api_key` | `""` | Klucz API OpenRouter |
-| `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter z AI Generatora zamiast wpisywać osobno |
+| `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter dostawców AI zamiast wpisywać osobno (**Konta i klucze**) |
 | `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
 | `openrouter_provider` | `""` | Preferowany dostawca modelu OpenRouter (slug endpointu, np. `deepinfra/us`). OpenRouter ignoruje tę preferencję dla TTS — patrz „Wymuszenie dostawcy” niżej |
 | `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania (domyślne to głosy Kokoro). Po wybraniu modelu i kliknięciu **Pobierz** lista głosów wypełnia się automatycznie |
-| `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → TTS → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
+| `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → Nagrania (TTS) → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
 | `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań, brak klucza = dwa zadania domyślne |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
@@ -97,10 +96,10 @@ konta OpenRouter:
 1. Utwórz osobny klucz API tylko dla TTS (openrouter.ai/settings/keys).
 2. Utwórz guardrail (openrouter.ai/settings/guardrails) w trybie „Only Allow”
    z wybranym dostawcą na liście Allowed Providers i przypisz go do tego klucza.
-3. Wklej klucz w **Ustawienia → TTS → Klucz API** i odznacz „Użyj klucza
-   OpenRouter z AI Generatora”.
+3. Wklej klucz w **Ustawienia → Konta i klucze → Nagrania (TTS) — OpenRouter → Klucz API**
+   i odznacz „Użyj klucza OpenRouter z dostawców AI”.
 
-Guardrail obejmuje tylko przypisany klucz, więc AI Generator na własnym kluczu
+Guardrail obejmuje tylko przypisany klucz, więc generowanie AI na własnym kluczu
 zachowuje pełny routing. Gdy dozwolony dostawca jest niedostępny, żądanie TTS
 kończy się błędem zamiast przejść na droższego.
 

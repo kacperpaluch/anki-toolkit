@@ -5,7 +5,7 @@ from aqt.utils import tooltip
 
 from .processor import process_task_async, process_tasks_async
 from .config import get_tts_config, get_tasks
-from .editor_ui import on_editor_buttons_init
+from .editor_ui import editor_actions
 
 
 def add_to_context_menu(browser, menu: QMenu, notes=None):
@@ -19,7 +19,7 @@ def add_to_context_menu(browser, menu: QMenu, notes=None):
     if not tasks:
         return
 
-    tts_menu = menu.addMenu("TTS")
+    tts_menu = menu.addMenu("Nagraj audio (TTS)")
 
     for i, task in enumerate(tasks):
         label = task.get("label", f"Zadanie {i + 1}")

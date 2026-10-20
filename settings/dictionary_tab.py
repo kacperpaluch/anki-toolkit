@@ -5,7 +5,7 @@ from aqt.qt import (
     QLineEdit, QComboBox, QCheckBox, QSpinBox, QGroupBox,
 )
 
-from ..common.ui import _filterable_combo, _scrollable, get_all_field_names
+from ..common.ui import _filterable_combo, _scrollable, collapsible_section, get_all_field_names
 
 
 class DictionaryTab(QWidget):
@@ -32,7 +32,7 @@ class DictionaryTab(QWidget):
             self._IPA_FORMATS.index(fmt) if fmt in self._IPA_FORMATS else 0
         )
 
-        self._wiktionary_fallback = QCheckBox("Wiktionary jako fallback IPA")
+        self._wiktionary_fallback = QCheckBox("Wiktionary jako zapasowe źródło IPA")
         self._wiktionary_fallback.setChecked(d.get("wiktionary_ipa_fallback", True))
         self._wiktionary_fallback.setToolTip(
             "Gdy Oxford/Cambridge nie znajdzie IPA dla słowa, automatycznie odpyta Wiktionary API.\n"
@@ -70,8 +70,9 @@ class DictionaryTab(QWidget):
         layout.addLayout(form)
         layout.addSpacing(8)
 
-        net_group = QGroupBox("Sieć")
-        net_form = QFormLayout(net_group)
+        net_group, net_body = collapsible_section("Zaawansowane (sieć)")
+        net_form = QFormLayout()
+        net_body.addLayout(net_form)
         net_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._max_retries = QSpinBox()
         self._max_retries.setRange(1, 10)
@@ -87,17 +88,17 @@ class DictionaryTab(QWidget):
         self._mp3_timeout.setSuffix(" s")
         self._mp3_timeout.setValue(d.get("mp3_timeout", 10))
         self._mp3_timeout.setToolTip("Limit czasu pobierania pliku MP3")
-        net_form.addRow("Maks. prób (retry):", self._max_retries)
+        net_form.addRow("Maks. prób:", self._max_retries)
         net_form.addRow("Limit czasu strony:", self._page_timeout)
         net_form.addRow("Limit czasu MP3:", self._mp3_timeout)
         layout.addWidget(net_group)
         layout.addSpacing(8)
 
-        group = QGroupBox("Przyciski w edytorze")
+        group = QGroupBox("Słowniki w menu")
         btn_layout = QVBoxLayout(group)
-        btn_layout.addWidget(
-            QLabel("Zaznacz słowniki, których przyciski mają być widoczne w edytorze kart.")
-        )
+        btn_layout.addWidget(QLabel(
+            "Zaznaczone słowniki pojawiają się jako „Wymowa: …” w menu „Toolkit ▾” edytora\n"
+            "i w prawym kliku przeglądarki kart."))
 
         buttons_cfg = d.get("buttons", [])
         self._btn_checks: dict[str, tuple] = {}

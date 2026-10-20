@@ -1,2 +1,2 @@
-from .editor_ui import on_editor_buttons_init
+from .editor_ui import editor_actions
 from .browser_ui import add_to_context_menu

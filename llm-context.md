@@ -13,10 +13,10 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
-| `__init__.py` | import modułów, hooki edytora/profilu, timer batchy, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
-| `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`) | wszystkie |
+| `__init__.py` | import modułów, hooki profilu, timer batchy, jedyny przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`, menu budowane przy kliknięciu z bieżącej notatki), menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
+| `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), start na „Przegląd”, wiązania między panelami (Konta i klucze → prompty, kolejka, TTS) | wszystkie |
 | `common/` | konfiguracja, HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress, operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
-| `settings/` | panele „Tworzenie kart”: workflowy, AI, TTS, słownik, rozdzielanie, diagnostyka | — |
+| `settings/` | Przegląd (tylko odczyt), Konta i klucze (wszystkie klucze i połączenia: `ai_generator.providers`, klucz TTS, n8n/Cloudflare w `word_queue`), sekwencje (workflowy), prompty AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
@@ -38,10 +38,12 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   dostawcy może być nadpisany dla promptu (główny/fallback osobno) i dla kolejki
   słówek. Reguły dziedziczenia są w kontekstach `ai_generator/` i `integrations/`.
 - Panel ustawień: `__init__(cfg)` czyta pełny config, `apply(cfg)` zapisuje
-  tylko własne sekcje, opcjonalne `validate() -> str | None` blokuje zapis.
+  tylko własne sekcje (Konta i klucze zapisuje wyłącznie klucze/połączenia
+  wewnątrz sekcji `ai_generator`, `tts`, `word_queue`; panele funkcji ich nie
+  zapisują), opcjonalne `validate() -> str | None` blokuje zapis.
   Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny
   nagłówek (ikona, tytuł, opis z `PAGES`).
-- `SettingsDialog` łączy żywe domyślne poziomy rozumowania dostawców z etykietami dziedziczenia w promptach i kolejce; zmiana etykiety nie zapisuje nadpisania.
+- `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z etykietami dziedziczenia w promptach i kolejce oraz klucz TTS z podglądem głosów; zmiana etykiety nie zapisuje nadpisania.
 - `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
@@ -73,7 +75,7 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   rozrost; `_clean_note` zbiera zmiany przed mutacją. Skan kolekcji przez
   `CollectionOp` (jeden krok undo). Regex jest walidowany tylko w `validate()` panelu.
 - Field Hider: hook `editor_did_load_note` działa wyłącznie przy `editor.addMode`;
-  przycisk 👁 tylko przełącza klasę CSS; `indices_to_hide()` jest czysta.
+  pozycja „Pokaż/ukryj schowane pola” w menu „Toolkit ▾” tylko przełącza klasę CSS; `indices_to_hide()` jest czysta.
 
 ## Workload Service
 

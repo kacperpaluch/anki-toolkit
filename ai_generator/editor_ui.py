@@ -5,7 +5,7 @@ from aqt.qt import QAction, QMenu
 from aqt import gui_hooks
 
 from ._generator import get_config
-from .field_generator import FieldGenerator
+from .field_generator import FieldGenerator, iter_note_fields
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
@@ -189,32 +189,41 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
 
 
 def on_editor_buttons_init(buttons: list, editor: Editor):
-    config = get_config()
-
-    # One editor button per workflow flagged with editor_button.
+    """Own buttons only for workflows flagged editor_button; the rest is in the Toolkit menu."""
     from .workflow import get_workflows, run_workflow_editor
     for i, wf in enumerate(get_workflows()):
         if not wf.get("editor_button") or not wf.get("steps"):
             continue
-        wf_name = wf.get("name", "Workflow")
+        wf_name = wf.get("name", "Sekwencja")
         wf_btn = editor.addButton(
             None,
             f"wf_run_{i}",
             lambda ed=editor, w=wf: run_workflow_editor(ed, w),
-            tip=f"Uruchom workflow: {wf_name}",
+            tip=f"Uruchom sekwencję: {wf_name}",
             label=wf_name,
         )
         buttons.append(wf_btn)
 
-    label = config.get("button_label", "AI")
-    btn = editor.addButton(
-        None,
-        "ai_gen_field",
-        lambda ed=editor: _on_generate_editor(ed),
-        tip="Generuj tylko pola AI",
-        label=label,
-    )
-    buttons.append(btn)
+
+def workflow_actions(editor: Editor) -> list:
+    """(label, callback) for workflows that fit the editor's note."""
+    from .browser_ui import _workflow_matches
+    from .workflow import get_workflows, run_workflow_editor
+    from ..common import get_full_config
+    note = getattr(editor, "note", None)
+    if note is None:
+        return []
+    config, full = get_config(), get_full_config()
+    return [(wf.get("name", "Sekwencja"), lambda w=wf: run_workflow_editor(editor, w))
+            for wf in get_workflows()
+            if _workflow_matches([note], [s for s in wf["steps"] if isinstance(s, dict)], config, full)]
+
+
+def editor_actions(editor: Editor) -> list:
+    note = getattr(editor, "note", None)
+    if note is None or not list(iter_note_fields(note, get_config(), None, overwrite=True)):
+        return []
+    return [("Uzupełnij puste pola AI", lambda: _on_generate_editor(editor))]
 
 
 # Register the editor context-menu hook once on import.
