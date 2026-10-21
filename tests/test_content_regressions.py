@@ -704,6 +704,31 @@ class TestCliPromptEffort(unittest.TestCase):
             self.assertEqual(calls[-1], ("CodexCLIProvider", "low"))
         self.assertEqual(config["providers"]["claude_cli"]["reasoning_effort"], "medium")
 
+    def test_independent_fields_run_in_parallel_after_dependencies(self):
+        import threading
+        fg = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
+        task = lambda target, prompt: {"target": target, "provider": "claude_cli", "prompt": prompt}
+        config = {"parallel_requests": 3, "providers": {"claude_cli": {"model": "opus"}},
+                  "note_types": {"Test": {
+                      "a": task("a", "A {{def}}"), "def": task("def", "D {{ang}}"),
+                      "b": task("b", "B {{def}}"), "c": task("c", "{% if def %}C{% endif %}"),
+                  }}}
+        note = FakeNote({"ang": "cat", "def": "", "a": "", "b": "", "c": ""})
+        note.note_type = lambda: {"name": "Test"}
+        barrier = threading.Barrier(2, timeout=5)  # b and c must overlap
+        def call(provider, prompt):
+            if prompt.startswith("D"):
+                return "definition"
+            if prompt[0] in "BC":
+                barrier.wait()
+            return prompt
+        with patch.object(fg.PROVIDERS["claude_cli"], "call_api", call):
+            changed = fg.FieldGenerator(config).process_note(note)
+        # "a" comes before "def" in config, so it keeps the sequential semantics
+        # and sees the old (empty) value; later fields see the new one.
+        self.assertEqual(changed, {"a": "A ", "def": "definition",
+                                   "b": "B definition", "c": "C"})
+
 
 class TestBrowserAiActions(unittest.TestCase):
     def setUp(self):

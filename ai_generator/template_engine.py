@@ -20,6 +20,13 @@ _TOKEN_PATTERN = re.compile(IF_PATTERN.pattern + r'|{{([^\n]*?)}}', re.DOTALL)
 
 _BLOCK_TOKEN_PATTERN = re.compile(r'{%\s*(if\b[^%]*?|else|endif)\s*%}')
 
+_REF_PATTERN = re.compile(r'{{([^\n]*?)}}|{%\s*if\s+([^%]+)%}')
+
+
+def referenced_fields(template: str) -> set:
+    """Field names a template reads through {{field}} or {% if field %}."""
+    return {(a or b).strip() for a, b in _REF_PATTERN.findall(template)}
+
 
 def template_structure_problems(template: str) -> List[str]:
     """Return human-readable problems with {% if %} block structure (empty = OK)."""

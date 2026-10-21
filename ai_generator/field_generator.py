@@ -3,6 +3,7 @@
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Dict, Optional
 
@@ -10,7 +11,7 @@ from anki.notes import Note
 
 from ..common import clean_html_normalized, safe_str
 
-from .template_engine import render_template
+from .template_engine import referenced_fields, render_template
 from .providers import get_provider, BaseProvider, PROVIDERS
 
 logger = logging.getLogger(__name__)
@@ -271,109 +272,133 @@ class FieldGenerator:
         skipped entirely). None = all configured target fields.
         overwrite: if True, generate even when the field is already filled
         (overwrites). False = skip filled fields (today's behavior).
+
+        Fields run in waves: a field waits only for earlier fields its prompt
+        references, the rest of a wave runs in parallel (up to
+        `parallel_requests`). Results reach the note on the calling thread.
         """
         self.last_error = None
         self.errors = []
         changed: dict[str, str] = {}
         fields_map = {fld: clean_html_normalized(note[fld]) for fld in note.keys()}
-
-        for field_cfg, target_field in iter_note_fields(
+        workers = max(1, int(self._config.get("parallel_requests", 3) or 1))
+        pending = list(iter_note_fields(
             note, self._config, only_fields=only_fields, overwrite=overwrite
-        ):
-            provider_name = safe_str(field_cfg.get("provider"))
-            if not provider_name:
-                self.last_error = f"Pole '{target_field}' nie ma ustawionego dostawcy AI."
-                self.errors.append(self.last_error)
-                logger.warning(self.last_error)
-                continue
+        ))
 
-            model_name = safe_str(field_cfg.get("model"))
-            # Per-prompt temperature — property of the task, so the fallback
-            # call below reuses it too. None = provider default.
-            temperature = field_cfg.get("temperature")
-            if not isinstance(temperature, (int, float)):
-                temperature = None
-            provider = self._resolve_provider(
-                provider_name, model_name, temperature, field_cfg.get("reasoning_effort"))
-            if provider is None:
-                self.errors.append(f"Pole '{target_field}': {self.last_error}")
-                continue
+        while pending:
+            wave, rest, waiting = [], [], set()
+            for field_cfg, target_field in pending:
+                refs = referenced_fields(safe_str(field_cfg.get("prompt", "")))
+                (rest if refs & waiting else wave).append((field_cfg, target_field))
+                waiting.add(target_field)
+            pending = rest
 
-            prompt_template = safe_str(field_cfg.get("prompt", ""))
-            prompt = render_template(prompt_template, fields_map)
-
-            _rate_limiter = RateLimiter()
-            with _rate_limiter.slot(provider_name, provider.model):
-                result = provider.call_api(prompt)
-            if result:
-                note[target_field] = result
-                fields_map[target_field] = clean_html_normalized(result)  # update map for dependent fields
-                changed[target_field] = result
-                logger.info(
-                    f"AI: pole '{target_field}' wygenerowane "
-                    f"({provider_name}/{provider.model})"
-                )
+            jobs = [(cfg, target, render_template(safe_str(cfg.get("prompt", "")), fields_map))
+                    for cfg, target in wave]
+            if len(jobs) == 1 or workers == 1:
+                results = [self._generate_field(*job) for job in jobs]
             else:
-                # Fallback: per-prompt (fallback_provider + fallback_model) overrides
-                # per-provider (fallback_model in provider config).
-                fallback_provider_name = safe_str(field_cfg.get("fallback_provider"))
-                fallback_model = safe_str(field_cfg.get("fallback_model"))
-                if not fallback_model:
-                    # No per-prompt fallback — check provider-level fallback_model.
-                    p_cfg = self._config.get("providers", {}).get(provider_name, {})
-                    if isinstance(p_cfg, dict):
-                        fallback_model = safe_str(p_cfg.get("fallback_model"))
-                    # Per-provider fallback uses the same provider.
-                    fallback_provider_name = ""
-                if not fallback_model:
-                    provider_error = getattr(provider, "last_error", None)
-                    if provider_error:
-                        self.last_error = (
-                            f"Provider '{provider_name}', model '{provider.model}', "
-                            f"pole '{target_field}': {provider_error}"
-                        )
-                    else:
-                        self.last_error = (
-                            f"Provider '{provider_name}', model '{provider.model}', "
-                            f"pole '{target_field}' nie zwrócił treści."
-                        )
-                    self.errors.append(self.last_error)
-                    logger.error(f"AI: {self.last_error}")
-                    continue
-                fb_name = fallback_provider_name.strip() or provider_name
-                fb_provider = self._resolve_provider(
-                    fb_name, fallback_model, temperature,
-                    field_cfg.get("fallback_reasoning_effort"))
-                if fb_provider is None:
-                    self.errors.append(f"Pole '{target_field}': {self.last_error}")
-                    continue
-                logger.warning(
-                    f"AI: fallback dla pola '{target_field}': "
-                    f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
-                )
-                with _rate_limiter.slot(fb_name, fb_provider.model):
-                    result = fb_provider.call_api(prompt)
+                # Own generator per field: provider instances keep last_error,
+                # so parallel calls must not share them.
+                with ThreadPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
+                    results = list(pool.map(
+                        lambda job: FieldGenerator(self._config)._generate_field(*job), jobs))
+
+            for (_, target_field, _), (result, error) in zip(jobs, results):
                 if result:
                     note[target_field] = result
-                    fields_map[target_field] = clean_html_normalized(result)
+                    fields_map[target_field] = clean_html_normalized(result)  # for dependent fields
                     changed[target_field] = result
-                    logger.info(
-                        f"AI: pole '{target_field}' wygenerowane przez fallback "
-                        f"({fb_name}/{fb_provider.model})"
-                    )
                 else:
-                    provider_error = getattr(fb_provider, "last_error", None)
-                    if provider_error:
-                        self.last_error = (
-                            f"Fallback {fb_name}/{fb_provider.model}, "
-                            f"pole '{target_field}': {provider_error}"
-                        )
-                    else:
-                        self.last_error = (
-                            f"Fallback {fb_name}/{fb_provider.model}, "
-                            f"pole '{target_field}' nie zwrócił treści."
-                        )
-                    self.errors.append(self.last_error)
-                    logger.error(f"AI: {self.last_error}")
+                    self.last_error = error
+                    self.errors.append(error)
 
         return changed
+
+    def _generate_field(self, field_cfg: dict, target_field: str,
+                        prompt: str) -> tuple[Optional[str], Optional[str]]:
+        """Generate one field (with fallback). Returns (result, error); no note access."""
+        provider_name = safe_str(field_cfg.get("provider"))
+        if not provider_name:
+            error = f"Pole '{target_field}' nie ma ustawionego dostawcy AI."
+            logger.warning(error)
+            return None, error
+
+        model_name = safe_str(field_cfg.get("model"))
+        # Per-prompt temperature — property of the task, so the fallback
+        # call below reuses it too. None = provider default.
+        temperature = field_cfg.get("temperature")
+        if not isinstance(temperature, (int, float)):
+            temperature = None
+        provider = self._resolve_provider(
+            provider_name, model_name, temperature, field_cfg.get("reasoning_effort"))
+        if provider is None:
+            return None, f"Pole '{target_field}': {self.last_error}"
+
+        _rate_limiter = RateLimiter()
+        with _rate_limiter.slot(provider_name, provider.model):
+            result = provider.call_api(prompt)
+        if result:
+            logger.info(
+                f"AI: pole '{target_field}' wygenerowane "
+                f"({provider_name}/{provider.model})"
+            )
+            return result, None
+
+        # Fallback: per-prompt (fallback_provider + fallback_model) overrides
+        # per-provider (fallback_model in provider config).
+        fallback_provider_name = safe_str(field_cfg.get("fallback_provider"))
+        fallback_model = safe_str(field_cfg.get("fallback_model"))
+        if not fallback_model:
+            # No per-prompt fallback — check provider-level fallback_model.
+            p_cfg = self._config.get("providers", {}).get(provider_name, {})
+            if isinstance(p_cfg, dict):
+                fallback_model = safe_str(p_cfg.get("fallback_model"))
+            # Per-provider fallback uses the same provider.
+            fallback_provider_name = ""
+        if not fallback_model:
+            provider_error = getattr(provider, "last_error", None)
+            if provider_error:
+                error = (
+                    f"Provider '{provider_name}', model '{provider.model}', "
+                    f"pole '{target_field}': {provider_error}"
+                )
+            else:
+                error = (
+                    f"Provider '{provider_name}', model '{provider.model}', "
+                    f"pole '{target_field}' nie zwrócił treści."
+                )
+            logger.error(f"AI: {error}")
+            return None, error
+        fb_name = fallback_provider_name.strip() or provider_name
+        fb_provider = self._resolve_provider(
+            fb_name, fallback_model, temperature,
+            field_cfg.get("fallback_reasoning_effort"))
+        if fb_provider is None:
+            return None, f"Pole '{target_field}': {self.last_error}"
+        logger.warning(
+            f"AI: fallback dla pola '{target_field}': "
+            f"{provider_name}/{provider.model} → {fb_name}/{fb_provider.model}"
+        )
+        with _rate_limiter.slot(fb_name, fb_provider.model):
+            result = fb_provider.call_api(prompt)
+        if result:
+            logger.info(
+                f"AI: pole '{target_field}' wygenerowane przez fallback "
+                f"({fb_name}/{fb_provider.model})"
+            )
+            return result, None
+        provider_error = getattr(fb_provider, "last_error", None)
+        if provider_error:
+            error = (
+                f"Fallback {fb_name}/{fb_provider.model}, "
+                f"pole '{target_field}': {provider_error}"
+            )
+        else:
+            error = (
+                f"Fallback {fb_name}/{fb_provider.model}, "
+                f"pole '{target_field}' nie zwrócił treści."
+            )
+        logger.error(f"AI: {error}")
+        return None, error

@@ -142,7 +142,7 @@ Szczegóły:
 | `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji); `[]` wyłącza funkcję |
 | `batch_limit` | Liczba kart w jednej grupie — po każdej grupie następuje przerwa `batch_sleep` |
 | `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
-| `parallel_requests` | Liczba równoległych żądań API w batchu (1–16, domyślnie `3`) — `ThreadPoolExecutor` w `browser_ui._run_batch` |
+| `parallel_requests` | Liczba równoległych żądań API (1–16, domyślnie `3`): notatki w batchu przeglądarki oraz pola jednej notatki. Pole czeka tylko na wcześniejsze pola, których używa w prompcie (`{{pole}}`, `{% if pole %}`); pozostałe generują się jednocześnie. W batchu daje to do `parallel_requests²` jednoczesnych wywołań — ogranicz je `max_concurrent` dostawcy |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
 | `openai_batch_token_budget` | Budżet tokenów kolejki OpenAI Batch (domyślnie `1_500_000`) |
