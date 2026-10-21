@@ -379,7 +379,8 @@ class PromptsTab(QWidget):
         task_body.addLayout(task_form)
         self._btn_apply_models = QPushButton("Ustaw te modele we wszystkich promptach…")
         self._btn_apply_models.setToolTip(
-            "Kopiuje dostawcę i model główny oraz zapasowy do promptów widocznych na liście.")
+            "Kopiuje dostawcę, model i poziom rozumowania (główne i zapasowe)\n"
+            "do promptów widocznych na liście.")
         task_body.addWidget(self._btn_apply_models)
         editor_form_layout.addWidget(self._task_section)
 
@@ -1002,19 +1003,16 @@ class PromptsTab(QWidget):
         scope = f"typu „{filter_nt}”" if filter_nt else "wszystkich typów"
         if not askUser(
             f"Ustawić w {len(keys)} promptach {scope}:\n\n"
-            f"model: {source['provider']} / {source['model'] or '— (domyślny dostawcy)'}\n"
-            f"zapasowy: {source.get('fallback_provider') or source['provider']} / {fb}",
+            f"model: {source['provider']} / {source['model'] or '— (domyślny dostawcy)'}"
+            f", rozumowanie: {source.get('reasoning_effort') or 'dziedziczone'}\n"
+            f"zapasowy: {source.get('fallback_provider') or source['provider']} / {fb}"
+            f", rozumowanie: {source.get('fallback_reasoning_effort') or 'dziedziczone'}",
             parent=self,
         ):
             return
         for k in keys:
-            entry = self._data[k]
-            if entry["provider"] != source["provider"]:
-                entry.pop("reasoning_effort", None)
-            if (entry.get("fallback_provider") or entry["provider"]) != (
-                    source.get("fallback_provider") or source["provider"]):
-                entry.pop("fallback_reasoning_effort", None)
-            for field in ("provider", "model", "fallback_provider", "fallback_model"):
+            for field in ("provider", "model", "fallback_provider", "fallback_model",
+                          "reasoning_effort", "fallback_reasoning_effort"):
                 self._data[k][field] = source.get(field, "")
 
     def _on_delete(self) -> None:
