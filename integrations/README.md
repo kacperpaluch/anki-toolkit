@@ -62,7 +62,9 @@ Lista używa stylu Qt Fusion, żeby checkbox był widoczny przy każdej pozycji
 również na macOS.
 
 Panel ma dwie kolumny: **słowa i działania po lewej**, **słowniki po prawej**.
-Nad listą są kolejność, **Odśwież**, filtr **Wszystkie / Niezrobione / Zrobione**, **Szukaj w kolejce…**
+Nad słownikami widać bieżące słowo (to, które jest w notatce) z przyciskami
+**Oznacz jako zrobione** i **Pomiń**. Nad listą jeden wiersz to kolejność, filtr
+**Wszystkie / Niezrobione / Zrobione** i **Odśwież**; pod nim **Szukaj w kolejce…**
 i dodawanie słów. Domyślnie widać **Niezrobione**; **Wszystkie** pokazuje całą
 tabelę n8n, a **Zrobione** tylko odhaczone hasła. Wyszukiwarka filtruje po fragmencie hasła bez rozróżniania
 wielkości liter. Wpisanie `ble` lub `blea` znajdzie `sun-bleached`, ale `blee`
@@ -71,8 +73,13 @@ szukać także w odhaczonych hasłach. Krzyżyk czyści filtr; wybór checkboxó
 ale ukryte wyniki nie trafiają do AI.
 Pod listą opis wyboru pokazuje, czy AI bierze checkboxy, czy podświetlenie.
 **Utwórz karty z AI (n)** otwiera podgląd przed zapisem; bez wyboru jest wyłączony.
-**Wyczyść checkboxy** pojawia się po zebraniu paczki. Ręczne **Oznacz jako zrobione**
+**Wyczyść wybór** obok tego opisu pojawia się po zebraniu paczki. **Oznacz jako zrobione**
 i **Pomiń** dotyczą bieżącego słowa, nie całej paczki.
+
+**Skróty na liście** (gdy ma fokus): strzałki zmieniają słowo, **Spacja** zaznacza
+checkbox, **Enter** to **Utwórz karty z AI**, **D** — **Oznacz jako zrobione**,
+**S** — **Pomiń**. W polach tekstowych litery wpisują się normalnie, a Ctrl+Enter
+zostaje skrótem „Dodaj” okna Anki.
 
 Błąd pobrania n8n pozostaje widoczny nad listą; ponowienie to **Odśwież**.
 **Zatrzymaj po bieżącym haśle** widać tylko podczas pracy AI, a **Odzyskane
@@ -355,7 +362,10 @@ startuje od zera.
 Okno **Wybierz karty do dodania** grupuje propozycje według haseł.
 Każda karta ma osobną ramkę: checkbox **Dodaj kartę**, informację o pochodzeniu
 definicji oraz pola **Hasło (EN)**, **Znaczenie (PL)** i **Definicja (EN)**.
-Odznaczenie wyłącza edycję tej propozycji; jej treść pozostaje zachowana.
+Odznaczona karta zwija się do jednej linii z polskim znaczeniem; jej treść pozostaje
+zachowana. Karty z definicją dobraną przez AI mają wyróżnione tło — to je warto
+przeczytać uważniej. Przy kilku hasłach lista u góry przewija do wybranego hasła.
+**Ctrl+Enter** (⌘↵ na macOS) zatwierdza okno, także z pola tekstowego.
 U góry widać licznik **Wybrane: n z wszystkich**, a checkbox **Zaznacz wszystkie**
 pokazuje też częściowy wybór. Przycisk **Dodaj karty (n)** podaje liczbę kart,
 które zostaną zapisane, i jest wyłączony przy pustym wyborze.
@@ -384,7 +394,7 @@ odhacza (z ponowieniem po **Odśwież**, gdy n8n nie odpowie), **Nie** tylko je
 pomija. Liczy się wyłącznie słowo, nie znaczenia: kolejne znaczenie takiego
 słowa dodajesz ręcznie. Gdy sprawdzenie
 się nie uda, paczka nie rusza. Przy odzyskanych propozycjach okno wyboru
-dodatkowo ostrzega na czerwono, jeśli karty z tym słowem powstały w międzyczasie.
+dodatkowo ostrzega, jeśli karty z tym słowem powstały w międzyczasie.
 
 Każda karta dostaje **Tag kart z AI** (`ai_tag`, domyślnie `ai-auto`).
 Przy definicjach dobranych przez AI pole **Sprawdziłem, że definicja pasuje do

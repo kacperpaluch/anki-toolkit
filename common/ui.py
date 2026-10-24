@@ -5,6 +5,7 @@ from aqt.qt import (
     QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy, QLineEdit,
     QPushButton, QScrollArea, QFrame, Qt,
     QListWidget, QListWidgetItem, QFormLayout, QLabel, QComboBox, QCompleter,
+    QStyleFactory, QKeySequence, QShortcut,
 )
 
 from .html import clean_html_normalized
@@ -50,6 +51,46 @@ def hint_label(text: str, small: bool = False) -> QLabel:
     size = " font-size: 11px;" if small else ""
     label.setStyleSheet(f"color: {palette()['muted']};{size}")
     return label
+
+
+def show_check_indicators(view) -> None:
+    """macOS style draws item-view check indicators only in the first row."""
+    style = QStyleFactory.create("Fusion")
+    style.setParent(view)  # setStyle() does not take ownership
+    view.setStyle(style)
+
+
+def list_buttons(view, add=None, edit=None, remove=None, move=None, extra=()) -> QHBoxLayout:
+    """The one button row under every editable list: actions on the left,
+    ▲ ▼ on the right. Double-click edits and Delete/Backspace removes.
+
+    `add` is a callback or a list of (label, callback) for several kinds;
+    `move` takes -1 or 1; `extra` adds (label, callback) after „Usuń”."""
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(4)
+    adds = add if isinstance(add, (list, tuple)) else [("Dodaj", add)] if add else []
+    for text, callback in (*adds, ("Edytuj", edit), ("Usuń", remove), *extra):
+        if callback:
+            button = QPushButton(text)
+            button.clicked.connect(lambda _checked=False, cb=callback: cb())
+            row.addWidget(button)
+    row.addStretch()
+    if move:
+        for text, tip, delta in (("▲", "Przesuń wyżej", -1), ("▼", "Przesuń niżej", 1)):
+            button = QPushButton(text)
+            button.setToolTip(tip)
+            button.setFixedWidth(36)
+            button.clicked.connect(lambda _checked=False, d=delta: move(d))
+            row.addWidget(button)
+    if edit:
+        view.doubleClicked.connect(lambda _index: edit())
+    if remove:
+        for key in (QKeySequence.StandardKey.Delete, QKeySequence(Qt.Key.Key_Backspace)):
+            shortcut = QShortcut(QKeySequence(key), view)
+            shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+            shortcut.activated.connect(remove)
+    return row
 
 
 def _expanding_line_edit(text: str = "") -> QLineEdit:

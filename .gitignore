@@ -37,6 +37,9 @@ Thumbs.db
 # vexp index (lokalne dane narzędzia)
 .vexp/
 
+# Impeccable (snapshoty ocen UI i konfiguracja hooka — lokalne)
+.impeccable/
+
 # Agentbox — pliki generowane lokalnie
 .codex/
 .opencode/

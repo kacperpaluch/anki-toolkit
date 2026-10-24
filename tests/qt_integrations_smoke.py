@@ -17,6 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = QApplication.instance() or QApplication(["qt-integrations-smoke"])
 
 
+def _senses_module():
+    """ai_senses inside a throwaway package: it shares common.ui with the add-on."""
+    package = types.ModuleType('senses_preview')
+    package.__path__ = [str(ROOT)]
+    with patch.dict(sys.modules, {'senses_preview': package}):
+        return importlib.import_module('senses_preview.integrations.ai_senses')
+
+
 class QtIntegrationSmoke(unittest.TestCase):
     def test_queue_layout_and_action_states_without_n8n(self):
         from aqt.qt import QDockWidget, QTabWidget, Qt, sip
@@ -194,9 +202,7 @@ class QtIntegrationSmoke(unittest.TestCase):
             from aqt.qt import sip
             sip.delete(page)
             sip.delete(profile)
-        spec = importlib.util.spec_from_file_location('related_senses_smoke', ROOT / 'integrations/ai_senses.py')
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _senses_module()
         senses, error = m.generate(None, 'in charge', {'diki': result[0]}, {})
         self.assertIsNone(error)
         self.assertEqual(len(senses), 2)  # sidebar never becomes a card
@@ -303,9 +309,7 @@ class QtIntegrationSmoke(unittest.TestCase):
             sip.delete(profile)
 
     def test_picker_requires_explicit_review_and_edit_resets_it(self):
-        spec = importlib.util.spec_from_file_location('senses_smoke', ROOT / 'integrations/ai_senses.py')
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _senses_module()
         senses = [{'pl': 'matka', 'en': 'a female parent', 'src': 'Oxford', 'by_ai': True},
                   {'pl': 'mama', 'en': 'mum', 'src': 'Cambridge', 'by_ai': False},
                   {'pl': 'macierz', 'en': '', 'src': '', 'by_ai': False}]
@@ -318,10 +322,10 @@ class QtIntegrationSmoke(unittest.TestCase):
             self.assertEqual(dialog._summary.text(), 'Wybrane: 2 z 3')
             self.assertEqual(dialog._add_btn.text(), 'Dodaj karty (2)')
             self.assertEqual(dialog._all.checkState(), Qt.CheckState.PartiallyChecked)
-            self.assertFalse(dialog._boxes[2][3]['pl'].isEnabled())
+            self.assertFalse(dialog._boxes[2][3]['pl'].isVisibleTo(dialog))  # unchecked card collapses
             dialog._all.click()  # partial selection → all cards
             self.assertEqual(len(dialog.selected()), 3)
-            self.assertTrue(dialog._boxes[2][3]['pl'].isEnabled())
+            self.assertTrue(dialog._boxes[2][3]['pl'].isVisibleTo(dialog))
             dialog._all.click()  # all cards → none
             self.assertEqual(dialog.selected(), [])
             self.assertFalse(dialog._add_btn.isEnabled())

@@ -1,7 +1,7 @@
 """Przegląd — where things are and what is configured; each row opens its page."""
-from aqt.qt import QGroupBox, QPushButton, QVBoxLayout, QWidget
+from aqt.qt import QGroupBox, QPushButton, Qt, QVBoxLayout, QWidget
 
-from ..common.ui import hint_label, scroll_panel
+from ..common.ui import hint_label, palette, scroll_panel
 from ..ai_generator.providers import PROVIDER_LABELS
 from .ai_generator_tab import used_providers
 
@@ -13,7 +13,7 @@ WHERE = (
 
 
 def summary(cfg: dict) -> list:
-    """(page key, text) rows describing the saved configuration."""
+    """(page key, text, configured) rows describing the saved configuration."""
     flows = [w.get("name", "?") for w in cfg.get("workflows") or []
              if isinstance(w, dict) and w.get("steps")]
     note_types = {nt: f for nt, f in ((cfg.get("ai_generator") or {}).get("note_types") or {}).items()
@@ -25,12 +25,12 @@ def summary(cfg: dict) -> list:
     providers = [PROVIDER_LABELS.get(p, p) for p in sorted(used_providers(cfg))]
     queue = (cfg.get("word_queue") or {}).get("n8n_url")
     return [
-        ("workflows", f"⚙️  Sekwencje: {', '.join(flows) if flows else 'brak'}"),
-        ("ai_generator", f"🤖  Prompty AI: {prompts} w typach notatek: {len(note_types)}"),
-        ("tts", f"🔊  Nagrania: zadań {len(tasks)}"),
-        ("dictionary", f"📖  Wymowa: {', '.join(dicts) if dicts else 'wyłączona'}"),
-        ("integrations", f"📚  Kolejka słówek: {'połączona z n8n' if queue else 'nie skonfigurowana'}"),
-        ("accounts", f"🔑  Dostawcy AI: {', '.join(providers) if providers else 'brak'}"),
+        ("workflows", f"⚙️  Sekwencje: {', '.join(flows) if flows else 'brak'}", bool(flows)),
+        ("ai_generator", f"🤖  Prompty AI: {prompts} w typach notatek: {len(note_types)}", bool(prompts)),
+        ("tts", f"🔊  Nagrania: zadań {len(tasks)}", bool(tasks)),
+        ("dictionary", f"📖  Wymowa: {', '.join(dicts) if dicts else 'wyłączona'}", bool(dicts)),
+        ("integrations", f"📚  Kolejka słówek: {'połączona z n8n' if queue else 'nie skonfigurowana'}", bool(queue)),
+        ("accounts", f"🔑  Dostawcy AI: {', '.join(providers) if providers else 'brak'}", bool(providers)),
     ]
 
 
@@ -46,10 +46,15 @@ class OverviewTab(QWidget):
         layout.addWidget(where)
         state = QGroupBox("Co jest skonfigurowane (stan z otwarcia okna)")
         rows = QVBoxLayout(state)
-        for key, text in summary(cfg):
-            button = QPushButton(text)
+        colors = palette()
+        for key, text, configured in summary(cfg):
+            # Brakujące ustawienie wygląda jak zadanie do zrobienia, a nie zwykły wiersz.
+            button = QPushButton(text if configured else f"{text}  —  skonfiguruj →")
             button.setFlat(True)
-            button.setStyleSheet("text-align: left; padding: 4px;")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            look = "" if configured else (
+                f" background: {colors['warn_bg']}; color: {colors['warn_fg']}; border-radius: 6px;")
+            button.setStyleSheet(f"text-align: left; padding: 4px 6px;{look}")
             button.setToolTip("Otwórz tę stronę")
             button.clicked.connect(lambda _checked=False, k=key: self.go_to(k))
             rows.addWidget(button)

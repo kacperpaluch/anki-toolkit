@@ -16,12 +16,19 @@ from aqt.sound import av_player
 
 from ..common.ui import (
     _expanding_line_edit, _scrollable, hint_label,
-    collapsible_section, _filterable_combo, get_all_field_names,
+    collapsible_section, _filterable_combo, get_all_field_names, list_buttons,
 )
 
 # ---------------------------------------------------------------------------
 # Task editor dialog
 # ---------------------------------------------------------------------------
+
+_MODE_LABELS = {
+    "single": "Pojedyncze audio",
+    "split": "Dzielone (split)",
+    "split_audio": "Dzielone — tylko audio",
+}
+
 
 class TaskEditDialog(QDialog):
     def __init__(self, parent=None, task: dict | None = None):
@@ -38,9 +45,8 @@ class TaskEditDialog(QDialog):
         self._source = _filterable_combo(fields, task.get("source_field", "") if task else "")
         self._target = _filterable_combo(fields, task.get("target_field", "") if task else "")
         self._mode = QComboBox()
-        self._mode.addItem("Pojedyncze audio", "single")
-        self._mode.addItem("Dzielone (split)", "split")
-        self._mode.addItem("Dzielone — tylko audio", "split_audio")
+        for mode, label in _MODE_LABELS.items():
+            self._mode.addItem(label, mode)
         if task:
             idx = self._mode.findData(task.get("mode", "single"))
             if idx >= 0:
@@ -101,6 +107,34 @@ class TTSTab(QWidget):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(12, 12, 12, 12)
 
+        # -- Tasks: what the menu offers, so it leads the page --
+        tasks_group = QGroupBox("Zadania nagrań")
+        tasks_layout = QVBoxLayout(tasks_group)
+
+        self._task_list = QListWidget()
+        self._task_list.setMaximumHeight(110)
+        tasks_layout.addWidget(self._task_list)
+
+        tasks_layout.addLayout(list_buttons(
+            self._task_list, add=self._add_task, edit=self._edit_task,
+            remove=self._remove_task, move=self._move_task))
+
+        tasks_layout.addWidget(hint_label(
+            "Każde zadanie to pozycja w menu „Nagraj audio (TTS)”: z którego pola czytać,"
+            " do którego wpisać nagranie i czy dzielić tekst na części."
+        ))
+
+        layout.addWidget(tasks_group)
+
+        # Load current tasks
+        self._tasks_data: list[dict] = []
+        raw_tasks = t.get("tasks")
+        if raw_tasks and isinstance(raw_tasks, list):
+            self._tasks_data = [
+                dict(tk) for tk in raw_tasks if isinstance(tk, dict) and tk.get("label")
+            ]
+        self._refresh_task_list()
+
         # -- OpenRouter --
         or_page = QWidget()
         orl = QVBoxLayout(or_page)
@@ -139,16 +173,14 @@ class TTSTab(QWidget):
         orf.addRow("Dostawca modelu:", self._or_provider)
 
         self._or_provider_hint = hint_label(
-            'Wybierz model po kliknięciu „Pobierz”, aby zobaczyć dostawców i ich ceny.'
+            '„Pobierz” ładuje modele, dostawców z cenami i głosy do zaznaczenia.'
         )
         orf.addRow(self._or_provider_hint)
 
-        self._or_voice_hint = hint_label(
-            'Kliknij "Pobierz" aby załadować listę modeli i głosów.'
-        )
+        self._or_voice_hint = hint_label("")
         orf.addRow(self._or_voice_hint)
 
-        sel_row = QWidget()
+        sel_row = self._voice_select_row = QWidget()
         sh = QHBoxLayout(sel_row)
         sh.setContentsMargins(0, 0, 0, 0)
         sh.setSpacing(4)
@@ -218,18 +250,8 @@ class TTSTab(QWidget):
             self._add_repl_row(k, v)
         rg.addWidget(self._repl_table)
 
-        repl_btns = QWidget()
-        rbh = QHBoxLayout(repl_btns)
-        rbh.setContentsMargins(0, 0, 0, 0)
-        rbh.setSpacing(4)
-        repl_add = QPushButton("Dodaj")
-        repl_add.clicked.connect(lambda: self._add_repl_row("", ""))
-        repl_del = QPushButton("Usuń")
-        repl_del.clicked.connect(self._remove_repl_row)
-        rbh.addWidget(repl_add)
-        rbh.addWidget(repl_del)
-        rbh.addStretch()
-        rg.addWidget(repl_btns)
+        rg.addLayout(list_buttons(self._repl_table, add=lambda: self._add_repl_row("", ""),
+                                  remove=self._remove_repl_row))
 
         rg.addWidget(hint_label(
             "Skrót zamieniany na pełne słowo tylko w tekście wysyłanym do TTS"
@@ -237,47 +259,6 @@ class TTSTab(QWidget):
             " wielkości liter; treść karty pozostaje bez zmian."
         ))
         layout.addWidget(repl_group)
-
-        # -- Tasks --
-        tasks_group = QGroupBox("Zadania nagrań")
-        tasks_layout = QVBoxLayout(tasks_group)
-
-        self._task_list = QListWidget()
-        self._task_list.setMaximumHeight(110)
-        tasks_layout.addWidget(self._task_list)
-
-        btn_row = QWidget()
-        bh = QHBoxLayout(btn_row)
-        bh.setContentsMargins(0, 0, 0, 0)
-        bh.setSpacing(4)
-        add_btn = QPushButton("Dodaj")
-        add_btn.clicked.connect(self._add_task)
-        edit_btn = QPushButton("Edytuj")
-        edit_btn.clicked.connect(self._edit_task)
-        remove_btn = QPushButton("Usuń")
-        remove_btn.clicked.connect(self._remove_task)
-        bh.addWidget(add_btn)
-        bh.addWidget(edit_btn)
-        bh.addWidget(remove_btn)
-        bh.addStretch()
-        tasks_layout.addWidget(btn_row)
-
-        tasks_layout.addWidget(hint_label(
-            "Zadania definiują pozycje w menu „Nagraj audio (TTS)”. Każde zadanie ma etykietę,"
-            " pole źródłowe, docelowe i tryb (pojedyncze/dzielone).\n"
-            "Menu jest budowane dynamicznie — możesz dodawać własne zadania."
-        ))
-
-        layout.addWidget(tasks_group)
-
-        # Load current tasks
-        self._tasks_data: list[dict] = []
-        raw_tasks = t.get("tasks")
-        if raw_tasks and isinstance(raw_tasks, list):
-            self._tasks_data = [
-                dict(tk) for tk in raw_tasks if isinstance(tk, dict) and tk.get("label")
-            ]
-        self._refresh_task_list()
 
         layout.addSpacing(8)
 
@@ -314,6 +295,8 @@ class TTSTab(QWidget):
         manual = self._or_voice_list.rowCount() == 0
         self._voices_label.setVisible(manual)
         self._voices.setVisible(manual)
+        for widget in (self._or_voice_list, self._voice_select_row, self._or_voice_hint):
+            widget.setVisible(not manual)
 
     # ------------------------------------------------------------------
     # OpenRouter: fetch models, model selection, voice checklist
@@ -502,10 +485,7 @@ class TTSTab(QWidget):
                 )
                 self._or_voice_list.setCellWidget(row, 1, play_btn)
         else:
-            self._or_voice_hint.setText(
-                'Kliknij "Pobierz" aby załadować listę modelów i głosów.\n'
-                'Możesz też wpisać model ręcznie i podać głosy poniżej.'
-            )
+            self._or_voice_hint.setText("")  # głosy wpisuje się wtedy ręcznie, poniżej
 
         self._or_voice_list.blockSignals(False)
         if model_info and model_info.get("voices"):
@@ -564,12 +544,10 @@ class TTSTab(QWidget):
     def _refresh_task_list(self):
         self._task_list.clear()
         for t in self._tasks_data:
-            mode_str = t.get("mode", "single")
+            mode = _MODE_LABELS.get(t.get("mode", "single"), t.get("mode", ""))
             src = t.get("source_field", "?")
             dst = t.get("target_field", "?")
-            item = QListWidgetItem(
-                f"{t['label']}  [{mode_str}]  {src} → {dst}"
-            )
+            item = QListWidgetItem(f"{t['label']}   ·   pole {src} → {dst}   ·   {mode.lower()}")
             self._task_list.addItem(item)
 
     def _add_task(self):
@@ -591,6 +569,15 @@ class TTSTab(QWidget):
             if task["label"] and task["source_field"] and task["target_field"]:
                 self._tasks_data[idx] = task
                 self._refresh_task_list()
+
+    def _move_task(self, delta: int):
+        i = self._task_list.currentRow()
+        if i < 0 or not 0 <= i + delta < len(self._tasks_data):
+            return
+        tasks = self._tasks_data
+        tasks[i], tasks[i + delta] = tasks[i + delta], tasks[i]
+        self._refresh_task_list()
+        self._task_list.setCurrentRow(i + delta)
 
     def _remove_task(self):
         idx = self._task_list.currentRow()

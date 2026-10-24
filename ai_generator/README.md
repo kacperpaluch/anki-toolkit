@@ -42,7 +42,7 @@ z uwzględnieniem tagów wykluczających AI. Przy mieszanym zaznaczeniu każdy t
 notatki korzysta z własnego promptu; niepasujące notatki są pomijane.
 Sekwencje są widoczne, gdy przynajmniej jeden ich krok pasuje do zaznaczenia.
 
-**Widoczność PPM** ustawiasz w **Ustawienia → Sekwencje**. Przełączniki nie
+**Sekcje w menu prawego kliku** ustawiasz w **Ustawienia → Sekwencje**. Przełączniki nie
 wyłączają modułów ani kroków sekwencji — dotyczą tylko wbudowanych sekcji menu:
 
 | Ustawienie | Widoczne działania |

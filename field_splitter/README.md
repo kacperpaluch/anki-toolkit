@@ -65,9 +65,9 @@ Tryb OFF jest bezpieczny gdy chcesz uzupełnić brakujące pola bez ryzyka nadpi
 
 | Pole | Domyślnie | Opis |
 |---|---|---|
-| Pole źródłowe | `"przyklad"` | Pole z danymi do rozdzielenia (nie jest modyfikowane) |
+| Pole źródłowe | `"przyklad"` | Pole z danymi do rozdzielenia (nie jest modyfikowane); wybierane z listy pól kolekcji |
 | Separator | `"<br><br>"` | Tekst rozdzielający części (whitespace-tolerant) |
-| Pola docelowe | `"p1, p2, p3, p4, p5"` | Pola oddzielone przecinkami |
+| Pola docelowe | `"p1, p2, p3, p4, p5"` | Pola oddzielone przecinkami. Po zmianie zapis sprawdza, czy pola istnieją w którymś typie notatki |
 | Nadpisuj istniejące pola | `true` | `true` = nadpisuj zawsze; `false` = wypełniaj tylko puste |
 
 ```json

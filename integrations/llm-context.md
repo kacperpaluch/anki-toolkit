@@ -166,7 +166,7 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
   wyszukiwarka porównuje surowy HTML pola.
 
 - SensePicker grupuje hasła w `QGroupBox`, a karty w osobne ramki. Checkbox
-  karty włącza jej pola, licznik i przycisk „Dodaj karty (n)” korzystają z tego
+  karty rozwija jej pola (odznaczona zwija się do linii z PL), licznik i przycisk „Dodaj karty (n)” korzystają z tego
   samego wyboru. `_all` pokazuje stan częściowy; tylko `clicked` zmienia wybór,
   dzięki czemu programowe odświeżenie stanu nie wybiera pozostałych kart.
   Pusty wybór nie zatwierdza okna, brak PL przewija i skupia wadliwe pole.

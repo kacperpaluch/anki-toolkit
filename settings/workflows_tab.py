@@ -6,13 +6,13 @@ the only UI that writes config["workflows"] and config["context_menu"].
 """
 
 from aqt.qt import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QGroupBox,
-    QPushButton, QListWidget, QListWidgetItem, QCheckBox, QDialog,
+    QWidget, QVBoxLayout, QFormLayout, QLabel, QGroupBox,
+    QListWidget, QListWidgetItem, QCheckBox, QDialog,
     QDialogButtonBox, QComboBox, QLineEdit,
 )
 from aqt.utils import showWarning
 
-from ..common.ui import _expanding_line_edit, _scrollable, hint_label
+from ..common.ui import _expanding_line_edit, _scrollable, hint_label, list_buttons
 from ..ai_generator.workflow import DEFAULT_CONTEXT_MENU
 
 _CONTEXT_LABELS = {
@@ -176,34 +176,19 @@ class WorkflowEditDialog(QDialog):
         self._steps_list.setMaximumHeight(160)
         layout.addWidget(self._steps_list)
 
-        btn_row = QWidget()
-        bh = QHBoxLayout(btn_row)
-        bh.setContentsMargins(0, 0, 0, 0)
-        bh.setSpacing(4)
-        for label, mod, act in (
-            ("+ AI", "ai", "generate"),
-            ("+ Wymowa", "dictionary", "fetch"),
-            ("+ Nagranie", "tts", "generate"),
-            ("+ Rozdziel", "field_splitter", "split"),
-        ):
-            b = QPushButton(label)
-            b.clicked.connect(lambda _c=False, m=mod, a=act: self._add_step(m, a))
-            bh.addWidget(b)
-        bh.addSpacing(8)
-        up = QPushButton("▲")
-        up.clicked.connect(self._move_up)
-        down = QPushButton("▼")
-        down.clicked.connect(self._move_down)
-        rm = QPushButton("Usuń")
-        rm.clicked.connect(self._remove_step)
-        bh.addWidget(up)
-        bh.addWidget(down)
-        bh.addWidget(rm)
-        bh.addStretch()
-        layout.addWidget(btn_row)
+        layout.addLayout(list_buttons(
+            self._steps_list,
+            add=[(label, lambda m=mod, a=act: self._add_step(m, a)) for label, mod, act in (
+                ("+ AI", "ai", "generate"),
+                ("+ Wymowa", "dictionary", "fetch"),
+                ("+ Nagranie", "tts", "generate"),
+                ("+ Rozdziel", "field_splitter", "split"),
+            )],
+            edit=self._edit_step, remove=self._remove_step,
+            move=lambda d: self._move_up() if d < 0 else self._move_down()))
 
         layout.addWidget(hint_label(
-            "Dwuklik na kroku AI lub Słownik pozwala zmienić jego parametry."
+            "Dwuklik albo „Edytuj” na kroku AI lub Słownik zmienia jego parametry."
         ))
 
         box = QDialogButtonBox(
@@ -217,7 +202,6 @@ class WorkflowEditDialog(QDialog):
             dict(s) for s in (workflow.get("steps", []) if workflow else [])
             if isinstance(s, dict)
         ]
-        self._steps_list.itemDoubleClicked.connect(self._edit_step)
         self._refresh()
 
     def _refresh(self):
@@ -300,35 +284,15 @@ class WorkflowsTab(QWidget):
         layout.addWidget(QLabel("Sekwencje (każda to pozycja w menu „Toolkit ▾” i w prawym kliku; kolejność = kolejność w menu):"))
         self._list = QListWidget()
         self._list.setMaximumHeight(180)
-        self._list.itemDoubleClicked.connect(self._edit)
         layout.addWidget(self._list)
 
-        btn_row = QWidget()
-        bh = QHBoxLayout(btn_row)
-        bh.setContentsMargins(0, 0, 0, 0)
-        bh.setSpacing(4)
-        add = QPushButton("Dodaj")
-        add.clicked.connect(self._add)
-        edit = QPushButton("Edytuj")
-        edit.clicked.connect(self._edit)
-        rm = QPushButton("Usuń")
-        rm.clicked.connect(self._remove)
-        up = QPushButton("▲")
-        up.clicked.connect(self._move_up)
-        down = QPushButton("▼")
-        down.clicked.connect(self._move_down)
-        bh.addWidget(add)
-        bh.addWidget(edit)
-        bh.addWidget(rm)
-        bh.addSpacing(8)
-        bh.addWidget(up)
-        bh.addWidget(down)
-        bh.addStretch()
-        layout.addWidget(btn_row)
+        layout.addLayout(list_buttons(
+            self._list, add=self._add, edit=self._edit, remove=self._remove,
+            move=lambda d: self._move_up() if d < 0 else self._move_down()))
 
         layout.addSpacing(8)
 
-        vis_group = QGroupBox("Widoczność wbudowanych sekcji w menu PPM")
+        vis_group = QGroupBox("Sekcje w menu prawego kliku (przeglądarka kart)")
         vis_layout = QVBoxLayout(vis_group)
         cm = cfg.get("context_menu", {})
         self._vis_checks: dict[str, QCheckBox] = {}

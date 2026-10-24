@@ -48,6 +48,8 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
   ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
+  Edytowalne listy dostają rząd przycisków z `common.ui.list_buttons()` (akcje
+  po lewej, ▲▼ po prawej, dwuklik = Edytuj, Delete = Usuń) — nie składaj go ręcznie.
 - `setConfigAction` musi zwracać `None` — `False` otwiera w Anki edytor JSON.
 
 - PPM Browsera ma jeden dispatcher w root: wczytuje zaznaczenie, przekazuje

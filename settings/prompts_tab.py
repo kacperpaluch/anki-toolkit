@@ -21,7 +21,7 @@ from ..common import clean_html_normalized
 from ..common.ui import (
     _expanding_line_edit, _filterable_combo, get_note_type_names,
     get_fields_for_note_type, get_sample_notes, palette, hint_label,
-    collapsible_section, _scrollable, set_effort_choices,
+    collapsible_section, _scrollable, set_effort_choices, list_buttons,
 )
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
@@ -238,27 +238,10 @@ class PromptsTab(QWidget):
         # gdy istnieją już widgety edytora): pogrupowana po typie notatki,
         # w kolejności configu = kolejności generowania.
 
-        order_row = QHBoxLayout()
-        self._btn_up = QPushButton("▲")
-        self._btn_up.setToolTip(
-            "Przesuń zadanie wyżej. Kolejność na liście = kolejność generowania —\n"
-            "późniejszy prompt może użyć pola wygenerowanego przez wcześniejsze zadanie."
-        )
-        self._btn_down = QPushButton("▼")
-        self._btn_down.setToolTip(self._btn_up.toolTip())
-        order_row.addWidget(self._btn_up)
-        order_row.addWidget(self._btn_down)
-        left_layout.addLayout(order_row)
-
-        btn_row = QHBoxLayout()
-        self._btn_add = QPushButton("+ Dodaj…")
-        self._btn_add.setToolTip(
-            "Dodaje puste zadanie AI dla wybranego typu notatki i pola."
-        )
-        self._btn_del = QPushButton("Usuń")
-        btn_row.addWidget(self._btn_add)
-        btn_row.addWidget(self._btn_del)
-        left_layout.addLayout(btn_row)
+        # Kolejność na liście = kolejność generowania: późniejszy prompt może
+        # użyć pola wygenerowanego przez wcześniejsze zadanie.
+        left_layout.addLayout(list_buttons(
+            self._list, add=[("Dodaj…", self._on_add)], remove=self._on_delete, move=self._on_move))
 
         splitter.addWidget(left)
 
@@ -267,7 +250,7 @@ class PromptsTab(QWidget):
         right_layout.setContentsMargins(4, 8, 8, 8)
 
         self._editor_placeholder = QLabel(
-            "Wybierz zadanie z listy po lewej\nalbo kliknij „+ Dodaj…”,\n"
+            "Wybierz zadanie z listy po lewej\nalbo kliknij „Dodaj…”,\n"
             "żeby dodać nowe zadanie AI."
         )
         self._editor_placeholder.setStyleSheet(f"color: {pal['muted']};")
@@ -436,10 +419,6 @@ class PromptsTab(QWidget):
 
         self._list.currentItemChanged.connect(self._on_item_changed)
         self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
-        self._btn_add.clicked.connect(self._on_add)
-        self._btn_del.clicked.connect(self._on_delete)
-        self._btn_up.clicked.connect(lambda: self._on_move(-1))
-        self._btn_down.clicked.connect(lambda: self._on_move(1))
         self._ed_note_type.currentTextChanged.connect(self._on_note_type_changed)
         self._ed_provider.currentIndexChanged.connect(self._on_provider_changed)
         self._ed_fallback_provider.currentIndexChanged.connect(self._on_fallback_provider_changed)

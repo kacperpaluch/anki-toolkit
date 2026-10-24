@@ -43,7 +43,8 @@ with patch.object(common_config, "mw", mw), patch("aqt.mw", mw):
         assert dialog._sidebar.currentRow() == dialog._rows["overview"]
 
         by_type = {type(p).__name__: p for p in dialog._panels}
-        rows = dict(importlib.import_module("dialog_smoke.settings.overview_tab").summary(cfg))
+        rows = {key: text for key, text, _configured in
+                importlib.import_module("dialog_smoke.settings.overview_tab").summary(cfg)}
         assert rows["workflows"].endswith("Przygotuj fiszki") and "OpenRouter" in rows["accounts"]
         by_type["OverviewTab"].go_to("accounts")
         assert dialog._sidebar.currentRow() == dialog._rows["accounts"]

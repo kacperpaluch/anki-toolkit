@@ -169,6 +169,7 @@ class PanelTests(unittest.TestCase):
         self.panel._queue_controls = types.SimpleNamespace(setEnabled=lambda on: None)
         self.panel._manual_controls = types.SimpleNamespace(setEnabled=lambda on: None)
         self.panel._selection_hint = types.SimpleNamespace(setText=lambda text: None)
+        self.panel._word_title = types.SimpleNamespace(setText=lambda text: None)
         self.panel._queue_status = types.SimpleNamespace(setText=lambda text: None)
         self.panel._marked = set()
         self.panel._picked = set()

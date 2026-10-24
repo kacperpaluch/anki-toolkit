@@ -5,7 +5,7 @@ from aqt.qt import (
     QVBoxLayout,
 )
 
-from ..common.ui import hint_label
+from ..common.ui import hint_label, show_check_indicators
 
 
 class FieldsDialog(QDialog):
@@ -20,6 +20,7 @@ class FieldsDialog(QDialog):
         layout.addWidget(hint_label(f"Zaznaczone notatki: {note_count}. Wybierz pola do wygenerowania:"))
 
         self._list = QListWidget()
+        show_check_indicators(self._list)
         for name in list(dict.fromkeys(auto + manual)):
             on_demand = name in manual and name not in auto
             item = QListWidgetItem(f"{name} — tylko na żądanie" if on_demand else name)

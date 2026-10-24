@@ -4,10 +4,8 @@ import re
 
 from aqt.qt import (
     QCheckBox,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     Qt,
@@ -15,6 +13,7 @@ from aqt.qt import (
     QWidget,
 )
 
+from ..common.ui import list_buttons
 from .cleaning import default_rules
 
 
@@ -57,19 +56,10 @@ class HtmlCleanupTab(QWidget):
             self._add_row(rule)
         layout.addWidget(self._table, 1)
 
-        buttons_row = QHBoxLayout()
-        for text, handler in (
-            ("▲", lambda: self._move(-1)),
-            ("▼", lambda: self._move(1)),
-            ("Dodaj", lambda: self._add_row({"on": True, "name": "Nowa reguła"})),
-            ("Usuń", self._remove_row),
-            ("Przywróć domyślne", self._restore_defaults),
-        ):
-            button = QPushButton(text)
-            button.clicked.connect(handler)
-            buttons_row.addWidget(button)
-        buttons_row.addStretch()
-        layout.addLayout(buttons_row)
+        layout.addLayout(list_buttons(
+            self._table, add=lambda: self._add_row({"on": True, "name": "Nowa reguła"}),
+            remove=self._remove_row, move=self._move,
+            extra=[("Przywróć domyślne", self._restore_defaults)]))
 
         hint = QLabel(
             "<b>Nazwa</b> — zaznaczenie włącza regułę; nazwa pojawia się w podsumowaniu.<br>"

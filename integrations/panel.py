@@ -44,14 +44,15 @@ from aqt.qt import (
     QFont,
     QHBoxLayout,
     QInputDialog,
+    QKeySequence,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QShortcut,
     QSplitter,
-    QStyleFactory,
     Qt,
     QTabWidget,
     QTimer,
@@ -68,6 +69,7 @@ from aqt.qt import (
 from aqt.utils import askUser, tooltip
 
 from ..common import clean_html_normalized, update_module_config
+from ..common.ui import palette, show_check_indicators
 from . import ai_senses, bridge, word_queue
 from .queue_state import QueueState
 
@@ -374,19 +376,18 @@ class WordQueuePanel(QDockWidget):
         self._order.setCurrentIndex(index if index >= 0 else 0)
         self._order.currentIndexChanged.connect(lambda _i: self._on_order_changed())
         filters.addWidget(self._order, 1)
-        reload_btn = QPushButton("Odśwież")
-        reload_btn.setToolTip("Pobierz kolejkę z n8n od nowa")
-        reload_btn.clicked.connect(self.refill)
-        filters.addWidget(reload_btn)
-        controls.addLayout(filters)
-
         self._status_filter = QComboBox()
         self._status_filter.setToolTip("Status hasła w n8n")
         for label, value in (("Wszystkie", "all"), ("Niezrobione", "todo"), ("Zrobione", "done")):
             self._status_filter.addItem(label, value)
         self._status_filter.setCurrentIndex(1)
         self._status_filter.currentIndexChanged.connect(lambda _index: self._apply_hiding())
-        controls.addWidget(self._status_filter)
+        filters.addWidget(self._status_filter, 1)
+        reload_btn = QPushButton("Odśwież")
+        reload_btn.setToolTip("Pobierz kolejkę z n8n od nowa")
+        reload_btn.clicked.connect(self.refill)
+        filters.addWidget(reload_btn)
+        controls.addLayout(filters)
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Szukaj w kolejce…")
@@ -411,10 +412,7 @@ class WordQueuePanel(QDockWidget):
         self._queue_status.setWordWrap(True)
         queue.addWidget(self._queue_status)
         self._list = QListWidget(sidebar)
-        # macOS style can omit indicators after the first checked row.
-        checkbox_style = QStyleFactory.create("Fusion")
-        checkbox_style.setParent(self._list)
-        self._list.setStyle(checkbox_style)
+        show_check_indicators(self._list)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._list.currentItemChanged.connect(self._on_item_changed)
         self._list.itemChanged.connect(self._on_item_checked)
@@ -423,34 +421,64 @@ class WordQueuePanel(QDockWidget):
         self._list.customContextMenuRequested.connect(self._list_menu)
         queue.addWidget(self._list, 1)
 
-        self._selection_hint = QLabel("Kliknij słowo, aby zobaczyć słowniki. Checkboxy wybierają paczkę do AI.")
+        selection = QHBoxLayout()
+        self._selection_hint = QLabel("")
         self._selection_hint.setWordWrap(True)
-        queue.addWidget(self._selection_hint)
-        self._ai_btn = QPushButton("Utwórz karty z AI")
-        self._ai_btn.setToolTip("Znaczenia z diki i definicje ze słowników. Przed zapisem wybierzesz i poprawisz karty.")
-        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
-        queue.addWidget(self._ai_btn)
-        self._clear_btn = QPushButton("Wyczyść checkboxy")
+        self._selection_hint.setStyleSheet(f"color: {palette()['muted']};")
+        selection.addWidget(self._selection_hint, 1)
+        self._clear_btn = QPushButton("Wyczyść wybór")
+        self._clear_btn.setFlat(True)
+        self._clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._clear_btn.setToolTip("Odznacz wszystkie checkboxy na liście")
         self._clear_btn.clicked.connect(lambda _checked=False: self._clear_picks())
         self._clear_btn.setVisible(False)
-        queue.addWidget(self._clear_btn)
+        selection.addWidget(self._clear_btn)
+        queue.addLayout(selection)
+        self._ai_btn = QPushButton("Utwórz karty z AI")
+        self._ai_btn.setDefault(True)  # tylko wygląd: okno „Dodaj” to QMainWindow, Enter go nie wyzwala
+        self._ai_btn.setToolTip("Znaczenia z diki i definicje ze słowników. Przed zapisem wybierzesz "
+                                "i poprawisz karty. Skrót: Enter na liście.")
+        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
+        queue.addWidget(self._ai_btn)
+        split.addWidget(sidebar)
 
-        self._manual_controls = QWidget(sidebar)
+        # Bieżące słowo nad słownikami: to ono jest w notatce i jego dotyczą przyciski obok.
+        current = QWidget(split)
+        side = QVBoxLayout(current)
+        side.setContentsMargins(6, 0, 0, 0)
+        bar = QHBoxLayout()
+        self._word_title = QLabel("Wybierz słowo z listy")
+        self._word_title.setTextFormat(Qt.TextFormat.PlainText)
+        self._word_title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        font = self._word_title.font()
+        font.setPointSizeF(font.pointSizeF() * 1.45)
+        font.setBold(True)
+        self._word_title.setFont(font)
+        bar.addWidget(self._word_title, 1)
+        self._manual_controls = QWidget(current)
         manual = QHBoxLayout(self._manual_controls)
         manual.setContentsMargins(0, 0, 0, 0)
         done_btn = QPushButton("Oznacz jako zrobione")
-        done_btn.setToolTip("Dotyczy bieżącego słowa: oznacz w n8n i przejdź dalej. Nie tworzy kart.")
+        done_btn.setToolTip("Oznacz bieżące słowo w n8n i przejdź dalej. Nie tworzy kart. Skrót: D na liście.")
         done_btn.clicked.connect(lambda _checked=False: self._done_and_next())
         manual.addWidget(done_btn)
         next_btn = QPushButton("Pomiń")
-        next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n")
+        next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n. Skrót: S na liście.")
         next_btn.clicked.connect(lambda _checked=False: self.advance())
         manual.addWidget(next_btn)
-        queue.addWidget(self._manual_controls)
-        split.addWidget(sidebar)
+        bar.addWidget(self._manual_controls)
+        side.addLayout(bar)
+        self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), self._cfg.get("page_js") or [], current)
+        side.addWidget(self._tabs, 1)
+        split.addWidget(current)
 
-        self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), self._cfg.get("page_js") or [], split)
-        split.addWidget(self._tabs)
+        # Skróty tylko przy fokusie na liście — w polach tekstowych litery mają się wpisywać,
+        # a Ctrl+Enter należy do „Dodaj”. Spacja (checkbox) i strzałki działają w Qt same.
+        for key, button in ((Qt.Key.Key_Return, self._ai_btn), (Qt.Key.Key_Enter, self._ai_btn),
+                            (Qt.Key.Key_D, done_btn), (Qt.Key.Key_S, next_btn)):
+            shortcut = QShortcut(QKeySequence(key), self._list)
+            shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+            shortcut.activated.connect(button.click)  # click() nic nie robi, gdy przycisk wyłączony
         split.setStretchFactor(1, 1)
         split.setSizes([330, 770])
         layout.addWidget(split, 1)
@@ -480,6 +508,7 @@ class WordQueuePanel(QDockWidget):
     _shown_word = ""  # hasło aktualnie w zakładkach; chroni przed zbędnym przeładowaniem
 
     def _show_urls(self, word: str, row: dict | None) -> None:
+        self._word_title.setText(word)
         if word == self._shown_word:
             return  # paczka z jednym hasłem nie przeładowuje tego, co już widać
         self._shown_word = word
@@ -1106,10 +1135,10 @@ class WordQueuePanel(QDockWidget):
         self._clear_btn.setVisible(bool(self._picked))
         self._clear_btn.setEnabled(not self._busy)
         self._selection_hint.setText(
-            f"Do AI: {count} (wybór z checkboxów). Klikanie innych słów nie zmienia paczki."
+            f"Do AI: {count} z checkboxów — klikanie innych słów ich nie zmienia."
             if any(row["id"] in self._picked for row in selected) else
-            f"Do AI: {count} (podświetlenie). Checkboxy pozwalają zebrać paczkę."
-            if count else "Kliknij słowo, aby zobaczyć słowniki. Checkboxy wybierają paczkę do AI.")
+            f"Do AI: {count} podświetlone. Spacja zaznacza checkbox."
+            if count else "Spacja albo checkbox dodaje słowo do paczki AI.")
 
     def _unfreeze(self) -> None:
         """Paczka przerwana (inny profil, zamknięta kolekcja) nie może zostawić

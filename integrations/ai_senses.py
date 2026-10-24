@@ -19,21 +19,25 @@ try:
     from aqt import mw
     from aqt.qt import (
         QCheckBox,
+        QComboBox,
         QDialog,
         QDialogButtonBox,
         QFrame,
         QFormLayout,
         QGroupBox,
         QHBoxLayout,
+        QKeySequence,
         QLineEdit,
         QPlainTextEdit,
         QPushButton,
         QLabel,
         QScrollArea,
+        QShortcut,
         QVBoxLayout,
         QWidget,
         Qt,
     )
+    from ..common.ui import palette
 except ImportError:  # pozwala odpalić testy bez Anki
     mw = None
     QCheckBox = QDialogButtonBox = QLabel = QLineEdit = QScrollArea = QVBoxLayout = QWidget = None
@@ -372,6 +376,7 @@ class SensePicker(QDialog):
         self._related_boxes = []
         self._add_related = add_related
 
+        colors = palette()
         layout = QVBoxLayout(self)
         hint = QLabel("Jedno znaczenie = jedna karta. Zaznacz karty, które chcesz dodać, i popraw ich treść. "
                       "Znaczenie po polsku jest wymagane.")
@@ -381,16 +386,18 @@ class SensePicker(QDialog):
         source = " · ".join(dict.fromkeys(p["provider"] for p in proposals if p.get("provider"))) or provider_label(cfg)
         if source:
             who = QLabel(f"Dopasowanie definicji: {escape(source)}")
-            who.setStyleSheet("color: gray;")
+            who.setStyleSheet(f"color: {colors['muted']};")
             layout.addWidget(who)
 
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
+        sections = []
         for proposal in proposals:
             word = proposal["word"]
             section = QGroupBox(word.replace("&", "&&"))
             section_layout = QVBoxLayout(section)
             inner_layout.addWidget(section)
+            sections.append(section)
             if "sources" in proposal:
                 used = set(proposal["sources"])
                 missing = set(proposal.get("urls", {})) - used
@@ -404,7 +411,7 @@ class SensePicker(QDialog):
                 known = QLabel("⚠ Masz już {} kart(y) z hasłem „{}”: {}".format(
                     len(existing), escape(word), escape(" · ".join(filter(None, existing)))))
                 known.setWordWrap(True)
-                known.setStyleSheet("color: #c0392b;")
+                known.setStyleSheet(f"color: {colors['warn_fg']};")
                 section_layout.addWidget(known)
             primary_count = 0
             for index, sense in enumerate(proposal["senses"], 1):
@@ -412,6 +419,10 @@ class SensePicker(QDialog):
                     primary_count += 1
                 card = QFrame()
                 card.setFrameShape(QFrame.Shape.StyledPanel)
+                if _by_ai(sense):  # dopasowanie modelu: to te karty warto przeczytać uważniej
+                    card.setObjectName("aiMatch")
+                    card.setStyleSheet(f"#aiMatch {{ background: {colors['issue_bg']};"
+                                       f" border: 1px solid {colors['issue_border']}; border-radius: 6px; }}")
                 card_layout = QVBoxLayout(card)
                 section_layout.addWidget(card)
                 heading = QHBoxLayout()
@@ -422,12 +433,19 @@ class SensePicker(QDialog):
                 origin.setWordWrap(True)
                 heading.addWidget(origin, 1)
                 card_layout.addLayout(heading)
+                # Odznaczona karta zwija się do jednej linii — paczka nie rośnie w nieskończoność.
+                preview = QLabel(sense.get("pl", ""))
+                preview.setTextFormat(Qt.TextFormat.PlainText)
+                preview.setStyleSheet(f"color: {colors['muted']};")
+                card_layout.addWidget(preview)
                 content = QWidget()
                 content_layout = QVBoxLayout(content)
                 content_layout.setContentsMargins(0, 0, 0, 0)
                 card_layout.addWidget(content)
-                content.setEnabled(box.isChecked())
-                box.toggled.connect(content.setEnabled)
+                content.setVisible(box.isChecked())
+                preview.setHidden(box.isChecked())
+                box.toggled.connect(content.setVisible)
+                box.toggled.connect(preview.setHidden)
                 form = QFormLayout()
                 form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
                 # Hasło tej jednej karty; kolejka dalej zna wiersz po haśle z listy.
@@ -483,6 +501,12 @@ class SensePicker(QDialog):
         self._area.setWidget(inner)
 
         selection = QHBoxLayout()
+        if len(sections) > 1:
+            jump = QComboBox()
+            jump.addItems(words)
+            jump.setToolTip("Przewiń do hasła")
+            jump.activated.connect(lambda index: self._area.verticalScrollBar().setValue(sections[index].y()))
+            selection.addWidget(jump)
         if len(self._boxes) > 1:
             self._all = QCheckBox(f"Zaznacz wszystkie ({len(self._boxes)})")
             self._all.setTristate(True)
@@ -502,6 +526,9 @@ class SensePicker(QDialog):
         layout.addWidget(self._error)
         self._add_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Anuluj")
+        self._add_btn.setToolTip("Skrót: Ctrl+Enter (⌘↵), także z pola tekstowego")
+        for keys in ("Ctrl+Return", "Ctrl+Enter"):
+            QShortcut(QKeySequence(keys), self).activated.connect(self._add_btn.click)
         buttons.accepted.connect(self._accept_selected)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -9,7 +9,8 @@ Klucz API z https://openrouter.ai/keys (albo klucz OpenRoutera dostawców AI).
 Żadnych innych zależności.
 
 Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Nagrania (TTS)** — sekcje
-*OpenRouter* (model, dostawca modelu, głosy), *Zamiana wyrazów*, *Zadania nagrań*
+*Zadania nagrań* (na górze; Dodaj/Edytuj/Usuń, ▲▼ zmienia kolejność w menu),
+*OpenRouter* (model, dostawca modelu; lista głosów pojawia się po „Pobierz”), *Zamiana wyrazów*
 i zwijana *Wydajność i sieć* (wątki, próby, timeout). Klucz API jest na stronie
 **Konta i klucze → Nagrania (TTS) — OpenRouter**.
 
@@ -47,7 +48,7 @@ Każde zadanie definiuje:
   - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`). Pole puste lub niekompletne zostaje zastąpione dopiero po wygenerowaniu całego zestawu; częściowa awaria pozostawia dotychczasową treść do ponowienia. Przy regeneracji kompletnego zestawu nieudane segmenty zachowują swoje stare nagrania.
 - **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
 
-Zadania konfiguruje się w **Narzędzia → Anki Toolkit → Ustawienia… → TTS → Zadania TTS** (przyciski Dodaj/Edytuj/Usuń).
+Zadania konfiguruje się w **Narzędzia → Anki Toolkit → Ustawienia… → Nagrania (TTS) → Zadania nagrań** (Dodaj/Edytuj/Usuń, dwuklik edytuje, Delete usuwa, ▲▼ zmienia kolejność).
 
 W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopiero po zakończeniu generowania danej operacji. Przy anulowaniu zapisują już wygenerowane pliki i pokazują jedno podsumowanie.
 
