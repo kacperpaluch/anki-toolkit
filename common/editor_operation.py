@@ -152,19 +152,31 @@ def merge_detached_notes(col, expected_col, notes, before, skipped: list):
     return col.update_notes(fresh)
 
 
-def save_detached_notes(parent, col, notes, before, summary: str, on_saved=None) -> None:
-    """Persist a Browser batch as one undoable op, then show the summary."""
+def save_detached_notes(parent, col, notes, before, summary: str, on_saved=None,
+                        title: str | None = None, retry=None, failed: int = 0) -> None:
+    """Persist a Browser batch as one undoable op, then show the summary.
+
+    With `title` the summary also goes to the session reports (Diagnostyka);
+    `retry()` repeats the `failed` notes from there.
+    """
     from aqt import mw
     from aqt.operations import CollectionOp
     from aqt.utils import tooltip
+    from .reports import record_report
     if mw.col is not col:
         tooltip("Profil zmienił się podczas operacji — wyników nie zapisano.", period=8000)
         return
+
+    def show(text):
+        if title:
+            record_report(title, text, retry, failed)
+        tooltip(text, period=8000)
+
     if not notes:
         if on_saved:
             on_saved([])
         else:
-            tooltip(summary, period=8000)
+            show(summary)
         return
     skipped: list = []
 
@@ -175,7 +187,7 @@ def save_detached_notes(parent, col, notes, before, summary: str, on_saved=None)
         text = summary
         if skipped:
             text += f" · pominięto {len(skipped)} notatek zmienionych w trakcie"
-        tooltip(text, period=8000)
+        show(text)
 
     CollectionOp(
         parent=parent,

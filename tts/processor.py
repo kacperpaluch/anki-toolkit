@@ -18,7 +18,7 @@ from aqt.utils import tooltip
 
 from ..common import (
     unique_filename, clean_html, clean_html_normalized, split_separator_regex, unique,
-    start_progress, update_progress, finish_progress, strip_sound_tags, load_notes,
+    start_progress, update_progress, finish_progress, strip_sound_tags, load_notes, live_parent,
 )
 
 from ..common.editor_operation import save_detached_notes, snapshot_fields
@@ -376,7 +376,13 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
         summary = f"\"{label}\": " + ", ".join(parts)
 
         logger.info(f"TTS batch {summary}")
-        save_detached_notes(browser, col, changed_notes, before, summary)
+        # Notes with a segment that got no file; a retry regenerates only what is missing.
+        failed = sorted({item["nid"] for item in all_items
+                         if (item["nid"], item["task_i"], item["seg_i"]) not in results}) if errors else []
+        save_detached_notes(
+            browser, col, changed_notes, before, summary, title=label,
+            retry=lambda: _process_batch_async(live_parent(browser), failed, tasks, label),
+            failed=len(failed))
 
     mw.taskman.run_in_background(bg_task, on_done)
 

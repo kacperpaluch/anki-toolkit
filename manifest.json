@@ -2,5 +2,6 @@
   "package": "anki-toolkit",
   "name": "Anki Toolkit",
   "mod": 2,
-  "min_point_version": 231000
+  "min_point_version": 231000,
+  "human_version": "1.0.0"
 }

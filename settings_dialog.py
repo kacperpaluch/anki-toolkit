@@ -60,7 +60,7 @@ PAGES = [
     ("Konfiguracja", [
         ("accounts", "🔑", "Konta i klucze",
          "Wszystkie klucze API i połączenia: dostawcy AI, nagrania, n8n.", AccountsTab),
-        ("logs", "🩺", "Diagnostyka", "Logi wtyczki i tryb debugowania.", LogsTab),
+        ("logs", "🩺", "Diagnostyka", "Ostatnie operacje (z ponowieniem nieudanych), logi wtyczki i tryb debugowania.", LogsTab),
     ]),
 ]
 

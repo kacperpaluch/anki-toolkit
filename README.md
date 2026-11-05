@@ -99,7 +99,23 @@ kolejki** pozwala dopisać je wcześniej, bez zatwierdzania kart.
 | [Czyszczenie HTML](html_cleanup/README.md) | Reguły „znajdź → zamień” w tabeli, stosowane przy dodawaniu notatki |
 | [Ukrywanie pól](field_hider/README.md) | Pola pomocnicze schowane tylko w oknie Dodaj |
 
-**Diagnostyka** pokazuje bufor logów wszystkich modułów i przełącza tryb debug.
+**Diagnostyka** pokazuje raporty ostatnich operacji z tej sesji (AI, sekwencje, wymowa,
+nagrania, czyszczenie HTML) z przyciskiem „Ponów nieudane”, bufor logów wszystkich modułów
+i przełącza tryb debug.
+
+## Instalacja
+
+Pobierz `anki-toolkit-<wersja>.ankiaddon` z
+[Releases](https://github.com/kacperpaluch/anki-toolkit/releases) i otwórz go
+dwuklikiem albo przez Narzędzia → Dodatki → Zainstaluj z pliku…, potem uruchom
+Anki ponownie. Aktualizacja tą samą drogą zachowuje ustawienia i `user_files/`.
+
+Paczkę buduje się z zatwierdzonego kodu (bez testów i Workload Service):
+
+```bash
+git archive --format=zip -o anki-toolkit-X.Y.Z.ankiaddon HEAD -- . \
+  ':!tests' ':!workload_service' ':!.gitignore' ':!AGENTS.md' ':!**/llm-context.md' ':!llm-context.md'
+```
 
 ## Instalacja w wersji deweloperskiej
 

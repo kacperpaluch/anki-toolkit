@@ -5,11 +5,12 @@ from aqt.qt import QAction, QTimer
 
 from . import ai_generator, dictionary, field_splitter, tts
 from . import audio_normalizer, field_hider, html_cleanup, integrations
-from .common import check_config, setup_logging
+from .common import check_config, clear_reports, setup_logging
 
 setup_logging()
 gui_hooks.profile_did_open.append(lambda: ai_generator.check_pending_batches(silent=True))
 gui_hooks.profile_did_open.append(check_config)  # name hand-edit mistakes up front
+gui_hooks.profile_will_close.append(clear_reports)  # report note ids belong to this profile
 # Batche kończą się w ciągu godzin, a zadanie wygasa po 24h — bez cyklicznego
 # sprawdzania wyniki czekałyby do następnego startu Anki, a reszta zadania
 # nigdy by nie poszła. check_pending_batches() samo pilnuje, by dwa przebiegi

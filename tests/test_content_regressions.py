@@ -799,6 +799,21 @@ class TestBrowserAiActions(unittest.TestCase):
             self.assertIn("nid:1 — Błąd: def: timeout", report)
             self.assertIn("nid:2 — nie zapisano", report)
 
+    def test_report_is_kept_and_retries_only_failed_notes(self):
+        import aqt.utils
+        reports = sys.modules[self.browser.__name__.rsplit(".", 2)[0] + ".common.reports"]
+        reports.clear_reports()
+        retried = []
+        with patch.object(aqt.utils, "showText", create=True):
+            self.browser._show_run_report(None, "AI", 3, 3, [],
+                [(1, "error", "timeout"), (3, "skip", "pełne"), (2, "error", "x")], False,
+                retry=retried.append)
+        report = reports.recent_reports()[0]
+        self.assertEqual((report["title"], report["failed"]), ("AI", 2))
+        self.assertIn("Diagnostyka", report["text"])
+        report["retry"]()
+        self.assertEqual(retried, [[1, 2]])
+
     def test_overwrite_failure_preserves_old_field(self):
         generator_module = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
         generator = generator_module.FieldGenerator(self.config)

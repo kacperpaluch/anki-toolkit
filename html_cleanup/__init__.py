@@ -8,7 +8,7 @@ from aqt.operations import CollectionOp
 from aqt.qt import QMessageBox
 from aqt.utils import tooltip
 
-from ..common import get_module_config
+from ..common import get_module_config, record_report
 from .cleaning import clean_field, default_rules
 
 
@@ -107,8 +107,10 @@ def clean_collection() -> None:
     def done(_changes):
         _tooltip(mw, counters, rules)
         if oversized:
-            tooltip(f"Pominięto notatki przekraczające limit rozmiaru ({len(oversized)}): "
-                    + " ".join(f"nid:{nid}" for nid in oversized[:10]), parent=mw, period=10000)
+            record_report("Czyszczenie HTML", "Pominięto notatki przekraczające limit rozmiaru:\n"
+                          + "\n".join(f"nid:{nid}" for nid in oversized))
+            tooltip(f"Pominięto notatki przekraczające limit rozmiaru ({len(oversized)}) —"
+                    " lista w Ustawienia → Diagnostyka.", parent=mw, period=10000)
 
     CollectionOp(parent=mw, op=operation).success(done).run_in_background()
 

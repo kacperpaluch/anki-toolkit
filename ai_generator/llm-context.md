@@ -156,8 +156,10 @@ Przyciski workflowów w edytorze:
   a ich poprawne wyniki trafiają do zapisu. `done/total` pokazuje zakres pracy.
 - Raport jest zwykłym tekstem (`showText(type="text", copyBtn=True)`), więc błąd
   dostawcy nie staje się HTML. Jest logowany na INFO. Usunięty widget Browsera
-  jest zastępowany `mw` jako rodzic dialogu. Raport nie jest nowym formatem
-  danych persistent ani nowym panelem diagnostycznym.
+  jest zastępowany `mw` jako rodzic dialogu. Raport trafia też do raportów sesji
+  (`common.reports`, Diagnostyka, tylko w pamięci); „Ponów nieudane” uruchamia
+  `_run_batch`/`_on_workflow_browser(nids=...)` z tymi samymi polami i trybem,
+  wyłącznie dla notatek z błędem.
 - `tests/test_content_regressions.py` sprawdza scope PPM, potwierdzenie,
   zachowanie starego pola po błędzie i liczniki po konflikcie. Dwa testy Qt:
   `tests/qt_browser_menu_smoke.py` (root dispatcher, menu Narzędzia, widoczność,

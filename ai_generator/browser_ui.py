@@ -11,7 +11,9 @@ from aqt.utils import tooltip, askUser
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ..common import start_progress, update_progress, finish_progress, load_notes
+from ..common import (
+    start_progress, update_progress, finish_progress, load_notes, record_report, live_parent,
+)
 from ..common.editor_operation import save_detached_notes, snapshot_fields, detach_note
 from . import batch_backfill
 from ._generator import get_config
@@ -81,7 +83,8 @@ def _skip_reason(note, config, only_fields, overwrite=False):
 
 
 def _show_run_report(parent, title, total, done, changed, details, cancelled,
-                     skipped_at_save=()):
+                     skipped_at_save=(), retry=None):
+    """retry(nids) repeats the failed notes — offered later from Diagnostyka."""
     from aqt.utils import showText
     from aqt.qt import sip
     if parent is None or sip.isdeleted(parent):
@@ -95,6 +98,9 @@ def _show_run_report(parent, title, total, done, changed, details, cancelled,
              f"Pominięto przy zapisie (notatka zmieniona lub usunięta): {len(conflicts)}"]
     if cancelled:
         lines.append("Przerwano operację; zakończone wyniki zostały zapisane.")
+    failed = sorted({nid for nid, kind, _ in details if kind == "error"})
+    if failed and retry:
+        lines.append("Raport zostaje w Ustawienia → Diagnostyka — stamtąd ponowisz nieudane notatki.")
     if details or conflicts:
         lines.append("\nSzczegóły — identyfikatory można wyszukać w Browserze przez nid:123:")
         for nid, kind, reason in sorted(details):
@@ -103,6 +109,7 @@ def _show_run_report(parent, title, total, done, changed, details, cancelled,
             lines.append(f"nid:{nid} — nie zapisano: notatka zmieniona lub usunięta podczas pracy")
     text = "\n".join(lines)
     logger.info("%s: %s", title, text)
+    record_report(title, text, retry=(lambda: retry(failed)) if retry else None, failed=len(failed))
     showText(text, parent=parent, title=title, type="text", copyBtn=True)
 
 
@@ -195,7 +202,10 @@ def _run_batch(browser: Browser, nids, config: dict,
             browser, col, changed_notes, before, label,
             on_saved=lambda skipped: _show_run_report(
                 browser, label, len(notes), state["done"], changed_notes,
-                details, cancel_flag["cancelled"], skipped),
+                details, cancel_flag["cancelled"], skipped,
+                retry=lambda failed: _run_batch(
+                    live_parent(browser), failed, get_config(), only_fields,
+                    label, overwrite=overwrite)),
         )
 
     mw.taskman.run_in_background(task, on_done, uses_collection=False)
@@ -584,7 +594,7 @@ def _advance_jobs(config: dict):
 # Workflow batch — runs a workflow's steps per selected note
 # ---------------------------------------------------------------------------
 
-def _on_workflow_browser(browser: Browser, workflow: dict):
+def _on_workflow_browser(browser: Browser, workflow: dict, nids=None):
     from .workflow import execute_step
 
     steps = [s for s in workflow.get("steps", []) if isinstance(s, dict)]
@@ -592,7 +602,7 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
         tooltip("Brak kroków w tej sekwencji. Sprawdź ustawienia.")
         return
 
-    nids = browser.selected_notes()
+    nids = browser.selected_notes() if nids is None else nids
     if not nids:
         tooltip("Nie zaznaczono żadnych notatek.")
         return
@@ -678,7 +688,9 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
             browser, col, changed_notes, before, label,
             on_saved=lambda skipped: _show_run_report(
                 browser, label, len(notes), state["done"], changed_notes,
-                details, cancel_flag["cancelled"], skipped),
+                details, cancel_flag["cancelled"], skipped,
+                retry=lambda failed: _on_workflow_browser(
+                    live_parent(browser), workflow, nids=failed)),
         )
 
     mw.taskman.run_in_background(task, on_done, uses_collection=False)

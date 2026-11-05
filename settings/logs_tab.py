@@ -1,11 +1,14 @@
-"""Logi tab — debug toggle and live view of the addon's in-memory log buffer."""
+"""Logi tab — recent operation reports, debug toggle and the in-memory log buffer."""
 
 from aqt.qt import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton,
-    QPlainTextEdit, QLabel, QApplication, QTimer, QFont,
+    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QDialog, QGroupBox,
+    QPlainTextEdit, QLabel, QApplication, QTimer, QFont, QListWidget, QListWidgetItem, Qt,
 )
+from aqt.utils import askUser, showText
 
-from ..common import set_debug, get_log_lines, get_log_seq, clear_log
+from ..common import (
+    set_debug, get_log_lines, get_log_seq, clear_log, recent_reports, reports_seq, take_retry,
+)
 from ..common.ui import hint_label
 
 
@@ -15,6 +18,29 @@ class LogsTab(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
+
+        reports_group = QGroupBox("Ostatnie operacje (ta sesja)")
+        reports_layout = QVBoxLayout(reports_group)
+        self._reports = QListWidget()
+        self._reports.setMaximumHeight(130)
+        self._reports.itemDoubleClicked.connect(lambda _item: self._show_report())
+        self._reports.currentItemChanged.connect(lambda *_: self._update_report_buttons())
+        reports_layout.addWidget(self._reports)
+        report_row = QHBoxLayout()
+        self._show_btn = QPushButton("Pokaż raport")
+        self._show_btn.clicked.connect(self._show_report)
+        self._retry_btn = QPushButton("Ponów nieudane")
+        self._retry_btn.setToolTip("Uruchamia operację jeszcze raz tylko dla notatek z błędem.")
+        self._retry_btn.clicked.connect(self._retry)
+        report_row.addWidget(self._show_btn)
+        report_row.addWidget(self._retry_btn)
+        report_row.addStretch()
+        reports_layout.addLayout(report_row)
+        reports_layout.addWidget(hint_label(
+            "Wyniki generowania AI, sekwencji, wymowy i nagrań zostają tu po zniknięciu"
+            " komunikatu — do zamknięcia profilu (ostatnie 20).", small=True))
+        layout.addWidget(reports_group)
+        self._reports_seq = -1
 
         self._debug_cb = QCheckBox(
             "Tryb debugowania — rejestruj szczegółowe logi (DEBUG)"
@@ -70,7 +96,57 @@ class LogsTab(QWidget):
         super().hideEvent(event)
         self._timer.stop()
 
+    def _refresh_reports(self, force: bool = False):
+        if not force and reports_seq() == self._reports_seq:
+            return
+        self._reports_seq = reports_seq()
+        selected = self._selected_report()
+        self._reports.clear()
+        for report in recent_reports():
+            failed = f"  ·  błędy: {report['failed']}" if report["failed"] else ""
+            item = QListWidgetItem(f"{report['time']}  {report['title']}{failed}")
+            item.setData(Qt.ItemDataRole.UserRole, report["id"])  # Qt would store a copy of the dict
+            self._reports.addItem(item)
+            if selected is not None and report["id"] == selected["id"]:
+                self._reports.setCurrentItem(item)
+        if self._reports.count() == 0:
+            self._reports.addItem("(brak operacji w tej sesji)")
+        self._update_report_buttons()
+
+    def _selected_report(self):
+        item = self._reports.currentItem()
+        report_id = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        return next((r for r in recent_reports() if r["id"] == report_id), None)
+
+    def _update_report_buttons(self):
+        report = self._selected_report()
+        self._show_btn.setEnabled(report is not None)
+        self._retry_btn.setEnabled(bool(report and report["retry"]))
+
+    def _show_report(self):
+        report = self._selected_report()
+        if report is not None:
+            showText(report["text"], parent=self, title=report["title"], type="text", copyBtn=True)
+
+    def _retry(self):
+        report = self._selected_report()
+        if not report or not report["retry"]:
+            return
+        if not askUser(
+            f"Ponowić {report['failed']} nieudanych notatek z operacji „{report['title']}”?\n\n"
+            "Okno Ustawień zamknie się bez zapisywania niezapisanych zmian.", parent=self,
+        ):
+            return
+        retry = take_retry(report["id"])
+        if retry is None:
+            return
+        dialog = self.window()
+        if isinstance(dialog, QDialog):
+            dialog.reject()
+        QTimer.singleShot(0, retry)  # after the modal settings loop has returned
+
     def _refresh(self, force: bool = False):
+        self._refresh_reports(force)
         seq = get_log_seq()
         if not force and seq == self._last_seq:
             return

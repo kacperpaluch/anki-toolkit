@@ -5,7 +5,9 @@ from aqt.utils import tooltip
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ..common import ADDON_NAME, start_progress, update_progress, finish_progress, unique, load_notes
+from ..common import (
+    ADDON_NAME, start_progress, update_progress, finish_progress, unique, load_notes, live_parent,
+)
 from ..common.editor_operation import save_detached_notes, snapshot_fields
 
 from .service import process_note_group
@@ -26,9 +28,9 @@ def _get_enabled_button_configs(config: dict) -> list[dict]:
     ]
 
 
-def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
+def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]], note_ids=None):
     config = _get_config()
-    note_ids = browser.selected_notes()
+    note_ids = browser.selected_notes() if note_ids is None else note_ids
     if not note_ids:
         return
 
@@ -54,6 +56,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
     missing_audio_count = 0
     changed_notes: list = []
     errors: list[str] = []
+    failed_ids: list = []
 
     def task():
         nonlocal missing_audio_count
@@ -76,6 +79,7 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
                 # One bad note must not discard the notes already done.
                 logger.exception("Słownik: błąd notatki %s", note.id)
                 errors.append(str(e))
+                failed_ids.append(note.id)
                 if mw.col is not col:
                     break  # profile closed: every further note fails the same way
                 continue
@@ -102,7 +106,10 @@ def _run_browser_fetch(browser: Browser, dictionary_groups: list[list[str]]):
         summary = " · ".join(parts) if parts else "Brak zmian."
 
         # One undoable operation for the whole batch; fresh notes, same profile.
-        save_detached_notes(browser, col, changed_notes, before, summary)
+        save_detached_notes(
+            browser, col, changed_notes, before, summary, title="Wymowa",
+            retry=lambda: _run_browser_fetch(live_parent(browser), dictionary_groups, failed_ids),
+            failed=len(failed_ids))
 
     mw.taskman.run_in_background(task, on_done)
 
