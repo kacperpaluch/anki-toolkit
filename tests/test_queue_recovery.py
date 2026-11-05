@@ -42,6 +42,16 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(fresh.data, {'drafts': [], 'owed': {}})
             self.assertTrue(state.path.with_suffix('.broken').exists())
 
+    def test_malformed_entries_are_dropped_on_load(self):
+        State = load('queue_state').QueueState
+        with tempfile.TemporaryDirectory() as folder:
+            state = State('/profile/collection.anki2', {}, folder)
+            state.path.write_text(json.dumps({
+                'drafts': [{'row_id': 7}, 'junk', {'word': 'no id'}],
+                'owed': {'7': 'mother', 'x': 'bad key'}}), encoding='utf-8')
+            fresh = State('/profile/collection.anki2', {}, folder)
+            self.assertEqual(fresh.data, {'drafts': [{'row_id': 7}], 'owed': {'7': 'mother'}})
+
     def test_failed_atomic_save_keeps_previous_file(self):
         module = load('queue_state')
         with tempfile.TemporaryDirectory() as folder:

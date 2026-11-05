@@ -7,7 +7,7 @@ import urllib.request
 import urllib.parse
 
 from ..common import normalize_float, apply_word_replacements
-from ..common.http import post_json, urlopen as safe_urlopen
+from ..common.http import post_create, urlopen as safe_urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,9 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
         f"OpenRouter TTS: model={model}, voice={voice}, {len(text)} zn., timeout={timeout}s{routing}"
     )
     t0 = time.time()
-    raw, err = post_json(
+    # Paid request: a timeout may hide audio the server already billed, so it is
+    # not repeated (post_create). A rerun only regenerates the missing audio.
+    raw, err, _uncertain = post_create(
         "https://openrouter.ai/api/v1/audio/speech",
         json.dumps(payload).encode("utf-8"), headers,
         max_retries=max_retries, timeout=timeout, log=logger,

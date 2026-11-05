@@ -1001,6 +1001,8 @@ class PromptsTab(QWidget):
         key = item.data(Qt.ItemDataRole.UserRole)
         if key is None:  # nagłówek grupy — nic do usunięcia
             return
+        if not askUser(f"Usunąć prompt pola „{key[1]}” (typ „{key[0]}”)?", parent=self):
+            return
         self._current_key = None
         keys = list(self._data.keys())
         i = keys.index(key)

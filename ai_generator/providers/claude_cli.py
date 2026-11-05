@@ -77,7 +77,8 @@ def login_status(binary: str = "") -> tuple[bool, str]:
     try:
         proc = subprocess.run(
             [resolved, "auth", "status", "--json"],
-            capture_output=True, text=True, timeout=30, env=_clean_env(),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30, env=_clean_env(),
         )
     except (subprocess.TimeoutExpired, OSError) as e:
         return False, f"nie udało się sprawdzić logowania: {e}"
@@ -201,7 +202,9 @@ class ClaudeCLIProvider(BaseProvider):
             try:
                 proc = subprocess.run(
                     self._build_args(binary), input=prompt,
-                    capture_output=True, text=True, timeout=timeout,
+                    # UTF-8 explicitly: Windows would otherwise use the ANSI code page.
+                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    timeout=timeout,
                     env=_clean_env(), cwd=workspace,
                 )
             except subprocess.TimeoutExpired:

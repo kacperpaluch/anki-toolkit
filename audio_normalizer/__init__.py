@@ -40,6 +40,8 @@ def run_normalization(automatic=False):
         return
     if _normalizing:
         _rescan = True
+        if not automatic:
+            tooltip("Normalizacja już trwa — nowe pliki zostaną sprawdzone po jej zakończeniu.", parent=mw)
         return
     cfg = get_config(); command = _ffmpeg(cfg)
     if which(command) is None:

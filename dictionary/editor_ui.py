@@ -83,6 +83,9 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
                         tooltip("Pole audio już zawiera treść.", parent=mw, period=3000)
                     elif result.audio_requested and not result.audio_found:
                         tooltip("Brak audio do pobrania dla tego hasła.", parent=mw, period=3000)
+                    else:
+                        tooltip("Wymowa: nic do zrobienia — pola docelowe są już wypełnione"
+                                " albo pole źródłowe jest puste.", parent=mw, period=4000)
                 except Exception as e:
                     tooltip(f"Wymowa: nie zapisano wyniku — {e}", parent=mw, period=8000)
                 finally:

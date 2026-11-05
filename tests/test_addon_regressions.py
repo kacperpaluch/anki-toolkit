@@ -833,6 +833,16 @@ class OtherAddonsTests(unittest.TestCase):
             module._clean_note(note, rules)
         self.assertEqual(note, before)
 
+    def test_oversized_note_is_added_unchanged_not_refused(self):
+        module = load("html_cleanup")
+        module.get_config = lambda: {"rules": [{"find": "x", "to": "xx", "repeat": True}]}
+        shown = []
+        module.tooltip = lambda text, **_kw: shown.append(text)
+        note = {"f": "x"}
+        self.assertIsNone(module._on_add_note(None, note))
+        self.assertEqual(note, {"f": "x"})
+        self.assertTrue(shown)
+
     def test_regex_backreference_growth_is_rejected_before_expansion(self):
         module = load("html_cleanup", "cleaning.py")
         with self.assertRaises(ValueError):

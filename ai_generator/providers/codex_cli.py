@@ -114,7 +114,7 @@ def app_server_call(methods: list[tuple[str, dict]], binary: str = "",
     proc = subprocess.Popen(
         [resolved, "app-server", "--listen", "stdio://"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        env=_clean_env(resolved_home), text=True, bufsize=1,
+        env=_clean_env(resolved_home), text=True, encoding="utf-8", errors="replace", bufsize=1,
     )
     results: dict[int, dict] = {}
     wanted = set(range(2, 2 + len(methods)))
@@ -255,7 +255,9 @@ class CodexCLIProvider(BaseProvider):
             args = self._build_args(binary, workspace, outfile)
             try:
                 proc = subprocess.run(
+                    # UTF-8 explicitly: Windows would otherwise use the ANSI code page.
                     args, input=prompt, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace",
                     timeout=timeout, env=_clean_env(home), cwd=workspace,
                 )
             except subprocess.TimeoutExpired:

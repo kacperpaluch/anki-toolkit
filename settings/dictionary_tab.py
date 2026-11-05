@@ -102,7 +102,9 @@ class DictionaryTab(QWidget):
 
         buttons_cfg = d.get("buttons", [])
         self._btn_checks: dict[str, tuple] = {}
-        btn_map = {"+".join(b.get("dictionaries", [])): b for b in buttons_cfg}
+        # Hand-edited config: skip malformed entries instead of crashing the dialog.
+        btn_map = {"+".join(map(str, b.get("dictionaries") or [])): b
+                   for b in buttons_cfg if isinstance(b, dict)} if isinstance(buttons_cfg, list) else {}
 
         standard = [
             ("Diki",      ["diki_uk", "diki_us"]),

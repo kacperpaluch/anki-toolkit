@@ -10,7 +10,7 @@ from aqt.qt import (
     QListWidget, QListWidgetItem, QCheckBox, QDialog,
     QDialogButtonBox, QComboBox, QLineEdit,
 )
-from aqt.utils import showWarning
+from aqt.utils import askUser, showWarning
 
 from ..common.ui import _expanding_line_edit, _scrollable, hint_label, list_buttons
 from ..ai_generator.workflow import DEFAULT_CONTEXT_MENU
@@ -260,6 +260,17 @@ class WorkflowEditDialog(QDialog):
             del self._steps[i]
             self._refresh()
 
+    def accept(self):
+        # Validate here so a missing name never throws away the configured steps.
+        if not self._name.text().strip():
+            showWarning("Sekwencja musi mieć nazwę.", parent=self)
+            self._name.setFocus()
+            return
+        if not self._steps:
+            showWarning("Sekwencja musi mieć przynajmniej jeden krok.", parent=self)
+            return
+        super().accept()
+
     def get_workflow(self) -> dict:
         return {
             "name": self._name.text().strip(),
@@ -330,14 +341,7 @@ class WorkflowsTab(QWidget):
     def _add(self):
         dlg = WorkflowEditDialog(self, None, self._dict_buttons)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            wf = dlg.get_workflow()
-            if not wf["name"]:
-                showWarning("Sekwencja musi mieć nazwę.")
-                return
-            if not wf["steps"]:
-                showWarning("Sekwencja musi mieć przynajmniej jeden krok.")
-                return
-            self._workflows.append(wf)
+            self._workflows.append(dlg.get_workflow())
             self._refresh()
 
     def _edit(self, _item=None):
@@ -347,17 +351,17 @@ class WorkflowsTab(QWidget):
             return
         dlg = WorkflowEditDialog(self, self._workflows[idx], self._dict_buttons)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            wf = dlg.get_workflow()
-            if not wf["name"] or not wf["steps"]:
-                showWarning("Sekwencja musi mieć nazwę i przynajmniej jeden krok.")
-                return
-            self._workflows[idx] = wf
+            # Merge: keys this dialog does not edit survive the edit.
+            self._workflows[idx] = {**self._workflows[idx], **dlg.get_workflow()}
             self._refresh()
 
     def _remove(self):
         idx = self._list.currentRow()
         if idx < 0:
             showWarning("Zaznacz sekwencję do usunięcia.")
+            return
+        name = self._workflows[idx].get("name") or "(bez nazwy)"
+        if not askUser(f"Usunąć sekwencję „{name}”?", parent=self):
             return
         del self._workflows[idx]
         self._refresh()

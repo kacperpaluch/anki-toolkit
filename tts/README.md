@@ -43,7 +43,7 @@ Każde zadanie definiuje:
 - **Pole źródłowe** — skąd czytać tekst do syntezy
 - **Pole docelowe** — gdzie zapisać `[sound:...]`
 - **Tryb**:
-  - `single` — jedno audio na notatkę (np. dla pola `ang`)
+  - `single` — jedno audio na notatkę (np. dla pola `ang`). Pole docelowe musi być inne niż źródłowe; jeśli zawiera tekst (nie tylko `[sound:]`), notatka jest pomijana — nagranie nigdy nie zastępuje tekstu
   - `split` — każdy segment dostaje osobne audio wstawiane **obok słowa** w to samo pole (np. `przyklad` rozdzielany `<br><br>` → `słowo [sound:...]`)
   - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`). Pole puste lub niekompletne zostaje zastąpione dopiero po wygenerowaniu całego zestawu; częściowa awaria pozostawia dotychczasową treść do ponowienia. Przy regeneracji kompletnego zestawu nieudane segmenty zachowują swoje stare nagrania.
 - **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
@@ -84,7 +84,7 @@ W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopier
 | `speed` | `0.9` | Tempo mowy (0.1–3.0) |
 | `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań, brak klucza = dwa zadania domyślne |
 | `max_workers` | `12` | Liczba równoległych wątków generowania audio |
-| `max_retries` | `3` | Liczba prób przy błędach API 429/5xx |
+| `max_retries` | `3` | Liczba prób przy 429 i nieudanym połączeniu; timeout i 5xx nie są ponawiane (żądanie mogło zostać już policzone) |
 | `timeout` | `60` | Limit czasu pojedynczego żądania TTS w sekundach |
 
 ## Wymuszenie dostawcy

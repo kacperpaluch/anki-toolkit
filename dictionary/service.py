@@ -36,6 +36,11 @@ def _get_ipa_source_for_dictionary(dictionary: str) -> Optional[str]:
     return None
 
 
+def _blank(value: str) -> bool:
+    """Empty to the eye: a leftover `<br>` or `&nbsp;` does not count as content."""
+    return not clean_html_normalized(value) and "<img" not in (value or "").lower()
+
+
 def process_note_group(note, config: dict, dictionaries: list[str]) -> ProcessNoteResult:
     source_field = config.get("source_field", "English")
     target_field = config.get("target_field", "Pronunciation")
@@ -55,7 +60,7 @@ def process_note_group(note, config: dict, dictionaries: list[str]) -> ProcessNo
     mp3_timeout = int(config.get("mp3_timeout", 10))
 
     page_cache: dict = {}
-    if target_field in note and not note[target_field].strip():
+    if target_field in note and _blank(note[target_field]):
         result.audio_requested = True
         # Filename-safe readable part; it drops characters and the media folder may ignore
         # case ("Polish" vs "polish"), so a hash of the exact word keeps names unique.
@@ -101,7 +106,7 @@ def process_note_group(note, config: dict, dictionaries: list[str]) -> ProcessNo
         if ordered:
             result.audio_found = True
             note[target_field] = " ".join(f"[sound:{f}]" for f in ordered)
-    elif target_field in note and note[target_field].strip():
+    elif target_field in note and not _blank(note[target_field]):
         result.audio_skipped = True
 
     ipa_source = next(
@@ -112,7 +117,7 @@ def process_note_group(note, config: dict, dictionaries: list[str]) -> ProcessNo
         if config.get("diki_ipa_fallback", False):
             ipa_source = config.get("diki_ipa_fallback_source", "wiktionary") or None
 
-    if ipa_source and ipa_field and ipa_field in note and not note[ipa_field].strip():
+    if ipa_source and ipa_field and ipa_field in note and _blank(note[ipa_field]):
         ipa_result = ipa_service.fetch_ipa(
             word, ipa_source, html=page_cache.get(ipa_source),
             max_retries=max_retries, timeout=page_timeout,

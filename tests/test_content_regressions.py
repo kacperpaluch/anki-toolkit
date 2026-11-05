@@ -137,6 +137,18 @@ class FakeNote:
 # ---------------------------------------------------------------------------
 
 class TestTtsRegeneration(unittest.TestCase):
+    def test_single_never_replaces_text(self):
+        """Tryb single pisze sam [sound:] — nie może skasować tekstu pola."""
+        for fields, target in (({"ang": "cat", "audio": "moja notatka"}, "audio"),
+                               ({"ang": "cat"}, "ang")):
+            note = FakeNote(fields)
+            task = {"source_field": "ang", "target_field": target, "mode": "single"}
+            items, _ctx = processor.build_note_work_items(note, [task], ["v1"])
+            self.assertEqual(items, [], fields)
+        note = FakeNote({"ang": "cat", "audio": "<br>"})
+        task = {"source_field": "ang", "target_field": "audio", "mode": "single"}
+        self.assertEqual(len(processor.build_note_work_items(note, [task], ["v1"])[0]), 1)
+
     def test_failed_regeneration_keeps_old_audio(self):
         """overwrite=True nie może usunąć audio przed wygenerowaniem nowego."""
         note = FakeNote({"ang": "cat", "audio": "[sound:old.mp3]"})

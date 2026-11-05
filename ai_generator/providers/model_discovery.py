@@ -1,5 +1,6 @@
 """Fetch available chat models from each provider's own API."""
 
+import hashlib
 import json
 import logging
 import urllib.request
@@ -9,6 +10,11 @@ from ...common.http import urlopen as safe_urlopen
 logger = logging.getLogger(__name__)
 
 _CACHE = {}
+
+
+def _key_id(api_key: str) -> str:
+    """Cache key per account; a key prefix like `sk-proj-` is shared by every account."""
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
 
 def _fetch_simple(cache_key, url, headers, keep, fallbacks, force):
@@ -47,7 +53,7 @@ _OPENAI_SKIP = ("whisper", "tts", "dall-e", "embedding",
 
 def fetch_openai_models(api_key: str, force: bool = False) -> list[str]:
     return _fetch_simple(
-        ("openai", api_key[:8]),
+        ("openai", _key_id(api_key)),
         "https://api.openai.com/v1/models",
         {"Authorization": f"Bearer {api_key}"},
         lambda m: not any(s in m for s in _OPENAI_SKIP)
@@ -118,7 +124,7 @@ ANTHROPIC_MODELS = [
 
 def fetch_anthropic_models(api_key: str, force: bool = False) -> list[str]:
     return _fetch_simple(
-        ("anthropic", api_key[:8]),
+        ("anthropic", _key_id(api_key)),
         "https://api.anthropic.com/v1/models",
         {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
         lambda m: True,

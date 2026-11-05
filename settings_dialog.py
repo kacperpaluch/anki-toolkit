@@ -12,7 +12,7 @@ from aqt.qt import (
 from aqt.utils import showWarning, tooltip
 
 from .audio_normalizer.settings import AudioNormalizerTab
-from .common import get_full_config, save_full_config, set_debug
+from .common import check_config, get_full_config, save_full_config, set_debug
 from .common.ui import hint_label
 from .field_hider.settings import FieldHiderTab
 from .html_cleanup.settings import HtmlCleanupTab
@@ -186,6 +186,9 @@ class SettingsDialog(QDialog):
 
 def open_settings(page: str | None = None) -> bool:
     """True, gdy zapisano — wywołujący może wtedy przeliczyć swój widok."""
+    if not check_config():
+        tooltip("Ustawienia nie zostały otwarte — popraw wartości w config.json.", parent=mw)
+        return False
     dialog = SettingsDialog(page)
     try:
         return dialog.exec() == QDialog.DialogCode.Accepted

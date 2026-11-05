@@ -71,32 +71,46 @@ def _on_add_note(problem, note):
     try:
         changed, counts = _clean_note(note, rules)
     except ValueError as error:
-        return str(error)
+        # A size guard tripped: add the note as typed instead of refusing it.
+        tooltip(f"HTML nie został wyczyszczony: {error}", parent=_parent())
+        return None
     if not changed:
         return None
-    parent = _add_cards_ref() if _add_cards_ref is not None else mw
-    _tooltip(parent, counts, rules)
+    _tooltip(_parent(), counts, rules)
     return None
+
+
+def _parent():
+    return (_add_cards_ref() if _add_cards_ref is not None else None) or mw
 
 
 def clean_collection() -> None:
     rules = get_config()["rules"]
     counters: dict = {}
+    oversized: list = []
 
     def operation(collection: Collection) -> OpChanges:
         changed_notes = []
         for note_id in collection.find_notes(""):
             note = collection.get_note(note_id)
-            changed, counts = _clean_note(note, rules)
+            try:
+                changed, counts = _clean_note(note, rules)
+            except ValueError:  # size guard: leave this note alone, clean the rest
+                oversized.append(note_id)
+                continue
             for key, value in counts.items():
                 counters[key] = counters.get(key, 0) + value
             if changed:
                 changed_notes.append(note)
         return collection.update_notes(changed_notes) if changed_notes else OpChanges()
 
-    CollectionOp(parent=mw, op=operation).success(
-        lambda _changes: _tooltip(mw, counters, rules)
-    ).run_in_background()
+    def done(_changes):
+        _tooltip(mw, counters, rules)
+        if oversized:
+            tooltip(f"Pominięto notatki przekraczające limit rozmiaru ({len(oversized)}): "
+                    + " ".join(f"nid:{nid}" for nid in oversized[:10]), parent=mw, period=10000)
+
+    CollectionOp(parent=mw, op=operation).success(done).run_in_background()
 
 
 def confirm_collection_cleanup() -> None:

@@ -159,7 +159,11 @@ def run_on_collection() -> None:
         "Rozdziel pola w kolekcji",
         f"Skopiować zawartość pola '{source}' do pól: {label_targets}?\n"
         f"Liczba notatek: {len(nids)}\n\n"
-        f"Pole źródłowe nie zostanie zmienione.",
+        + ("Uwaga: istniejąca treść pól docelowych zostanie NADPISANA.\n"
+           if cfg.get("overwrite", _DEFAULTS["overwrite"])
+           else "Pola docelowe z treścią zostaną pominięte.\n")
+        + "Pole źródłowe nie zostanie zmienione.\n\n"
+        "Operację można cofnąć jednym krokiem w menu Edycja → Cofnij.",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No,
     )

@@ -93,6 +93,8 @@ Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw za
 
 ## Smart fetch — kiedy co pobiera
 
+„Puste” = puste po `clean_html_normalized` (sam `<br>`/`&nbsp;`), bez `<img>`. Batch Browsera łapie wyjątek każdej notatki osobno i zapisuje resztę.
+
 | Stan pola audio | Stan pola IPA | Akcja |
 |---|---|---|
 | puste | puste | pobierz audio + IPA |

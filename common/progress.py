@@ -52,3 +52,27 @@ def finish_progress() -> None:
     """Zamknij pasek. Wołaj na głównym wątku PRZED startem CollectionOp
     (dwa równoczesne mw.progress = „already busy")."""
     mw.progress.finish()
+
+
+def load_notes(nids, label: str = "Wczytywanie notatek", load=None):
+    """Read notes on the main thread; a big Browser selection gets a bar.
+
+    Returns None when the user cancels. `load(nid)` defaults to get_note.
+    """
+    load = load or mw.col.get_note
+    nids = list(nids)
+    if len(nids) < 500:
+        return [load(nid) for nid in nids]
+    mw.progress.start(label=f"{label}...", max=len(nids), immediate=True)
+    try:
+        notes = []
+        for i, nid in enumerate(nids):
+            if i % 200 == 0:
+                if mw.progress.want_cancel():
+                    return None
+                mw.progress.update(label=f"{label}: {i}/{len(nids)}...", value=i, max=len(nids))
+                mw.app.processEvents()  # the loop holds the main thread: let the bar repaint
+            notes.append(load(nid))
+        return notes
+    finally:
+        mw.progress.finish()

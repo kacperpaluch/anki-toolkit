@@ -563,6 +563,8 @@ class AIProvidersBox(QGroupBox):
         is_local = bool(w.get("is_local"))
         anthropic_key = self._provider_widgets.get("anthropic", {}).get("api_key")
         anthropic_key = anthropic_key.text().strip() if anthropic_key else ""
+        # Read on the main thread: the worker must not touch Qt widgets.
+        binary = w["binary_path"].text().strip() if is_local else ""
 
         try:
             from ..ai_generator.providers.model_discovery import fetch_models
@@ -582,7 +584,6 @@ class AIProvidersBox(QGroupBox):
                 # pytamy moduł dostawcy, respektując ścieżkę wpisaną w tym
                 # dialogu (także jeszcze niezapisaną).
                 mod = _local_provider_module(provider_name)
-                binary = w["binary_path"].text().strip()
                 if provider_name == "claude_cli":
                     # Klucz Anthropic (jeśli jest) daje aktualną listę pełnych ID.
                     return mod.fetch_models(binary, anthropic_key)

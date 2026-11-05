@@ -18,7 +18,7 @@ from aqt.utils import tooltip
 
 from ..common import (
     unique_filename, clean_html, clean_html_normalized, split_separator_regex, unique,
-    start_progress, update_progress, finish_progress, strip_sound_tags,
+    start_progress, update_progress, finish_progress, strip_sound_tags, load_notes,
 )
 
 from ..common.editor_operation import save_detached_notes, snapshot_fields
@@ -50,7 +50,7 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str],
     Returns (work_items, split_contexts):
       work_items     — [{task_i, mode, seg_i, text, voice[, target_field]}]
       split_contexts — {task_i: {target, sep, segments, mode, eligible,
-                                 prev, prev_tags}}
+                                 prev, old, source_audio, ...}}
 
     Modes:
       single      — one audio per note, written to target_field
@@ -126,6 +126,11 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str],
             if source_field not in note or target_field not in note:
                 continue
             if has_audio(note[target_field]) and not overwrite:
+                continue
+            # Single writes only the [sound:] tag: never let it replace text,
+            # least of all the very text it reads (source == target).
+            if source_field == target_field or _speech_text(note[target_field]):
+                logger.info(f"TTS: pole '{target_field}' zawiera tekst — pomijam (tryb single)")
                 continue
             text = _speech_text(note[source_field])
             if not text:
@@ -300,8 +305,14 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
     col = mw.col
     entries = []
     all_items: list[dict] = []
-    for nid in nids:
-        note = mw.col.get_note(nid)
+    try:
+        notes = load_notes(nids)
+    except Exception as e:  # e.g. a note deleted since the selection
+        tooltip(f"TTS: błąd wczytywania notatek: {e}", period=5000)
+        return
+    if notes is None:
+        return  # cancelled while loading
+    for nid, note in zip(nids, notes):
         items, split_contexts = build_note_work_items(note, tasks, voices)
         if not items:
             continue

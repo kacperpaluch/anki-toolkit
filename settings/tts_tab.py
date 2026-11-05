@@ -77,6 +77,17 @@ class TaskEditDialog(QDialog):
             self._mode.currentData() in ("split", "split_audio")
         )
 
+    def accept(self):
+        task = self.get_task()
+        if not (task["label"] and task["source_field"] and task["target_field"]):
+            showWarning("Zadanie musi mieć etykietę, pole źródłowe i pole docelowe.", parent=self)
+            return
+        if task["mode"] == "single" and task["source_field"] == task["target_field"]:
+            showWarning("W trybie „Pojedyncze audio” pole docelowe musi być inne niż źródłowe —"
+                        " nagranie zastąpiłoby tekst pola.", parent=self)
+            return
+        super().accept()
+
     def get_task(self) -> dict:
         task = {
             "label": self._label.text().strip(),
@@ -553,10 +564,8 @@ class TTSTab(QWidget):
     def _add_task(self):
         dlg = TaskEditDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            task = dlg.get_task()
-            if task["label"] and task["source_field"] and task["target_field"]:
-                self._tasks_data.append(task)
-                self._refresh_task_list()
+            self._tasks_data.append(dlg.get_task())
+            self._refresh_task_list()
 
     def _edit_task(self):
         idx = self._task_list.currentRow()
@@ -565,10 +574,8 @@ class TTSTab(QWidget):
             return
         dlg = TaskEditDialog(self, self._tasks_data[idx])
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            task = dlg.get_task()
-            if task["label"] and task["source_field"] and task["target_field"]:
-                self._tasks_data[idx] = task
-                self._refresh_task_list()
+            self._tasks_data[idx] = dlg.get_task()
+            self._refresh_task_list()
 
     def _move_task(self, delta: int):
         i = self._task_list.currentRow()

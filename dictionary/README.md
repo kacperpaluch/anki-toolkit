@@ -29,7 +29,11 @@ Moduł sprawdza stan pól przed pobraniem:
 | puste | puste | Pobierz audio + IPA |
 | pełne | puste | Pobierz tylko IPA, tooltip "Pole audio już zawiera treść." |
 | puste | pełne | Pobierz tylko audio |
-| pełne | pełne | Nic nie rób |
+| pełne | pełne | Nic nie rób (w edytorze tooltip „nic do zrobienia”) |
+
+Pole z samym `<br>` albo `&nbsp;` liczy się jako puste; pole z obrazkiem — jako pełne.
+Błąd jednej notatki w przeglądarce nie przerywa partii: pozostałe zapisują się,
+a podsumowanie podaje liczbę błędów.
 
 ### Reużycie pobranych plików (cache)
 

@@ -39,7 +39,12 @@ class QueueState:
             except OSError:
                 pass
             return
-        self.data.update({k: data.get(k, v) for k, v in self.data.items()})
+        # Hand-edited or truncated entries would only blow up later inside a
+        # callback; drop them here instead.
+        self.data["drafts"] = [d for d in data.get("drafts", [])
+                               if isinstance(d, dict) and "row_id" in d]
+        self.data["owed"] = {k: v for k, v in data.get("owed", {}).items()
+                             if str(k).lstrip("-").isdigit()}
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

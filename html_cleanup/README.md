@@ -38,6 +38,8 @@ Reguły domyślne pochodzą z szablonu `config.json`. Pusta lista wyłącza
 czyszczenie — nie przywraca domyślnych reguł.
 
 Czyszczenie w Dodaj odbywa się przed zapisem, w ramach tego samego kroku undo.
-Reguły mają limit 20 przebiegów i 1 000 000 znaków pola. Przekroczenie limitu
-przerywa operację bez zapisania częściowych zmian; ogranicza to rozrost tekstu,
-ale nie zastępuje ostrożności przy tworzeniu kosztownych wyrażeń regularnych.
+Reguły mają limit 20 przebiegów i 1 000 000 znaków pola. Notatka, która
+przekracza limit, zostaje bez zmian: w Dodaj trafia do kolekcji niewyczyszczona
+(z komunikatem), a skan kolekcji ją pomija, czyści resztę i podaje jej `nid:`.
+Limit ogranicza rozrost tekstu, ale nie zastępuje ostrożności przy tworzeniu
+kosztownych wyrażeń regularnych.

@@ -11,7 +11,7 @@ from aqt.utils import tooltip, askUser
 from aqt.qt import *
 from aqt.browser import Browser
 
-from ..common import start_progress, update_progress, finish_progress
+from ..common import start_progress, update_progress, finish_progress, load_notes
 from ..common.editor_operation import save_detached_notes, snapshot_fields, detach_note
 from . import batch_backfill
 from ._generator import get_config
@@ -48,7 +48,9 @@ def _on_fields_dialog(browser: Browser, auto: list, manual: list, batch: list):
 
 def _on_regenerate_browser(browser: Browser, fields: list):
     config = get_config()
-    notes = [mw.col.get_note(nid) for nid in browser.selected_notes()]
+    notes = load_notes(browser.selected_notes())
+    if notes is None:
+        return
     eligible = [note for note in notes if list(iter_note_fields(
         note, config, only_fields=set(fields), overwrite=True))]
     if not eligible:
@@ -120,13 +122,12 @@ def _run_batch(browser: Browser, nids, config: dict,
     # so workers do not reach the collection through note_type().
     nids = list(nids)
     try:
-        notes = []
-        for nid in nids:
-            note, _before = detach_note(mw.col.get_note(nid))
-            notes.append(note)
+        notes = load_notes(nids, load=lambda nid: detach_note(mw.col.get_note(nid))[0])
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
+    if notes is None:
+        return  # cancelled while loading
     col = mw.col
     before = snapshot_fields(notes)
 
@@ -216,13 +217,12 @@ def _on_batch_submit(browser: Browser, only_fields=None):
         tooltip("Nie zaznaczono żadnych notatek.")
         return
     try:
-        notes = []
-        for nid in nids:
-            note, _before = detach_note(mw.col.get_note(nid))
-            notes.append(note)
+        notes = load_notes(nids, load=lambda nid: detach_note(mw.col.get_note(nid))[0])
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
+    if notes is None:
+        return  # cancelled while loading
 
     items, skipped = batch_backfill.build_items(notes, config, only_fields=only_fields)
     # A field sitting in a pending batch is still empty, so build_items picks
@@ -605,13 +605,12 @@ def _on_workflow_browser(browser: Browser, workflow: dict):
     # Freeze notes/models on the main thread. Workers mutate detached copies;
     # save_detached_notes() merges them with freshly read collection notes.
     try:
-        notes = []
-        for nid in nids:
-            note, _before = detach_note(mw.col.get_note(nid))
-            notes.append(note)
+        notes = load_notes(nids, load=lambda nid: detach_note(mw.col.get_note(nid))[0])
     except Exception as e:
         tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
         return
+    if notes is None:
+        return  # cancelled while loading
     col = mw.col
     before = snapshot_fields(notes)
     for note in notes:
