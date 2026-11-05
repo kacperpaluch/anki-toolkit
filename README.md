@@ -105,6 +105,8 @@ i przełącza tryb debug.
 
 ## Instalacja
 
+Wymaga Anki 25.09 lub nowszego (Python 3.10+; oficjalne buildy mają 3.13).
+
 Pobierz `anki-toolkit-<wersja>.ankiaddon` z
 [Releases](https://github.com/kacperpaluch/anki-toolkit/releases) i otwórz go
 dwuklikiem albo przez Narzędzia → Dodatki → Zainstaluj z pliku…, potem uruchom
