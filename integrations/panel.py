@@ -80,6 +80,11 @@ def _age_key(row: dict):
 _profile = None  # jeden na proces — nazwany, więc ciasteczka (zgody RODO, logowanie) przeżywają restart
 
 
+# Strona weryfikacji Cloudflare (Cambridge). Bez JS strony pokazuje tylko
+# „Enable JavaScript and cookies to continue”.
+_CHALLENGE_JS = ("document.documentElement.innerHTML.includes('_cf_chl_opt')"
+                 " || !!document.querySelector('script[src*=\"/cdn-cgi/challenge-platform/\"]')")
+
 # Userscript żyje w osobnym świecie JS: DOM i fetch() ma te same, ale działa także
 # tam, gdzie skrypty samej strony są wyłączone (patrz `_DictTabs.__init__`).
 _WORLD = 1  # QWebEngineScript.ScriptWorldId.ApplicationWorld; Qt bierze tu liczbę
@@ -111,6 +116,9 @@ class _DictTabs(QTabWidget):
         self._labels = list(labels)          # indeks zakładki → etykieta
         self._views: list[QWebEngineView] = []
         self._pending: dict[int, str] = {}   # indeks → URL czekający na pierwsze wejście
+        self._page_js = set(page_js)
+        self._challenged: set[int] = set()   # zakładki z JS włączonym tylko na weryfikację
+        self._passed: dict[int, str] = {}    # indeks → URL, dla którego weryfikacja już była
         for index, label in enumerate(self._labels):
             view = QWebEngineView(self)
             view.setPage(QWebEnginePage(_dict_profile(), view))
@@ -122,6 +130,7 @@ class _DictTabs(QTabWidget):
                 QWebEngineSettings.WebAttribute.JavascriptEnabled, label in page_js)
             view.renderProcessTerminated.connect(
                 lambda status, code, i=index: self._renderer_died(i, status, code))
+            view.loadFinished.connect(lambda _ok, i=index: self._after_load(i))
             self._views.append(view)
             self.addTab(view, label)
         self.currentChanged.connect(lambda _i: self._load_current())
@@ -132,6 +141,7 @@ class _DictTabs(QTabWidget):
         log.warning("word_queue: renderer zakładki %s padł (%s, kod %s) na %s",
                     self._labels[index], status.name, code, url)
         self._pending.setdefault(index, url)  # ponowne wejście w zakładkę wczyta ją od nowa
+        self._set_challenge_js(index, False)
 
         def explain():  # poza sygnałem silnika
             if not sip.isdeleted(self):
@@ -166,7 +176,45 @@ class _DictTabs(QTabWidget):
     def _start_load(self, index: int) -> None:
         url = self._pending.pop(index, None)
         if url:
+            if index in self._challenged:  # nowe hasło nie dziedziczy JS po weryfikacji
+                self._set_challenge_js(index, False)
             self._views[index].load(QUrl(url))
+
+    def _set_challenge_js(self, index: int, enabled: bool) -> None:
+        (self._challenged.add if enabled else self._challenged.discard)(index)
+        if self._labels[index] not in self._page_js:
+            self._views[index].settings().setAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled, enabled)
+
+    def _after_load(self, index: int) -> None:
+        """Weryfikacja Cloudflare potrzebuje JS. Włącz go tylko na jej czas,
+        potem wczytaj stronę ponownie bez JS — ciasteczko z weryfikacji zostaje
+        w profilu, więc kolejne hasła przechodzą od razu."""
+        if self._labels[index] in self._page_js:
+            return  # JS strony i tak działa, Cloudflare poradzi sobie sam
+        view = self._views[index]
+        url = view.url().toString()
+        address = url.split("?")[0]  # Cloudflare dokleja do adresu własne tokeny
+
+        def checked(challenge):
+            QTimer.singleShot(0, lambda: react(bool(challenge)))  # poza callbackiem silnika
+
+        def react(challenge):
+            if sip.isdeleted(self) or view.url().toString() != url:
+                return
+            if index in self._challenged:
+                if not challenge:  # weryfikacja przeszła, strona już jest
+                    self._set_challenge_js(index, False)
+                    view.reload()
+            elif not challenge:
+                self._passed.pop(index, None)  # wygasłe ciasteczko może później dostać nową próbę
+            elif self._passed.get(index) != address:
+                log.info("word_queue: weryfikacja Cloudflare na %s — JS tylko na jej czas", url)
+                self._passed[index] = address  # jedna próba na adres, bez pętli
+                self._set_challenge_js(index, True)
+                view.reload()
+
+        view.page().runJavaScript(_CHALLENGE_JS, _WORLD, checked)
 
 
 class WordQueuePanel(QDockWidget):

@@ -185,6 +185,7 @@ class PanelTests(unittest.TestCase):
         """Wszystkie słowniki naraz — bez czekania po kliknięciu w zakładkę."""
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
         tabs._labels = ["diki", "Cambridge", "Oxford", "LDoCE"]
+        tabs._challenged = set()
         loaded, enabled, current = [], {}, [0]
         tabs._views = [types.SimpleNamespace(load=lambda url, i=i: loaded.append(i))
                        for i in range(4)]
@@ -203,6 +204,42 @@ class PanelTests(unittest.TestCase):
         tabs.set_urls({"diki": "d", "Oxford": "", "Cambridge": "", "LDoCE": ""})
         self.assertEqual(loaded.count(0), 1)    # tylko diki ma adres
         self.assertFalse(enabled[2])            # reszta wyszarzona
+
+    def test_cloudflare_check_gets_js_only_while_it_runs(self):
+        """Cambridge bywa za weryfikacją Cloudflare, która bez JS stoi w miejscu."""
+        tabs = self.module._DictTabs.__new__(self.module._DictTabs)
+        tabs._labels, tabs._page_js = ["diki", "Cambridge"], {"diki"}
+        tabs._challenged, tabs._passed = set(), {}
+        page = types.SimpleNamespace(challenge=True, js=[], reloads=0)
+        settings = types.SimpleNamespace(setAttribute=lambda _attr, on: page.js.append(on))
+        view = types.SimpleNamespace(
+            url=lambda: types.SimpleNamespace(toString=lambda: "https://cambridge/mother"),
+            settings=lambda: settings,
+            reload=lambda: setattr(page, "reloads", page.reloads + 1),
+            page=lambda: types.SimpleNamespace(
+                runJavaScript=lambda script, world, cb: cb(page.challenge)))
+        tabs._views = [None, view]
+        self.module.QWebEngineSettings = types.SimpleNamespace(
+            WebAttribute=types.SimpleNamespace(JavascriptEnabled=0))
+
+        def load():
+            tabs._after_load(1)
+            self.timers.pop()()                     # odpowiedź wraca poza callbackiem silnika
+
+        load()                                      # weryfikacja bez JS
+        self.assertEqual((page.js, page.reloads), ([True], 1))
+        page.challenge = False
+        load()                                      # weryfikacja przeszła, strona z JS
+        self.assertEqual((page.js, page.reloads), ([True, False], 2))
+        load()                                      # ta sama strona już bez JS
+        self.assertEqual((page.js, page.reloads), ([True, False], 2))
+
+        page.challenge = True                       # ciasteczko nie wystarczyło: bez pętli
+        tabs._passed[1] = "https://cambridge/mother"
+        load()
+        self.assertEqual((page.js, page.reloads), ([True, False], 2))
+        tabs._after_load(0)                         # diki ma własny JS — nie sprawdzamy
+        self.assertEqual(self.timers, [])
 
     def test_stale_selection_callback_is_dropped(self):
         items = [Item(1), Item(2)]

@@ -88,6 +88,11 @@ Bez skryptów strony nie działają odsłuch i rozwijane sekcje, ale przyciski
 userscriptu działają. Zakładka, której proces padł, mówi o tym wprost
 i wczytuje się ponownie po powrocie na nią.
 
+Cambridge bywa za weryfikacją Cloudflare („Enable JavaScript and cookies to
+continue”). Gdy zakładka na nią trafi, panel włącza JS tylko na czas weryfikacji,
+a potem wczytuje stronę ponownie bez JS. Ciasteczko z weryfikacji zostaje
+w profilu, więc kolejne hasła ładują się od razu.
+
 ## Web Bridge i userscript
 
 Mostek słucha na `127.0.0.1:8767` (klucz `web_bridge.port`, zmiana działa po

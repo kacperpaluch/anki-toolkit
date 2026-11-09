@@ -110,6 +110,12 @@ stanem — nie może blokować okna „Dodaj". Stare klucze (np. `drafts`) są i
   skryptów czyści stronę i przekierowuje na `report.error-report.com`. Sprawdzone, odrzucone.
 - `_renderer_died` loguje awarię, pokazuje komunikat zamiast szarego widoku
   i odkłada URL do `_pending` (ponowne wejście w zakładkę wczytuje stronę).
+- Weryfikacja Cloudflare (Cambridge) bez JS stoi w miejscu. `_after_load` sprawdza
+  stronę w `_WORLD` (`_CHALLENGE_JS`: `_cf_chl_opt` / `challenge-platform`) i tylko
+  dla zakładek spoza `page_js` włącza JS na czas weryfikacji (`_challenged`), po
+  niej wyłącza go i przeładowuje stronę. Jedna próba na adres bez query (`_passed`),
+  kasowana po czystym wczytaniu — bez pętli, gdy ciasteczko nie wystarcza. Nowe
+  hasło (`_start_load`) i padnięty renderer zawsze wracają do JS wyłączonego.
 - Gdy Anki dostanie poprawione Qt, wystarczy dopisać etykiety do `page_js`.
 - Wyjątek `SidebarTreeView has been deleted` pochodzi z Advanced Browser
   (`1334324384`), nie z tego modułu; użytkownik polecił go pominąć.
