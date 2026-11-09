@@ -33,8 +33,9 @@ domyślny i poziom rozumowania każdego dostawcy. Oprócz dostawców API są
 **Codex CLI** i **Claude CLI**, które działają na limitach subskrypcji.
 
 Usunięte funkcje są zachowane w tagach Git: tryb tańszy Batch API
-(`archive/batch-api`), „Utwórz karty z AI” w kolejce (`archive/ai-senses`)
-i normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`).
+(`archive/batch-api`), „Utwórz karty z AI” w kolejce (`archive/ai-senses`),
+normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`) i Workload
+Service, czyli automatyczne limity nowych kart przez synchronizację (`archive/workload-service`).
 
 ## Instalacja
 
@@ -82,11 +83,5 @@ Paczkę buduje się z zatwierdzonego kodu:
 
 ```bash
 git archive --format=zip -o anki-toolkit-X.Y.Z.ankiaddon HEAD -- . \
-  ':!tests' ':!workload_service' ':!.gitignore' ':!AGENTS.md' ':!**/llm-context.md' ':!llm-context.md'
+  ':!tests' ':!.gitignore' ':!AGENTS.md' ':!**/llm-context.md' ':!llm-context.md'
 ```
-
-## Workload Service
-
-[Workload Service](workload_service/README.md) to osobny klient dla AnkiWeb lub
-własnego serwera Anki. Codziennie analizuje historię i ustawia porcję nowych kart.
-Działa w Dockerze na serwerze i nie jest częścią dodatku.

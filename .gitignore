@@ -11,7 +11,7 @@ coverage.xml
 .coverage
 *.tmp
 
-# Anki runtime (także workload_service/user_files) — klucze API i dane użytkownika, NIE commitować
+# Anki runtime — klucze API i dane użytkownika, NIE commitować
 meta.json
 *.bak
 *.log

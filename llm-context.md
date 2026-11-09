@@ -8,8 +8,8 @@ ustawień. Konfiguracja profilu i dane runtime należą do `meta.json` oraz
 
 ## Układ
 
-Anki ładuje tylko `__init__.py`; `tests/` i `workload_service/` nie są częścią
-wczytywanego pakietu i nie mogą być z niego importowane.
+Anki ładuje tylko `__init__.py`; `tests/` nie jest częścią wczytywanego
+pakietu i nie może być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
@@ -73,24 +73,3 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   `CollectionOp` (jeden krok undo). Regex jest walidowany tylko w `validate()` panelu.
 - Field Hider: hook `editor_did_load_note` działa wyłącznie przy `editor.addMode`;
   pozycja „Pokaż/ukryj schowane pola” w menu „Toolkit ▾” tylko przełącza klasę CSS; `indices_to_hide()` jest czysta.
-
-## Workload Service
-
-`workload_service/` to osobny klient headless (tylko Docker, nie część dodatku):
-przeczytaj jego `README.md` i `llm-context.md`. Jest samowystarczalny: nie
-importuje niczego z dodatku, domyślne ustawienia ma w `worker.DEFAULTS`.
-Własna replika, oficjalny sync, tylko limity nowych; bez bezpośredniego
-dostępu do bazy serwera. Stan i token w `user_files/` —
-Compose montuje `../user_files`, czyli ten sam katalog co dane dodatku; nie
-nadawaj plikom usługi nazw używanych przez dodatek (`word_queue_*.json`) i odwrotnie.
-
-Usługa: jedyne źródło ustawień to `settings.json` edytowany w panelu (konto: `identity.json`);
-`dashboard.py` czyta historię
-i uruchamia `worker.py run` jako osobny proces. Dostęp do kolekcji nadal tylko
-w głównym wątku workera, chroniony flock. Panel nie udostępnia plików wolumenu.
-
-`notifications.py` wysyła raport udanego run/restore i jeden alert na trwający identyczny błąd;
-`notification_state.json` utrwala deduplikację. Pełny sync wstrzymuje harmonogram przez
-`intervention.json`; ręczny `download` robi backup, sprawdza limity i zastępuje tylko replikę.
-Błąd maila nie zmienia sukcesu sync. `mail.json` zawiera sekret SMTP i pozostaje
-w `user_files/`; Compose montuje katalog hosta zamiast nazwanego wolumenu.

@@ -435,7 +435,7 @@ class AttributeConsistencyTests(unittest.TestCase):
         unknown = {}
         # Two levels: providers/ inherits helpers from a base class this check cannot see.
         paths = [*ROOT.glob("*.py"), *ROOT.glob("*/*.py")]
-        for path in sorted(p for p in paths if p.parent.name not in ("tests", "workload_service")):
+        for path in sorted(p for p in paths if p.parent.name != "tests"):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for cls in [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]:
                 stored = {node.name for node in cls.body
