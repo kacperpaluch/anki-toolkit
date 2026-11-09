@@ -8,17 +8,8 @@ from . import audio_normalizer, field_hider, html_cleanup, integrations
 from .common import check_config, clear_reports, setup_logging
 
 setup_logging()
-gui_hooks.profile_did_open.append(lambda: ai_generator.check_pending_batches(silent=True))
 gui_hooks.profile_did_open.append(check_config)  # name hand-edit mistakes up front
 gui_hooks.profile_will_close.append(clear_reports)  # report note ids belong to this profile
-# Batche kończą się w ciągu godzin, a zadanie wygasa po 24h — bez cyklicznego
-# sprawdzania wyniki czekałyby do następnego startu Anki, a reszta zadania
-# nigdy by nie poszła. check_pending_batches() samo pilnuje, by dwa przebiegi
-# się nie nałożyły i by nie ruszać zamkniętego profilu.
-_batch_timer = QTimer(mw)
-_batch_timer.setInterval(60000)
-_batch_timer.timeout.connect(lambda: ai_generator.check_pending_batches(silent=True))
-_batch_timer.start()
 
 
 def _show_editor_menu(editor):
@@ -87,10 +78,6 @@ def _setup_menu(*_):
     add_actions(menu, (
         ("Kolejka słówek (n8n)…", integrations.open_queue),
         ("Ustawienia…", open_settings),
-    ))
-    menu.addSeparator()
-    add_actions(menu, (
-        ("Pobierz wyniki trybu tańszego (Batch API)", lambda: ai_generator.check_pending_batches(silent=False)),
     ))
     operations = menu.addMenu("Operacje na kolekcji")
     add_actions(operations, (

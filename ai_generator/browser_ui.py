@@ -6,7 +6,6 @@ import threading
 import time
 
 from aqt import mw
-from aqt.operations import CollectionOp
 from aqt.utils import tooltip, askUser
 from aqt.qt import *
 from aqt.browser import Browser
@@ -15,7 +14,6 @@ from ..common import (
     start_progress, update_progress, finish_progress, load_notes, record_report, live_parent,
 )
 from ..common.editor_operation import save_detached_notes, snapshot_fields, detach_note
-from . import batch_backfill
 from ._generator import get_config
 from .field_generator import FieldGenerator, iter_note_fields
 
@@ -26,22 +24,20 @@ logger = logging.getLogger(__name__)
 # AI fields batch (parallel)
 # ---------------------------------------------------------------------------
 
-def _on_fields_dialog(browser: Browser, auto: list, manual: list, batch: list):
+def _on_fields_dialog(browser: Browser, auto: list, manual: list):
     from .fields_dialog import FieldsDialog
     nids = browser.selected_notes()
     if not nids:
         tooltip("Nie zaznaczono żadnych notatek.")
         return
-    dialog = FieldsDialog(browser, len(nids), auto, manual, batch)
+    dialog = FieldsDialog(browser, len(nids), auto, manual)
     try:
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        fields, overwrite, cheaper = dialog.choice()
+        fields, overwrite = dialog.choice()
     finally:
         dialog.deleteLater()
-    if cheaper:
-        _on_batch_submit(browser, only_fields=set(fields))
-    elif overwrite:
+    if overwrite:
         _on_regenerate_browser(browser, fields)
     else:
         _run_batch(browser, nids, get_config(), only_fields=set(fields),
@@ -212,385 +208,6 @@ def _run_batch(browser: Browser, nids, config: dict,
 
 
 # ---------------------------------------------------------------------------
-# Batch API backfill — async, ~50% cheaper (Anthropic + OpenAI + OpenRouter;
-# separate from the sync path)
-# ---------------------------------------------------------------------------
-
-def _on_batch_submit(browser: Browser, only_fields=None):
-    col = mw.col
-    if col is None:
-        return
-    col_id = col.path
-    config = get_config()
-    nids = browser.selected_notes()
-    if not nids:
-        tooltip("Nie zaznaczono żadnych notatek.")
-        return
-    try:
-        notes = load_notes(nids, load=lambda nid: detach_note(mw.col.get_note(nid))[0])
-    except Exception as e:
-        tooltip(f"Błąd wczytywania notatek: {e}", period=5000)
-        return
-    if notes is None:
-        return  # cancelled while loading
-
-    items, skipped = batch_backfill.build_items(notes, config, only_fields=only_fields)
-    # A field sitting in a pending batch is still empty, so build_items picks
-    # it again — re-sending the same selection before the results land would
-    # pay for every request twice.
-    inflight = batch_backfill.inflight_fields()
-    resent = [i for i in items if (i["nid"], i["field"]) in inflight]
-    if resent:
-        items = [i for i in items if (i["nid"], i["field"]) not in inflight]
-        for n, item in enumerate(items):  # keep custom_ids dense and unique
-            item["custom_id"] = f"i{n}"
-    if not items and resent:
-        tooltip(
-            f"Wszystkie {len(resent)} pól czeka już w wysłanym batchu — "
-            f"nic nie wysyłam. Wyniki dopiszą się automatycznie.",
-            period=6000,
-        )
-        return
-    if not items:
-        msg = "Brak pustych pól z dostawcą Anthropic/OpenAI/OpenRouter w zaznaczeniu."
-        if skipped:
-            msg += f" (pominięto {skipped} pól z innym dostawcą lub bez modelu)"
-        tooltip(msg, period=6000)
-        return
-
-    text = (
-        f"Wyślę {len(items)} zapytań (z {len(notes)} notatek) do Batch API.\n"
-        f"{batch_backfill.summarize(items)}\n\n"
-        f"Batch jest ~50% tańszy, ale asynchroniczny — wyniki pojawią się później "
-        f"(zwykle poniżej 1h, do 24h) i zostaną automatycznie dopisane do pustych "
-        f"pól przy starcie Anki lub po kliknięciu „Sprawdź batche”."
-    )
-    if skipped:
-        text += f"\n\nPominięto {skipped} pól (dostawca inny niż Anthropic/OpenAI/OpenRouter lub brak modelu)."
-    if resent:
-        text += f"\n\nPominięto {len(resent)} pól, które czekają już w wysłanym batchu."
-    text += "\n\nWysłać?"
-    if not askUser(text, title="Tryb tańszy (Batch API) — potwierdzenie", parent=browser):
-        return
-    if mw.col is not col:
-        return
-
-    def task():
-        return batch_backfill.submit(items, config, col_id=col_id)
-
-    def on_done(fut):
-        try:
-            records, errors = fut.result()
-        except Exception as e:
-            tooltip(f"Błąd wysyłki batcha: {e}", period=6000)
-            return
-        deferred_only = batch_backfill.only_deferred(errors)
-        if not records and not deferred_only:
-            tooltip("Batch nie wysłany: " + " · ".join(errors), period=8000)
-            return
-        # Remember the selection so the auto-poll cycle keeps sending the
-        # remaining (deferred) slices until every field is filled — hands-off.
-        # A real failure (bad key, rejected request) creates no job: it would
-        # upload and fail again every minute for a day.
-        sent = sum(r["count"] for r in records)
-        batch_backfill.add_job(nids, only_fields, total=len(items), sent=sent,
-                               col_id=col_id)
-        if not records:
-            tooltip("Kolejka OpenAI jest pełna — zaznaczenie wyślę automatycznie, "
-                    "gdy zwolni się miejsce.", period=8000)
-            return
-        msg = f"Wysłano batche: {len(records)} ({sent} zapytań). Wyniki dopiszą się automatycznie."
-        if errors:
-            msg += " · błędy: " + " · ".join(errors)
-        tooltip(msg, period=8000)
-
-    mw.taskman.run_in_background(task, on_done, uses_collection=False)
-
-
-# One poll at a time — the timer tick, the manual button and profile-open all
-# call this, and two overlapping runs would apply (and clean up) the same
-# results twice. Keep ownership until the write callback, with no time-based
-# expiry: polling many batches can legitimately take more than ten minutes.
-_checking = False
-
-
-def check_pending_batches(silent: bool = True):
-    """Poll pending batches, apply finished ones, then auto-submit the next slice
-    of any active backfill job (hands-off draining under the OpenAI token cap).
-
-    silent=True (startup / timer) suppresses "nothing yet" tooltips; silent=False
-    (manual button) reports progress even when nothing is ready.
-    """
-    global _checking
-    if _checking:
-        if not silent:
-            tooltip("Sprawdzanie batchy już trwa.")
-        return
-    if mw.col is None:
-        return
-    if mw.progress and mw.progress.busy():
-        return  # don't race a modal browser batch, sync, or collection operation
-    col = mw.col
-    config = get_config()
-    records = batch_backfill.pending_batches()
-    if not records and not batch_backfill.active_jobs():
-        if not silent:
-            unowned = batch_backfill.unowned_records()
-            tooltip(
-                f"Wstrzymano {unowned} starszych wpisów bez przypisanego profilu. "
-                "Wymagają ręcznego przypisania kolekcji w ai_batches.json (opis w README)."
-                if unowned else "Brak oczekujących batchy.", period=8000)
-        return
-
-    _checking = True
-
-    def task():
-        return batch_backfill.poll_results(config, records=records)
-
-    def release():
-        global _checking
-        _checking = False
-
-    def apply_done(fut):
-        try:
-            ended, still, errors = fut.result()
-        except Exception as e:
-            release()
-            if not silent:
-                tooltip(f"Błąd sprawdzania batchy: {e}", period=6000)
-            return
-        if mw.col is not col:
-            release()
-            return  # leave records pending for the original profile
-        if mw.progress and mw.progress.busy():
-            release()
-            return  # a collection operation started while HTTP was running
-        # Advance jobs when something finished (frees the token budget) or the
-        # queue is fully drained (send the first slice of the remainder).
-        should_advance = bool(ended) or still == 0
-        summary = (batch_backfill.apply_results(mw.col, ended) if ended
-                   else {"filled": 0, "failed": 0, "skipped": 0, "changed_notes": []})
-        applied_ids = list(ended.keys())
-
-        msg = None
-        if ended:
-            parts = [f"Batch: dopisano {summary['filled']}"]
-            if summary["failed"]:
-                parts.append(f"błędy: {summary['failed']}")
-            if summary["skipped"]:
-                parts.append(f"pominięto: {summary['skipped']}")
-            if still:
-                parts.append(f"w toku: {still}")
-            msg = " · ".join(parts)
-            # Tooltip znika po kilku sekundach — zostaw trwały ślad w logach,
-            # symetrycznie do logu „Batch ... wysłany" przy submit.
-            logger.info(msg)
-        elif not silent:
-            parts = [f"W toku: {still}"]
-            if errors:
-                parts.append(f"błędy odpytania: {len(errors)}")
-            tooltip(" · ".join(parts), period=5000)
-
-        def after():
-            # Mark applied only once the results are safely in the collection —
-            # if Anki dies earlier, the next poll re-downloads and re-applies.
-            try:
-                if mw.col is not col:
-                    return
-                if applied_ids:
-                    batch_backfill.mark_applied(applied_ids)
-                    applied_records = [p["record"] for p in ended.values()]
-                    mw.taskman.run_in_background(
-                        lambda: batch_backfill.cleanup_openai_files(applied_records, config),
-                        uses_collection=False,
-                    )
-                if should_advance:
-                    _advance_jobs(config)
-            finally:
-                release()
-
-        def on_write_failed(exc):
-            # Don't mark applied — the next poll re-downloads and re-applies.
-            release()
-            logger.error(f"Batch: zapis wyników nie powiódł się: {exc}")
-            tooltip(f"Batch: zapis wyników nie powiódł się: {exc}", period=8000)
-
-        changed = summary["changed_notes"]
-        if changed:
-            # Advance only AFTER the write commits, so build_items sees the just
-            # filled fields and doesn't re-send them.
-            CollectionOp(
-                parent=mw,
-                op=lambda active_col: _write_batch_results(active_col, col, ended),
-            ).success(
-                lambda _c: (tooltip(msg, period=8000), after())
-            ).failure(on_write_failed).run_in_background()
-        else:
-            if msg:
-                tooltip(msg, period=8000)
-            after()
-
-    def on_done(fut):
-        try:
-            apply_done(fut)
-        except Exception as exc:
-            release()
-            logger.exception("Batch: nie udało się zastosować wyników")
-            tooltip(f"Batch: błąd zapisu wyników: {exc}", period=8000)
-
-    try:
-        mw.taskman.run_in_background(task, on_done, uses_collection=False)
-    except Exception:
-        release()
-        raise
-
-
-def _write_batch_results(active_col, expected_col, ended):
-    if active_col is not expected_col:
-        raise RuntimeError("Profil zmienił się przed zapisem batcha")
-    # Re-read under CollectionOp: another operation may have filled the fields
-    # between the poll callback and this queued write.
-    summary = batch_backfill.apply_results(active_col, ended)
-    return active_col.update_notes(summary["changed_notes"])
-
-
-# Guard against overlapping runs (timer tick + manual "Sprawdź batche" +
-# profile open) — two concurrent submits would double-send the same fields.
-_advance_running = False
-_scan_offsets = {}  # in-memory cursors; restarting simply rescans from the start
-_scan_clean = {}    # notes in a row with nothing left to send; a full lap ends the job
-
-
-def _advance_jobs(config: dict):
-    """Submit the next budget-worth of still-empty, not-in-flight fields for each
-    active backfill job. Main thread (reads the collection); HTTP submit runs in
-    a background task. A job whose fields are all filled is marked done."""
-    global _advance_running
-    if _advance_running:
-        return
-    col = mw.col
-    if col is None:
-        return
-    col_id = col.path
-    jobs = batch_backfill.active_jobs()
-    if not jobs:
-        return
-    job_cursor = (col_id, "")
-    start = _scan_offsets.get(job_cursor, 0) % len(jobs)
-    jobs = jobs[start:] + jobs[:start]
-    _scan_offsets[job_cursor] = (start + 1) % len(jobs)
-    # Two independent send budgets: OpenAI's org-wide enqueued-token cap, and a
-    # plain per-tick slice for the providers that have no such cap — an
-    # exhausted OpenAI queue used to stall Anthropic/OpenRouter jobs too.
-    caps = {
-        "openai": batch_backfill.openai_budget_left(config),
-        "other": batch_backfill.slice_tokens(config),
-    }
-    if max(caps.values()) <= 0:
-        return
-    used = {"openai": 0, "other": 0}
-    # Everything looked at counts against one scan budget, so a tick ends even
-    # when every item found belongs to a bucket that is already full —
-    # rendering prompts for the whole remainder froze the UI for no gain.
-    scan_cap = max(caps.values())
-    scanned = 0
-    scanned_notes = 0
-
-    def bucket(item):
-        return "openai" if item["provider"] == "openai" else "other"
-
-    inflight = batch_backfill.inflight_fields()
-    seen = set(inflight)  # also dedups fields shared across overlapping jobs
-    to_send = []
-    for job in jobs:
-        if batch_backfill.job_expired(job):
-            batch_backfill.finish_job(job["id"])  # 24h window up → stop retrying
-            continue
-        only = set(job["only_fields"]) if job.get("only_fields") else None
-        # Build note-by-note and stop at the token budget — rendering prompts
-        # for the WHOLE remainder (tens of thousands of fields) every poll
-        # tick just to defer them again froze the UI for no gain.
-        nids = job.get("nids", [])
-        cursor = (col_id, job["id"])
-        offset = _scan_offsets.get(cursor, 0)
-        clean = _scan_clean.get(cursor, 0)
-        for position in range(len(nids)):
-            if scanned >= scan_cap or scanned_notes >= 500:
-                break
-            index = (offset + position) % len(nids)
-            nid = nids[index]
-            _scan_offsets[cursor] = (index + 1) % len(nids)
-            scanned_notes += 1
-            try:
-                note = mw.col.get_note(nid)
-            except Exception:
-                clean += 1
-                continue
-            raw, _skipped = batch_backfill.build_items([note], config, only_fields=only)
-            clean = 0 if raw else clean + 1
-            for i in raw:
-                est = batch_backfill.est_item_tokens(i, config)
-                scanned += est
-                key = (i["nid"], i["field"])
-                if key in seen:
-                    continue
-                b = bucket(i)
-                # Always let the first item into an empty bucket, so one
-                # oversized prompt can't wedge the queue for good.
-                if caps[b] <= 0 or (used[b] and used[b] + est > caps[b]):
-                    continue  # bucket full — next tick picks it up
-                seen.add(key)
-                to_send.append(i)
-                used[b] += est
-        # Counted across ticks: one tick scans at most 500 notes, so a bigger
-        # job never completes a lap inside a single call.
-        _scan_clean[cursor] = clean
-        if clean >= len(nids):
-            batch_backfill.finish_job(job["id"])  # every field filled → done
-            _scan_offsets.pop(cursor, None)
-            _scan_clean.pop(cursor, None)
-    if not to_send:
-        return
-    for n, item in enumerate(to_send):  # unique custom_ids across the combined submit
-        item["custom_id"] = f"i{n}"
-
-    _advance_running = True
-
-    def task():
-        return batch_backfill.submit(to_send, config, col_id=col_id)
-
-    def on_done(fut):
-        global _advance_running
-        _advance_running = False
-        try:
-            records, errors = fut.result()
-        except Exception as e:
-            logger.exception("Auto-dosyłanie batchy nie powiodło się")
-            tooltip(f"Batch: auto-dosyłanie nie powiodło się: {e}", period=8000)
-            return
-        if mw.col is not col:
-            return
-        if records:
-            sent = sum(r["count"] for r in records)
-            msg = f"Auto-dosłano {len(records)} batchy ({sent} zapytań)."
-            progress = batch_backfill.record_job_progress(records)
-            if progress:
-                msg += f" Zadanie: {progress}."
-            tooltip(msg, period=6000)
-        if errors:
-            # Silent swallowing hid 2h of failed submits — always surface these.
-            logger.warning("Auto-dosyłanie: " + " · ".join(errors))
-            if not records:
-                tooltip("Batch: " + errors[0], period=8000)
-
-    try:
-        mw.taskman.run_in_background(task, on_done, uses_collection=False)
-    except Exception:
-        _advance_running = False
-        raise
-
-
-# ---------------------------------------------------------------------------
 # Workflow batch — runs a workflow's steps per selected note
 # ---------------------------------------------------------------------------
 
@@ -722,7 +339,7 @@ def _all_configured_target_fields(config: dict, manual_only: bool = False) -> li
     return list(seen.keys())
 
 
-def _selected_target_fields(notes, config, manual_only=False, batch_api=False):
+def _selected_target_fields(notes, config, manual_only=False):
     fields = {}
     for note in notes:
         for entry, target in iter_note_fields(
@@ -731,8 +348,6 @@ def _selected_target_fields(notes, config, manual_only=False, batch_api=False):
             if bool(entry.get("manual_only")) != manual_only:
                 continue
             if not entry.get("provider"):
-                continue
-            if batch_api and entry.get("provider") not in ("openai", "anthropic", "openrouter"):
                 continue
             fields.setdefault(target, None)
     return list(fields)
@@ -790,14 +405,7 @@ def add_to_context_menu(browser: Browser, menu, notes=None):
 
     auto = target_fields if cm.get("ai_fields", True) else []
     manual = manual_fields if cm.get("ai_blocked", True) else []
-    batch = [f for f in _selected_target_fields(notes, config, batch_api=True) if f in auto] + [
-        f for f in _selected_target_fields(notes, config, manual_only=True, batch_api=True)
-        if f in manual]
     if auto or manual:
         action = QAction("Wygeneruj pola AI…", browser)
-        qconnect(action.triggered, lambda: _on_fields_dialog(browser, auto, manual, batch))
-        menu.addAction(action)
-    if batch:
-        action = QAction("Pobierz wyniki trybu tańszego (Batch API)", browser)
-        qconnect(action.triggered, lambda: check_pending_batches(silent=False))
+        qconnect(action.triggered, lambda: _on_fields_dialog(browser, auto, manual))
         menu.addAction(action)

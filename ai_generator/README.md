@@ -35,7 +35,6 @@ Zaznacz notatki → **menu kontekstowe → Anki Toolkit**:
 
 - **Lista pól** — pola automatyczne są zaznaczone z góry, pola z flagą „Tylko na żądanie” (`manual_only`) są na liście z dopiskiem i trzeba je zaznaczyć ręcznie. Zwykłe uzupełnianie dotyczy tylko pustych pól.
 - **Nadpisz pola, które mają już treść** — generuje zaznaczone pola również w notatkach z istniejącą treścią. Potwierdzenie podaje liczbę pasujących notatek; domyślną odpowiedzią jest odmowa. Błąd generowania pozostawia dotychczasową treść pola. Pozostałe pola nie są generowane.
-- **Tryb tańszy (Batch API)** — widoczny, gdy któreś pole ma dostawcę `openai`, `anthropic` albo `openrouter`; po zaznaczeniu pola innych dostawców są nieaktywne. Wyklucza się z nadpisywaniem (Batch API wypełnia tylko puste pola). Szczegóły niżej.
 
 Menu pokazuje tylko pola obecne i skonfigurowane w zaznaczonych notatkach,
 z uwzględnieniem tagów wykluczających AI. Przy mieszanym zaznaczeniu każdy typ
@@ -47,7 +46,7 @@ wyłączają modułów ani kroków sekwencji — dotyczą tylko wbudowanych sekc
 
 | Ustawienie | Widoczne działania |
 |---|---|
-| Wygeneruj pola AI… — pola automatyczne | Pola automatyczne w oknie **Wygeneruj pola AI…** (także w trybie tańszym) |
+| Wygeneruj pola AI… — pola automatyczne | Pola automatyczne w oknie **Wygeneruj pola AI…** |
 | Wygeneruj pola AI… — pola tylko na żądanie | Pola `manual_only` w tym samym oknie |
 | Pobierz wymowę (słowniki) | Włączone grupy słowników, jeśli istnieją wymagane pola |
 | Nagraj audio (TTS) | Zadania z polami obecnymi w zaznaczeniu |
@@ -83,41 +82,13 @@ Liczniki nie są rozłącznymi kategoriami. Raport otwiera się po udanym zapisi
 (lub od razu, gdy nie ma zmian do zapisania). Błąd zapisu i zmiana profilu
 powodują komunikat o niezapisaniu wyników zamiast raportu sukcesu.
 Raport jest przeznaczony dla zwykłego generowania AI, regenerowania oraz
-workflowów w przeglądarce. Batch API, samodzielne TTS i pobieranie wymowy
+workflowów w przeglądarce. Samodzielne TTS i pobieranie wymowy
 zachowują swoje dotychczasowe podsumowania.
 
-### Tryb tańszy — Batch API (masowy backfill, ~50% taniej — Anthropic, OpenAI i OpenRouter)
+### Batch API (usunięte)
 
-Do jednorazowego lub okresowego wypełniania dużej liczby notatek jest **osobny, tańszy tryb** oparty na Batch API [Anthropic](https://platform.claude.com/docs/en/build-with-claude/batch-processing) i [OpenAI](https://developers.openai.com/api/docs/guides/batch) i [OpenRouter](https://openrouter.ai/docs/batch-quickstart): asynchroniczny (wynik zwykle < 1h, do 24h), **~50% tańszy**. Menu kontekstowe → **Anki Toolkit → Wygeneruj pola AI…** → **Tryb tańszy (Batch API)**. Opcja pojawia się tylko dla pasujących pól dostawców API; przy samych promptach CLI jest ukryta.
-
-Warunki pojawienia się opcji:
-
-1. Zaznaczona notatka ma skonfigurowane pole docelowe i to pole faktycznie istnieje.
-2. Główny dostawca tego promptu to `openai`, `anthropic` albo `openrouter`; sam fallback API przy głównym CLI nie wystarcza.
-3. Notatka nie ma tagu wykluczającego AI (`skip_tags`).
-4. W widoczności PPM włączona jest sekcja odpowiadająca polu: **pola automatyczne** albo **pola tylko na żądanie**.
-
-Widoczność nie zależy od tego, czy pole jest puste, czy jest podany poprawny
-klucz API lub czy dany model obsługuje Batch API. To sprawdzane jest podczas
-budowania zapytań i wysyłki. Opcja może więc być widoczna przy pełnych polach,
-a wysyłka nie znajdzie żadnej pracy. Nie jest to błąd generowania.
-
-Działania:
-
-- **Generuj** w oknie z zaznaczonym trybem tańszym — wysyła puste zaznaczone pola do Batch API właściwego dostawcy. **Pola już wypełnione są pomijane** (na etapie wysyłki, nie tylko zapisu), a **pola czekające w już wysłanym batchu — również**, więc ponowne uruchomienie nie wysyła ponownie zapytań już zapisanych w kolejce: dobierze tylko to, co nadal puste i nie jest w kolejce (dialog potwierdzenia mówi, ile pól pominięto z tego powodu). Pola `anthropic`, `openai` i `openrouter` trafiają każde do swojego batcha; pozostali dostawcy (Codex CLI, Claude CLI — brak endpointu batch) są pomijani z informacją. Dialog potwierdzenia pokazuje rozbicie zapytań per dostawca/model.
-- **Pobierz wyniki trybu tańszego (Batch API)** w menu PPM (także **Narzędzia → Anki Toolkit → Pobierz wyniki trybu tańszego (Batch API)**) — odpytuje gotowe batche i dopisuje wyniki; to samo dzieje się automatycznie i cicho przy otwarciu profilu Anki oraz co minutę w tle (przebiegi nie nakładają się; sprawdzenie jest odkładane podczas operacji z paskiem postępu). Wysyłka, zakończenie batcha i podsumowanie zapisu („Batch: dopisano…") są logowane na INFO — historia w **Ustawienia → Diagnostyka**, nawet gdy tooltip zdąży zniknąć.
-
-Szczegóły:
-- Starsze rekordy i zadania **bez `col` pozostają zachowane, ale są wstrzymane** — nie można bezpiecznie zgadnąć, do którego profilu należą. Po ustaleniu właściwego profilu, przy zamkniętym Anki i po zrobieniu kopii `user_files/ai_batches.json`, przypisz jego pełną ścieżkę `collection.anki2` jako `col` wyłącznie do należących do niego rekordów i zadań. Tak samo postępuj po przeniesieniu lub zmianie nazwy profilu. Nie przypisuj automatycznie całego pliku do aktualnego profilu.
-- Profil jest zapamiętywany przed wysyłką. Zmiana lub zamknięcie profilu podczas pobierania wyników pozostawia je w kolejce do następnego sprawdzenia we właściwym profilu. Ręczna i automatyczna wysyłka współdzielą blokadę oraz ponownie sprawdzają oczekujące pola bezpośrednio przed HTTP.
-- Trafienie wyniku w pole jest **deterministyczne** — mapa `custom_id → (notatka, pole)` zapisywana jest w `user_files/ai_batches.json` (przeżywa restart). Wynik wpisywany jest **tylko do pól nadal pustych** (nie nadpisuje edycji z okresu oczekiwania); usunięta notatka / zmienione pole → wynik pomijany.
-- **Batche i zadania należą do konkretnej kolekcji.** Plik `ai_batches.json` jest wspólny dla wszystkich profili, więc każdy wpis zapamiętuje ścieżkę kolekcji, w której powstał. Po otwarciu innego profilu jego batche są niewidoczne — nie zostaną zastosowane do cudzych notatek ani oznaczone jako zrobione; czekają na powrót do swojego profilu. (Licznik kolejki tokenów OpenAI jest jedynym wyjątkiem — limit jest per organizacja, więc sumuje batche ze wszystkich profili.)
-- Wspólny rdzeń (wybór pól, mapa, persystencja, zapis) jest niezależny od dostawcy; różnice protokołów są w cienkich backendach: **Anthropic** wysyła zapytania inline i pobiera wynik z `results_url`; **OpenAI** uploaduje plik JSONL (Files API) i pobiera plik wynikowy, a jego batch wymaga jednego modelu, więc zapytania OpenAI są grupowane po modelu (osobny batch na model); **OpenRouter** wysyła zapytania inline (bez uploadu pliku) i zwraca wyniki wewnątrz samego obiektu batcha (jeden model na batch, więc też grupowany). OpenRouter używa **osobnego modelu batch** — wtyczka automatycznie dopisuje sufiks `:batch` do skonfigurowanego modelu (np. `google/gemini-3.7-flash` → `google/gemini-3.7-flash:batch`), więc w konfiguracji podajesz ten sam model co dla zwykłego generowania.
-- **Limit kolejki OpenAI (auto, hands-off):** OpenAI zlicza tokeny wszystkich oczekujących batchy względem limitu organizacji (2M na niższych planach). Zapytania OpenAI są więc dzielone na paczki poniżej budżetu tokenów (`openai_batch_token_budget`, domyślnie 1,5M — z uwzględnieniem tokenów naszych batchy już w locie; ustawisz go w **Ustawienia → Prompty AI → Ogólne → Zaawansowane → „Budżet kolejki Batch API (OpenAI)"**) i wysyłane tyle, ile się mieści; reszta jest **odłożona jako zadanie**. Zaznaczenie zapisywane jest w `ai_batches.json`, a timer co minutę pobiera wyniki i automatycznie dosyła kolejny plaster pustych pól. Dostawcy bez limitu kolejki (Anthropic, OpenRouter) mają własny budżet na turę — pełna kolejka OpenAI ich nie blokuje. Postęp każdej tury („Auto-dosłano… Zadanie: X/Y zapytań") trafia do tooltipa i do **Ustawienia → Diagnostyka**.
-- **Brak podwójnych opłat przy zerwanym połączeniu.** Żądanie tworzące batch jest ponawiane tylko wtedy, gdy dostawca na pewno go nie przyjął (429, odmowa połączenia, nieznany host). Timeout, zerwanie połączenia albo 5xx oznaczają wynik niepewny: wpis dostaje status `uncertain`, jego pola liczą się jako „w kolejce”, a kolejne sprawdzenie szuka batcha na liście dostawcy (OpenAI po pliku wejściowym; Anthropic i OpenRouter po czasie utworzenia i liczbie zapytań). Odnaleziony batch jest dalej odpytywany normalnie. Jeśli lista pokazuje, że batch nie powstał, pola wracają do kolejki. Gdy listy nie da się pobrać przez 25 h, wpis jest zamykany (`not_created`).
-- **Awaria sieci nie porzuca wyników.** Batch jest oznaczany jako wygasły dopiero po co najmniej 60 nieudanych odpytaniach w ciągu co najmniej 3 dni ciągłych błędów albo po 30 dniach od wysyłki (Anthropic trzyma wyniki 29 dni). Anki zamknięte przez tydzień nie traci już opłaconych wyników.
-- Wysyłka w całości odłożona przez pełną kolejkę OpenAI też zapisuje zadanie i ruszy sama, gdy zwolni się miejsce. Prawdziwy błąd (np. zły klucz) zadania nie tworzy.
-- Ograniczenia: dostawcy `anthropic`/`openai`/`openrouter`, bez fallbacku. Pola zależne używają stanu notatki z chwili wysyłki — batchuj najpierw pola-rodziców, zastosuj, potem dzieci.
+Tryb tańszy (Batch API) został usunięty. Ostatnia wersja z nim jest w tagu
+Git `archive/batch-api`; przywrócisz go przez `git revert` commitu, który go usunął.
 
 ## Konfiguracja (`config.json` → sekcja `ai_generator`)
 
@@ -131,7 +102,6 @@ Szczegóły:
     "parallel_requests": 3,
     "max_retries": 3,
     "request_timeout": 30,
-    "openai_batch_token_budget": 1500000,
     "providers": { ... },
     "note_types": { ... }
 }
@@ -145,7 +115,6 @@ Szczegóły:
 | `parallel_requests` | Liczba równoległych żądań API (1–16, domyślnie `3`): notatki w batchu przeglądarki oraz pola jednej notatki. Pole czeka tylko na wcześniejsze pola, których używa w prompcie (`{{pole}}`, `{% if pole %}`); pozostałe generują się jednocześnie. W batchu daje to do `parallel_requests²` jednoczesnych wywołań — ogranicz je `max_concurrent` dostawcy |
 | `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
 | `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
-| `openai_batch_token_budget` | Budżet tokenów kolejki OpenAI Batch (domyślnie `1_500_000`) |
 | `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter domyślnie `20` |
 | `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (semafor); `0` = bez limitu; darmowe API zwykle `1` |
 | `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: `true` = limit dotyczy tylko modeli `:free`, `false` = wszystkich żądań |
@@ -225,7 +194,7 @@ Obaj dostawcy zachowują się tak samo w tych punktach:
 - **Wykrywanie binarki.** Puste `binary_path` = autodetekcja. Przeszukiwany jest `PATH` **rozszerzony** o typowe katalogi instalacji (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/bin`), a potem lokalizacje charakterystyczne dla danego klienta. Rozszerzenie jest konieczne, bo aplikacja GUI na macOS nie dziedziczy `PATH`-u z powłoki: Anki uruchomione z Findera dostaje z launchd tylko `/usr/bin:/bin:/usr/sbin:/sbin` i bez tego nie znalazłoby niczego z Homebrew.
 - **Środowisko procesu.** Wycięte do `PATH`, `HOME`, `USER`/`LOGNAME` i kilku zmiennych regionalnych — pozostałe klucze API z tej wtyczki nie trafiają w zasięg uruchamianego CLI. `USER`/`LOGNAME` muszą zostać, bo bez nich odczyt keychaina na macOS zawodzi i zalogowane CLI raportuje brak logowania.
 - **Status w UI.** Ustawienia → Konta i klucze → Dostawcy AI pokazują wykrytą ścieżkę i stan logowania (przycisk **Odśwież**); ✓ na liście dostawców oznacza gotowość, nie obecność klucza.
-- **Ograniczenia.** `temperature` jest ignorowana (żaden z klientów jej nie wystawia), Batch API nie działa (wymaga klucza), a prompt idzie przez stdin, nie przez `argv`.
+- **Ograniczenia.** `temperature` jest ignorowana (żaden z klientów jej nie wystawia), a prompt idzie przez stdin, nie przez `argv`.
 
 #### Codex CLI (subskrypcja ChatGPT)
 

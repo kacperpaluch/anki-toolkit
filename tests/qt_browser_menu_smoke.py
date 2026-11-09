@@ -85,41 +85,30 @@ with patch.object(ai, "mw", mw), patch.object(ai, "get_config", lambda: config["
      patch.object(common.config, "mw", mw), patch.object(dictionary, "mw", mw):
     menu = build(); sub = menu.actions()[0].menu()
     assert labels(sub)[:2] == ["Przygotuj fiszki", "Wygeneruj pola AI…"]
-    assert "Pobierz wyniki trybu tańszego (Batch API)" not in labels(sub)
     assert "Rozdziel pole" not in " ".join(labels(sub))
     tts_menu = next(a.menu() for a in sub.actions() if a.text() == "Nagraj audio (TTS)")
     assert labels(tts_menu) == ["Audio"]
     menu.close()
-    notes[2] = Note(2, "Other", {"other": ""})
-    menu = build(); sub = menu.actions()[0].menu()
-    assert "Pobierz wyniki trybu tańszego (Batch API)" in labels(sub)
-    menu.close()
 
-    # One dialog replaces the per-field submenus: defaults, Batch-only fields, dispatch.
+    # One dialog replaces the per-field submenus: defaults and dispatch.
     fields_dialog = importlib.import_module("menu_smoke.ai_generator.fields_dialog")
-    dialog = fields_dialog.FieldsDialog(browser, 2, ["def", "other"], ["manual"], ["other"])
-    assert dialog.choice() == (["def", "other"], False, False)
-    dialog._batch.setChecked(True)
-    assert dialog.fields() == ["other"] and not dialog._overwrite.isEnabled()
-    dialog._batch.setChecked(False); dialog._overwrite.setChecked(True)
-    assert not dialog._batch.isEnabled()
+    dialog = fields_dialog.FieldsDialog(browser, 2, ["def", "other"], ["manual"])
+    assert dialog.choice() == (["def", "other"], False)
+    dialog._overwrite.setChecked(True)
     dialog._list.item(2).setCheckState(fields_dialog.Qt.CheckState.Checked)
-    assert dialog.choice() == (["def", "other", "manual"], True, False)
+    assert dialog.choice() == (["def", "other", "manual"], True)
     dialog.close()
     calls = []
     def accept_with(choice):
         return patch.multiple(fields_dialog.FieldsDialog, exec=lambda self: 1, choice=lambda self: choice)
-    with accept_with((["def"], False, False)), \
+    with accept_with((["def"], False)), \
             patch.object(ai, "_run_batch", lambda *a, **k: calls.append(("run", k))):
-        ai._on_fields_dialog(browser, ["def"], [], [])
-    with accept_with((["def"], True, False)), \
+        ai._on_fields_dialog(browser, ["def"], [])
+    with accept_with((["def"], True)), \
             patch.object(ai, "_on_regenerate_browser", lambda b, f: calls.append(("regen", f))):
-        ai._on_fields_dialog(browser, ["def"], [], [])
-    with accept_with((["other"], False, True)), \
-            patch.object(ai, "_on_batch_submit", lambda b, only_fields: calls.append(("batch", only_fields))):
-        ai._on_fields_dialog(browser, ["other"], [], ["other"])
+        ai._on_fields_dialog(browser, ["def"], [])
     assert calls[0][0] == "run" and calls[0][1]["only_fields"] == {"def"}
-    assert calls[1:] == [("regen", ["def"]), ("batch", {"other"})]
+    assert calls[1:] == [("regen", ["def"])]
 
     config["context_menu"] = {"dictionary": False, "tts": False, "field_splitter": False}
     menu = build(); sub = menu.actions()[0].menu()
@@ -148,8 +137,7 @@ exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / "__init__.py"
 with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
     namespace["_setup_menu"]()
 tools = mw.form.menuTools.actions()[0].menu()
-assert labels(tools) == ["Kolejka słówek (n8n)…", "Ustawienia…",
-                         "Pobierz wyniki trybu tańszego (Batch API)", "Operacje na kolekcji"]
+assert labels(tools) == ["Kolejka słówek (n8n)…", "Ustawienia…", "Operacje na kolekcji"]
 operations = tools.actions()[-1].menu()
 assert len(labels(operations)) == 3
 tools.actions()[1].trigger()

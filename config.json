@@ -169,8 +169,6 @@
     "parallel_requests": 3,
     "max_retries": 3,
     "request_timeout": 30,
-    "openai_batch_token_budget": 1500000,
-    "openai_batch_output_reserve": 1000,
     "providers": {
       "openai": {
         "api_key": "YOUR_OPENAI_KEY",

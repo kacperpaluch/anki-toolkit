@@ -13,11 +13,11 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
-| `__init__.py` | import modułów, hooki profilu, timer batchy, jedyny przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`, menu budowane przy kliknięciu z bieżącej notatki), menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
+| `__init__.py` | import modułów, hooki profilu, jedyny przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`, menu budowane przy kliknięciu z bieżącej notatki), menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), start na „Przegląd”, wiązania między panelami (Konta i klucze → prompty, kolejka, TTS) | wszystkie |
 | `common/` | konfiguracja (`check_config()` przy otwarciu profilu i Ustawień porównuje typy z szablonem `config.json` i proponuje wartości domyślne), HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress (`load_notes()` czyta duże zaznaczenie Browsera z paskiem i Anuluj), raporty sesji (`reports.record_report(title, text, retry, failed)` — Diagnostyka, czyszczone przy zamknięciu profilu), operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
 | `settings/` | Przegląd (tylko odczyt), Konta i klucze (wszystkie klucze i połączenia: `ai_generator.providers`, klucz TTS, n8n/Cloudflare w `word_queue`), sekwencje (workflowy), prompty AI, TTS, słownik, rozdzielanie, diagnostyka | — |
-| `ai_generator/` | prompty, dostawcy, workflowy, Batch API — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
+| `ai_generator/` | prompty, dostawcy, workflowy — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
@@ -55,8 +55,8 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 - `setConfigAction` musi zwracać `None` — `False` otwiera w Anki edytor JSON.
 
 - PPM Browsera ma jeden dispatcher w root: wczytuje zaznaczenie, przekazuje
-  `notes=` modułom, respektuje widoczność i usuwa puste submenu. Reguły AI,
-  regenerowania i Batch API są w `ai_generator/llm-context.md`.
+  `notes=` modułom, respektuje widoczność i usuwa puste submenu. Reguły AI
+  i regenerowania są w `ai_generator/llm-context.md`.
 - `common.editor_operation.save_detached_notes(..., on_saved=None)` pozostaje
   wspólną ścieżką Browsera: kontrola profilu, świeży odczyt, odrzucenie konfliktów,
   jeden `CollectionOp`/undo. Callback raportu dostaje identyfikatory pominiętych

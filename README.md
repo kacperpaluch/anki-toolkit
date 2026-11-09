@@ -14,7 +14,6 @@ Wszystko jest w trzech miejscach, a ustawienia w jednym oknie:
 |---|---|
 | **Ustawienia…** | Jedno okno z paskiem bocznym dla wszystkich modułów (ten sam dialog otwiera **Config** w **Narzędzia → Dodatki**) |
 | **Kolejka słówek (n8n)…** | Panel 📚 z kolejką słówek i czterema słownikami |
-| **Pobierz wyniki trybu tańszego (Batch API)** | Pobiera wyniki Batch API i wysyła kolejną porcję zadania (dzieje się też samo co minutę) |
 | **Operacje na kolekcji → Rozdziel pola w kolekcji…** | Rozdzielanie pól dla wszystkich notatek, jednym krokiem cofania |
 | **Operacje na kolekcji → Normalizuj audio (ffmpeg)…** | Ręczna normalizacja głośności całego katalogu mediów |
 | **Operacje na kolekcji → Wyczyść HTML w kolekcji…** | Reguły HTML Cleanup dla wszystkich notatek, jednym krokiem cofania |
@@ -23,8 +22,7 @@ W przeglądarce kart prawy klik → **Anki Toolkit** zawiera sekwencje, **Wygene
 wymowę, nagrania (TTS) i rozdzielanie pól — tylko to, co pasuje do zaznaczonych notatek.
 **Wygeneruj pola AI…** otwiera jedno okno: zaznaczasz pola (puste pola automatyczne są
 zaznaczone z góry, pola „tylko na żądanie” można dołączyć), opcjonalnie **Nadpisz pola,
-które mają już treść** (z potwierdzeniem) albo **Tryb tańszy (Batch API)** dla promptów
-OpenAI, Anthropic i OpenRoutera. Sekcje menu można ukryć w **Ustawienia → Sekwencje**.
+które mają już treść** (z potwierdzeniem). Sekcje menu można ukryć w **Ustawienia → Sekwencje**.
 Po generowaniu AI lub sekwencji pojawia się raport zapisanych zmian, pominięć i błędów
 z identyfikatorami notatek oraz przyciskiem kopiowania.
 
@@ -47,7 +45,7 @@ w zwiniętych sekcjach **Zaawansowane**. Moduły są pogrupowane tak samo jak po
 
 | Moduł | Do czego służy |
 |---|---|
-| [Prompty AI](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, sekwencje, tryb tańszy (Batch API) i modele zapasowe |
+| [Prompty AI](ai_generator/README.md) | Pola z modeli językowych: wielu dostawców, prompty per pole, sekwencje i modele zapasowe |
 | [Wymowa ze słowników](dictionary/README.md) | Audio MP3 z wymową oraz IPA z czterech słowników online |
 | [Nagrania (TTS)](tts/README.md) | Audio z API TTS OpenRoutera |
 | [Rozdzielanie pól](field_splitter/README.md) | Części pola źródłowego (po separatorze) w kolejnych polach |
@@ -136,13 +134,12 @@ te same hooki.
 ## Konfiguracja i dane prywatne
 
 `config.json` jest bezpiecznym szablonem z sekcją dla każdego modułu;
-rzeczywiste ustawienia profilu są w `meta.json`. Stan Batch API i historia
-normalizacji audio są w `user_files/`. `meta.json`, `user_files/`, klucze API,
+rzeczywiste ustawienia profilu są w `meta.json`. Historia normalizacji audio
+jest w `user_files/`. `meta.json`, `user_files/`, klucze API,
 pliki `.env`, logi i certyfikaty są ignorowane przez Git. Workload Service
 uruchomiony z tego samego checkoutu też zapisuje swoje dane do `user_files/`.
 
-Przy wielu profilach Anki ustawienia i stan Batch API są wspólne, ale każdy
-batch zna swoją kolekcję — po przełączeniu profilu czeka na powrót do swojego.
+Przy wielu profilach Anki ustawienia są wspólne.
 
 ## Struktura repozytorium
 

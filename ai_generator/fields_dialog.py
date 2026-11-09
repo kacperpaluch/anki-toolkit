@@ -1,4 +1,4 @@
-"""One dialog for every Browser AI action: which fields, overwrite or not, cheaper Batch API."""
+"""One dialog for every Browser AI action: which fields, overwrite or not."""
 
 from aqt.qt import (
     QCheckBox, QDialog, QDialogButtonBox, QListWidget, QListWidgetItem, Qt,
@@ -9,13 +9,12 @@ from ..common.ui import hint_label, show_check_indicators
 
 
 class FieldsDialog(QDialog):
-    """auto/manual: field names for the selection; batch: those with a Batch API provider."""
+    """auto/manual: field names for the selection."""
 
-    def __init__(self, parent, note_count: int, auto: list, manual: list, batch: list):
+    def __init__(self, parent, note_count: int, auto: list, manual: list):
         super().__init__(parent)
         self.setWindowTitle("Wygeneruj pola AI")
         self.setMinimumWidth(380)
-        self._batch_fields = set(batch)
         layout = QVBoxLayout(self)
         layout.addWidget(hint_label(f"Zaznaczone notatki: {note_count}. Wybierz pola do wygenerowania:"))
 
@@ -32,11 +31,7 @@ class FieldsDialog(QDialog):
         layout.addWidget(self._list)
 
         self._overwrite = QCheckBox("Nadpisz pola, które mają już treść")
-        self._batch = QCheckBox("Tryb tańszy (Batch API): ok. 50% taniej, wynik do 24 h")
-        self._batch.setVisible(bool(self._batch_fields))
-        for box in (self._overwrite, self._batch):
-            box.toggled.connect(self._sync)
-            layout.addWidget(box)
+        layout.addWidget(self._overwrite)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -48,26 +43,13 @@ class FieldsDialog(QDialog):
         self._sync()
 
     def _sync(self, *_):
-        # Batch API fills only empty fields, so it excludes overwriting.
-        self._batch.setEnabled(not self._overwrite.isChecked())
-        self._overwrite.setEnabled(not self._batch.isChecked())
-        batch = self._batch.isChecked()
-        self._list.blockSignals(True)
-        for row in range(self._list.count()):
-            item = self._list.item(row)
-            usable = not batch or item.data(Qt.ItemDataRole.UserRole) in self._batch_fields
-            flags = item.flags() | Qt.ItemFlag.ItemIsEnabled
-            item.setFlags(flags if usable else flags & ~Qt.ItemFlag.ItemIsEnabled)
-            item.setToolTip("" if usable else "Dostawca tego pola nie obsługuje trybu tańszego.")
-        self._list.blockSignals(False)
         self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(self.fields()))
 
     def fields(self) -> list:
         return [item.data(Qt.ItemDataRole.UserRole)
                 for item in (self._list.item(r) for r in range(self._list.count()))
-                if item.checkState() == Qt.CheckState.Checked
-                and item.flags() & Qt.ItemFlag.ItemIsEnabled]
+                if item.checkState() == Qt.CheckState.Checked]
 
     def choice(self) -> tuple:
-        """(fields, overwrite, batch)"""
-        return self.fields(), self._overwrite.isChecked(), self._batch.isChecked()
+        """(fields, overwrite)"""
+        return self.fields(), self._overwrite.isChecked()
