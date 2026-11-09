@@ -1,449 +1,153 @@
 # Prompty AI (`ai_generator/`)
 
-Automatycznie wypełnia pola kart Anki przez API modeli językowych. Obsługuje wielu dostawców AI — każde pole karty może korzystać z innego modelu.
-
-Ścieżki „**Ustawienia → …**” w tym pliku oznaczają **Narzędzia → Anki Toolkit → Ustawienia…**. Prompty są na stronie **Prompty AI**, a klucze, modele domyślne i limity dostawców — na stronie **Konta i klucze**.
-
-## Jak używać
-
-### Edytor kart
-Edytor ma jeden przycisk **Toolkit ▾**. Jego menu zaczyna się od sekwencji pasujących do notatki, a pozycja **Uzupełnij puste pola AI** wypełnia wszystkie skonfigurowane **puste** pola AI aktualnie otwartej karty (pojawia się tylko, gdy typ notatki ma prompty). Sekwencja z opcją **Osobny przycisk w edytorze** ma dodatkowo własny przycisk obok (w szablonie: **Generuj fiszkę** = AI → Wymowa → Nagranie).
-
-Dodatkowo: **PPM na polu w edytorze** → „Wygeneruj `pole` przez AI" (pole puste) lub „Regeneruj `pole` przez AI" (pole pełne — nadpisuje). Opcja pojawia się tylko na polach które mają skonfigurowany prompt dla bieżącego typu notatki.
-
-Działa asynchronicznie — Anki nie zamarza podczas oczekiwania na API. W międzyczasie możesz swobodnie edytować inne pola. Po zakończeniu:
-- Edytor odświeża się automatycznie po zakończeniu generowania
-- **Uzupełnij puste pola AI** uzupełnia tylko puste pola i pomija pola oznaczone „Tylko na żądanie” — te wypełnisz przez PPM na polu albo krokiem sekwencji „tylko na żądanie”. PPM → „Regeneruj” nadpisuje pełne pole
-- **To, co wpiszesz w trakcie generowania, wygrywa** — generowanie pracuje na kopii notatki. Jeśli zmienisz dowolne pole, wynik bieżącej operacji/kroku zostanie pominięty: mógł korzystać z nieaktualnego źródła. Tooltip wymieni pominięte pola wynikowe. Ta sama zasada obowiązuje w TTS, słowniku i workflow; kolejny krok workflow widzi już aktualne dane.
-- Pojawia się tooltip z błędem API, jeśli dostawca zwróci błąd — **także wtedy, gdy część pól się udała, a część nie**; **"Brak pól do wygenerowania."** oznacza brak pustych/skonfigurowanych pól do uzupełnienia
-- Gdy na tej samej notatce trwa już AI, TTS, pobieranie wymowy albo workflow, kolejna akcja Anki Toolkit jest ignorowana z krótkim komunikatem. Inne okno edytora może pracować równolegle.
-- Jeśli w trakcie generowania przełączysz się na inną kartę, wynik trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej
-
-### Sekwencje
-
-Sekwencja (w configu `workflows`) to nazwany ciąg kroków (AI / Wymowa / Nagranie / Rozdziel pole). Każda sekwencja jest pozycją w menu **Toolkit ▾** edytora i w menu PPM przeglądarki, a z flagą **„Osobny przycisk w edytorze”** — także własnym przyciskiem w toolbarze edytora. Konfiguracja w **Ustawienia → Sekwencje**:
-- Dodawaj kroki przyciskami **+ AI**, **+ Wymowa**, **+ Nagranie**, **+ Rozdziel**
-- Przy **+ Wymowa** otwiera się okno wyboru słowników (checkboxy Diki, Oxford, Cambridge, Longman); krok AI ma wybór pól (wszystkie puste / tylko na żądanie / konkretne)
-- Zmieniaj kolejność ▲▼, usuwaj kroki. Podpowiedź pozycji na liście pokazuje sekwencję kroków. Sekwencja **Przygotuj fiszki** zachowuje kolejność: AI (puste) → TTS → rozdzielanie → AI (tylko na żądanie).
-
-W edytorze kroki wykonują się sekwencyjnie w tle; notatka jest łapana raz na starcie sekwencji — przełączenie karty w trakcie nie miesza danych między notatkami. W przeglądarce sekwencja przetwarza zaznaczone notatki **równolegle** (kroki w obrębie jednej notatki pozostają sekwencyjne).
-
-### Przeglądarka (batch)
-Zaznacz notatki → **menu kontekstowe → Anki Toolkit**:
-
-**Wygeneruj pola AI…** otwiera jedno okno dla wszystkich działań AI:
-
-- **Lista pól** — pola automatyczne są zaznaczone z góry, pola z flagą „Tylko na żądanie” (`manual_only`) są na liście z dopiskiem i trzeba je zaznaczyć ręcznie. Zwykłe uzupełnianie dotyczy tylko pustych pól.
-- **Nadpisz pola, które mają już treść** — generuje zaznaczone pola również w notatkach z istniejącą treścią. Potwierdzenie podaje liczbę pasujących notatek; domyślną odpowiedzią jest odmowa. Błąd generowania pozostawia dotychczasową treść pola. Pozostałe pola nie są generowane.
-
-Menu pokazuje tylko pola obecne i skonfigurowane w zaznaczonych notatkach,
-z uwzględnieniem tagów wykluczających AI. Przy mieszanym zaznaczeniu każdy typ
-notatki korzysta z własnego promptu; niepasujące notatki są pomijane.
-Sekwencje są widoczne, gdy przynajmniej jeden ich krok pasuje do zaznaczenia.
-
-**Sekcje w menu prawego kliku** ustawiasz w **Ustawienia → Sekwencje**. Przełączniki nie
-wyłączają modułów ani kroków sekwencji — dotyczą tylko wbudowanych sekcji menu:
-
-| Ustawienie | Widoczne działania |
-|---|---|
-| Wygeneruj pola AI… — pola automatyczne | Pola automatyczne w oknie **Wygeneruj pola AI…** |
-| Wygeneruj pola AI… — pola tylko na żądanie | Pola `manual_only` w tym samym oknie |
-| Pobierz wymowę (słowniki) | Włączone grupy słowników, jeśli istnieją wymagane pola |
-| Nagraj audio (TTS) | Zadania z polami obecnymi w zaznaczeniu |
-| Rozdziel pole | Rozdzielanie, jeśli istnieje źródło i przynajmniej jedno inne pole docelowe |
-
-Sekwencje mają własne pozycje i pojawiają się, gdy przynajmniej jeden ich krok
-pasuje do zaznaczenia. To sprawdzenie nie usuwa pozostałych kroków z sekwencji.
-Bez zaznaczenia lub przy braku pasujących działań submenu Anki Toolkit jest ukryte.
-
-Praca przebiega w tle z natywnym paskiem postępu Anki i możliwością anulowania.
-Zwykłe uzupełnianie pomija istniejącą treść. Wyniki wracają jednym krokiem cofania,
-po ponownym odczycie notatek: notatka zmieniona lub usunięta podczas pracy nie
-otrzyma wyników ze starych danych. Zmiana profilu blokuje zapis.
-
-Po generowaniu AI i workflow w Browserze otwiera się raport z liczbą zapisanych
-notatek, błędów, pominięć bez zmian i konfliktów przy zapisie. Szczegóły zawierają
-przyczyny i identyfikatory `nid:…`, które możesz wyszukać w przeglądarce. Raport
-można skopiować i pozostaje otwarty do zamknięcia; trafia też do Diagnostyki.
-Częściowo udana notatka może być zarówno zapisana, jak i zgłoszona jako błąd.
-Po anulowaniu zapisywane są zakończone wyniki; raport podaje liczbę przetworzonych notatek.
-
-Liczniki raportu dotyczą **notatek, nie pól**:
-
-| Licznik | Znaczenie |
-|---|---|
-| Zapisano zmiany w notatkach | Notatki ze zmienioną treścią, które przeszły kontrolę przy zapisie |
-| Przetworzono | Notatki, które worker zakończył; po anulowaniu może ich być mniej niż zaznaczonych |
-| Notatki z błędami | Co najmniej jedno nieudane pole lub krok; poprawne wyniki innych pól nadal mogą zostać zapisane |
-| Pominięto bez zmian | Np. pełne pola, wykluczający tag, brak pasującego zadania lub wynik identyczny z dotychczasową treścią |
-| Pominięto przy zapisie | Wynik był gotowy, ale notatka została zmieniona lub usunięta podczas pracy |
-
-Liczniki nie są rozłącznymi kategoriami. Raport otwiera się po udanym zapisie
-(lub od razu, gdy nie ma zmian do zapisania). Błąd zapisu i zmiana profilu
-powodują komunikat o niezapisaniu wyników zamiast raportu sukcesu.
-Raport jest przeznaczony dla zwykłego generowania AI, regenerowania oraz
-workflowów w przeglądarce. Samodzielne TTS i pobieranie wymowy
-zachowują swoje dotychczasowe podsumowania.
-
-### Batch API (usunięte)
-
-Tryb tańszy (Batch API) został usunięty. Ostatnia wersja z nim jest w tagu
-Git `archive/batch-api`; przywrócisz go przez `git revert` commitu, który go usunął.
-
-## Konfiguracja (`config.json` → sekcja `ai_generator`)
-
-### Podstawowe ustawienia
-
-```json
-"ai_generator": {
-    "skip_tags": ["skip-ai"],
-    "batch_limit": 3,
-    "batch_sleep": 1.0,
-    "parallel_requests": 3,
-    "max_retries": 3,
-    "request_timeout": 30,
-    "providers": { ... },
-    "note_types": { ... }
-}
-```
-
-| Pole | Opis |
-|---|---|
-| `skip_tags` | Lista tagów wykluczających — notatki z dowolnym z tych tagów są pomijane w całości (brak wywołań API, brak aktualizacji); `[]` wyłącza funkcję |
-| `batch_limit` | Liczba kart w jednej grupie — po każdej grupie następuje przerwa `batch_sleep` |
-| `batch_sleep` | Pauza (sekundy) między grupami kart — zapobiega limitom API |
-| `parallel_requests` | Liczba równoległych żądań API (1–16, domyślnie `3`): notatki w batchu przeglądarki oraz pola jednej notatki. Pole czeka tylko na wcześniejsze pola, których używa w prompcie (`{{pole}}`, `{% if pole %}`); pozostałe generują się jednocześnie. W batchu daje to do `parallel_requests²` jednoczesnych wywołań — ogranicz je `max_concurrent` dostawcy |
-| `max_retries` | Liczba prób przy błędach API — HTTP 429/5xx, timeouty, błędy połączenia (domyślnie `3`) |
-| `request_timeout` | Timeout pojedynczego żądania do API w sekundach (domyślnie `30`) |
-| `providers.<nazwa>.rpm` | Limit żądań/min dla dostawcy — równomierny odstęp `60/rpm` s między startami (anti-burst); `0` = bez limitu. OpenRouter domyślnie `20` |
-| `providers.<nazwa>.max_concurrent` | Maks. równoległych żądań do dostawcy (semafor); `0` = bez limitu; darmowe API zwykle `1` |
-| `providers.openrouter.rate_limit_free_only` | Tylko OpenRouter: `true` = limit dotyczy tylko modeli `:free`, `false` = wszystkich żądań |
-
-### Konfiguracja dostawców
-
-W UI dostawcy są w **Ustawienia → Konta i klucze → Dostawcy AI**. Lista pokazuje tylko używanych dostawców (z kluczem albo wybranych w prompcie lub kolejce słówek); pozostałych dodasz przyciskiem **+ Dodaj dostawcę**. Każdy dostawca ma pozycję na liście (✓ = gotowy do użycia) i formularz z kluczem API (albo statusem CLI), modelem domyślnym i poziomem rozumowania; temperatura, model zapasowy, limity RPM i równoległości oraz ścieżka i limit czasu CLI są w zwiniętej sekcji **Zaawansowane** dostawcy. Konkretny model wybiera się per prompt; model domyślny jest modelem zapasowym dla starszej konfiguracji i nowych promptów. Tagi wykluczające oraz limity paczek, przerwy, ponowienia i timeouty są w **Prompty AI → Ogólne**.
-
-```json
-"providers": {
-    "openai": {
-        "api_key": "sk-...",
-        "model": "gpt-4o",
-        "temperature": 0.2,
-        "reasoning_effort": "medium",
-        "fallback_model": "gpt-4o-mini"
-    },
-    "anthropic": {
-        "api_key": "sk-ant-...",
-        "model": "claude-haiku-4-5-20251001",
-        "temperature": 0.2,
-        "max_tokens": 2048,
-        "fallback_model": ""
-    },
-    "codex_cli": {
-        "api_key": "",
-        "binary_path": "",
-        "codex_home": "",
-        "model": "gpt-5.4-mini",
-        "reasoning_effort": "low",
-        "cli_timeout": 180,
-        "fallback_model": ""
-    },
-    "claude_cli": {
-        "api_key": "",
-        "binary_path": "",
-        "system_prompt": "",
-        "reasoning_effort": "",
-        "model": "haiku",
-        "cli_timeout": 180,
-        "fallback_model": ""
-    }
-}
-```
-
-`fallback_model` (puste `""` = brak fallbacku na poziomie providera) — model zapasowy uruchamiany gdy główny model zawiedzie. Używa tego samego providera i klucza API. Prompt może nadpisać ten fallback własnym `fallback_provider` + `fallback_model` (patrz sekcja **Fallback modeli** poniżej).
-
-`temperature` to **temperatura domyślna** providera — używana przez prompty bez własnej wartości. Każdy prompt może ją nadpisać kluczem `temperature` w `note_types` (UI: Prompty → Ustawienia zadania → pole „Temperatura (API)"; „— domyślna dostawcy" = dziedzicz).
-
-`reasoning_effort` zachowuje się różnie w zależności od dostawcy:
-
-- **openai / openrouter** — dropdown z wartościami `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`). Modele reasoning nie dostają `temperature`. Fallback automatyczny jeśli model zwróci HTTP 400.
-- **codex_cli** — dropdown `low/medium/high/xhigh/max/ultra`; wysyłany jako `-c model_reasoning_effort`, puste = domyślna wartość modelu.
-- **claude_cli** — dropdown `low/medium/high/xhigh/max`; wysyłany jako `--effort`, puste = domyślny poziom CLI. Poziomy zależą od modelu i wersji CLI.
-- **anthropic** — nie ma pola `reasoning_effort` w UI.
-
-Poziom rozumowania ustawiasz tylko przy dostawcy. Model zapasowy używa poziomu swojego dostawcy. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd. Starsze nadpisania w promptach (`reasoning_effort`, `fallback_reasoning_effort`) są ignorowane i znikają przy zapisie ustawień.
-
-`max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
-
-### Dostępni dostawcy
-
-| Dostawca | Endpoint | Gdzie pobrać klucz API |
-|---|---|---|
-| `openai` | `api.openai.com` | platform.openai.com |
-| `anthropic` | `api.anthropic.com` | console.anthropic.com |
-| `openrouter` | `openrouter.ai` | openrouter.ai/keys |
-| `codex_cli` | lokalna binarka `codex` | **bez klucza** — `codex login` |
-| `claude_cli` | lokalna binarka `claude` | **bez klucza** — `claude auth login` |
-
-### Dostawcy lokalni — generowanie bez klucza API
-
-`codex_cli` i `claude_cli` nie łączą się z żadnym API bezpośrednio. Uruchamiają lokalnie zainstalowaną, zalogowaną binarkę oficjalnego klienta (`codex` albo `claude`). Zużycie idzie na limity Twojej subskrypcji, nie na płatne API — dodatek nigdy nie widzi tokenu.
-
-Obaj dostawcy zachowują się tak samo w tych punktach:
-
-- **Wykrywanie binarki.** Puste `binary_path` = autodetekcja. Przeszukiwany jest `PATH` **rozszerzony** o typowe katalogi instalacji (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/bin`), a potem lokalizacje charakterystyczne dla danego klienta. Rozszerzenie jest konieczne, bo aplikacja GUI na macOS nie dziedziczy `PATH`-u z powłoki: Anki uruchomione z Findera dostaje z launchd tylko `/usr/bin:/bin:/usr/sbin:/sbin` i bez tego nie znalazłoby niczego z Homebrew.
-- **Środowisko procesu.** Wycięte do `PATH`, `HOME`, `USER`/`LOGNAME` i kilku zmiennych regionalnych — pozostałe klucze API z tej wtyczki nie trafiają w zasięg uruchamianego CLI. `USER`/`LOGNAME` muszą zostać, bo bez nich odczyt keychaina na macOS zawodzi i zalogowane CLI raportuje brak logowania.
-- **Status w UI.** Ustawienia → Konta i klucze → Dostawcy AI pokazują wykrytą ścieżkę i stan logowania (przycisk **Odśwież**); ✓ na liście dostawców oznacza gotowość, nie obecność klucza.
-- **Ograniczenia.** `temperature` jest ignorowana (żaden z klientów jej nie wystawia), a prompt idzie przez stdin, nie przez `argv`.
-
-#### Codex CLI (subskrypcja ChatGPT)
-
-**Wymagania:** [Codex CLI](https://developers.openai.com/codex) zainstalowany i zalogowany przez `codex login` (tryb ChatGPT).
-
-| Klucz | Znaczenie |
-|---|---|
-| `binary_path` | Ścieżka do `codex`. Puste = autodetekcja; dodatkowy kandydat: `/Applications/ChatGPT.app/Contents/Resources/codex` |
-| `codex_home` | `CODEX_HOME` z logowaniem. Puste = zmienna środowiskowa albo `~/.codex` |
-| `cli_timeout` | Limit czasu jednego `codex exec` (domyślnie 180 s). Globalny `request_timeout` jest liczony pod HTTP i bywa za krótki dla rozumowania |
-| `reasoning_effort` | `low`/`medium`/`high`/`xhigh`/`max`/`ultra` → `-c model_reasoning_effort=…`. Niższy = mniej zużytego limitu planu |
-
-**Czego ten dostawca nie robi:** nie czyta ani nie kopiuje tokenu z `auth.json` — zagląda tam wyłącznie po `auth_mode`, żeby pokazać status logowania. Nie ma tu żadnego własnego OAuth ani wywołań do `chatgpt.com/backend-api`.
-
-**Utwardzenie.** Treść pól notatki to dane niezaufane (talie bywają pobierane z internetu), a Codex jest agentem z dostępem do powłoki. Shella nie da się wyłączyć, więc agent trafia do sandboksa:
-
-```
---sandbox read-only     brak zapisu i brak sieci dla agenta
--C <pusty katalog>      katalog tymczasowy, nie repozytorium użytkownika
---skip-git-repo-check   katalog roboczy nie musi być repozytorium
---ephemeral             bez zapisu sesji z treścią fiszek na dysk
---ignore-user-config    bez cudzych hooków i serwerów MCP
---ignore-rules          bez plików .rules z dysku
-```
-
-**Dodatkowe ograniczenia:** każde wywołanie niesie preambułę agentową rzędu kilku tysięcy tokenów, a modele są zawężone do tych, które dopuszcza konto ChatGPT — modele `*-codex-*` zwykle są odrzucane komunikatem *„not supported when using Codex with a ChatGPT account"*.
-
-#### Claude CLI (subskrypcja Claude)
-
-**Wymagania:** [Claude Code](https://claude.com/claude-code) zainstalowany i zalogowany przez `claude auth login` na koncie z subskrypcją (Pro/Max). Logowanie samym kluczem API jest odrzucane — do tego służy dostawca `anthropic`.
-
-| Klucz | Znaczenie |
-|---|---|
-| `binary_path` | Ścieżka do `claude`. Puste = autodetekcja; dodatkowy kandydat: `~/.claude/local/claude` |
-| `system_prompt` | Zastępuje systemowy prompt Claude Code. Puste = domyślny prompt generatora fiszek |
-| `cli_timeout` | Limit czasu jednego `claude -p` (domyślnie 180 s) |
-| `model` | Alias (`haiku`, `sonnet`, `opus`, `fable` — zawsze najnowsza wersja rodziny) albo pełne ID konkretnej wersji (np. `claude-opus-5-5`). **Pobierz** dokłada pełne ID do aliasów: z `GET /v1/models`, jeśli skonfigurowano klucz dostawcy `anthropic` (tylko do listy — generowanie nadal idzie przez subskrypcję), inaczej ze znanej listy |
-
-**Czego ten dostawca nie robi:** nie dotyka poświadczeń. Token siedzi w keychainie systemu, a status logowania pochodzi z `claude auth status --json`, które tokenu nie zwraca.
-
-**Izolacja.** Mocniejsza niż przy Codeksie, bo nie wymaga sandboksa — `--tools ""` **usuwa wszystkie narzędzia**, więc wstrzyknięta treść fiszki nie ma czego wywołać:
-
-```
---tools ""                  zero narzędzi: brak shella, plików i sieci
---strict-mcp-config         bez serwerów MCP użytkownika
---disable-slash-commands    bez skilli z dysku
---no-session-persistence    bez zapisu treści fiszek na dysk
-<pusty katalog roboczy>     bez wciągania CLAUDE.md z katalogu startowego Anki
-```
-
-Nigdy nie używamy `--bare`: wymusza `ANTHROPIC_API_KEY` i nie czyta OAuth ani keychaina, więc rozwaliłoby uwierzytelnienie subskrypcją.
-
-**Narzut tokenów.** `--system-prompt` **zastępuje** prompt Claude Code, a nie go rozszerza — to główny powód, dla którego ten dostawca nadaje się do generowania hurtowego:
-
-| Wywołanie | Tokeny wejścia na fiszkę |
-|---|---|
-| `codex exec` | ~5300 |
-| `claude -p` domyślnie | ~2500 |
-| `claude -p --system-prompt …` | **~280** |
-
-### Pobieranie dostępnych modeli
-
-Nie musisz wpisywać nazwy modelu ręcznie. W ustawieniach, przy każdym dostawcy jest przycisk **Pobierz** — pobiera listę dostępnych modeli bezpośrednio z API danego dostawcy:
-
-| Dostawca | Źródło listy modeli | Wymaga klucza? |
-|---|---|---|
-| `openai` | `GET /v1/models` | tak |
-| `anthropic` | `GET /v1/models` | tak |
-| `openrouter` | `GET /v1/models` | nie (publiczne) |
-| `codex_cli` | `model/list` przez `codex app-server` | nie (lokalne logowanie) |
-| `claude_cli` | aliasy rodzin + pełne ID z `GET /v1/models` Anthropic (CLI nie wystawia listy) | nie — klucz `anthropic` opcjonalny, bez niego znana lista |
-
-Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się listą modeli. Nadal możesz wpisać model ręcznie. Wpisywanie filtruje listę po dowolnym fragmencie nazwy, np. `5.5`. Listy modeli są **cachowane w konfiguracji** (`cached_models`) — przeżywają restart Anki, nie trzeba ponownie pobierać po restarcie. Przycisk **Pobierz** zawsze wymusza odświeżenie z API i nadpisuje cache. W edytorze promptów listy modeli są współdzielone między dostawcą głównym a zapasowym — pobranie w jednym miejscu odświeża oba combo.
-
-### Przykładowe modele
-
-| Dostawca | Model | Charakterystyka |
-|---|---|---|
-| `openai` | `gpt-4o` | Silny, droższy |
-| `openai` | `gpt-4o-mini` | Szybki, tani |
-| `anthropic` | `claude-haiku-4-5-20251001` | Szybki, tani |
-| `anthropic` | `claude-sonnet-5-5` | Silniejszy |
-| `anthropic` | `claude-opus-5-5` | Najmocniejszy, najdroższy |
-| `openrouter` | `openai/gpt-oss-120b:free` | Darmowy wariant `:free` (limit 20 RPM) |
-| `codex_cli` | `gpt-5.4-mini` | Najtańszy w limicie planu — dobry do fiszek |
-| `codex_cli` | `gpt-5.5` | Silniejszy, szybciej zjada limit |
-| `claude_cli` | `haiku` | Najtańszy w limicie planu — dobry do fiszek |
-| `claude_cli` | `sonnet` | Silniejszy, szybciej zjada limit |
-
-### Typy notatek
+Wypełnia pola kart przez modele językowe. Każde pole ma własny prompt,
+dostawcę i model. Prompty ustawiasz w **Ustawienia → Prompty AI**, a klucze,
+modele domyślne i limity dostawców w **Ustawienia → Konta i klucze**.
+
+## Gdzie to jest
+
+**Edytor → Toolkit ▾**
+- **Uzupełnij puste pola AI** wypełnia puste pola, które mają prompt. Pomija pola „Tylko na żądanie”.
+- Prawy klik na polu z promptem → **Wygeneruj `pole` przez AI** (puste) albo **Regeneruj** (nadpisuje).
+- Sekwencje pasujące do notatki. Sekwencja z opcją **Osobny przycisk w edytorze** ma też własny przycisk.
+
+Generowanie działa w tle na kopii notatki. Jeśli w tym czasie zmienisz jakieś
+pole, wynik jest pomijany (mógł powstać ze starych danych), a dymek mówi, które pola
+pominięto. Przełączenie na inną kartę nie miesza wyników między notatkami.
+
+**Przeglądarka → prawy klik → Anki Toolkit → Wygeneruj pola AI…** otwiera okno
+z listą pól. Pola automatyczne są zaznaczone, pola „tylko na żądanie” zaznaczasz
+sam. **Nadpisz pola, które mają już treść** pyta o potwierdzenie, a błąd
+generowania zostawia starą treść. Praca idzie w tle z paskiem postępu Anki, a wynik
+to jeden krok cofania. Na końcu dostajesz raport: zapisane notatki, błędy,
+pominięcia i konflikty (notatka zmieniona w trakcie). Raport trafia też do
+**Ustawienia → Diagnostyka**, gdzie przycisk **Ponów nieudane** powtarza tylko
+notatki z błędem.
+
+## Sekwencje
+
+Sekwencja to nazwany ciąg kroków: **AI**, **Wymowa**, **Nagranie**, **Rozdziel**.
+Ustawiasz ją w **Ustawienia → Sekwencje**. Tam też włączasz i wyłączasz sekcje
+menu prawego kliku. W edytorze kroki idą po kolei. W przeglądarce notatki są
+przetwarzane równolegle, a kroki jednej notatki po kolei. Sekwencja jest widoczna
+w menu, gdy przynajmniej jeden jej krok pasuje do notatki.
+
+## Prompty
 
 ```json
 "note_types": {
     "angielski": {
-        "cz_mowy": {
-            "target": "cz_mowy",
-            "provider": "claude_cli",
-            "model": "haiku",
-            "prompt": "Classify: EN: {{ang}} PL: {{pol}}"
-        },
         "def": {
             "target": "def",
-            "provider": "openai",
-            "model": "gpt-4o-mini",
-            "temperature": 0.1,
+            "provider": "claude_cli",
+            "model": "opus",
             "prompt": "Write a definition for: {{ang}}"
         }
     }
 }
 ```
 
-- Klucz zewnętrzny (`"angielski"`) — nazwa typu notatki **dokładnie jak w Anki**
-- Klucz wewnętrzny (`"cz_mowy"`) — **nazwa zadania**: dowolny identyfikator, decyduje o kolejności generowania
-- `target` — nazwa pola karty do wypełnienia
-- `provider` — którego dostawcy użyć dla tego pola
-- `model` — model używany przez ten prompt; brak wartości używa modelu domyślnego dostawcy
-- `fallback_provider` (opcjonalne) — dostawca zapasowy; puste/brak = ten sam dostawca co główny
-- `fallback_model` (opcjonalne) — model zapasowy; puste/brak = brak fallbacku per-prompt (użyty `fallback_model` z dostawcy, jeśli ustawiony). Edytor promptów zostawia puste pole puste; model podpowiada dopiero wybór dostawcy zapasowego
-- `temperature` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji/faktów, wyższa (0.7–1.0) dla przykładowych zdań; fallback promptu używa tej samej wartości
-- `prompt` — treść prompta z opcjonalnymi szablonami
+| Klucz | Znaczenie |
+|---|---|
+| klucz zewnętrzny | Nazwa typu notatki, dokładnie jak w Anki |
+| klucz wewnętrzny | Nazwa zadania; kolejność zadań = kolejność generowania |
+| `target` | Pole do wypełnienia |
+| `provider`, `model` | Dostawca i model; pusty model = model domyślny dostawcy |
+| `fallback_provider`, `fallback_model` | Model zapasowy (opcjonalnie) |
+| `temperature` | Temperatura tylko dla tego promptu; brak = domyślna dostawcy. CLI ją pomija |
+| `manual_only` | „Tylko na żądanie”: pomijane przy uzupełnianiu wszystkich pól i w sekwencjach |
+| `prompt` | Treść promptu |
 
-## Fallback modeli
-
-Gdy główny model zawiedzie (błąd API, rate limit, brak środków na koncie, brak treści w odpowiedzi), wtyczka automatycznie uruchamia model zapasowy z tym samym promptem. Fallback jest konfigurowalny na dwóch poziomach:
-
-| Poziom | Pola | Gdzie w UI |
-|---|---|---|
-| **Per prompt** (wyższy priorytet) | `fallback_provider` + `fallback_model` | Ustawienia → Prompty AI → Prompty |
-| **Per dostawca** (niższy priorytet) | `fallback_model` | Ustawienia → Konta i klucze → dostawca → Zaawansowane |
-
-Priorytetyzacja:
-1. Jeśli prompt ma `fallback_model` → użyj go (z `fallback_provider` lub tym samym dostawcą)
-2. Jeśli prompt nie ma `fallback_model` → sprawdź `fallback_model` w konfiguracji dostawcy
-3. Obie puste = brak fallbacku (błąd jest logowany, zachowanie jak wcześniej)
-
-Przykład per-prompt (cross-provider fallback):
-```json
-"def": {
-    "target": "def",
-    "provider": "openai",
-    "model": "gpt-4o",
-    "fallback_provider": "openrouter",
-    "fallback_model": "openai/gpt-oss-120b:free",
-    "prompt": "Write a definition for: {{ang}}"
-}
-```
-
-Przykład per-dostawca (ten sam provider, tańszy model):
-```json
-"providers": {
-    "openai": {
-        "api_key": "sk-...",
-        "model": "gpt-4o",
-        "fallback_model": "gpt-4o-mini"
-    }
-}
-```
-
-Właściwości:
-- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); effort CLI pochodzi z konfiguracji dostawcy fallbackowego
-- Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
-- Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
-- Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"
-
-## Rate limiter per dostawca
-
-Darmowe tiery API mają limity łatwe do przekroczenia w batchu (OpenRouter `:free`: 20 RPM + odrzucanie żądań jednoczesnych). Klasa `RateLimiter` (singleton, kubełek per dostawca) chroni przed tym tempem i burstami. Każdy dostawca konfiguruje limit w **Ustawienia → Konta i klucze → dostawca → Zaawansowane**:
-
-- **Limit RPM** (`providers.<nazwa>.rpm`) — równomierny odstęp `60/rpm` s między startami żądań (anti-burst, nie odrzuca — pauzuje); `0` = bez limitu. RPS → RPM: pomnóż ×60 (OpenRouter domyślnie `20`)
-- **Maks. równoległych** (`providers.<nazwa>.max_concurrent`) — semafor ograniczający liczbę jednoczesnych żądań (domyślnie `1` dla darmowych); działa nawet gdy batch leci wielowątkowo (`parallel_requests`)
-- **Limit tylko dla modeli `:free`** (`providers.openrouter.rate_limit_free_only`, tylko OpenRouter) — zaznaczone: limit obejmuje wyłącznie modele `:free`, płatne lecą bez dławienia; u innych dostawców limit zawsze obejmuje wszystkie żądania
-- Dotyczy modelu głównego i fallbackowego; TPM (tokeny/min) nie jest egzekwowane wprost — łapie je retry przy HTTP 429
-
-```json
-"providers": {
-    "openrouter": { "rpm": 20, "max_concurrent": 1, "rate_limit_free_only": true }
-}
-```
-
-## Składnia promptów
+Składnia promptu:
 
 | Składnia | Działanie |
 |---|---|
-| `{{ang}}` | Wstawia wartość pola `ang` z karty |
-| `{{pol}}` | Wstawia wartość pola `pol` z karty |
-| `{% if def %}...{% endif %}` | Renderuje blok tylko gdy pole `def` jest niepuste |
-| `{% if def %}...{% else %}...{% endif %}` | Wariant z fallbackiem |
+| `{{ang}}` | Wartość pola `ang` (bez HTML) |
+| `{% if def %}…{% endif %}` | Blok tylko gdy pole `def` nie jest puste |
+| `{% if def %}…{% else %}…{% endif %}` | Wariant z alternatywą |
 
-Pola są generowane w kolejności wpisu w `note_types`. Wynik wcześniejszego pola można użyć w prompcie następnego przez `{{nazwa_pola}}`. Zmiana nazwy zadania w edytorze promptów zachowuje jego pozycję w kolejności.
+Prompt może użyć wyniku wcześniejszego zadania (`{{def}}`). Pole czeka tylko na
+pola, których używa; pozostałe generują się równolegle. Zagnieżdżone `{% if %}`
+nie są obsługiwane.
 
-Edytor promptów (**Ustawienia → Prompty AI → Prompty**) pokazuje przede wszystkim pole docelowe, dostawcę, model, poziom rozumowania i treść promptu. Sekcje **Ustawienia zadania** (typ notatki, nazwa, temperatura, tryb ręczny, kopiowanie modeli) i **Model zapasowy** są domyślnie zwinięte. Przy dodawaniu zadania pierwsza sekcja otwiera się automatycznie. Po rozwinięciu sekcji edytor można przewijać.
+Edytor promptów ma przyciski **Wstaw pole ▾** i **Wstaw warunek ▾** oraz
+ostrzega przed nieistniejącym typem notatki lub polem, nieznanymi `{{polami}}`
+i błędną strukturą `{% if %}`. **Ustaw te modele we wszystkich promptach…**
+kopiuje dostawcę i model (główne i zapasowe) do promptów widocznych na liście.
 
-**Temperatura (API)** jest nieaktywna, gdy model główny i zapasowy korzystają z CLI. Jej wartość pozostaje zachowana; przy fallbacku do API można ją ustawić dla tego wywołania.
+## Dostawcy
 
-Edytor pomaga uniknąć literówek:
-- **+ Dodaj** pyta tylko o typ notatki (przy jednym wybiera go automatycznie), a potem otwiera pusty wpis w głównym edytorze; nazwę zadania, pole docelowe i treść promptu uzupełniasz w jednym miejscu
-- **Dostawca AI** i **Model AI** są ustawiane osobno dla każdego promptu; model można pobrać z API (przycisk **Pobierz**), wpisać ręcznie i filtrować po fragmencie nazwy; lista pobranych modeli jest cachowana i współdzielona ze stroną Konta i klucze
-- **Dostawca zapasowy** i **Model zapasowy** — analogicznie, z własnym przyciskiem **Pobierz**; lista modeli jest współdzielona z dostawcą głównym gdy ten sam dostawca
-- **Ustaw te modele we wszystkich promptach…** — kopiuje dostawcę, model i poziom rozumowania (główne i zapasowe) bieżącego promptu do pozostałych promptów widocznych na liście (filtr typu notatki zawęża zakres); przed zmianą pyta o potwierdzenie, zapis dopiero przy zapisie ustawień
-- **Typ notatki** i **pole docelowe** to edytowalne comboboxy z listami pobranymi z kolekcji Anki
-- Przycisk **Wstaw pole ▾** nad edytorem promptu wstawia `{{pole}}` w pozycji kursora (lista zawiera pola typu notatki + targety wcześniejszych zadań)
-- Przycisk **Wstaw warunek ▾** wstawia gotowy szkielet `{% if pole %}…{% else %}…{% endif %}` i ustawia kursor w środku; zaznaczony tekst zostaje owinięty warunkiem (trafia do gałęzi „if", a kursor do pustego „else")
-- Walidacja na żywo pod edytorem ostrzega gdy: typ notatki nie istnieje w kolekcji, pole docelowe nie istnieje w typie notatki, prompt używa nieznanych `{{pól}}` lub `{% if pól %}`
-- Walidacja sprawdza też strukturę bloków: niedomknięty `{% if %}`, osierocony `{% else %}`/`{% endif %}`, podwójny `{% else %}`, `{% if %}` bez nazwy pola oraz zagnieżdżone `{% if %}` (nieobsługiwane przez silnik — patrz Ograniczenie wyżej); ta część działa nawet bez dostępu do kolekcji (`template_engine.template_structure_problems()`)
+| Dostawca | Klucz | Uwagi |
+|---|---|---|
+| `openai` | platform.openai.com | `reasoning_effort` tylko dla modeli reasoning |
+| `anthropic` | console.anthropic.com | `max_tokens` (domyślnie 2048) tylko w `config.json` |
+| `openrouter` | openrouter.ai/keys | modele `:free` mają limit 20 RPM |
+| `codex_cli` | bez klucza — `codex login` | subskrypcja ChatGPT |
+| `claude_cli` | bez klucza — `claude auth login` | subskrypcja Claude (Pro/Max) |
 
-> **Ograniczenie:** zagnieżdżone `{% if %}` wewnątrz `{% if %}` nie są obsługiwane.
+Przy każdym dostawcy ustawiasz model domyślny i **poziom rozumowania**. Poziom
+dotyczy wszystkich promptów tego dostawcy, a model zapasowy używa poziomu swojego
+dostawcy. W sekcji **Zaawansowane** są temperatura, model zapasowy dostawcy,
+limity RPM i równoległości oraz (dla CLI) ścieżka binarki i limit czasu.
+Przycisk **Pobierz** ściąga listę modeli; lista jest zapamiętywana w konfiguracji.
 
-> **Uwaga:** Wartości pól użyte w szablonach są pobierane na początku generowania (przed wywołaniem API). Pola zawierające HTML (`<div>`, `&nbsp;` itp.) są automatycznie oczyszczane przed wstawieniem do promptu — AI otrzymuje czysty tekst.
+### Dostawcy CLI
 
-## Dodanie nowego dostawcy
+`codex_cli` i `claude_cli` uruchamiają zalogowanego klienta `codex` albo `claude`
+i zużywają limity subskrypcji. Dodatek nie widzi tokenu logowania.
 
-**Wariant A — API zgodne z OpenAI Chat Completions** (najczęstszy). Wystarczy cienka klasa w `providers/__init__.py`:
+- Pusta ścieżka binarki = autodetekcja w `PATH` i typowych katalogach (`/opt/homebrew/bin`,
+  `~/.local/bin` itd.), bo Anki z Findera nie dziedziczy `PATH` z powłoki.
+- Proces dostaje tylko `PATH`, `HOME`, `USER`/`LOGNAME` i ustawienia regionalne,
+  więc klucze API dodatku nie trafiają do CLI.
+- Treść notatek to dane niezaufane. Claude CLI działa z `--tools ""` (bez narzędzi,
+  plików i sieci), bez MCP, bez zapisu sesji i w pustym katalogu. Codex CLI działa
+  w sandboksie `read-only`, w pustym katalogu, bez konfiguracji użytkownika i bez zapisu sesji.
+- `claude_cli` przyjmuje alias (`haiku`, `sonnet`, `opus`, `fable`) albo pełne ID modelu.
+  `system_prompt` zastępuje prompt Claude Code, co obniża narzut do ok. 280 tokenów na fiszkę.
+- `codex_cli` dodaje do każdego wywołania kilka tysięcy tokenów preambuły, a konto
+  ChatGPT zwykle odrzuca modele `*-codex-*`.
+
+### Model zapasowy
+
+Gdy model główny zawiedzie (błąd API, limit, pusta odpowiedź), dodatek uruchamia
+model zapasowy z tym samym promptem i temperaturą:
+
+1. `fallback_model` promptu (z `fallback_provider` albo tym samym dostawcą),
+2. w przeciwnym razie `fallback_model` dostawcy,
+3. bez obu — błąd.
+
+### Limity tempa
+
+`rpm` rozkłada żądania równo (`60/rpm` s odstępu), `max_concurrent` ogranicza
+liczbę jednoczesnych żądań, a `rate_limit_free_only` (OpenRouter) dotyczy tylko
+modeli `:free`. Limity obejmują model główny i zapasowy.
+
+## Ustawienia ogólne (`ai_generator`)
+
+| Klucz | Znaczenie |
+|---|---|
+| `skip_tags` | Notatki z tymi tagami są pomijane w całości |
+| `batch_limit`, `batch_sleep` | Przeglądarka: przerwa `batch_sleep` s co `batch_limit` notatek |
+| `parallel_requests` | Równoległe notatki w przeglądarce i pola jednej notatki (1–16) |
+| `max_retries` | Próby przy 429/5xx, timeoutach i błędach połączenia |
+| `request_timeout` | Limit czasu żądania HTTP; CLI ma własny `cli_timeout` |
+
+W UI: **Prompty AI → Ogólne** (tagi i sekcja **Zaawansowane**).
+
+## Nowy dostawca (dla deweloperów)
+
+API zgodne z OpenAI Chat Completions wymaga tylko klasy w `providers/__init__.py`:
+
 ```python
 class MojProvider(OpenAICompatProvider):
     API_URL = "https://api.example.com/v1/chat/completions"
     LABEL = "Moj Provider"
 ```
-`OpenAICompatProvider` (z `base.py`) dostarcza gotowe `call_api()`: auth Bearer, `temperature`/`reasoning_effort` wg modelu, retry z fallbackiem i rozbiór przez `_parse_chat_completion()`.
 
-**Wariant B — inny format API.** Utwórz `providers/moj_provider.py`, dziedzicz po `BaseProvider` i zaimplementuj `call_api()`:
-```python
-from .base import BaseProvider
-from typing import Optional
+Inny format: dziedzicz po `BaseProvider` i zaimplementuj `call_api()`
+(`self._post()` ma retry, gotowe parsery to `_parse_chat_completion()` i `_parse_messages()`).
+Potem dopisz klasę do `PROVIDERS` i `PROVIDER_LABELS`, sekcję dostawcy do `config.json`
+i, dla przycisku **Pobierz**, gałąź w `providers/model_discovery.py`.
 
-class MojProvider(BaseProvider):
-    def call_api(self, prompt: str) -> Optional[str]:
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
-        data = {"model": self.model, "messages": [{"role": "user", "content": prompt}]}
-        raw = self._post(url, data, headers)  # POST z retry dla 429/5xx
-        if raw is None:
-            return None
-        # gotowe parsery z bazy: _parse_chat_completion() (format OpenAI)
-        # lub _parse_messages() (format Anthropic); albo własny rozbiór
-        return self._parse_messages(raw, "Moj Provider")
-```
-
-**Potem, w obu wariantach:**
-
-1. Zarejestruj klasę w słownikach `PROVIDERS` i `PROVIDER_LABELS` w `providers/__init__.py` — `_PROVIDER_NAMES` w `settings/ai_generator_tab.py` jest auto-derivowane z `PROVIDERS`, a `settings/prompts_tab.py` iteruje po `PROVIDER_LABELS`.
-2. Jeśli przycisk **Pobierz** ma działać, dodaj gałąź w `fetch_models()` w `providers/model_discovery.py`.
-3. Dodaj sekcję dostawcy w szablonie `config.json`:
-```json
-"providers": {
-    "moj_provider": {
-        "api_key": "...",
-        "model": "...",
-        "temperature": 0.2
-    }
-}
-```
-
-`BaseProvider.__init__` przyjmuje `max_retries`, `timeout`, `max_tokens` i `reasoning_effort` — są przekazywane automatycznie z konfiguracji. `max_tokens` jest opcjonalne i używane przez API w formacie Messages (Anthropic). `self._post(url, data, headers)` serializuje `data` do JSON i wysyła POST z retry (delegowane do `common.http.post_json`); `self.last_error` jest ustawiane przy błędzie. Jeśli nowy dostawca proxy'uje modele OpenAI, użyj `add_reasoning_effort_if_supported()` i `self._post_with_reasoning_fallback()` zamiast `_post()` — otrzymasz automatyczny fallback gdy model nie obsługuje reasoning (parametr jest usuwany z body i żądanie ponawiane).
+Batch API (tryb tańszy) usunięto; kod jest w tagu Git `archive/batch-api`.

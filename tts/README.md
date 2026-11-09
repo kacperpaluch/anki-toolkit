@@ -1,230 +1,65 @@
-# Nagrania (TTS) (`tts/`) — przez OpenRouter
+# Nagrania (TTS) (`tts/`)
 
-Generuje pliki audio MP3 dla kart Anki przez API TTS OpenRoutera (płatne per
-znak). Dostępne są tam m.in. modele OpenAI TTS i Kokoro (`hexgrad/kokoro-82m`).
+Tworzy pliki MP3 przez API TTS OpenRoutera (płatne za znak), np. modelem Kokoro
+(`hexgrad/kokoro-82m`) albo OpenAI TTS. Ustawienia są w **Ustawienia → Nagrania (TTS)**,
+a klucz API w **Konta i klucze → Nagrania (TTS) — OpenRouter** (osobny albo ten sam
+co dla dostawców AI).
 
-## Wymagania
+## Gdzie to jest
 
-Klucz API z https://openrouter.ai/keys (albo klucz OpenRoutera dostawców AI).
-Żadnych innych zależności.
+- **Edytor → Toolkit ▾ → Nagraj audio (TTS)** wykonuje wszystkie zadania dla bieżącej notatki.
+- **Prawy klik na polu docelowym** → **Generuj TTS: …** (puste pole) albo **Regeneruj TTS: …**.
+- **Przeglądarka → prawy klik → Anki Toolkit → Nagraj audio (TTS)** — każde zadanie osobno
+  albo **Uruchom wszystkie**. Menu pokazuje tylko zadania, których pola są w zaznaczeniu.
 
-Ustawienia: **Narzędzia → Anki Toolkit → Ustawienia… → Nagrania (TTS)** — sekcje
-*Zadania nagrań* (na górze; Dodaj/Edytuj/Usuń, ▲▼ zmienia kolejność w menu),
-*OpenRouter* (model, dostawca modelu; lista głosów pojawia się po „Pobierz”), *Zamiana wyrazów*
-i zwijana *Wydajność i sieć* (wątki, próby, timeout). Klucz API jest na stronie
-**Konta i klucze → Nagrania (TTS) — OpenRouter**.
+Pole, które ma już `[sound:…]`, jest pomijane. Przy regeneracji stare nagranie
+znika dopiero wtedy, gdy nowe powstanie; nieudane segmenty zachowują stare audio.
+Zmiana pola w edytorze w trakcie pracy pomija wynik, żeby audio nie trafiło do innego tekstu.
 
+## Zadania
 
-Menu Browsera pokazuje tylko zadania, których pola źródłowe i docelowe istnieją w zaznaczonych notatkach. „Uruchom wszystkie” dotyczy zadań widocznych w tym menu. Sekcję można ukryć w **Ustawienia → Sekwencje**.
+Zadanie ma etykietę, pole źródłowe, pole docelowe i tryb:
 
-## Jak używać
-
-### Przeglądarka (batch)
-W przeglądarce kart zaznacz notatki, a następnie **menu kontekstowe → Anki Toolkit → Nagraj audio (TTS)**. Menu jest budowane dynamicznie na podstawie skonfigurowanych **zadań nagrań**:
-
-| Element menu | Opis |
+| Tryb | Wynik |
 |---|---|
-| Każde zadanie jako osobna akcja | Np. "Generuj audio dla ang", "Generuj audio dla definicji" itd. |
-| `Uruchom wszystkie` | Wykonuje wszystkie zadania po kolei jako jedną operację z jednym paskiem postępu i jednym podsumowaniem (widoczne tylko gdy >1 zadanie) |
+| `single` | Jedno nagranie w osobnym polu. Pole z tekstem (nie tylko `[sound:]`) jest pomijane |
+| `split` | Pole dzielone separatorem; każdy fragment dostaje nagranie obok siebie (np. zdania w `przyklad`) |
+| `split_audio` | Pole dzielone separatorem; do pola docelowego trafiają same tagi audio (np. `motorway, highway` → `[sound:1.mp3][sound:2.mp3]`) |
 
-### Edytor kart (pojedyncza notatka)
-**Toolkit ▾ → Nagraj audio (TTS)** w edytorze (pozycja jest widoczna, gdy notatka ma pola któregoś zadania). Najpierw zapisuje bieżącą treść pól edytora, a potem generuje audio dla aktualnie otwartej notatki według wszystkich skonfigurowanych zadań. Działa asynchronicznie — Anki nie zamarza podczas generowania. Jeśli na tym samym edytorze trwa już AI, pobieranie wymowy, nagranie albo sekwencja, kolejna akcja Anki Toolkit jest blokowana, aby nie modyfikować notatki równolegle.
+Separator to wyrażenie regularne (domyślnie `<br><br>`, dla list zwykle `,`).
+W trybie `split_audio` pole zostaje zastąpione dopiero po wygenerowaniu całego zestawu.
 
-**PPM na polu docelowym** (np. `audio`, `przyklad`) — gdy pole jest `target_field` jakiegoś zadania TTS, pojawia się „Generuj TTS: [label]" (pole puste) lub „Regeneruj TTS: [label]" (pole pełne — stare audio zostaje zastąpione nowym). **Stare nagranie znika dopiero wtedy, gdy nowe faktycznie powstanie**: gdy API padnie, pole zostaje nietknięte, a przy częściowym sukcesie segmenty, których nie udało się wygenerować, zachowują dotychczasowe audio. Działa też w oknie dodawania nowej karty (AddCards).
+## Głosy i zamiana wyrazów
 
-Notatki które już mają audio w polu docelowym są pomijane — wykrywanie opiera się na `[sound:...]`. Ponowne kliknięcie przycisku podczas trwającej generacji jest ignorowane. Jeśli w trakcie generowania przełączysz się na inną kartę, audio trafia do **właściwej notatki** (zapis bezpośrednio do kolekcji) — nie do aktualnie wyświetlanej.
+Każde nagranie losuje głos z listy `voices` (jeden głos = zawsze ten sam).
+Po **Pobierz** przy modelu pojawia się tabela głosów z checkboxami i przyciskiem
+**▶** do odsłuchu próbki. Głosy Kokoro mają nazwy `<język><płeć>_<imię>`,
+np. `af_bella` (a = amerykański, b = brytyjski; f = kobieta, m = mężczyzna).
 
-Zmiana dowolnego pola podczas generowania w edytorze powoduje pominięcie wyniku bieżącego kroku, aby nie przypisać audio do zmienionego tekstu. Zamknięcie lub zmiana profilu przerywa zapis. W trybie `split` zapisującym do osobnego, już wypełnionego pola częściowa awaria pozostawia całe stare pole — zastępuje je dopiero pełny wynik.
-
-### Zadania TTS
-
-Każde zadanie definiuje:
-- **Etykieta** — nazwa wyświetlana w menu
-- **Pole źródłowe** — skąd czytać tekst do syntezy
-- **Pole docelowe** — gdzie zapisać `[sound:...]`
-- **Tryb**:
-  - `single` — jedno audio na notatkę (np. dla pola `ang`). Pole docelowe musi być inne niż źródłowe; jeśli zawiera tekst (nie tylko `[sound:]`), notatka jest pomijana — nagranie nigdy nie zastępuje tekstu
-  - `split` — każdy segment dostaje osobne audio wstawiane **obok słowa** w to samo pole (np. `przyklad` rozdzielany `<br><br>` → `słowo [sound:...]`)
-  - `split_audio` — dzieli pole źródłowe i wstawia do pola docelowego **tylko same tagi audio**, bez słów (np. `ang` = `motorway, highway` rozdzielane `,` → pole `audio` = `[sound:1.mp3][sound:2.mp3]`). Pole puste lub niekompletne zostaje zastąpione dopiero po wygenerowaniu całego zestawu; częściowa awaria pozostawia dotychczasową treść do ponowienia. Przy regeneracji kompletnego zestawu nieudane segmenty zachowują swoje stare nagrania.
-- **Separator** — regex dzielący tekst w trybach `split`/`split_audio` (domyślnie `<br><br>`; dla wariantu „tylko audio" zwykle `,`)
-
-Zadania konfiguruje się w **Narzędzia → Anki Toolkit → Ustawienia… → Nagrania (TTS) → Zadania nagrań** (Dodaj/Edytuj/Usuń, dwuklik edytuje, Delete usuwa, ▲▼ zmienia kolejność).
-
-W przeglądarce pojedyncze zadanie i `Uruchom wszystkie` zapisują wyniki dopiero po zakończeniu generowania danej operacji. Przy anulowaniu zapisują już wygenerowane pliki i pokazują jedno podsumowanie.
-
-## Konfiguracja (`config.json` → sekcja `tts`)
-
-```json
-"tts": {
-    "openrouter_api_key": "",
-    "use_ai_openrouter_key": false,
-    "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
-    "openrouter_provider": "",
-    "voices": ["af_bella", "af_heart", "bm_lewis"],
-    "replacements": {"sb": "somebody", "sth": "something"},
-    "speed": 0.9,
-    "max_workers": 12,
-    "max_retries": 3,
-    "timeout": 60,
-    "tasks": [
-        {"label": "Generuj audio dla ang",    "source_field": "ang",      "target_field": "audio",    "mode": "single"},
-        {"label": "Generuj audio dla przykł.", "source_field": "przyklad", "target_field": "przyklad", "mode": "split", "split_separator": "<br><br>"}
-    ]
-}
-```
-
-| Pole | Domyślnie | Opis |
-|---|---|---|
-| `openrouter_api_key` | `""` | Klucz API OpenRouter |
-| `use_ai_openrouter_key` | `false` | Użyj klucza OpenRouter dostawców AI zamiast wpisywać osobno (**Konta i klucze**) |
-| `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS OpenRouter. Kliknij **Pobierz** w ustawieniach aby zobaczyć dostępne modele i ich głosy |
-| `openrouter_provider` | `""` | Preferowany dostawca modelu OpenRouter (slug endpointu, np. `deepinfra/us`). OpenRouter ignoruje tę preferencję dla TTS — patrz „Wymuszenie dostawcy” niżej |
-| `voices` | `["af_bella", "af_heart", "bm_lewis"]` | Pula głosów do losowania (domyślne to głosy Kokoro). Po wybraniu modelu i kliknięciu **Pobierz** lista głosów wypełnia się automatycznie |
-| `replacements` | `{}` | Zamiana całych słów **tylko w tekście wysyłanym do TTS** — treść karty zostaje bez zmian. Słownikowe placeholdery (`sb` → `somebody`, `sth` → `something`) są rozwijane przed syntezą. Dopasowanie bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`). Klucze dłuższe mają priorytet (`sb/sth` zamienia się w całości, zanim zadziałają `sb`/`sth`). Edytowalne w **Ustawienia → Nagrania (TTS) → Zamiana wyrazów** (tabela Skrót/Zamiennik + Dodaj/Usuń) |
-| `speed` | `0.9` | Tempo mowy (0.1–3.0) |
-| `tasks` | `[...]` | Lista zadań TTS — każde definiuje `label`, `source_field`, `target_field`, `mode` (`single`, `split` lub `split_audio`) i opcjonalnie `split_separator`. `split` zapisuje segmenty z audio, a `split_audio` tylko połączone tagi `[sound:...]`. Menu TTS jest budowane z tej listy; pusta lista = brak zadań, brak klucza = dwa zadania domyślne |
-| `max_workers` | `12` | Liczba równoległych wątków generowania audio |
-| `max_retries` | `3` | Liczba prób przy 429 i nieudanym połączeniu; timeout i 5xx nie są ponawiane (żądanie mogło zostać już policzone) |
-| `timeout` | `60` | Limit czasu pojedynczego żądania TTS w sekundach |
+**Zamiana wyrazów** zmienia tylko tekst wysyłany do TTS, nie kartę: np. `sth`
+→ `something`. Zamieniane są całe słowa, bez rozróżniania wielkości liter
+(`Sth` → `Something`), a dłuższe klucze (`sb/sth`) mają pierwszeństwo.
 
 ## Wymuszenie dostawcy
 
-Endpoint TTS OpenRoutera (`/audio/speech`) ignoruje preferencje routingu z
-żądania i nie wybiera sam najtańszego dostawcy — ten sam model może trafić do
-hosta kilkukrotnie droższego. Dostawcę wymusza dopiero ustawienie po stronie
-konta OpenRouter:
+Endpoint TTS OpenRoutera ignoruje preferencje dostawcy z żądania, więc ten sam
+model może trafić do droższego hosta. Dostawcę wymusza ustawienie konta:
 
-1. Utwórz osobny klucz API tylko dla TTS (openrouter.ai/settings/keys).
-2. Utwórz guardrail (openrouter.ai/settings/guardrails) w trybie „Only Allow”
-   z wybranym dostawcą na liście Allowed Providers i przypisz go do tego klucza.
-3. Wklej klucz w **Ustawienia → Konta i klucze → Nagrania (TTS) — OpenRouter → Klucz API**
-   i odznacz „Użyj klucza OpenRouter z dostawców AI”.
+1. Utwórz osobny klucz tylko dla TTS (openrouter.ai/settings/keys).
+2. Utwórz guardrail „Only Allow” z wybranym dostawcą i przypisz go do tego klucza.
+3. Wklej klucz w **Konta i klucze** i odznacz „Użyj klucza OpenRouter z dostawców AI”.
 
-Guardrail obejmuje tylko przypisany klucz, więc generowanie AI na własnym kluczu
-zachowuje pełny routing. Gdy dozwolony dostawca jest niedostępny, żądanie TTS
-kończy się błędem zamiast przejść na droższego.
+## Konfiguracja (`tts`)
 
-## Zamiana wyrazów
-
-Słownikowe skróty (`sb`, `sth`, `sb/sth`…) brzmią źle czytane przez TTS. Sekcja **Ustawienia → TTS → Zamiana wyrazów** pozwala zdefiniować własne pary skrót→pełne słowo (tabela z przyciskami Dodaj/Usuń). Zamiana działa **tylko na tekście wysyłanym do silnika** — to, co widzisz na karcie, zostaje nietknięte.
-
-- Zamieniane są **całe słowa** (`sth` w „absinthe" nie ruszy).
-- Bez rozróżniania wielkości liter; wielka litera na początku trafienia jest zachowywana (`Sth` → `Something`).
-- Dłuższe klucze mają priorytet, więc `sb/sth` rozwija się w całości zanim zadziałają pojedyncze `sb`/`sth`.
-
-Przykład:
-
-```json
-"replacements": {"sb": "somebody", "sth": "something", "sb/sth": "somebody or something"}
-```
-
-„be reckless of sth" → silnik dostaje „be reckless of something" (na karcie dalej widnieje „sth").
-
-## Głosy
-
-Każda notatka/zdanie losuje głos z listy `voices`. Można podać jeden głos (zawsze ten sam) lub wiele (losowanie).
-
-### Wybór z listy (checklist)
-
-Dopóki lista głosów modelu nie jest pobrana, głosy wpisujesz ręcznie po przecinku
-w polu **Głosy**. W ustawieniach TTS:
-1. Wpisz klucz API
-2. Kliknij **Pobierz** obok pola Model — wtyczka pobiera dostępne modele TTS z OpenRouter (wraz z cenami)
-3. Wybierz model z rozwijanej listy
-4. Pole **Dostawca modelu** pokazuje dostawców wybranego modelu i ich ceny. Sam wybór nie wymusza dostawcy — patrz „Wymuszenie dostawcy” niżej
-5. Pod spodem pojawi się tabela głosów z checkboxami — zaznacz które chcesz używać
-6. Przyciski **Zaznacz wszystkie** / **Odznacz wszystkie** ułatwiają szybką selekcję
-7. Pole "Głosy" poniżej aktualizuje się automatycznie
-8. **▶** — przycisk obok każdego głosu generuje krótki sample i go odtwarza (nie musisz zaznaczać głosu żeby go posłuchać; koszt jednego krótkiego żądania TTS)
-
-Głosy są specyficzne dla każdego modelu (np. OpenAI TTS używa `alloy`, `nova`, `echo`; Voxtral używa `en_paul_happy` itd.)
-
-### Głosy modelu Kokoro
-
-Poniższe identyfikatory dotyczą modelu `hexgrad/kokoro-82m` (domyślna pula
-`voices` to głosy Kokoro). Aktualną listę głosów danego modelu pokazuje tabela
-po kliknięciu **Pobierz**.
-
-#### Amerykański angielski (`en-us`)
-
-| ID głosu | Płeć |
-|---|---|
-| `af_alloy` | kobieta |
-| `af_aoede` | kobieta |
-| `af_bella` | kobieta |
-| `af_heart` | kobieta |
-| `af_jessica` | kobieta |
-| `af_kore` | kobieta |
-| `af_nicole` | kobieta |
-| `af_nova` | kobieta |
-| `af_river` | kobieta |
-| `af_sarah` | kobieta |
-| `af_sky` | kobieta |
-| `am_adam` | mężczyzna |
-| `am_echo` | mężczyzna |
-| `am_eric` | mężczyzna |
-| `am_fenrir` | mężczyzna |
-| `am_liam` | mężczyzna |
-| `am_michael` | mężczyzna |
-| `am_onyx` | mężczyzna |
-| `am_puck` | mężczyzna |
-| `am_santa` | mężczyzna |
-
-#### Brytyjski angielski (`en-gb`)
-
-| ID głosu | Płeć |
-|---|---|
-| `bf_alice` | kobieta |
-| `bf_emma` | kobieta |
-| `bf_isabella` | kobieta |
-| `bf_lily` | kobieta |
-| `bm_daniel` | mężczyzna |
-| `bm_fable` | mężczyzna |
-| `bm_george` | mężczyzna |
-| `bm_lewis` | mężczyzna |
-
-#### Pozostałe języki
-
-| ID głosu | Język | Płeć |
+| Klucz | Domyślnie | Znaczenie |
 |---|---|---|
-| `ef_dora` | Hiszpański (`es`) | kobieta |
-| `em_alex` | Hiszpański (`es`) | mężczyzna |
-| `em_santa` | Hiszpański (`es`) | mężczyzna |
-| `ff_siwis` | Francuski (`fr-fr`) | kobieta |
-| `hf_alpha` | Hindi (`hi`) | kobieta |
-| `hf_beta` | Hindi (`hi`) | kobieta |
-| `hm_omega` | Hindi (`hi`) | mężczyzna |
-| `hm_psi` | Hindi (`hi`) | mężczyzna |
-| `if_sara` | Włoski (`it`) | kobieta |
-| `im_nicola` | Włoski (`it`) | mężczyzna |
-| `jf_alpha` | Japoński (`ja`) | kobieta |
-| `jf_gongitsune` | Japoński (`ja`) | kobieta |
-| `jf_nezumi` | Japoński (`ja`) | kobieta |
-| `jf_tebukuro` | Japoński (`ja`) | kobieta |
-| `jm_kumo` | Japoński (`ja`) | mężczyzna |
-| `pf_dora` | Portugalski BR (`pt-br`) | kobieta |
-| `pm_alex` | Portugalski BR (`pt-br`) | mężczyzna |
-| `pm_santa` | Portugalski BR (`pt-br`) | mężczyzna |
-| `zf_xiaobei` | Chiński mandaryński (`zh`) | kobieta |
-| `zf_xiaoni` | Chiński mandaryński (`zh`) | kobieta |
-| `zf_xiaoxiao` | Chiński mandaryński (`zh`) | kobieta |
-| `zf_xiaoyi` | Chiński mandaryński (`zh`) | kobieta |
-| `zm_yunjian` | Chiński mandaryński (`zh`) | mężczyzna |
-| `zm_yunxi` | Chiński mandaryński (`zh`) | mężczyzna |
-| `zm_yunxia` | Chiński mandaryński (`zh`) | mężczyzna |
-| `zm_yunyang` | Chiński mandaryński (`zh`) | mężczyzna |
-
-#### Schemat nazw głosów
-
-```
-af_bella
-│└─── nazwa głosu
-└──── język + płeć:
-      a = American English   b = British English
-      e = Spanish            f = French
-      h = Hindi              i = Italian
-      j = Japanese           p = Brazilian Portuguese
-      z = Mandarin Chinese
-
-      f = kobieta (female)   m = mężczyzna (male)
-```
+| `openrouter_api_key` / `use_ai_openrouter_key` | `""` / `false` | Własny klucz albo klucz dostawców AI |
+| `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS |
+| `openrouter_provider` | `""` | Informacyjnie; OpenRouter go ignoruje (patrz wyżej) |
+| `voices` | głosy Kokoro | Pula głosów do losowania |
+| `replacements` | `{}` | Zamiana wyrazów |
+| `speed` | `0.9` | Tempo mowy (0.1–3.0) |
+| `tasks` | dwa przykładowe | `label`, `source_field`, `target_field`, `mode`, opcjonalnie `split_separator` |
+| `max_workers` | `12` | Równoległe nagrania |
+| `max_retries` | `3` | Ponowienia przy 429 i braku połączenia; timeout i 5xx nie są ponawiane (żądanie mogło być już policzone) |
+| `timeout` | `60` | Limit czasu żądania (s) |
