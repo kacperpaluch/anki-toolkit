@@ -1,4 +1,4 @@
-"""Manual canary: do the panel's dictionary tabs still load and yield entries?
+"""Manual canary: do the panel's dictionary tabs still load and show the userscript buttons?
 
 Drives the real `integrations.panel._DictTabs` — same profile, userscript world and
 `page_js` setting as the Add window — against the live dictionaries. Run it after an
@@ -6,9 +6,7 @@ Anki update, with the Qt that Anki ships (needs network, so not part of the unit
     QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/app_packages \\
         python3.13 tests/live_selectors.py 2>/dev/null   # stderr is Chromium noise
 
-AI column:  OK = entry items found (diki: meanings, others: definitions).
-            EMPTY = nothing extracted (CAPTCHA, timeout, broken rule, page needs its scripts).
-            PADŁ = the renderer process crashed on this page.
+Page:       OK = loaded; PADŁ = the renderer process crashed on this page.
 Buttons:    OK = the searched word has a "→ hasło" button and other buttons exist.
             Inflected words (went) only need some headword button (often the lemma).
 Exit code 1 unless everything is OK.
@@ -57,17 +55,21 @@ def main():
     tabs = panel._DictTabs(labels, cfg["page_js"])
     tabs.resize(900, 700)
     tabs.show()
-    crashed = set()
+    crashed, loaded = set(), set()
     for index, view in enumerate(tabs._views):
         view.renderProcessTerminated.connect(lambda *_a, i=index: crashed.add(i))
+        view.loadFinished.connect(lambda _ok, i=index: loaded.add(i))
     failed = 0
     for word in WORDS:
         crashed.clear()
-        tabs.set_urls(word_queue.dict_urls(word, cfg), word)
-        entries = wait(tabs.entries, 30000) or {}
+        loaded.clear()
+        tabs.set_urls(word_queue.dict_urls(word, cfg))
+        for _tick in range(120):  # up to 30 s for every tab
+            if len(loaded | crashed) == len(labels):
+                break
+            wait(lambda done: QTimer.singleShot(250, done), 1000)
         for index, label in enumerate(labels):
-            items = entries.get(label) or []
-            status = "PADŁ" if index in crashed else "OK" if items else "EMPTY"
+            status = "PADŁ" if index in crashed else "OK" if index in loaded else "TIMEOUT"
             buttons = wait(lambda done, i=index: tabs._views[i].page().runJavaScript(
                 BUTTONS, panel._WORLD, done), 5000) or {}
             heads = buttons.get("heads") or []
@@ -75,11 +77,10 @@ def main():
                 ok_buttons = bool(heads)
             else:  # diki lists related phrases too; the searched word must have its own button
                 ok_buttons = word in heads and (buttons.get("other") or 0) > 0
-            # An inflected form's page may only point to the lemma ("past tense of go").
-            failed += (status != "OK" and word not in INFLECTED) or not ok_buttons
+            failed += status != "OK" or not ok_buttons
             js = "JS" if label in cfg["page_js"] else "  "
-            print(f"AI {status:8} przyciski {'OK' if ok_buttons else 'ZLE':3} {js} {label:16} {word:8} "
-                  f"{len(items):3} poz.  hasło={sorted(set(heads))} inne={int(buttons.get('other') or 0)}", flush=True)
+            print(f"strona {status:8} przyciski {'OK' if ok_buttons else 'ZLE':3} {js} {label:16} {word:8} "
+                  f"hasło={sorted(set(heads))} inne={int(buttons.get('other') or 0)}", flush=True)
     sip.delete(tabs)
     return 1 if failed else 0
 

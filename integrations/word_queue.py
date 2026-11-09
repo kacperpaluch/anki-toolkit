@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import urllib.parse
+from html import escape
 
 try:
     import aqt
@@ -68,16 +69,8 @@ _DEFAULTS = {
     # `id` rośnie z każdym dodanym wierszem, więc jest zarazem datą dodania —
     # sortowanie po `createdAt` dałoby to samo, tylko zależne od nazwy kolumny.
     "order": "id",
-    # „AI: znaczenia" — dostawca ze strony „Konta i klucze”.
-    "ai_provider": "",         # np. "claude_cli", "openrouter"; puste = przycisk tylko krzyczy
-    "ai_model": "",            # puste = model domyślny dostawcy
-    "ai_reasoning_effort": "", # puste = effort dostawcy; nadpisanie tylko dla CLI
-    "ai_max_senses": 3,        # ile pierwszych znaczeń z diki zaznaczyć w oknie wyboru
-    "ai_timeout": 120,         # lokalne CLI potrafi myśleć dłużej niż API
-    "ai_tag": "ai-auto",       # tag na KAŻDEJ karcie z AI (puste = bez tagu)
-    "ai_review_tag": "ai-review",  # dodatkowo, dopóki użytkownik nie potwierdzi weryfikacji
-    # Pole angielskie to `word_field` powyżej — tu tylko reszta. AI wypełnia pl
-    # i definition; `example` to cel przycisków „+ przykład” w userscripcie.
+    # Pola dla ról przycisków userscriptu (meaning, definition, example);
+    # pole angielskie to `word_field` powyżej. Nazwa klucza została po dawnym „AI: znaczenia”.
     "ai_fields": {"pl": "pol", "definition": "def", "example": "przyklad"},
 }
 
@@ -370,6 +363,20 @@ def fetch_queue(cfg: dict) -> tuple[list[dict], str | None]:
     left = sum(1 for row in rows if not row.get(cfg["flag_column"]))
     log.info("word_queue: pobrano %d wierszy (%d do zrobienia) z %s", len(rows), left, _active_url)
     return rows, None
+
+
+# Wyszukiwarka Anki traktuje te znaki specjalnie także w cudzysłowie.
+_SEARCH_SPECIAL = re.compile(r'([\\"*_])')
+
+
+def find_word_notes(word: str, cfg: dict) -> list:
+    """Note ids whose English field is exactly `word`. Raises on collection errors."""
+    field = cfg.get("word_field") or "ang"
+    # Wyszukiwarka porównuje surowy HTML pola: „&" leży tam jako &amp;, a starsze
+    # notatki miały też cudzysłowy jako &#x27;/&quot;.
+    values = dict.fromkeys((escape(word, quote=False), escape(word)))
+    terms = ['"%s:%s"' % (field, _SEARCH_SPECIAL.sub(r"\\\1", value)) for value in values]
+    return list(mw.col.find_notes(" OR ".join(terms)))
 
 
 # ---------------------------------------------------------------------------

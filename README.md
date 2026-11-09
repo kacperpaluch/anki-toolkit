@@ -54,40 +54,14 @@ Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
 i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
 Poziom rozumowania (**effort**) ustawiasz domyślnie w **Konta i klucze → Dostawcy AI**, a osobno
-możesz go nadpisać przy prompcie (także dla modelu zapasowego) i w **Kolejka słówek →
-AI: znaczenia**. Opcja „Dziedzicz: medium” pokazuje aktualny poziom dostawcy;
-dostępność poziomów zależy od modelu i wersji CLI.
-W **Kolejka słówek → AI: znaczenia** zmiana dostawcy przywraca jego domyślny
-model, a przycisk **Odśwież** pobiera listę modeli bez zmiany bieżącego wyboru.
-
-Edytor promptów zostawia więcej miejsca na tekst, a ustawienia zadania i modelu
-zapasowego są zwijane. W ustawieniach kolejki najpierw widzisz AI; mapowanie pól
-i Web Bridge są zwijane, a połączenie z n8n jest w **Konta i klucze**. Panel kolejki ma listę i działania
-po lewej, słowniki po prawej. Checkboxy zbierają słowa do AI, a opis wyboru
-i przycisk **Utwórz karty z AI (n)** pokazują faktyczną paczkę. Ręczne oznaczenie
-jako zrobione zwalnia wybór również przy błędzie n8n; błąd pobrania kolejki
-pozostaje widoczny nad listą.
+możesz go nadpisać przy prompcie (także dla modelu zapasowego). Opcja „Dziedzicz: medium”
+pokazuje aktualny poziom dostawcy; dostępność poziomów zależy od modelu i wersji CLI.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
-Nowe notatki z **Utwórz karty z AI** mają tag dnia `ai-import::YYYY-MM-DD`;
-szczegóły dopasowania opisuje dokumentacja modułu. Skrypty samych stron działają
-tylko na zakładkach z `page_js` (domyślnie diki) — obejście błędu QtWebEngine 6.11.2,
-przez który strony Cambridge, Oxfordu i LDoCE znikały po chwili.
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje
 cztery słowniki w zakładkach (diki, Cambridge EN-PL, Oxford, LDoCE) i odhacza
-wiersz po dodaniu karty. Własne słowa spoza tabeli działają tak samo. Obsługuje
-adres główny i zapasowy n8n oraz Cloudflare Access (service token). Web Bridge przyjmuje dane
-z userscriptu słownika. **Utwórz karty z AI** robi po jednej karcie na znaczenie
-z diki; model tylko wskazuje pasującą definicję z Cambridge, Oxfordu lub LDoCE,
-więc cała treść karty pochodzi ze słowników.
-Okno **Wybierz karty do dodania** grupuje znaczenia według haseł, pokazuje każdą
-propozycję osobno i liczy zaznaczone karty na przycisku **Dodaj karty (n)**.
-Brak polskiego znaczenia kieruje do pola wymagającego poprawy.
-Kolejkę przeszukasz po fragmencie hasła i przefiltrujesz przez **Wszystkie /
-Niezrobione / Zrobione**. Dodatkowe pełne konstrukcje mają własne EN i są
-domyślnie odznaczone. Ręcznie zaznaczone boczne zwroty diki trafiają do kolejki
-n8n przy zatwierdzeniu **Dodaj karty**; osobny przycisk **Dodaj wybrane zwroty do
-kolejki** pozwala dopisać je wcześniej, bez zatwierdzania kart.
+wiersz po dodaniu karty. Przyciski userscriptu na stronach słowników wpisują
+tłumaczenie, definicję i przykład do otwartej notatki przez Web Bridge.
 
 **Porządki**
 

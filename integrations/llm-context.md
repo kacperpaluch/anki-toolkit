@@ -2,268 +2,114 @@
 
 Łączy Word Queue (n8n DataTable, panel, adres zapasowy i Cloudflare Access) z Web Bridge
 (lokalny endpoint dla userscriptu). `word_queue.py` (HTTP n8n, konfiguracja,
-pozycja menu „Toolkit ▾” przełączająca panel 📚) i `panel.py` (Qt) obsługują kolejkę; `ai_senses.py` — „AI:
-znaczenia” (numerowane dopasowanie definicji, okno wyboru, zapis notatek); `bridge.py`
-endpoint; `settings.py` — panel „Kolejka słówek” we wspólnym oknie ustawień;
-`__init__.py` tylko rejestruje hooki. `dictionaries-to-anki.user.js` jest jednym
-źródłem przycisków dla przeglądarki i panelu. Nie rozdzielaj userscriptu na
-dwie wersje.
+`find_word_notes`, pozycja menu „Toolkit ▾” przełączająca panel 📚) i `panel.py` (Qt)
+obsługują kolejkę; `bridge.py` — endpoint; `queue_state.py` — dług odhaczeń;
+`settings.py` — panel „Kolejka słówek” (pola notatki, port); `__init__.py` tylko
+rejestruje hooki. `dictionaries-to-anki.user.js` jest jednym źródłem przycisków
+dla przeglądarki i panelu. Nie rozdzielaj userscriptu na dwie wersje.
+
+„Utwórz karty z AI” (`ai_senses.py`, okno wyboru znaczeń, drafty, ptaszki wyboru
+na liście, `window.ankiDictionaryEntries`) usunięto; kod jest w tagu `archive/ai-senses`.
+Klucz `ai_fields` został, bo mapuje role mostka na pola.
 
 Operacje HTTP n8n działają w tle, a kolekcja/edytor tylko na głównym wątku.
 Bridge nasłuchuje wyłącznie na `127.0.0.1`; handler HTTP przekazuje zmianę do
 głównego wątku i zachowuje protokół `{"fields": {...}}`. Panel odhacza wiersz
 po `id`, a fallback bez panelu może odhaczyć go po słowie.
 
+## Mostek
+
 - Bridge przechwytuje sesję edytora przez `editor_did_load_note`. Zmiana wymaga
   `saveNow`, żywego celu i niewygasłego żądania; timeout obejmuje także callback zapisu.
 - Port bierze się z `web_bridge.port` (domyślnie 8767) i musi zgadzać się ze stałą
   `ENDPOINT` w userscripcie z przeglądarki. Kopia wstrzykiwana do panelu dostaje
-  bieżący port w `_dict_profile()` (podmiana stałej w źródle), więc plik zostaje jeden. Nie wracaj na 8765/8766 — tam siedzi AnkiConnect
-  i jego forki (np. „Agent Connect"), a zajęty port kończy się cichym brakiem
-  mostka. Dlatego nieudany bind woła `showWarning`, nie tylko `logger`.
-- Ptaszek = `_picked`, czyli wybór do AI, wyłącznie w pamięci panelu. Stan
-  „zrobione" z n8n to `_marked` i kolor pozycji — dwie różne rzeczy na jednej
-  liście, nie sklejaj ich z powrotem. Oba stany rysuje `_style_item` czytając
-  `self`, a nie argumenty — inaczej rozjeżdżają się między ścieżkami wywołań.
-  Wybrany wiersz ma checkbox i pogrubienie, bez dodatkowego ptaszka
-  w tekście. Tylko lista używa `QStyleFactory.create("Fusion")`: styl macOS
-  potrafi pominąć wskaźniki kolejnych zaznaczonych wierszy. Styl ma rodzica
-  ustawionego na listę, więc pozostaje żywy przez cały czas jej działania.
-  `_make_item` ustawia etykietę wyłącznie przez `_style_item`.
-  Ptaszki przeżywają przebudowę listy, ale `_rebuild` przycina je do istniejących
-  wierszy. Zapis kart i `_set_row(done=True)` zdejmują wybór do AI; ręczne
-  oznaczenie zwalnia wybór nawet przy błędzie HTTP, bez udawania sukcesu n8n.
-  `_selected_rows` pomija ukryte wiersze także dla ptaszków, a licznik przycisku
-  korzysta z tego samego wyboru.
+  bieżący port w `_dict_profile()` (podmiana stałej w źródle), więc plik zostaje jeden.
+  Nie wracaj na 8765/8766 — tam siedzi AnkiConnect i jego forki, a zajęty port
+  kończy się cichym brakiem mostka. Dlatego nieudany bind woła `showWarning`.
+- Userscript wysyła role (`headword`, `meaning`, `definition`, `example`);
+  `bridge._resolve` zamienia je na pola z `word_queue` (`word_field`, `ai_fields`)
+  na głównym wątku. Nazwy pól nie wracają do userscriptu — jedno źródło to konfiguracja.
+- Wartości są tekstem i są escapowane przed wpisaniem do pola; surowy HTML tylko
+  z `"html": true`. Separator zawsze jest HTML-em.
+- `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
+  samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
+
+## Lista i n8n
+
+- Stan „zrobione" z n8n to `_marked` i szary kolor pozycji. Lista nie ma checkboxów
+  i ma pojedyncze zaznaczenie.
 - Panel blokuje równoległe PATCH-e tego samego ID. `_set_row` to JEDYNE wejście
-  do flagi w n8n (przycisk „Oznacz jako zrobione", hook po dodaniu notatki, zapis kart z AI,
-  menu kontekstowe); sukces wymaga dokładnie jednego trafienia.
+  do flagi w n8n (przycisk „Oznacz jako zrobione", hook po dodaniu notatki, menu
+  kontekstowe, `_settle_owed`); sukces wymaga dokładnie jednego trafienia.
 - Starsze GET-y nie zastępują nowej listy ani wyniku PATCH-a. Przebudowa listy
   zachowuje wybrane ID i unieważnia stare callbacki wypełniania edytora.
 - Automatyczne odhaczenie wymaga powiązanej notatki, ID i zgodnego hasła;
   zmienioną formę hasła użytkownik zatwierdza przez „Oznacz jako zrobione”.
+- `_on_item_changed` odkłada `_apply_selection` o obrót pętli: odmowa zastąpienia
+  hasła cofa bieżącą pozycję, czego nie robi się z wnętrza sygnału.
 - Zapamiętany host musi należeć do adresów przekazanej konfiguracji.
 - Nagłówki `CF-Access-Client-*` dokleja wyłącznie `_headers(cfg, url)` i tylko dla
   `https://` z kompletem id+secret — sekret nie może iść otwartym tekstem do
   hosta w LAN. Wszystkie odpowiedzi n8n przechodzą przez `_json()`, które stronę
   HTML (logowanie Access po przekierowaniu) zamienia na czytelny błąd tokenu.
+- `common.http` dokłada domyślny User-Agent także dla `post_json`;
+  bez tego POST/PATCH do n8n mogą dostać Cloudflare 1010.
+- Dopisane hasła idą do tabeli (`add_rows`) i dostają prawdziwe `id`. Duplikaty
+  odsiewa panel po zawartości listy (ma całą tabelę) plus `_adding` (hasła w locie).
+  Nieudany zapis oddaje hasła do pola wpisywania — nie ma trybu offline ani
+  wierszy lokalnych (nie przywracaj ujemnych `id`).
+- `_added` trzyma wiersze zapisane w n8n, dopóki nie zobaczy ich odświeżenie:
+  GET rozpoczęty przed POST-em nie może ich usunąć z listy.
+- `add_rows`: wybór hosta przez GET, jeden POST bez retry/failover zapisu.
+  Niepewny wynik sprawdzamy pełnym GET; brak pewności to błąd. HTTP 403 to
+  odrzucenie, bez ponowienia ani readbacku. Przekroczenie `max_rows` to błąd.
+- Wyszukiwarka `_search` współdzieli `_apply_hiding` z filtrem `_status_filter`
+  (Wszystkie / Niezrobione / Zrobione, domyślnie Niezrobione).
+- Duplikat w kolekcji = samo słowo w `word_field` (`word_queue.find_word_notes`),
+  także wariant z encjami (`&amp;`, `&#x27;`/`&quot;`).
+
+## Dług odhaczeń (`queue_state.py`)
+
+Mały plik JSON w `user_files/`, zapisywany atomowo, tylko na głównym wątku.
+Zakres = ścieżka kolekcji + adres główny + tabela + kolumny; bez sekretów.
+Uszkodzony plik jest przemianowywany na `.broken` i panel startuje z pustym
+stanem — nie może blokować okna „Dodaj". Stare klucze (np. `drafts`) są ignorowane.
+
+- `owed` (id wiersza → hasło): notatka jest, PATCH „zrobione" jeszcze nie przeszedł.
+  `note_added` zapisuje dług przed PATCH-em, sukces go usuwa. Po każdym
+  odświeżeniu `_settle_owed` sprawdza kolekcję: są karty → ponów PATCH; brak
+  kart → zapomnij dług; wiersza nie ma w n8n → zapomnij bez PATCH-a.
+- Undo NIE jest śledzone (świadomie, `ponytail:` w `queue_state.py`).
+
+## Zakładki słowników
+
 - Zakładki biorą się z `link_templates` (etykieta → szablon adresu z `{q}`/`{slug}`),
   a nie z kolumn n8n. `link_columns` to tylko nadpisanie gotowym URL-em z wiersza;
-  etykieta bez szablonu nie dostaje zakładki. Nowy słownik = jeden wpis w configu,
-  bez zmian w DataTable.
-- „AI: znaczenia”: userscript (`window.ankiDictionaryEntries(word)`, ten sam plik co
-  przyciski) zwraca pozycje wpisu o pasującym nagłówku i dodatkowych pełnych wpisów zawierających
-  szukane hasło jako całe słowa. Dodatkowe pozycje niosą `word`/`related`; `word`
-  jest kontekstem promptu i częścią klucza deduplikacji, a konstrukcje są domyślnie
-  odznaczone. Nagłówek przechodzi do `sense["word"]` i pola EN w podglądzie.
-  Boczne `.diki-results-right-column .fentry` zwracają `{related_word, pl}`:
-  `split_entries` je pomija, panel utrwala osobno w `proposal["related"]`.
-  Ręcznie zaznaczone zwroty wysyła zatwierdzenie kart (po walidacji PL) lub
-  osobny przycisk w pickerze; oba używają `_enqueue_related` → `_add_related_words`
-  (kontrola Anki na głównym wątku) → istniejące `_add_words` (kontrola kolejki,
-  POST w tle). Checkboxy bocznych zwrotów nie należą do `_boxes` ani „Zaznacz wszystkie”. Rolę wyznacza KSZTAŁT, nie
-  konfiguracja: `{pl}` bez `def` = znaczenie (diki, jednostka karty), `{def, pl?}` =
-  definicja (Cambridge ma też PL). `split_entries` odsiewa powtórki po tekście + `pos` + `labels` + opcjonalnym `word` osobno dla D/E;
-  różne niepuste PL przy tym samym E pozostają oddzielne. Duplikat E uzupełnia
-  brakujące PL i `pl_src`, zachowując pierwsze `src` definicji. Fallback bez D
-  korzysta z `pl_src` tłumaczenia, które może różnić się od źródła definicji.
-  `build_prompt` serializuje hasło, D/E i metadane jako JSON (bez interpolowania
-  tekstu stron w linie instrukcji). Prompt opisuje zgodność sensu zamiast równej
-  szczegółowości; PL, część mowy i kwalifikatory są dowodami, nie regułą zgadywania.
-  Model zwraca TYLKO pełną mapę D → tekstowy identyfikator E albo null.
-  `parse_mapping` zwraca None przy brakujących/dodatkowych/powtórzonych kluczach,
-  złym typie lub numerze spoza listy. `_json_object` parsuje cały tekst (może zdjąć
-  otoczkę ```json); nie wycina obiektu z komentarza i nie toleruje duplikatów kluczy.
-  Tylko jawne null jest brakiem dopasowania; kompletna mapa samych null zwraca {}.
-  Błędna mapa odrzuca całe hasło (`generate` → [], error), bez automatycznej próby
-  naprawczej i bez tworzenia kart; paczka kontynuuje inne hasła. Nie przywracaj modelu piszącego tekst,
-  walidacji cytatów ani trybu „cała strona” — treść karty ma być wyłącznie ze słownika.
-  Bez znaczeń z diki kartami są pary Cambridge (bez modelu); bez definicji — samo PL
-  (bez modelu). Znaczenia spoza diki są pomijane celowo.
-  Brak reguły/CAPTCHA/zmieniony HTML = `[]`, czyli brak źródła. Kanarek:
-  `tests/live_selectors.py` (sieć) prowadzi prawdziwe `_DictTabs` z `page_js`
-  na żywych stronach; kod wyjścia 1 = reguła nie pasuje, strona wymaga swoich
-  skryptów albo renderer padł. Uruchamiaj po aktualizacji Anki, na jego Qt.
-  Porównanie nagłówka normalizuje spacje i łączniki ASCII/Unicode do spacji
-  (`brother in law` = `brother-in-law`), bez zmiany URL ani treści karty.
-  Nagłówek porównujemy bez `.stopword` (diki: give *something* up = give up).
-  Wyjątek: pojedyncze słowo bez pasującego nagłówka (went → go) bierze PIERWSZY
-  wpis strony; frazy nigdy (give up nie może spaść do give).
-  Selektory sprawdzone na żywych stronach (09.2026): diki `:scope > .hw` (kontekst
-  w nawiasie jest wewnątrz `.hw`), Cambridge `.dhw` + `.def-block` (`.def`,
-  `.dtrans-se`), LDOCE `.PHRVBHWD`.
-  Przycisk „→ hasło" na Cambridge: jeden na wpis (`.di-title.dhw, .hw.dhw`), bo
-  strona frazy ma też goły `.hw.dhw` z samym czasownikiem („give" przy „give up").
-  Na diki odwrotnie — „→ hasło" przy KAŻDYM `.hws .hw`: wpis bywa listą nagłówków
-  (nazwa łacińska jako pierwsza, potem „także:" — `.hwLessPopularAlternative`),
-  więc pierwszy `.hw` nie jest hasłem („hippophae" przy „sea buckthorn"). „→ oba"
-  bierze nagłówek równy `?q=` (to samo porównanie co ekstrakcja), inaczej pierwszy.
-  Pole hasła dostaje zawsze JEDEN nagłówek; alternatywne nazwy tego samego wpisu
-  nie są sklejane na karcie. Dodatkowy pełny wpis ma własne propozycje kart.
-  `_loaded`: None = w trakcie, False = błąd, True = zakończone poprawnie;
-  sukces HTTP nie gwarantuje znalezienia hasła. Callbacki ekstrakcji mają generację
-  i osobny limit 5 s: zawieszony renderer nie może zatrzymać paczki.
-- Userscript 4.8 zwraca opcjonalne `pos`/`labels` obok `{pl}` lub `{def, pl?}`.
-  Diki bierze POS z nagłówka poprzedzającego konkretną listę znaczeń (jedna entity
-  może mieć rzeczownik i czasownik). Kwalifikatory są lokalne dla znaczenia;
-  gramatyka nagłówka wpisu jest dodatkowym kontekstem w Cambridge/Oxford/LDoCE.
-  Brak selektora zostawia metadata puste — nigdy nie zgadujemy z treści definicji.
-  Metadane pomagają dopasowaniu, ale nie są nowymi polami karty ani rolami mostka.
-  Stare wpisy `{pl}`/`{def, pl?}` i odzyskane drafty nadal działają. Zmiana promptu
-  nie przelicza automatycznie istniejących draftów; odzyskiwanie nie pyta modelu.
-  Regresje kontraktu: `tests/test_ai_senses.py`, `tests/test_queue_recovery.py`;
-  DOM i lokalność metadanych: `tests/qt_integrations_smoke.py` (syntetyczne strony).
-- `ai_tag` oznacza pochodzenie i trafia na wszystkie notatki z przycisku;
-  `ai_review_tag` tylko przy `by_ai` (definicję przypisał model) bez `reviewed`.
-  Checkbox `reviewed` jest DOMYŚLNIE zaznaczony (decyzja użytkownika: większość
-  dopasowań jest dobra), więc tag dostają karty odznaczone ręcznie albo edytowane —
-  każda edycja cofa potwierdzenie; zmiana definicji zdejmuje `by_ai`. Dymek po
-  zapisie liczy „do przejrzenia” tym samym warunkiem co `add_notes`. Propozycje bez klucza `by_ai` (stare drafty) liczą
-  się jak AI, gdy mają definicję (`_by_ai`).
-- `add_notes` dopisuje każdej nowej notatce `ai-import::YYYY-MM-DD`.
-  `date.today()` jest odczytane raz na głównym wątku przy przygotowaniu zapisu:
-  lokalna data zapisu, nie generowania/draftu ani dzień Anki liczony od rollover.
-  Tag obejmuje całą paczkę, również pary bez modelu i brak definicji. Nie zależy
-  od `ai_tag`, `ai_review_tag` ani potwierdzenia; nie retaguje istniejących notatek.
-  Nie ma nowego klucza configu ani stanu sesji; deduplikacja tagów pozostaje wspólna.
-- AI wypełnia tylko `word_field`, `ai_fields.pl` i `ai_fields.definition`;
-  `ai_fields.example` jest celem przycisków „+ przykład” (rola `example` w mostku).
-- `validate_mapping` obsługuje ustawienia i zapis: wymagane EN/PL, różne pola,
-  a przed transakcją sprawdzenie wszystkich skonfigurowanych pól w typie notatki.
-- Dostawcę AI bierzemy z `..ai_generator.providers` (import leniwy w
-  `_providers()`, bo testy logiki ładują `ai_senses.py` bez aqt). Integrations
-  nie ma własnego klienta AI i nie powinno go dostać. `prepare_provider` należy
-  do głównego wątku; w tle zostaje samo `generate`. Z sekcji `ai_generator`
-  bierzemy klucze i listę dostawców, NIE modele per pole notatki — kolejka ma
-  jeden własny wybór (`ai_provider`/`ai_model`/`ai_reasoning_effort`).
-  `provider_label` pokazuje dostawcę i model w oknie wyboru.
-- Panel ustawień pokazuje najpierw AI; pola/tagi/limit czasu i Web Bridge są zwijane. Połączenie n8n (adresy, klucz, tabela, kolumny) i Cloudflare Access edytuje i zapisuje strona Konta i klucze (`settings/accounts_tab.py`) — `IntegrationsTab.apply` nie zapisuje tych kluczy. Panel 📚 przełącza pozycja `word_queue.editor_actions` w menu „Toolkit ▾” (tylko okno Dodaj). Błąd mapowania otwiera sekcję pól. Panel kolejki ma sterowanie i listę po lewej, słowniki po prawej. Przycisk „Utwórz karty z AI” i opis wyboru korzystają z `_selected_rows`; bez wyboru AI jest wyłączone. Status pobierania n8n zostaje nad listą. Stop jest widoczny podczas pracy, odzyskiwanie tylko przy draftach (`_save_state` i `_set_busy` odświeżają widoczność).
-- Lista modeli kolejki korzysta z żywych ustawień dostawcy; zmiana dostawcy czyści nadpisanie modelu. „Odśwież” korzysta z istniejących fetcherów AI Generatora w tle (`uses_collection=False`); wynik jest przypisany do dostawcy i nie podmienia listy po przełączeniu na innego.
-- `ai_reasoning_effort`: opcjonalne nadpisanie effort dla CLI w kolejce. Puste/brak dziedziczy od dostawcy; `prepare_provider` zmienia tylko kopię konfiguracji. UI korzysta ze wspólnej listy `CLI_REASONING_EFFORTS` i resetuje nadpisanie po zmianie dostawcy. `SettingsDialog` podpina żywe ustawienia dostawców ze strony Konta i klucze, aby etykieta dziedziczenia uwzględniała niezapisane zmiany poziomu.
-- Notatki z `ai_senses.add_notes` powstają poza oknem „Dodaj", więc hook
-  `add_cards_did_add_note` nie leci — wiersz n8n odhacza panel wprost.
+  etykieta bez szablonu nie dostaje zakładki.
+- Wybór słowa ładuje wszystkie zakładki naraz, zaczynając od widocznej.
+- Na diki „→ hasło" stoi przy KAŻDYM `.hws .hw` (wpis bywa listą nagłówków:
+  nazwa łacińska, potem „także:"); na Cambridge jeden na wpis
+  (`.di-title.dhw, .hw.dhw`). „→ oba" bierze nagłówek równy `?q=`, inaczej pierwszy.
+  Pole hasła dostaje zawsze JEDEN nagłówek.
+- Kanarek `tests/live_selectors.py` (sieć) prowadzi prawdziwe `_DictTabs` z `page_js`
+  na żywych stronach i sprawdza wczytanie oraz przyciski. Uruchamiaj po aktualizacji
+  Anki, na jego Qt.
 
-- AI działa na PACZCE zaznaczonych wierszy: `SensePicker` i `add_notes` biorą
-  listę haseł, nie jedno. Nie cofaj tego do jednego hasła — okno na hasło przy
-  wklejonej liście to tyle klików, ile haseł.
-- `_DictTabs._collect` oddaje pozycje ze stron przez `QTimer.singleShot(0, …)`, nigdy
-  wprost. `runJavaScript` woła nas ze środka QtWebEngine, a paczka w tym callbacku
-  ładuje kolejne hasło i potrafi otworzyć modalne okno — to natywny crash Anki,
-  nie wyjątek Pythona. Nie „upraszczaj" tego z powrotem do bezpośredniego wywołania.
-- Paczka jest SEKWENCYJNA: jedno hasło naraz, następne rusza po wyniku
-  poprzedniego. Nie wprowadzaj z powrotem nakładania kroków — zakładki i tak są
-  jedne, więc zysk jest żaden, a liczników stanu do skoordynowania od razu kilka.
-  `_busy` wstrzymuje wszystko, co przebudowuje listę (odświeżanie, kolejność,
-  dopisywanie haseł); wynik wiąże się z wierszem po `row_id`, nie po zaznaczeniu.
-  Przerwana paczka woła `_unfreeze` — inaczej panel zostaje wyłączony na zawsze.
-- Cel zapisu sprawdzamy PO zamknięciu okna wyboru, nie przed: dialog bywa otwarty
-  długo, a tożsamość kolekcji i żywe okno „Dodaj” to warunek, żeby zapis poszedł
-  tam, gdzie użytkownik go widział.
-- Błąd jednego hasła nie przerywa paczki: wypada z wyników i ląduje w dymku.
-- Zapis AI: przygotowanie całej paczki, jedno `col.add_notes` na głównym
-  wątku; zwrócone OpChanges trafiają do `on_op_finished`. Pola tekstowe są
-  escapowane jako HTML bez cudzysłowów (`quote=False`, jak edytor Anki), bo
-  wyszukiwarka porównuje surowy HTML pola.
+### Znikający podgląd słowników (rozwiązane 2026-10-01)
 
-- SensePicker grupuje hasła w `QGroupBox`, a karty w osobne ramki. Checkbox
-  karty rozwija jej pola (odznaczona zwija się do linii z PL), licznik i przycisk „Dodaj karty (n)” korzystają z tego
-  samego wyboru. `_all` pokazuje stan częściowy; tylko `clicked` zmienia wybór,
-  dzięki czemu programowe odświeżenie stanu nie wybiera pozostałych kart.
-  Pusty wybór nie zatwierdza okna, brak PL przewija i skupia wadliwe pole.
-- SensePicker edytuje kopie propozycji i pokazuje wszystkie znaczenia, zaznaczając
-  pierwsze `ai_max_senses`. Wymaga niepustego PL. Linki HTTP(S) pochodzą z adresów
-  zakładek (wiersz n8n albo szablon) dla `pl_src` i `src`, nigdy z odpowiedzi modelu.
-- Pole „Hasło (EN)” w SensePickerze trafia do znaczenia jako `sense["word"]`
-  (puste = nagłówek propozycji lub hasło z kolejki) i tylko `note_fields` wpisuje je na kartę. Para
-  `(word, sense)` z `selected()` niesie NADAL hasło z kolejki — po nim panel wiąże
-  wiersz, drafty i odhaczenie; nie podmieniaj go edytowaną wartością. Dług `owed`
-  zapisuje nagłówek faktycznie wpisany na kartę, bo `_settle_owed` szuka kart po
-  nim. Edycja hasła nie resetuje `reviewed` (to potwierdzenie pary PL–definicja).
-  Kontrola „mam już karty” przed AI szuka po haśle z kolejki — karty ze zmienionym
-  hasłem jej nie zatrzymają (świadome ograniczenie).
-- Duplikat = samo słowo w `word_field` (`find_word_notes`), nigdy znaczenie.
-  Szukamy też wariantu z encjami (`&amp;`, a dla starszych notatek `&#x27;`/`&quot;`).
-  `_ai_senses` pomija słowa, które mają już karty, ZANIM zapyta model; błąd
-  wyszukiwania przerywa paczkę. Nieodhaczone z nich odhacza dopiero po `askUser`
-  (przez `_owe` + `_finish_rows`, jak po zapisie kart). `existing_senses` w podglądzie zostaje jako
-  ostrzeżenie dla odzyskanych propozycji (karty mogły powstać w międzyczasie).
-- Dopisane hasła idą do tabeli (`add_rows`) i dostają prawdziwe `id`. Duplikaty
-  odsiewa panel po zawartości listy — ma całą tabelę, więc osobne zapytanie
-  „czy już jest" byłoby zbędnym żądaniem przed każdą wklejką. Do porównania wchodzi też `_adding`
-  (hasła w locie): przed odpowiedzią n8n nie ma ich na liście, a bez tego drugie
-  wklejenie zapisałoby duplikat. Nieudany zapis oddaje hasła do pola „własne
-  hasło” — panel zakłada działający n8n i nie ma trybu offline ani wierszy
-  lokalnych (usunięte celowo; nie przywracaj ujemnych `id`).
-- `_added` trzyma wiersze zapisane w n8n, dopóki nie zobaczy ich odświeżenie:
-  GET rozpoczęty przed POST-em nie może ich usunąć z listy ani odblokować
-  ponownego zapisu tego samego hasła.
-- Userscript wysyła role (`headword`, `meaning`, `definition`, `example`);
-  `bridge._resolve` zamienia je na pola z `word_queue` na głównym wątku. Nazwy
-  pól nie wracają do userscriptu — jedno źródło to konfiguracja.
-- Mostek i panel traktują wartości jako tekst i escapują je przed wpisaniem do
-  pola; surowy HTML tylko z `"html": true`. Separator zawsze jest HTML-em.
-- `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
-  samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
-
-
-- Wyszukiwarka `_search` współdzieli `_apply_hiding` z filtrem `_status_filter` (Wszystkie / Niezrobione / Zrobione, domyślnie Niezrobione):
-  fragment hasła, casefold; wybór checkboxów zachowany, `_selected_rows` pomija ukryte.
-- Zwykłe AI ponownie pobiera stare drafty bez klucza `related`; nowe drafty
-  (również `related: []`) są używane bez ponownego pytania modelu. Odzyskiwanie nadal otwiera zachowane dane.
-- `common.http` dokłada domyślny User-Agent także dla `post_json`/`post_create`,
-  z możliwością nadpisania; bez tego POST/PATCH do n8n mogą dostać Cloudflare 1010.
-  `add_rows` traktuje HTTP 403 jako odrzucenie, bez ponowienia POST ani readbacku.
-
-
-## Odzyskiwanie
-
-`queue_state.py` to mały plik JSON w `user_files/`, zapisywany atomowo.
-Zakres = ścieżka kolekcji + adres główny + tabela + kolumny; nie zapisuje sekretów.
-Panel używa go tylko na głównym wątku. Uszkodzony plik jest przemianowywany na
-`.broken` i panel startuje z pustym stanem — nie może blokować okna „Dodaj".
-
-- `add_rows`: wybór hosta przez GET, jeden POST bez retry/failover zapisu.
-  Niepewny wynik sprawdzamy pełnym GET; brak pewności to błąd, a hasła wracają do pola.
-  Przekroczenie `max_rows` to błąd, nie udane pobranie części tabeli.
-- `drafts`: każdy ukończony wynik AI; stop kończy bieżące hasło, przycisk
-  odzyskiwania otwiera propozycje bez modelu. Znikają po zapisie kart.
-- `owed` (id wiersza → hasło): karty są, PATCH „zrobione" jeszcze nie przeszedł.
-  Zapisywane PRZED `col.add_notes`, usuwane po udanym PATCH-u. Nieudany zapis
-  długu przerywa dodawanie kart (propozycje zostają w `drafts`). Po każdym
-  odświeżeniu `_settle_owed` sprawdza kolekcję (`find_word_notes`): są karty →
-  ponów PATCH; brak kart (crash przed commitem) → zapomnij dług, zostaw draft.
-- Undo NIE jest śledzone (świadomie, `ponytail:` w `queue_state.py`): cofnięcie
-  paczki zostawia wiersz odhaczony w n8n — odznacza się go ręcznie.
-- `_set_row` pozostaje jedynym wejściem do PATCH.
-
-## Znikający podgląd słowników (rozwiązane 2026-10-01)
-
-- Przyczyna: QtWebEngine 6.11.2 (także czyste koła PyPI, nie tylko pakiet Anki
-  26.09.3; macOS 27 ARM64) nie rejestruje kodeków ICU. Dekodują się tylko
-  UTF-8/16, windows-1252, GBK/gb18030, kodowania japońskie, EUC-KR
-  i ISO-8859-8-I; każde inne (windows-125x, ISO-8859-x, KOI8, Big5) kończy się
-  `CHECK` w `NewTextCodec` i SIGTRAP procesu renderera (`renderProcessTerminated`,
-  Crashed, kod 5). Minimalne odtworzenie:
-  `new TextDecoder('windows-1250').decode(new Uint8Array([65]))` (sam konstruktor nie pada).
-  Qt 6.8/6.9 na tej samej maszynie działa. To nie GPU ani sterownik wideo.
-- Na stronach słowników wyzwalaczem są skrypty reklam (stos awarii:
-  `ResponseBodyLoader` → `ScriptResource::SourceText` → `NewTextCodec`), stąd
-  losowość i opóźnienie do chwili wczytania kreacji. Diki nie padło w żadnej
-  próbie, więc zostaje z włączonym JS.
+- Przyczyna: QtWebEngine 6.11.2 nie rejestruje kodeków ICU. Każde kodowanie poza
+  UTF-8/16, windows-1252, GBK/gb18030, japońskimi, EUC-KR i ISO-8859-8-I kończy się
+  `CHECK` w `NewTextCodec` i SIGTRAP renderera. Odtworzenie:
+  `new TextDecoder('windows-1250').decode(new Uint8Array([65]))`. Qt 6.8/6.9 działa.
+- Wyzwalaczem są skrypty reklam na Cambridge, Oxfordzie i LDoCE. Diki nie padło.
 - Naprawa: `page_js` — skrypty strony (MainWorld) są włączone tylko na zakładkach
   z tej listy (domyślnie diki). Userscript działa w ApplicationWorld (`_WORLD`),
-  więc przyciski, mostek i `ankiDictionaryEntries` działają też przy wyłączonym
-  JS strony; `runJavaScript` w `_collect` musi podawać ten sam świat. Nie przenoś
+  więc przyciski i mostek działają też przy wyłączonym JS strony. Nie przenoś
   userscriptu z powrotem do MainWorld.
-- Nie zastępuj tego blokadą żądań reklam: Cambridge, Oxford i LDoCE mają
-  Ad-Shield (`html-load.com`), który po zablokowaniu skryptów czyści stronę
-  i przekierowuje na `report.error-report.com`. Sprawdzone, odrzucone.
+- Nie zastępuj tego blokadą żądań reklam: Ad-Shield (`html-load.com`) po zablokowaniu
+  skryptów czyści stronę i przekierowuje na `report.error-report.com`. Sprawdzone, odrzucone.
 - `_renderer_died` loguje awarię, pokazuje komunikat zamiast szarego widoku
   i odkłada URL do `_pending` (ponowne wejście w zakładkę wczytuje stronę).
-- Potwierdzone w działającym Anki 26.09.3 przez użytkownika (2026-10-01) oraz
-  serią przebiegów `_DictTabs` na Qt z pakietu Anki: zero awarii, przyciski
-  i ekstrakcja działają na czterech słownikach.
 - Gdy Anki dostanie poprawione Qt, wystarczy dopisać etykiety do `page_js`.
 - Wyjątek `SidebarTreeView has been deleted` pochodzi z Advanced Browser
-  (`1334324384`), nie z tego modułu; użytkownik polecił go pominąć i nie
-  modyfikować innych dodatków.
+  (`1334324384`), nie z tego modułu; użytkownik polecił go pominąć.

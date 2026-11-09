@@ -166,7 +166,7 @@ class AIGeneratorTab(QWidget):
 
 
 def used_providers(cfg: dict) -> set:
-    """Providers with a real key or chosen by any prompt or the word queue."""
+    """Providers with a real key or chosen by any prompt."""
     ai = cfg.get("ai_generator") or {}
     used = {name for name, p in (ai.get("providers") or {}).items()
             if name not in _LOCAL_PROVIDERS and _has_real_key((p or {}).get("api_key", ""))}
@@ -174,7 +174,6 @@ def used_providers(cfg: dict) -> set:
         for entry in (fields or {}).values() if isinstance(fields, dict) else ():
             if isinstance(entry, dict):
                 used |= {entry.get("provider"), entry.get("fallback_provider")}
-    used.add((cfg.get("word_queue") or {}).get("ai_provider"))
     return used & set(_PROVIDER_NAMES)
 
 

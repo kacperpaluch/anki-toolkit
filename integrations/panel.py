@@ -11,23 +11,19 @@ własny świat JS i działa wszędzie.
 Po dodaniu notatki (hook w __init__) wiersz jest odhaczany po `id`, ale panel
 ZOSTAJE na słówku — jedno hasło bywa kilkoma kartami (kilka znaczeń).
 
-Ptaszek przy słówku to WYBÓR DO AI, nie stan tabeli: zbierasz nim hasła przez
-całą listę, bo przewijanie i klikanie gdzie indziej go nie gubią (a podświetlenie
-tak). Stan „zrobione" z n8n widać kolorem — szare to odhaczone — i zmienia się
-go prawym klikiem albo przyciskiem „Oznacz jako zrobione". Nic nie znika z listy samo;
+Stan „zrobione" z n8n widać kolorem — szare to odhaczone — i zmienia się go
+prawym klikiem albo przyciskiem „Oznacz jako zrobione". Nic nie znika z listy samo;
 od chowania jest filtr „Niezrobione”.
 
 Przyciski: „Oznacz jako zrobione" = odhacz w n8n + skok dalej (koniec z tym hasłem),
 „Pomiń" = skok bez odhaczania (pominięcie).
 
-Wybór słówka ładuje WSZYSTKIE zakładki naraz (dwa słowniki PL, trzy EN —
-Cambridge liczy się do obu). Kosztuje to pamięć, bo Chromium bierze ~100 MB na
-zakładkę, ale „AI: znaczenia" i tak czyta komplet, a przy przeglądaniu ręcznym
-nie czekasz na wczytanie po każdym kliknięciu w zakładkę.
+Wybór słówka ładuje WSZYSTKIE zakładki naraz. Kosztuje to pamięć, bo Chromium
+bierze ~100 MB na zakładkę, ale nie czekasz na wczytanie po każdym kliknięciu
+w zakładkę.
 """
 
 import html
-import json
 import logging
 import random
 from concurrent.futures import Future
@@ -38,10 +34,8 @@ from aqt import mw
 from aqt.qt import (
     QAbstractItemView,
     QBrush,
-    QCheckBox,
     QComboBox,
     QDockWidget,
-    QFont,
     QHBoxLayout,
     QInputDialog,
     QKeySequence,
@@ -69,18 +63,13 @@ from aqt.qt import (
 from aqt.utils import askUser, tooltip
 
 from ..common import clean_html_normalized, update_module_config
-from ..common.ui import palette, show_check_indicators
-from . import ai_senses, bridge, word_queue
+from . import bridge, word_queue
 from .queue_state import QueueState
 
 log = logging.getLogger(__name__)
 
 # Ten sam plik, który wgrywasz do Tampermonkeya. Jedno źródło prawdy.
 _USERSCRIPT_PATH = Path(__file__).resolve().parent / "dictionaries-to-anki.user.js"
-
-# Powyżej tylu haseł naraz pytamy — paczka to tyle samo pytań do modelu, a przy
-# lokalnym CLI tyle samo procesów. Próg, nie limit.
-_BATCH_ASK = 10
 
 
 def _age_key(row: dict):
@@ -122,9 +111,6 @@ class _DictTabs(QTabWidget):
         self._labels = list(labels)          # indeks zakładki → etykieta
         self._views: list[QWebEngineView] = []
         self._pending: dict[int, str] = {}   # indeks → URL czekający na pierwsze wejście
-        self._loaded: dict[int, bool | None] = {}
-        self._generation = 0
-        self._word = ""
         for index, label in enumerate(self._labels):
             view = QWebEngineView(self)
             view.setPage(QWebEnginePage(_dict_profile(), view))
@@ -134,8 +120,6 @@ class _DictTabs(QTabWidget):
             # Blokada samych reklam nie wystarcza — strony same się wtedy czyszczą.
             view.settings().setAttribute(
                 QWebEngineSettings.WebAttribute.JavascriptEnabled, label in page_js)
-            view.loadStarted.connect(lambda i=index: self._loaded.__setitem__(i, None))
-            view.loadFinished.connect(lambda ok, i=index: self._loaded.__setitem__(i, ok))
             view.renderProcessTerminated.connect(
                 lambda status, code, i=index: self._renderer_died(i, status, code))
             self._views.append(view)
@@ -147,10 +131,9 @@ class _DictTabs(QTabWidget):
         url = self._views[index].url().toString()
         log.warning("word_queue: renderer zakładki %s padł (%s, kod %s) na %s",
                     self._labels[index], status.name, code, url)
-        self._loaded[index] = False
         self._pending.setdefault(index, url)  # ponowne wejście w zakładkę wczyta ją od nowa
 
-        def explain():  # poza sygnałem silnika, jak w `_collect`
+        def explain():  # poza sygnałem silnika
             if not sip.isdeleted(self):
                 self._views[index].setHtml(
                     "<p style='font: 14px sans-serif; margin: 2em'>Silnik przeglądarki przerwał "
@@ -159,13 +142,10 @@ class _DictTabs(QTabWidget):
 
         QTimer.singleShot(0, explain)
 
-    def set_urls(self, urls: dict[str, str], word: str = "") -> None:
+    def set_urls(self, urls: dict[str, str]) -> None:
         """urls: etykieta → URL. Brak/pusty URL = zakładka wyszarzona."""
-        self._generation += 1
-        self._word = word
         self._pending = {i: urls.get(label) or "" for i, label in enumerate(self._labels)}
         self._pending = {i: url for i, url in self._pending.items() if url}
-        self._loaded = {}  # nowe hasło — stary tekst stron przestał obowiązywać
         for i in range(len(self._labels)):
             enabled = i in self._pending
             self.setTabEnabled(i, enabled)
@@ -175,9 +155,7 @@ class _DictTabs(QTabWidget):
             return
         if not self.isTabEnabled(self.currentIndex()):
             self.setCurrentIndex(min(self._pending))
-        # Wszystkie słowniki naraz, zaczynając od widocznego. „AI: znaczenia"
-        # i tak czyta komplet przy każdym haśle, więc ładowanie na żądanie
-        # tylko przesuwało ten koszt na moment, w którym czekasz na model.
+        # Wszystkie słowniki naraz, zaczynając od widocznego.
         self._load_current()
         for index in list(self._pending):
             self._start_load(index)
@@ -188,83 +166,7 @@ class _DictTabs(QTabWidget):
     def _start_load(self, index: int) -> None:
         url = self._pending.pop(index, None)
         if url:
-            self._loaded[index] = None
             self._views[index].load(QUrl(url))
-
-    def _enabled(self) -> list[int]:
-        """Zakładki, z których zbieramy tekst dla AI."""
-        return [i for i in range(len(self._labels)) if self.isTabEnabled(i)]
-
-    def entries(self, callback, timeout_ms: int = 20000) -> None:
-        """{etykieta: [pozycje hasła]} dla włączonych zakładek — dla „AI: znaczenia”.
-
-        Zakładki ruszają już przy wyborze słówka, więc zwykle jest na co czekać,
-        a nie co zaczynać. Dociąganie zostaje na wypadek zakładki, która z
-        jakiegoś powodu nie ruszyła. Ta, która nie dojedzie w `timeout_ms`, jest
-        pomijana — lepszy prompt z dwóch słowników niż przycisk, który nie oddaje.
-
-        ponytail: odpytujemy timerem zamiast pilnować sygnałów loadFinished na
-        krzyż. Ćwierć sekundy opóźnienia przy akcji, która i tak trwa sekundy.
-        """
-        for index in self._enabled():
-            self._start_load(index)
-        remaining = [timeout_ms]
-        generation = self._generation
-
-        def ready():
-            if sip.isdeleted(self) or generation != self._generation:
-                return
-            if any(self._loaded.get(i) is None for i in self._enabled()) and remaining[0] > 0:
-                remaining[0] -= 250
-                QTimer.singleShot(250, ready)
-                return
-            self._collect(callback)
-
-        ready()
-
-    def _collect(self, callback) -> None:
-        """Zbierz pozycje ze stron i oddaj je JUŻ POZA callbackiem silnika.
-
-        `runJavaScript` woła nas ze środka QtWebEngine, a wywołujący robi tam
-        rzeczy, których w cudzym callbacku robić nie wypada: `load()` na tym
-        samym widoku (paczka przechodzi do kolejnego hasła) i modalne okno
-        wyboru. Jedno odbicie przez pętlę zdarzeń zdejmuje to z wszystkich
-        wywołujących `entries()` naraz. Higiena, nie znana awaria.
-        """
-        indexes = [i for i in self._enabled() if self._loaded.get(i)]
-        generation = self._generation
-        if not indexes:
-            QTimer.singleShot(0, lambda: None if sip.isdeleted(self) or generation != self._generation else callback({}))
-            return
-        result: dict[str, list] = {}
-        missing = [len(indexes)]
-        returned = [False]
-
-        def finish():
-            if returned[0] or sip.isdeleted(self) or generation != self._generation:
-                return
-            returned[0] = True
-            callback(result)
-
-        # A stalled renderer may never answer runJavaScript, even after loadFinished.
-        QTimer.singleShot(5000, finish)
-
-        def got(items, label):
-            if returned[0]:
-                return
-            if isinstance(items, list) and items:
-                result[label] = items
-            missing[0] -= 1
-            if missing[0] == 0 and not sip.isdeleted(self):
-                QTimer.singleShot(0, finish)
-
-        for index in indexes:
-            self._views[index].page().runJavaScript(
-                "typeof window.ankiDictionaryEntries === 'function' ? window.ankiDictionaryEntries("
-                + json.dumps(self._word) + ") : []",
-                _WORLD,
-                lambda items, label=self._labels[index]: got(items, label)
-            )
 
 
 class WordQueuePanel(QDockWidget):
@@ -277,13 +179,11 @@ class WordQueuePanel(QDockWidget):
         self._cfg = cfg
         self._collection = mw.col
         self._state = QueueState(mw.col.path, cfg)
-        self._stop_requested = False
         self._fetch_queue = fetch_queue
         self._mark_row_done = mark_row_done
         self._marked: set = set()  # id wierszy już odhaczonych — PATCH tylko raz na wiersz
-        self._picked: set = set()  # id zaptaszkowanych do AI; wyłącznie stan panelu
         self._done_count = 0
-        self._suspend = False  # blokuje itemChanged przy zmianach programowych
+        self._suspend = False  # zmiany programowe nie udają kliknięć użytkownika
         self._pending: dict = {}  # one in-flight PATCH per row
         self._refill_generation = 0
         self._selection_generation = 0
@@ -291,7 +191,6 @@ class WordQueuePanel(QDockWidget):
         self._bound_row_id = None
         self._adding: set[str] = set()  # hasła w trakcie zapisu do n8n (casefold)
         self._added: dict = {}  # id → wiersz zapisany w n8n, zanim zobaczy go odświeżenie
-        self._busy = False  # paczka AI w toku — nic nie przebudowuje listy
 
         self.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
@@ -302,7 +201,6 @@ class WordQueuePanel(QDockWidget):
         self.refill()
 
     def _save_state(self) -> bool:
-        self._resume_btn.setVisible(not self._busy and bool(self._state.data["drafts"]))
         try:
             self._state.save()
             return True
@@ -323,30 +221,18 @@ class WordQueuePanel(QDockWidget):
         for key, word in list(self._state.data["owed"].items()):
             row_id = int(key)
             if row_id in self._marked or row_id not in listed:  # done, or row deleted in n8n
-                self._state.drop_drafts({row_id})
                 del self._state.data["owed"][key]
                 continue
             try:
-                has_cards = bool(ai_senses.find_word_notes(word, self._cfg))
+                has_cards = bool(word_queue.find_word_notes(word, self._cfg))
             except Exception:
                 log.exception("word_queue: nie sprawdzono kart dla %r", word)
                 continue
             if has_cards:
-                self._state.drop_drafts({row_id})
                 self._set_row(None, True, row_id=row_id)
             else:
-                self._state.data["owed"].pop(key)  # crash before commit: keep the draft, report nothing
+                self._state.data["owed"].pop(key)  # crash before commit: nothing to report
         self._save_state()
-
-    def _resume_drafts(self):
-        if self._busy or mw.col is not self._collection:
-            return
-        self._finish_batch(list(self._state.data["drafts"]), [], self._collection)
-
-    def _stop_batch(self):
-        self._stop_requested = True
-        self._stop_btn.setEnabled(False)
-        self._progress.setText("Zatrzymywanie po bieżącym haśle…")
 
     # -- UI -----------------------------------------------------------------
 
@@ -364,8 +250,8 @@ class WordQueuePanel(QDockWidget):
         self._counter = QLabel("")
         queue.addWidget(self._counter)
 
-        self._queue_controls = QWidget(sidebar)
-        controls = QVBoxLayout(self._queue_controls)
+        controls_widget = QWidget(sidebar)
+        controls = QVBoxLayout(controls_widget)
         controls.setContentsMargins(0, 0, 0, 0)
         filters = QHBoxLayout()
         self._order = QComboBox()
@@ -406,40 +292,17 @@ class WordQueuePanel(QDockWidget):
         paste_btn.clicked.connect(lambda _checked=False: self._paste_words())
         adding.addWidget(paste_btn)
         controls.addLayout(adding)
-        queue.addWidget(self._queue_controls)
+        queue.addWidget(controls_widget)
 
         self._queue_status = QLabel("")
         self._queue_status.setWordWrap(True)
         queue.addWidget(self._queue_status)
         self._list = QListWidget(sidebar)
-        show_check_indicators(self._list)
-        self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.currentItemChanged.connect(self._on_item_changed)
-        self._list.itemChanged.connect(self._on_item_checked)
-        self._list.itemSelectionChanged.connect(self._update_ai_label)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._list_menu)
         queue.addWidget(self._list, 1)
-
-        selection = QHBoxLayout()
-        self._selection_hint = QLabel("")
-        self._selection_hint.setWordWrap(True)
-        self._selection_hint.setStyleSheet(f"color: {palette()['muted']};")
-        selection.addWidget(self._selection_hint, 1)
-        self._clear_btn = QPushButton("Wyczyść wybór")
-        self._clear_btn.setFlat(True)
-        self._clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._clear_btn.setToolTip("Odznacz wszystkie checkboxy na liście")
-        self._clear_btn.clicked.connect(lambda _checked=False: self._clear_picks())
-        self._clear_btn.setVisible(False)
-        selection.addWidget(self._clear_btn)
-        queue.addLayout(selection)
-        self._ai_btn = QPushButton("Utwórz karty z AI")
-        self._ai_btn.setDefault(True)  # tylko wygląd: okno „Dodaj” to QMainWindow, Enter go nie wyzwala
-        self._ai_btn.setToolTip("Znaczenia z diki i definicje ze słowników. Przed zapisem wybierzesz "
-                                "i poprawisz karty. Skrót: Enter na liście.")
-        self._ai_btn.clicked.connect(lambda _checked=False: self._ai_senses())
-        queue.addWidget(self._ai_btn)
         split.addWidget(sidebar)
 
         # Bieżące słowo nad słownikami: to ono jest w notatce i jego dotyczą przyciski obok.
@@ -455,8 +318,8 @@ class WordQueuePanel(QDockWidget):
         font.setBold(True)
         self._word_title.setFont(font)
         bar.addWidget(self._word_title, 1)
-        self._manual_controls = QWidget(current)
-        manual = QHBoxLayout(self._manual_controls)
+        manual_controls = QWidget(current)
+        manual = QHBoxLayout(manual_controls)
         manual.setContentsMargins(0, 0, 0, 0)
         done_btn = QPushButton("Oznacz jako zrobione")
         done_btn.setToolTip("Oznacz bieżące słowo w n8n i przejdź dalej. Nie tworzy kart. Skrót: D na liście.")
@@ -466,16 +329,15 @@ class WordQueuePanel(QDockWidget):
         next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n. Skrót: S na liście.")
         next_btn.clicked.connect(lambda _checked=False: self.advance())
         manual.addWidget(next_btn)
-        bar.addWidget(self._manual_controls)
+        bar.addWidget(manual_controls)
         side.addLayout(bar)
         self._tabs = _DictTabs(word_queue.dict_labels(self._cfg), self._cfg.get("page_js") or [], current)
         side.addWidget(self._tabs, 1)
         split.addWidget(current)
 
         # Skróty tylko przy fokusie na liście — w polach tekstowych litery mają się wpisywać,
-        # a Ctrl+Enter należy do „Dodaj”. Spacja (checkbox) i strzałki działają w Qt same.
-        for key, button in ((Qt.Key.Key_Return, self._ai_btn), (Qt.Key.Key_Enter, self._ai_btn),
-                            (Qt.Key.Key_D, done_btn), (Qt.Key.Key_S, next_btn)):
+        # a Ctrl+Enter należy do „Dodaj”. Strzałki działają w Qt same.
+        for key, button in ((Qt.Key.Key_D, done_btn), (Qt.Key.Key_S, next_btn)):
             shortcut = QShortcut(QKeySequence(key), self._list)
             shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
             shortcut.activated.connect(button.click)  # click() nic nie robi, gdy przycisk wyłączony
@@ -483,20 +345,6 @@ class WordQueuePanel(QDockWidget):
         split.setSizes([330, 770])
         layout.addWidget(split, 1)
 
-        recovery = QHBoxLayout()
-        self._progress = QLabel("")
-        self._progress.setWordWrap(True)
-        recovery.addWidget(self._progress, 1)
-        self._stop_btn = QPushButton("Zatrzymaj po bieżącym haśle")
-        self._stop_btn.setVisible(False)
-        self._stop_btn.clicked.connect(lambda: self._stop_batch())
-        recovery.addWidget(self._stop_btn)
-        self._resume_btn = QPushButton("Odzyskane propozycje")
-        self._resume_btn.setVisible(bool(self._state.data["drafts"]))
-        self._resume_btn.clicked.connect(lambda: self._resume_drafts())
-        recovery.addWidget(self._resume_btn)
-        layout.addLayout(recovery)
-        self._update_ai_label()
         return root
 
     # -- kolejka ------------------------------------------------------------
@@ -512,7 +360,7 @@ class WordQueuePanel(QDockWidget):
         if word == self._shown_word:
             return  # paczka z jednym hasłem nie przeładowuje tego, co już widać
         self._shown_word = word
-        self._tabs.set_urls(word_queue.dict_urls(word, self._cfg, row), word)
+        self._tabs.set_urls(word_queue.dict_urls(word, self._cfg, row))
 
     def _add_typed_word(self) -> None:
         """Enter w polu obok listy: dopisz hasło (albo kilka po przecinku)."""
@@ -536,9 +384,6 @@ class WordQueuePanel(QDockWidget):
         nie przepadły — ponowienie to Enter (po „Odśwież”, jeśli zapis był niepewny).
         """
         if not words:
-            return
-        if self._busy:
-            tooltip("AI: poczekaj na koniec paczki.", parent=mw)
             return
         column = self._cfg["word_column"]
         rows = [self._list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self._list.count())]
@@ -583,32 +428,12 @@ class WordQueuePanel(QDockWidget):
                 self._word_input.setText(", ".join(([typed] if typed else []) + fresh))
                 return
             self._added.update({row["id"]: row for row in saved})
-            def append_when_idle():
-                if sip.isdeleted(self) or mw.col is not self._collection:
-                    return
-                if self._busy:
-                    QTimer.singleShot(250, append_when_idle)
-                    return
+            if mw.col is self._collection:
                 self._append_rows(saved)
-            append_when_idle()
 
         mw.taskman.run_in_background(
             lambda: word_queue.add_rows(fresh, self._cfg), done,
             uses_collection=False)
-
-    def _add_related_words(self, words: list[str]) -> None:
-        """Explicit picker action; collection lookup stays on the main thread."""
-        if sip.isdeleted(self) or mw.col is not self._collection:
-            return
-        try:
-            fresh = [word for word in words if not ai_senses.find_word_notes(word, self._cfg)]
-        except Exception:
-            log.exception("word_queue: sprawdzanie powiązanych zwrotów")
-            tooltip("Nie udało się sprawdzić kart — nie dodano zwrotów do kolejki.", parent=mw)
-            return
-        if len(fresh) != len(words):
-            tooltip("Pominięto zwroty, które mają już karty w Anki.", parent=mw)
-        self._add_words(fresh)
 
     def _append_rows(self, fresh: list[dict]) -> None:
         if not fresh:
@@ -635,9 +460,6 @@ class WordQueuePanel(QDockWidget):
 
     def refill(self) -> None:
         """Pobierz świeżą paczkę wierszy z flag_column == false i zbuduj listę."""
-        if self._busy:
-            tooltip("AI: poczekaj na koniec paczki.", parent=mw)
-            return
         if self._pending:
             tooltip("n8n: poczekaj na zakończenie zapisu wierszy.", parent=mw)
             return
@@ -676,15 +498,10 @@ class WordQueuePanel(QDockWidget):
                                      uses_collection=False)
 
     def _rebuild(self, rows: list[dict]) -> None:
-        """Przebuduj listę z podanych wierszy, zachowując wygląd odhaczonych.
-
-        Ptaszki (wybór do AI) przeżywają przebudowę — od tego są — ale tylko dla
-        wierszy, które nadal istnieją; inaczej znikający wiersz zawyżałby licznik.
-        """
-        self._picked &= {row.get("id") for row in rows}
+        """Przebuduj listę z podanych wierszy, zachowując wygląd odhaczonych."""
         selected_id = self.current_row_id()
         self._selection_generation += 1
-        with self._silent():  # addItem/setCheckState odpalają itemChanged — nie chcemy PATCH-y
+        with self._silent():  # programowa zmiana bieżącej pozycji to nie klik użytkownika
             self._list.clear()
             for row in rows:
                 self._list.addItem(self._make_item(row))
@@ -706,13 +523,9 @@ class WordQueuePanel(QDockWidget):
                 return
 
     def _make_item(self, row: dict) -> QListWidgetItem:
-        """Ptaszek = wybrane do AI. Zrobione widać kolorem, nie ptaszkiem."""
+        """Zrobione widać kolorem."""
         item = QListWidgetItem()
         item.setData(Qt.ItemDataRole.UserRole, row)  # _style_item czyta stąd hasło
-        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        row_id = row.get("id")
-        item.setCheckState(Qt.CheckState.Checked if row_id in self._picked
-                           else Qt.CheckState.Unchecked)
         self._style_item(item)
         return item
 
@@ -720,12 +533,6 @@ class WordQueuePanel(QDockWidget):
         """Przestaw kolejność OD RAZU, nie dopiero przy następnym pobraniu —
         inaczej rozwijanka wygląda na zepsutą. Wybór przeżywa restart."""
         order = self._order.currentData()
-        if self._busy:
-            with self._silent():
-                index = self._order.findData(self._cfg.get("order") or "id")
-                self._order.setCurrentIndex(index if index >= 0 else 0)
-            tooltip("AI: poczekaj na koniec paczki.", parent=mw)
-            return
         self._cfg["order"] = order
         update_module_config("word_queue", {"order": order})
         self._rebuild(self._ordered(
@@ -742,37 +549,8 @@ class WordQueuePanel(QDockWidget):
             random.shuffle(rows)
         return rows
 
-    def _on_item_checked(self, item: QListWidgetItem) -> None:
-        """Ptaszek = „weź to do AI". Wyłącznie stan panelu, n8n o nim nie wie.
-
-        Zbieranie przez długą listę musi przetrwać przewijanie i zmianę
-        zaznaczenia — od tego jest ptaszek, a nie podświetlenie, które gubi się
-        przy pierwszym kliknięciu obok.
-        """
-        if self._suspend or item is None:
-            return
-        row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
-        if row_id is None:
-            return
-        if item.checkState() == Qt.CheckState.Checked:
-            self._picked.add(row_id)
-        else:
-            self._picked.discard(row_id)
-        self._style_item(item)
-        self._update_counter()
-        self._update_ai_label()
-
-    def _clear_picks(self) -> None:
-        self._picked.clear()
-        for i in range(self._list.count()):
-            with self._silent():
-                self._list.item(i).setCheckState(Qt.CheckState.Unchecked)
-            self._style_item(self._list.item(i))
-        self._update_counter()
-        self._update_ai_label()
-
     def _list_menu(self, point) -> None:
-        """Prawy klik: stan „zrobione" w n8n — ten, który stracił ptaszek."""
+        """Prawy klik: przełącz stan „zrobione" w n8n."""
         item = self._list.itemAt(point)
         if item is None:
             return
@@ -781,9 +559,6 @@ class WordQueuePanel(QDockWidget):
         done = row_id in self._marked
         toggle = menu.addAction("Cofnij odhaczenie" if done else "Oznacz jako zrobione")
         toggle.triggered.connect(lambda _checked=False: self._set_row(item, not done))
-        if self._picked:
-            clear = menu.addAction(f"Wyczyść wybór do AI ({len(self._picked)})")
-            clear.triggered.connect(lambda _checked=False: self._clear_picks())
         menu.exec(self._list.mapToGlobal(point))
 
     def _done_and_next(self) -> None:
@@ -800,15 +575,13 @@ class WordQueuePanel(QDockWidget):
 
     def _set_row(self, item: QListWidgetItem | None, done: bool, row_id=None) -> None:
         """Zapisz stan „zrobione" w n8n. Przy błędzie cofa kolor — lista ma
-        mówić prawdę o tabeli. Ptaszek do tego nie należy: on wybiera do AI."""
+        mówić prawdę o tabeli."""
         if item is not None:
             row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
         if row_id is None:
             return
         if row_id in self._pending:
             return
-        if done:
-            self._finish_rows({row_id}, mark=False)
         previous = row_id in self._marked
         if previous == done:
             if item is not None:
@@ -858,26 +631,17 @@ class WordQueuePanel(QDockWidget):
             finished(failed)
 
     def _style_item(self, item: QListWidgetItem) -> None:
-        """Szare = zrobione w n8n, checkbox i pogrubienie = wybrane do AI.
-
-        setData emituje itemChanged, stąd wyciszenie.
-        """
+        """Szare = zrobione w n8n."""
         row = item.data(Qt.ItemDataRole.UserRole) or {}
         row_id = row.get("id")
-        picked = row_id in self._picked
         done = self._pending.get(row_id, row_id in self._marked)
         word = row.get(self._cfg["word_column"]) or "—"
-        font = None
-        if picked:
-            font = QFont()
-            font.setBold(True)
         with self._silent():
             waiting = str(row_id) in self._state.data["owed"] and row_id not in self._marked
             item.setText(word + (" · karty są, czeka n8n" if waiting else ""))
             # Rola = None przywraca domyślny wygląd motywu (jasny i ciemny).
             item.setData(Qt.ItemDataRole.ForegroundRole,
                          QBrush(Qt.GlobalColor.gray) if done else None)
-            item.setData(Qt.ItemDataRole.FontRole, font)
 
     @contextmanager
     def _silent(self):
@@ -900,10 +664,9 @@ class WordQueuePanel(QDockWidget):
             done = row_id in self._marked
             item.setHidden((status == "todo" and done) or (status == "done" and not done)
                            or query not in word)
-        self._update_ai_label()
 
     def advance(self) -> None:
-        """Następna WIDOCZNA pozycja. Nic nie odhacza — od tego jest ptaszek."""
+        """Następna WIDOCZNA pozycja. Nic nie odhacza."""
         for i in range(self._list.currentRow() + 1, self._list.count()):
             if not self._list.item(i).isHidden():
                 self._list.setCurrentRow(i)
@@ -912,23 +675,18 @@ class WordQueuePanel(QDockWidget):
     def _on_item_changed(self, current: QListWidgetItem, previous) -> None:
         """Zmiana pozycji (klik lub strzałki) → wpisanie hasła i słowniki.
 
-        Qt wysyła `currentItemChanged` PRZED `selectionChanged`, więc przy
-        Shift/Ctrl zaznaczenie jest tu jeszcze jednoelementowe i liczenie go w
-        tym miejscu nic nie da. Decyzję odkładamy o jeden obrót pętli zdarzeń —
-        inaczej każdy klik przy zaznaczaniu paczki pyta o zastąpienie hasła
-        w rozpoczętej notatce.
+        Odkładamy o obrót pętli zdarzeń: odmowa zastąpienia hasła cofa bieżącą
+        pozycję, a tego nie robi się z wnętrza sygnału zmiany pozycji.
         """
         if self._suspend or current is None:
             return
         QTimer.singleShot(0, lambda: self._apply_selection(current, previous))
 
     def _apply_selection(self, current: QListWidgetItem, previous) -> None:
-        if sip.isdeleted(self) or self._busy or self._suspend or sip.isdeleted(current):
+        if sip.isdeleted(self) or self._suspend or sip.isdeleted(current):
             return
         if self._list.currentItem() is not current:
             return  # zaznaczenie poszło dalej, zanim doszliśmy do tej pozycji
-        if len(self._list.selectedItems()) > 1:
-            return  # zaznaczasz paczkę — nie przestawiamy notatki ani zakładek
         row = current.data(Qt.ItemDataRole.UserRole)
         word = row.get(self._cfg["word_column"]) or ""
         def ready(accepted):
@@ -965,287 +723,6 @@ class WordQueuePanel(QDockWidget):
         item = self._list.currentItem()
         if item is not None:
             self._set_row(item, True)
-
-    # -- AI: znaczenia → karty ----------------------------------------------
-
-    def _ai_senses(self) -> None:
-        """Zaznaczone hasła → słowniki → model → jedno okno wyboru → jeden zapis.
-
-        Hasła idą PO KOLEI: załaduj zakładki, zbierz tekst, zapytaj model, dalej.
-        Bez nakładania kroków — paczka ma być odtwarzalna, a nie szybka o te
-        kilka sekund, które i tak zjada ładowanie stron.
-        """
-        if self._busy or mw.col is not self._collection:
-            return
-        error = ai_senses.validate_mapping(self._cfg)
-        if error:
-            tooltip(f"AI: {error}", parent=mw, period=6000)
-            return
-        rows = [row for row in self._selected_rows() if str(row["id"]) not in self._state.data["owed"]]
-        # Duplicates are decided by the English word only: a word that already has
-        # cards never reaches the model. More senses for it are added by hand.
-        column = self._cfg["word_column"]
-        try:
-            in_anki = [row for row in rows
-                       if (word := clean_html_normalized(row.get(column) or ""))
-                       and ai_senses.find_word_notes(word, self._cfg)]
-        except Exception:
-            log.exception("ai_senses: kontrola duplikatów nie powiodła się")
-            tooltip("AI: nie udało się sprawdzić, czy słowa są już w Anki — sprawdź Logi.", parent=mw)
-            return
-        if in_anki:
-            def listing(found):
-                names = [str(row.get(column)) for row in found]
-                return ", ".join(names[:10]) + (f" i {len(names) - 10} innych" if len(names) > 10 else "")
-            unmarked = [row for row in in_anki if row["id"] not in self._marked]
-            mark = bool(unmarked) and askUser(
-                f"Te słowa są już w Anki i nie pójdą do AI: {listing(in_anki)}.\n\n"
-                f"Odhaczyć w kolejce te, które nie są jeszcze zrobione ({len(unmarked)})?",
-                parent=self)
-            if mark:
-                # Cards exist, so this is the same debt as after adding them.
-                self._owe({row["id"]: clean_html_normalized(row.get(column) or "") for row in unmarked})
-            else:
-                tooltip(f"AI: pominięto, już są w Anki: {listing(in_anki)}", parent=mw, period=6000)
-            self._finish_rows({row["id"] for row in in_anki}, mark=mark)
-            rows = [row for row in rows if row not in in_anki]
-            if not rows:
-                return
-        if not rows:
-            tooltip("AI: wybierz słówko z listy albo dopisz własne hasło.", parent=mw)
-            return
-        if len(rows) > _BATCH_ASK and not askUser(
-                f"Przetworzyć {len(rows)} haseł naraz? Każde to osobne pytanie do modelu.",
-                parent=self):
-            return
-        # Dostawca i jego konfiguracja — tu, na głównym wątku. W tle zostaje samo
-        # wywołanie modelu; import cudzego dodatku z wątku roboczego wysadzał Anki.
-        provider, error = ai_senses.prepare_provider(self._cfg)
-        if error:
-            tooltip(f"AI: {error}", parent=mw, period=6000)
-            return
-
-        self._stop_requested = False
-        self._set_busy(True)
-        self._refill_generation += 1
-        self._selection_generation += 1
-        collection = mw.col
-        column = self._cfg["word_column"]
-        proposals: list[dict] = []
-        cached = {p["row_id"]: p for p in self._state.data["drafts"]}
-        errors: list[tuple[str, str]] = []
-        source_texts = {}
-        related_words = {}
-        provider_name = ai_senses.provider_label(self._cfg)
-
-        def valid():
-            return not sip.isdeleted(self) and mw.col is collection
-
-        def step(index):
-            if not valid():
-                self._unfreeze()
-                return
-            if index >= len(rows) or self._stop_requested:
-                self._finish_batch(proposals, errors, collection)
-                return
-            word = clean_html_normalized(rows[index].get(column) or "")
-            if not word:
-                step(index + 1)
-                return
-            cached_proposal = cached.get(rows[index]["id"])
-            if cached_proposal and cached_proposal["word"] == word and "related" in cached_proposal:
-                proposals.append(cached_proposal)
-                QTimer.singleShot(0, lambda: step(index + 1))
-                return
-            self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}")
-            self._show_urls(word, rows[index])
-
-            def with_entries(entries):
-                if not valid():
-                    self._unfreeze()
-                    return
-                if not entries:
-                    errors.append((word, "żaden słownik nie ma tego hasła (albo się nie wczytał)"))
-                    step(index + 1)
-                    return
-                related_words[index] = [item for items in entries.values() for item in items
-                                        if isinstance(item, dict) and item.get("related_word")]
-                source_texts[index] = [label for label, items in entries.items()
-                                       if any("related_word" not in item for item in items)]
-                self._progress.setText(f"AI: {index + 1}/{len(rows)} — {word}; źródła: {', '.join(entries)}")
-                mw.taskman.run_in_background(
-                    lambda: ai_senses.generate(provider, word, entries, self._cfg),
-                    lambda future: collected(index, word, future),
-                    uses_collection=False,  # minuty czekania na model nie mogą blokować kolekcji
-                )
-
-            self._tabs.entries(with_entries)
-
-        def collected(index, word, future):
-            if not valid():
-                self._unfreeze()
-                return
-            try:
-                senses, error = future.result()
-            except Exception:  # noqa: BLE001 — błąd dostawcy nie może wysadzać okna „Dodaj"
-                log.exception("ai_senses: generowanie rzuciło wyjątkiem")
-                senses, error = [], "wyjątek (szczegóły w Logach)"
-            if error:
-                errors.append((word, error))
-            elif senses:
-                proposals.append({"word": word, "senses": senses,
-                                  "urls": word_queue.dict_urls(word, self._cfg, rows[index]),
-                                  "row_id": rows[index].get("id"),
-                                  "sources": source_texts[index],
-                                  "related": related_words.get(index, []),
-                                  "provider": provider_name})
-                self._state.data["drafts"] = [p for p in self._state.data["drafts"]
-                                               if p["row_id"] != rows[index]["id"]] + [proposals[-1]]
-                try:
-                    self._state.save()
-                except Exception:
-                    log.exception("ai_senses: nie zapisano propozycji")
-                    self._stop_requested = True
-                    errors.append((word, "błąd zapisu propozycji na dysku"))
-            step(index + 1)
-
-        step(0)
-
-    def _selected_rows(self) -> list[dict]:
-        """Co idzie do AI: zaptaszkowane, a jak nic nie zaptaszkowano — podświetlone.
-
-        Ptaszki wygrywają, bo są trwałe: zbierasz je przez całą listę, a klik
-        w cokolwiek innego ich nie gubi. Podświetlenie zostaje dla jednorazówek.
-        Schowane (zrobione) pomijamy — Ctrl+A zaznacza też je.
-        """
-        rows = [self._list.item(i).data(Qt.ItemDataRole.UserRole)
-                for i in range(self._list.count()) if not self._list.item(i).isHidden()]
-        picked = [row for row in rows if (row or {}).get("id") in self._picked]
-        if picked:
-            return picked
-        items = self._list.selectedItems() or [self._list.currentItem()]
-        return [item.data(Qt.ItemDataRole.UserRole) for item in items
-                if item is not None and not item.isHidden()]
-
-    def _update_ai_label(self) -> None:
-        selected = self._selected_rows()
-        count = len(selected)
-        self._ai_btn.setText(f"Utwórz karty z AI ({count})" if count else "Wybierz słowa do AI")
-        self._ai_btn.setEnabled(not self._busy and count > 0)
-        self._clear_btn.setVisible(bool(self._picked))
-        self._clear_btn.setEnabled(not self._busy)
-        self._selection_hint.setText(
-            f"Do AI: {count} z checkboxów — klikanie innych słów ich nie zmienia."
-            if any(row["id"] in self._picked for row in selected) else
-            f"Do AI: {count} podświetlone. Spacja zaznacza checkbox."
-            if count else "Spacja albo checkbox dodaje słowo do paczki AI.")
-
-    def _unfreeze(self) -> None:
-        """Paczka przerwana (inny profil, zamknięta kolekcja) nie może zostawić
-        panelu wyłączonego na zawsze — widget bywa żywy dłużej niż jej powód."""
-        if not sip.isdeleted(self) and self._busy:
-            self._set_busy(False)
-
-    def _set_busy(self, busy: bool) -> None:
-        """Paczka w toku: lista i wszystko, co przebudowuje panel, czeka."""
-        self._busy = busy
-        self._update_ai_label()
-        self._queue_controls.setEnabled(not busy)
-        self._manual_controls.setEnabled(not busy)
-        self._list.setEnabled(not busy)
-        self._tabs.setEnabled(not busy)
-        self._stop_btn.setEnabled(busy)
-        self._stop_btn.setVisible(busy)
-        self._resume_btn.setEnabled(not busy and bool(self._state.data["drafts"]))
-        self._resume_btn.setVisible(not busy and bool(self._state.data["drafts"]))
-
-    def _ai_failed(self, message: str) -> None:
-        self._set_busy(False)
-        self._progress.setText(f"AI: {message}")
-        tooltip(f"AI: {message}", parent=mw, period=6000)
-
-    def _finish_batch(self, proposals: list[dict], errors: list[tuple[str, str]],
-                      collection) -> None:
-        """Wynik całej paczki: jedno okno wyboru, jedna transakcja, potem ptaszki."""
-        self._set_busy(False)
-        self._progress.setText("Propozycje zachowano. Anuluj pozwala wrócić do nich później.")
-        summary = "; ".join(f"„{word}”: {error}" for word, error in errors[:3])
-        if not proposals:
-            self._ai_failed(summary or "model nie znalazł żadnego znaczenia")
-            return
-        if summary:
-            tooltip(f"AI: pominięto {len(errors)} hasł(a) — {summary}", parent=mw, period=8000)
-
-        for proposal in proposals:
-            proposal["existing"] = ai_senses.existing_senses(proposal["word"], self._cfg)
-        chosen = ai_senses.pick_senses(proposals, self, self._cfg, self._add_related_words)
-        if not chosen:
-            return
-        # Okno wyboru bywa otwarte długo. Cel zapisu sprawdzamy PO nim, nie przed:
-        # inna kolekcja albo zamknięte okno „Dodaj" to zapis nie tam, gdzie widziałeś.
-        if (sip.isdeleted(self) or mw.col is not collection
-                or sip.isdeleted(self._addcards) or self._addcards.editor.note is None):
-            tooltip("AI: okno „Dodaj” albo profil zmieniły się w trakcie — nie zapisano.",
-                    parent=mw, period=8000)
-            return
-        words = {word for word, _sense in chosen}
-        done_words = {p["row_id"]: p["word"] for p in proposals
-                      if p["word"] in words and p.get("row_id") is not None}
-        # Debt goes to disk BEFORE the transaction: a crash after commit still reaches n8n.
-        # The debt is settled by finding the cards, so it names a headword actually written.
-        written = {word: sense.get("word") or word for word, sense in reversed(chosen)}
-        if not self._owe({row_id: written[word] for row_id, word in done_words.items()
-                          if row_id not in self._marked}):
-            for row_id in done_words:
-                self._state.data["owed"].pop(str(row_id), None)
-            tooltip("AI: nie zapisano stanu kolejki na dysku — karty nie zostały dodane. "
-                    "Propozycje czekają pod „Odzyskane propozycje”.", parent=mw, period=8000)
-            return
-        try:
-            added, result = ai_senses.add_notes(self._addcards, chosen, self._cfg)
-        except Exception:  # noqa: BLE001
-            added, result = 0, None
-            log.exception("ai_senses: zapis notatek rzucił wyjątkiem")
-            tooltip("AI: nie zapisano kart (szczegóły w Logach)", parent=mw, period=6000)
-        if not added:
-            for row_id in done_words:
-                self._state.data["owed"].pop(str(row_id), None)
-            self._save_state()
-            if result:
-                tooltip(f"AI: {result}", parent=mw, period=8000)
-            return
-        self._state.drop_drafts(done_words)
-        self._save_state()
-        self._progress.setText(f"Zapisano {added} kart. Wybierz kolejne słowa.")
-
-        from aqt.operations import on_op_finished
-        on_op_finished(mw, result, self)
-
-        review = sum(1 for _word, sense in chosen if ai_senses._by_ai(sense) and not sense.get("reviewed"))
-        tag = self._cfg.get("ai_review_tag") or ""
-        suffix = f", {review} do przejrzenia" + (f" (tag „{tag}”)" if tag else "") if review else ""
-        subject = f"„{next(iter(words))}”" if len(words) == 1 else f"{len(words)} haseł"
-        tooltip(f"AI: dodano {added} kart dla {subject}{suffix}", parent=mw, period=5000)
-
-        # Karty są w talii, więc wiersze są zrobione — hook add_cards_did_add_note
-        # tu nie leci (to nie okno „Dodaj" je zapisało), odhaczamy wprost.
-        self._finish_rows(set(done_words), mark=True)
-
-    def _finish_rows(self, done: set, mark: bool) -> None:
-        """Rows with cards leave the AI selection; with `mark`, n8n hears they are done."""
-        self._picked -= done  # zrobione znika z wyboru, żeby nie poszło drugi raz
-        for i in range(self._list.count()):
-            item = self._list.item(i)
-            row_id = (item.data(Qt.ItemDataRole.UserRole) or {}).get("id")
-            if row_id not in done:
-                continue
-            with self._silent():
-                item.setCheckState(Qt.CheckState.Unchecked)
-            self._style_item(item)
-            if mark and row_id not in self._marked:
-                self._set_row(item, True)
-        self._update_ai_label()
-        self._update_counter()
 
     def _update_counter(self) -> None:
         left = sum((self._list.item(i).data(Qt.ItemDataRole.UserRole) or {}).get("id") not in self._marked

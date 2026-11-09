@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Słowniki → Anki (otwarte okno „Dodaj")
 // @namespace    kacper.paluch.cc
-// @version      5.0
+// @version      5.1
 // @description  Przyciski na diki.pl / Oxford / LDOCE / Cambridge wpisują hasło / tłumaczenie / definicję / przykłady (doklejane) do JUŻ OTWARTEGO okna „Dodaj" w Anki (mostek anki-toolkit na 127.0.0.1:8767). Nic nie zapisuje się samo.
 // @match        https://www.diki.pl/slownik-angielskiego*
 // @match        https://www.diki.pl/slownik-*
@@ -36,88 +36,6 @@
     const copy = head.cloneNode(true);
     copy.querySelectorAll('.stopword').forEach((el) => el.remove());
     return norm(copy.textContent);
-  };
-
-  // Shared extraction for „AI: znaczenia”: structured items of the requested entry only.
-  // diki gives card units {pl} (Polish equivalents with their context in parentheses);
-  // the other dictionaries give definitions {def, pl?} — Cambridge EN-PL adds its Polish
-  // translation. A page whose markup no longer matches (or a CAPTCHA) yields [].
-  window.ankiDictionaryEntries = (word) => {
-    const text = (el) => (el ? clean(el.textContent) : '');
-    // Optional dictionary metadata is evidence for matching, never inferred.
-    const metadata = (pos, nodes) => {
-      const labels = [...new Set(nodes.map(text).filter(Boolean))].join('; ');
-      return { ...(text(pos) ? {pos: text(pos)} : {}), ...(labels ? {labels} : {}) };
-    };
-    const rules = {
-      'www.diki.pl': ['.dictionaryEntity', '.hws .hw', '.foreignToNativeMeanings > li', (li) => {
-        // An entity may contain noun AND verb sections: use this list's header.
-        let header = li.closest('.foreignToNativeMeanings')?.previousElementSibling;
-        while (header && !header.matches('.partOfSpeechSectionHeader, .foreignToNativeMeanings')) {
-          header = header.previousElementSibling;
-        }
-        return {
-          pl: [...li.querySelectorAll(':scope > .hw'), li.querySelector(':scope > .meaningAdditionalInformation')]
-            .map(text).filter(Boolean).join(', '),
-          ...metadata(header?.querySelector('.partOfSpeech'),
-            [...li.querySelectorAll(':scope > .meaningAdditionalInformation')])
-        };
-      }],
-      'www.oxfordlearnersdictionaries.com': ['.entry', 'h1.headword', '.sense', (sense, entry) => ({
-        def: text(sense.querySelector('.def')),
-        ...metadata(entry.querySelector('.pos'),
-          [...entry.querySelectorAll('.webtop .grammar, .webtop .labels'),
-           ...sense.querySelectorAll('.grammar, .labels')])
-      })],
-      'www.ldoceonline.com': ['.Entry', '.HWD, .PHRVBHWD', '.Sense', (sense, entry) => ({
-        def: text(sense.querySelector('.DEF')),
-        ...metadata(entry.querySelector('.POS'),
-          [...entry.querySelectorAll('.Head .GRAM, .Head .REGISTER'),
-           ...sense.querySelectorAll('.GRAM, .REGISTER, .FIELD')])
-      })],
-      'dictionary.cambridge.org': ['.entry-body__el', '.dhw', '.def-block', (block, entry) => ({
-        def: text(block.querySelector('.def')),
-        pl: text(block.querySelector('.dtrans-se')) || [...block.querySelectorAll('.trans')].map(text).join(', '),
-        ...metadata(entry.querySelector('.pos'),
-          [...entry.querySelectorAll('.pos-header .gram'),
-           ...block.querySelectorAll('.usage, .gram, .lab')])
-      })],
-    };
-    const rule = rules[location.hostname];
-    if (!rule) return [];
-    const [entrySelector, headSelector, senseSelector, item] = rule;
-    const entries = [...document.querySelectorAll(entrySelector)];
-    const exact = (entry) => [...entry.querySelectorAll(headSelector)]
-      .some((head) => headword(head) === norm(word));
-    let matched = entries.filter(exact);
-    // Inflected single words still use the first entry; phrases never fall back.
-    if (!matched.length && !/\s/.test(norm(word))) matched = entries.slice(0, 1);
-    const additional = entries.filter((entry) => !matched.includes(entry)
-      && [...entry.querySelectorAll(headSelector)].some((head) =>
-        (` ${headword(head)} `).includes(` ${norm(word)} `)));
-    const found = [...matched, ...additional].flatMap((entry) => {
-      const head = [...entry.querySelectorAll(headSelector)].find((h) => headword(h) === norm(word))
-        || entry.querySelector(headSelector);
-      return [...entry.querySelectorAll(senseSelector)].map((node) => ({
-        ...item(node, entry),
-        ...(additional.includes(entry) ? {word: text(head), related: true} : {})
-      }));
-    }).filter((found) => ('def' in found ? found.def : found.pl));
-    // Sidebar summaries are queue suggestions, never card meanings or model input.
-    if (location.hostname === 'www.diki.pl') {
-      const seen = new Set();
-      document.querySelectorAll('.diki-results-right-column .fentry').forEach((entry) => {
-        const pl = [...entry.querySelectorAll(':scope > .hw')].map(text).filter(Boolean).join(', ');
-        entry.querySelectorAll('.fentrymain .hw a').forEach((link) => {
-          const value = text(link);
-          if (value && norm(value) !== norm(word) && !seen.has(norm(value))) {
-            seen.add(norm(value));
-            found.push({related_word: value, pl});
-          }
-        });
-      });
-    }
-    return found;
   };
 
   // Menedżery userscriptów: GM_xmlhttpRequest (Tampermonkey) lub GM.xmlHttpRequest

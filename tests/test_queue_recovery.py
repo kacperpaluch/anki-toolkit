@@ -22,13 +22,10 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             cfg = {'n8n_url': 'https://queue', 'table_id': '1'}
             state = State('/profile/collection.anki2', cfg, folder)
-            state.data['drafts'] = [{'row_id': 7, 'word': 'mother'}]
             state.data['owed'] = {'7': 'mother'}
             state.save()
             again = State('/profile/collection.anki2', cfg, folder)
             self.assertEqual(again.data['owed'], {'7': 'mother'})
-            again.drop_drafts({7})
-            self.assertEqual(again.data['drafts'], [])
             self.assertEqual(State('/other/collection.anki2', cfg, folder).data['owed'], {})
             self.assertEqual(State('/profile/collection.anki2', {**cfg, 'table_id': '2'}, folder).data['owed'], {})
 
@@ -36,10 +33,10 @@ class RecoveryTests(unittest.TestCase):
         State = load('queue_state').QueueState
         with tempfile.TemporaryDirectory() as folder:
             state = State('/profile/collection.anki2', {}, folder)
-            state.path.write_text('{"drafts": ', encoding='utf-8')
+            state.path.write_text('{"owed": ', encoding='utf-8')
             with self.assertLogs(level='ERROR'):
                 fresh = State('/profile/collection.anki2', {}, folder)
-            self.assertEqual(fresh.data, {'drafts': [], 'owed': {}})
+            self.assertEqual(fresh.data, {'owed': {}})
             self.assertTrue(state.path.with_suffix('.broken').exists())
 
     def test_malformed_entries_are_dropped_on_load(self):
@@ -47,10 +44,10 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             state = State('/profile/collection.anki2', {}, folder)
             state.path.write_text(json.dumps({
-                'drafts': [{'row_id': 7}, 'junk', {'word': 'no id'}],
+                'drafts': [{'row_id': 7}],  # left by the removed AI batch: ignored
                 'owed': {'7': 'mother', 'x': 'bad key'}}), encoding='utf-8')
             fresh = State('/profile/collection.anki2', {}, folder)
-            self.assertEqual(fresh.data, {'drafts': [{'row_id': 7}], 'owed': {'7': 'mother'}})
+            self.assertEqual(fresh.data, {'owed': {'7': 'mother'}})
 
     def test_failed_atomic_save_keeps_previous_file(self):
         module = load('queue_state')
@@ -104,13 +101,6 @@ class RecoveryTests(unittest.TestCase):
             rows, error = m.fetch_queue(cfg)
         self.assertEqual(rows, [])
         self.assertIn('max_rows', error)
-
-    def test_indexes_and_mapping_reject_silent_corruption(self):
-        m = load('ai_senses')
-        self.assertIsNone(m.parse_mapping(json.dumps({'D1': 'E7'}), 1, 2))  # błędny numer, nie świadome null
-        self.assertIsNotNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'ang'}}))
-        self.assertIsNotNone(m.validate_mapping({'word_field': '', 'ai_fields': {'pl': 'pol'}}))
-        self.assertIsNone(m.validate_mapping({'word_field': 'ang', 'ai_fields': {'pl': 'pol'}}))
 
 
 if __name__ == '__main__':

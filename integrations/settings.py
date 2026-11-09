@@ -1,93 +1,31 @@
-"""Panel ustawień: kolejka słówek — „AI: znaczenia”, pola i Web Bridge.
+"""Panel ustawień: kolejka słówek — pola notatki i Web Bridge.
 
 Połączenie z n8n i klucze są na stronie „Konta i klucze” (`settings/accounts_tab.py`).
 """
-from aqt.qt import QHBoxLayout, QPushButton, QComboBox, QFormLayout, QGroupBox, QLineEdit, QSizePolicy, QSpinBox, QWidget
+from aqt.qt import QFormLayout, QGroupBox, QLineEdit, QSpinBox, QWidget
 
-from ..common.ui import (
-    hint_label, scroll_panel, collapsible_section, set_effort_choices,
-)
-from . import ai_senses
+from ..common.ui import hint_label, scroll_panel, collapsible_section
 
 
 class IntegrationsTab(QWidget):
-    def __init__(self, cfg: dict, provider_settings=None):
+    def __init__(self, cfg: dict):
         super().__init__()
         layout = scroll_panel(self)
         q = cfg.get("word_queue") or {}
-        self._model_options = {}
-        self._providers = dict((cfg.get("ai_generator") or {}).get("providers") or {})
-        self._provider_settings = provider_settings or (
-            lambda name: self._providers.get(name, {}))
 
-        ai = QGroupBox("AI: znaczenia")
-        form = QFormLayout(ai)
-        form.addRow(hint_label("Model dopasowuje definicje. Treść kart pochodzi ze słowników.", small=True))
-        self._provider = QComboBox()
-        self._provider.addItem("— nie wybrano —", "")
-        for key, label in getattr(ai_senses._providers(), "PROVIDER_LABELS", {}).items():
-            configured = key in self._providers
-            self._provider.addItem(label if configured else f"{label} (nieskonfigurowany)", key)
-        self._provider.setCurrentIndex(max(0, self._provider.findData(q.get("ai_provider", ""))))
-        self._model = QComboBox()
-        self._model.setEditable(True)
-        self._model.lineEdit().setPlaceholderText("puste = model domyślny dostawcy")
-        self._effort = QComboBox()
-        self._effort.setToolTip(
-            "Poziom rozumowania dla dopasowania definicji. Dziedzicz = ustawienie\n"
-            "dostawcy z „Konta i klucze”. Dostępność poziomów zależy od modelu i wersji CLI.")
-        self._fill_effort(q.get("ai_reasoning_effort"))
-        self._provider.currentIndexChanged.connect(lambda _i: self._fill_effort())
-        self._provider.currentIndexChanged.connect(lambda _i: self._fill_models(""))
-        self._fill_models(q.get("ai_model", ""))
-        model_row = QWidget()
-        model_layout = QHBoxLayout(model_row)
-        model_layout.setContentsMargins(0, 0, 0, 0)
-        self._fetch_models_btn = QPushButton("Odśwież")
-        self._fetch_models_btn.setToolTip("Pobiera listę modeli wybranego dostawcy.")
-        self._fetch_models_btn.clicked.connect(self._fetch_models)
-        model_layout.addWidget(self._model)
-        model_layout.addWidget(self._fetch_models_btn)
-        self._senses = QSpinBox()
-        self._senses.setRange(1, 10)
-        self._senses.setMaximumWidth(100)
-        self._senses.setValue(int(q.get("ai_max_senses", 3) or 3))
-        self._senses.setToolTip("Pozostałe znaczenia nadal widzisz i możesz zaznaczyć ręcznie.")
-        for combo in (self._provider, self._model, self._effort):
-            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        for label, widget in (("Dostawca AI:", self._provider), ("Model:", model_row),
-                              ("Poziom rozumowania:", self._effort),
-                              ("Domyślnie zaznacz znaczeń:", self._senses)):
-            form.addRow(label, widget)
-        layout.addWidget(ai)
-
-        self._fields_section, body = collapsible_section("Pola notatki, tagi i limit czasu")
-        form = QFormLayout()
+        box = QGroupBox("Pola notatki")
+        form = QFormLayout(box)
+        form.addRow(hint_label("Hasło z kolejki trafia do pola angielskiego. Przyciski na stronach "
+                               "słowników wpisują tłumaczenie, definicję i przykład.", small=True))
         fields = q.get("ai_fields") or {}
         self._field = QLineEdit(q.get("word_field", "ang"))
         self._pl = QLineEdit(fields.get("pl", "pol"))
         self._definition = QLineEdit(fields.get("definition", "def"))
         self._example = QLineEdit(fields.get("example", "przyklad"))
-        self._example.setToolTip("Cel przycisków „+ przykład” na stronach słowników. AI go nie wypełnia.")
-        self._tag = QLineEdit(q.get("ai_tag", ""))
-        self._review_tag = QLineEdit(q.get("ai_review_tag", ""))
-        for field in (self._tag, self._review_tag):
-            field.setPlaceholderText("puste = bez tagu")
-            field.setToolTip("Kilka tagów rozdziel spacją lub przecinkiem.")
-        self._review_tag.setToolTip("Definicje dobrane przez AI, przy których odznaczysz „Sprawdziłem…” albo zmienisz treść.\n"
-                                    "Kilka tagów rozdziel spacją lub przecinkiem.")
-        self._timeout = QSpinBox()
-        self._timeout.setRange(10, 600)
-        self._timeout.setMaximumWidth(120)
-        self._timeout.setSuffix(" s")
-        self._timeout.setValue(int(q.get("ai_timeout", 120) or 120))
         for label, widget in (("Pole angielskie:", self._field), ("Pole polskie:", self._pl),
-                              ("Pole definicji:", self._definition), ("Pole przykładu:", self._example),
-                              ("Tag kart z AI:", self._tag), ("Tag do weryfikacji:", self._review_tag),
-                              ("Limit czasu:", self._timeout)):
+                              ("Pole definicji:", self._definition), ("Pole przykładu:", self._example)):
             form.addRow(label, widget)
-        body.addLayout(form)
-        layout.addWidget(self._fields_section)
+        layout.addWidget(box)
 
         bridge, body = collapsible_section("Połączenie ze stronami słowników (Web Bridge)")
         form = QFormLayout()
@@ -102,101 +40,15 @@ class IntegrationsTab(QWidget):
         layout.addWidget(bridge)
         layout.addStretch()
 
-    def refresh_provider_defaults(self, *_args):
-        self._fill_effort(self._effort.currentData())
-
-    def _fill_effort(self, current=None):
-        name = self._provider.currentData() or ""
-        levels = getattr(ai_senses._providers(), "CLI_REASONING_EFFORTS", {}).get(name, [])
-        default = self._provider_settings(name).get("reasoning_effort")
-        set_effort_choices(self._effort, levels, default, current)
-
-    def _fill_models(self, current=None):
-        """Modele znane dla wybranego dostawcy. Pole zostaje edytowalne."""
-        if current is None:
-            current = self._model.currentText()
-        name = self._provider.currentData() or ""
-        cfg = self._provider_settings(name)
-        known = {cfg.get("model", "")} | set(
-            self._model_options.get(name) or cfg.get("models") or cfg.get("cached_models") or [])
-        self._model.clear()
-        self._model.addItem("")
-        self._model.addItems(sorted(m for m in known if m))
-        self._model.setCurrentText(current or "")
-
-    def _fetch_models(self):
-        from aqt import mw
-        from aqt.utils import showWarning
-
-        name = self._provider.currentData() or ""
-        if not name:
-            return
-        cfg = {**self._providers.get(name, {}), **self._provider_settings(name)}
-        key_source = "anthropic" if name == "claude_cli" else name
-        api_key = str(self._provider_settings(key_source).get("api_key") or "").strip()
-        self._fetch_models_btn.setEnabled(False)
-        self._fetch_models_btn.setText("…")
-
-        def task():
-            from ..ai_generator.providers import claude_cli, codex_cli
-            from ..ai_generator.providers.model_discovery import fetch_models
-
-            if name == "claude_cli":
-                return claude_cli.fetch_models(cfg.get("binary_path", ""), api_key)
-            if name == "codex_cli":
-                return codex_cli.fetch_models(cfg.get("binary_path", ""))
-            return fetch_models(name, api_key, force=True)
-
-        def on_done(fut):
-            try:
-                models = fut.result()
-            except Exception:
-                models = []
-            try:
-                self._fetch_models_btn.setEnabled(True)
-                self._fetch_models_btn.setText("Odśwież")
-                if not models:
-                    showWarning(
-                        f"Nie udało się pobrać modeli dla {name}.\n"
-                        "Sprawdź konfigurację dostawcy w „Konta i klucze” i połączenie; "
-                        "dla CLI także instalację i logowanie.")
-                    return
-                self._model_options[name] = models
-                if self._provider.currentData() == name:
-                    self._fill_models()
-            except RuntimeError:
-                pass  # dialog was closed while fetching
-
-        mw.taskman.run_in_background(task, on_done, uses_collection=False)
-
     def validate(self):
-        error = ai_senses.validate_mapping({
-            "word_field": self._field.text().strip(),
-            "ai_fields": {"pl": self._pl.text().strip(),
-                          "definition": self._definition.text().strip(),
-                          "example": self._example.text().strip()},
-        })
-        if error:
-            self._fields_section.findChild(QPushButton).setChecked(True)
-        return error
+        if not self._field.text().strip():
+            return "Kolejka słówek: podaj pole angielskie."
+        return None
 
     def apply(self, cfg: dict) -> None:
-        fields = cfg.setdefault("word_queue", {}).setdefault("ai_fields", {})
-        cfg["word_queue"].update({
-            "word_field": self._field.text().strip(),
-            "ai_provider": self._provider.currentData() or "",
-            "ai_model": self._model.currentText().strip(),
-            "ai_max_senses": self._senses.value(),
-            "ai_timeout": self._timeout.value(),
-            "ai_tag": " ".join(ai_senses.parse_tags(self._tag.text())),
-            "ai_review_tag": " ".join(ai_senses.parse_tags(self._review_tag.text())),
-            "ai_fields": {**fields, "pl": self._pl.text().strip(),
-                          "definition": self._definition.text().strip(),
-                          "example": self._example.text().strip()},
-        })
-        effort = self._effort.currentData()
-        if effort:
-            cfg["word_queue"]["ai_reasoning_effort"] = effort
-        else:
-            cfg["word_queue"].pop("ai_reasoning_effort", None)
+        queue = cfg.setdefault("word_queue", {})
+        queue["word_field"] = self._field.text().strip()
+        queue["ai_fields"] = {**(queue.get("ai_fields") or {}), "pl": self._pl.text().strip(),
+                              "definition": self._definition.text().strip(),
+                              "example": self._example.text().strip()}
         cfg.setdefault("web_bridge", {})["port"] = self._port.value()

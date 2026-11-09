@@ -280,18 +280,11 @@
     "page_size": 250,
     "max_rows": 5000,
     "order": "id",
-    "ai_provider": "",
-    "ai_model": "",
-    "ai_reasoning_effort": "",
-    "ai_max_senses": 3,
-    "ai_timeout": 120,
-    "ai_tag": "ai-auto",
     "ai_fields": {
       "pl": "pol",
       "definition": "def",
       "example": "przyklad"
-    },
-    "ai_review_tag": "ai-review"
+    }
   },
   "web_bridge": {
     "port": 8767

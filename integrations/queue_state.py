@@ -1,9 +1,8 @@
 """Per-profile/table scratch file. Main thread only; no credentials stored.
 
-- drafts: AI proposals not yet saved as cards (a second model call costs money),
 - owed: row id → word whose cards exist, but whose n8n "done" PATCH has not succeeded.
 
-ponytail: no Undo tracking. Undoing an AI batch leaves the n8n row marked done;
+ponytail: no Undo tracking. Undoing an added note leaves the n8n row marked done;
 untick it by hand. Add GUID receipts only if that turns out to matter.
 """
 import hashlib
@@ -23,7 +22,7 @@ class QueueState:
         key = hashlib.sha256(json.dumps(scope).encode()).hexdigest()[:24]
         self.path = Path(path) if path else (
             Path(directory or Path(__file__).resolve().parent.parent / "user_files") / f"word_queue_{key}.json")
-        self.data = {"drafts": [], "owed": {}}
+        self.data = {"owed": {}}
         if not self.path.exists():
             return
         try:
@@ -41,8 +40,6 @@ class QueueState:
             return
         # Hand-edited or truncated entries would only blow up later inside a
         # callback; drop them here instead.
-        self.data["drafts"] = [d for d in data.get("drafts", [])
-                               if isinstance(d, dict) and "row_id" in d]
         self.data["owed"] = {k: v for k, v in data.get("owed", {}).items()
                              if str(k).lstrip("-").isdigit()}
 
@@ -58,6 +55,3 @@ class QueueState:
         finally:
             if os.path.exists(name):
                 os.unlink(name)
-
-    def drop_drafts(self, row_ids):
-        self.data["drafts"] = [p for p in self.data["drafts"] if p["row_id"] not in row_ids]

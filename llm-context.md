@@ -14,14 +14,14 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
 | `__init__.py` | import modułów, hooki profilu, jedyny przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`, menu budowane przy kliknięciu z bieżącej notatki), menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
-| `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), start na „Przegląd”, wiązania między panelami (Konta i klucze → prompty, kolejka, TTS) | wszystkie |
+| `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), start na „Przegląd”, wiązania między panelami (Konta i klucze → prompty, TTS) | wszystkie |
 | `common/` | konfiguracja (`check_config()` przy otwarciu profilu i Ustawień porównuje typy z szablonem `config.json` i proponuje wartości domyślne), HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress (`load_notes()` czyta duże zaznaczenie Browsera z paskiem i Anuluj), raporty sesji (`reports.record_report(title, text, retry, failed)` — Diagnostyka, czyszczone przy zamknięciu profilu), operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
 | `settings/` | Przegląd (tylko odczyt), Konta i klucze (wszystkie klucze i połączenia: `ai_generator.providers`, klucz TTS, n8n/Cloudflare w `word_queue`), sekwencje (workflowy), prompty AI, TTS, słownik, rozdzielanie, diagnostyka | — |
 | `ai_generator/` | prompty, dostawcy, workflowy — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
-| `integrations/` | kolejka n8n, panel słowników, AI: znaczenia, tag dnia importu, Web Bridge, JS stron słowników (`page_js`) — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
+| `integrations/` | kolejka n8n, panel słowników, Web Bridge, JS stron słowników (`page_js`) — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
 | `audio_normalizer/` | ffmpeg loudnorm, ręcznie lub przez watcher | `audio_normalizer` |
 | `html_cleanup/` | reguły „znajdź → zamień” przy dodawaniu i dla kolekcji | `html_cleanup` |
 | `field_hider/` | ukrywanie pól tylko w oknie Dodaj | `field_hider` |
@@ -35,15 +35,15 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   Zapis poza oknem ustawień idzie przez `update_module_config`, który scala
   zmiany i zachowuje nieznane klucze.
 - Dostawcy CLI współdzielą konfigurację z `ai_generator.providers`; effort
-  dostawcy może być nadpisany dla promptu (główny/fallback osobno) i dla kolejki
-  słówek. Reguły dziedziczenia są w kontekstach `ai_generator/` i `integrations/`.
+  dostawcy może być nadpisany dla promptu (główny/fallback osobno). Reguły
+  dziedziczenia są w kontekście `ai_generator/`.
 - Panel ustawień: `__init__(cfg)` czyta pełny config, `apply(cfg)` zapisuje
   tylko własne sekcje (Konta i klucze zapisuje wyłącznie klucze/połączenia
   wewnątrz sekcji `ai_generator`, `tts`, `word_queue`; panele funkcji ich nie
   zapisują), opcjonalne `validate() -> str | None` blokuje zapis.
   Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny
   nagłówek (ikona, tytuł, opis z `PAGES`).
-- `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z etykietami dziedziczenia w promptach i kolejce oraz klucz TTS z podglądem głosów; zmiana etykiety nie zapisuje nadpisania.
+- `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z etykietami dziedziczenia w promptach oraz klucz TTS z podglądem głosów; zmiana etykiety nie zapisuje nadpisania.
 - `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
@@ -92,8 +92,8 @@ importuje niczego z dodatku, domyślne ustawienia ma w `worker.DEFAULTS`.
 Własna replika, oficjalny sync, tylko limity nowych; bez bezpośredniego
 dostępu do bazy serwera. Stan i token w `user_files/` —
 Compose montuje `../user_files`, czyli ten sam katalog co dane dodatku; nie
-nadawaj plikom usługi nazw używanych przez dodatek (`ai_batches.json`,
-`audio_normalizer_*.json`) i odwrotnie.
+nadawaj plikom usługi nazw używanych przez dodatek (`audio_normalizer_*.json`,
+`word_queue_*.json`) i odwrotnie.
 
 Usługa: jedyne źródło ustawień to `settings.json` edytowany w panelu (konto: `identity.json`);
 `dashboard.py` czyta historię

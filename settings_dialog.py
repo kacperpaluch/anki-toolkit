@@ -47,7 +47,7 @@ PAGES = [
     ]),
     ("Źródła", [
         ("integrations", "📚", "Kolejka słówek",
-         "Kolejka z n8n, AI: znaczenia i połączenie ze stronami słowników.", IntegrationsTab),
+         "Kolejka z n8n, pola notatki i połączenie ze stronami słowników.", IntegrationsTab),
     ]),
     ("Porządki", [
         ("audio_normalizer", "🎚️", "Normalizacja audio",
@@ -136,7 +136,7 @@ class SettingsDialog(QDialog):
         by_type = {type(p): p for p in self._panels}
         accounts = by_type[AccountsTab]
         # Feature panels read keys and provider defaults live from Konta i klucze.
-        for user in (by_type[AIGeneratorTab]._prompts, by_type[IntegrationsTab]):
+        for user in (by_type[AIGeneratorTab]._prompts,):
             user._provider_settings = accounts.provider_settings
             user.refresh_provider_defaults()
             accounts.providers.on_effort_changed(user.refresh_provider_defaults)
