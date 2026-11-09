@@ -35,15 +35,14 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   Zapis poza oknem ustawień idzie przez `update_module_config`, który scala
   zmiany i zachowuje nieznane klucze.
 - Dostawcy CLI współdzielą konfigurację z `ai_generator.providers`; effort
-  dostawcy może być nadpisany dla promptu (główny/fallback osobno). Reguły
-  dziedziczenia są w kontekście `ai_generator/`.
+  ustawia się wyłącznie przy dostawcy.
 - Panel ustawień: `__init__(cfg)` czyta pełny config, `apply(cfg)` zapisuje
   tylko własne sekcje (Konta i klucze zapisuje wyłącznie klucze/połączenia
   wewnątrz sekcji `ai_generator`, `tts`, `word_queue`; panele funkcji ich nie
   zapisują), opcjonalne `validate() -> str | None` blokuje zapis.
   Okno zapisuje całość jednym `writeConfig` i nakłada na strony wspólny
   nagłówek (ikona, tytuł, opis z `PAGES`).
-- `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z etykietami dziedziczenia w promptach oraz klucz TTS z podglądem głosów; zmiana etykiety nie zapisuje nadpisania.
+- `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z edytorem promptów (domyślne modele) oraz klucz TTS z podglądem głosów.
 - `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
   Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)

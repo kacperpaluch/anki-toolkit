@@ -174,21 +174,17 @@ class FieldGenerator:
 
     def _resolve_provider(self, provider_name: str,
                           requested_model: str = "",
-                          temperature: Optional[float] = None,
-                          reasoning_effort: Optional[str] = None) -> Optional[BaseProvider]:
+                          temperature: Optional[float] = None) -> Optional[BaseProvider]:
         """Resolve and cache a provider for one concrete provider/model pair.
 
-        temperature/reasoning_effort: per-prompt overrides; None inherits defaults.
+        temperature: per-prompt override; None inherits the provider default.
         """
         providers_cfg = self._config.get("providers", {})
         provider_cfg = providers_cfg.get(provider_name)
         effective_model = requested_model.strip()
         if isinstance(provider_cfg, dict) and not effective_model:
             effective_model = safe_str(provider_cfg.get("model"))
-        # Per-prompt effort is supported only by the local CLI providers.
-        reasoning_effort = (safe_str(reasoning_effort).strip().lower() or None
-                            if provider_name in ("codex_cli", "claude_cli") else None)
-        cache_key = (provider_name, effective_model, temperature, reasoning_effort)
+        cache_key = (provider_name, effective_model, temperature)
 
         if cache_key in self._providers:
             provider = self._providers[cache_key]
@@ -235,8 +231,6 @@ class FieldGenerator:
             effective_cfg["model"] = effective_model
             if temperature is not None:
                 effective_cfg["temperature"] = temperature
-            if reasoning_effort is not None:
-                effective_cfg["reasoning_effort"] = reasoning_effort
             provider = get_provider(provider_name, effective_cfg,
                                     max_retries=max_retries, timeout=request_timeout)
             self._configure_rate_limit(provider_name, provider_cfg)
@@ -331,8 +325,7 @@ class FieldGenerator:
         temperature = field_cfg.get("temperature")
         if not isinstance(temperature, (int, float)):
             temperature = None
-        provider = self._resolve_provider(
-            provider_name, model_name, temperature, field_cfg.get("reasoning_effort"))
+        provider = self._resolve_provider(provider_name, model_name, temperature)
         if provider is None:
             return None, f"Pole '{target_field}': {self.last_error}"
 
@@ -372,9 +365,7 @@ class FieldGenerator:
             logger.error(f"AI: {error}")
             return None, error
         fb_name = fallback_provider_name.strip() or provider_name
-        fb_provider = self._resolve_provider(
-            fb_name, fallback_model, temperature,
-            field_cfg.get("fallback_reasoning_effort"))
+        fb_provider = self._resolve_provider(fb_name, fallback_model, temperature)
         if fb_provider is None:
             return None, f"Pole '{target_field}': {self.last_error}"
         logger.warning(

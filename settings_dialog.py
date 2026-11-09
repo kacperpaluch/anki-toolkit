@@ -136,10 +136,7 @@ class SettingsDialog(QDialog):
         by_type = {type(p): p for p in self._panels}
         accounts = by_type[AccountsTab]
         # Feature panels read keys and provider defaults live from Konta i klucze.
-        for user in (by_type[AIGeneratorTab]._prompts,):
-            user._provider_settings = accounts.provider_settings
-            user.refresh_provider_defaults()
-            accounts.providers.on_effort_changed(user.refresh_provider_defaults)
+        by_type[AIGeneratorTab]._prompts._provider_settings = accounts.provider_settings
         by_type[TTSTab]._key_settings = accounts.tts_key_settings
         by_type[OverviewTab].go_to = lambda key: self._sidebar.setCurrentRow(self._rows[key])
         self._sidebar.currentItemChanged.connect(self._show_page)

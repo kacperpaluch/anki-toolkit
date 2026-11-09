@@ -35,41 +35,23 @@ try:
     prompts = tab._prompts
     # Same wiring as SettingsDialog: prompts read provider defaults live from Konta i klucze.
     prompts._provider_settings = accounts.provider_settings
-    accounts.providers.on_effort_changed(prompts.refresh_provider_defaults)
     widgets = accounts.providers._provider_widgets
     prompts._load_key_to_editor(("Test", "task"))
     assert not prompts._ed_temperature.isEnabled()
     assert not prompts._task_section.findChild(QPushButton).isChecked()
     assert not prompts._fallback_section.findChild(QPushButton).isChecked()
-    assert prompts._ed_effort.currentData() == "high"
-    assert prompts._ed_fallback_effort.currentData() == "xhigh"
-    widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
+    widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
     saved = copy.deepcopy(cfg)
     tab.apply(saved)
     accounts.apply(saved)
     task = saved["ai_generator"]["note_types"]["Test"]["task"]
-    assert task["reasoning_effort"] == "high"
-    assert task["fallback_reasoning_effort"] == "xhigh"
+    # Effort is set per provider only: old per-prompt overrides are dropped on save.
+    assert "reasoning_effort" not in task and "fallback_reasoning_effort" not in task
     assert task["unknown_setting"] == "preserve"
     assert task["temperature"] == 0.55
-    assert saved["ai_generator"]["providers"]["claude_cli"]["reasoning_effort"] == "medium"
-    prompts._ed_effort.setCurrentIndex(0)
-    assert prompts._ed_effort.currentText() == "Dziedzicz: medium"
-    widgets["claude_cli"]["reasoning_effort"].setCurrentText("high")
-    assert prompts._ed_effort.currentText() == "Dziedzicz: high"
-    assert prompts._ed_effort.currentData() == ""
-    widgets["claude_cli"]["reasoning_effort"].setCurrentText("medium")
-    prompts._ed_fallback_effort.setCurrentIndex(0)
-    tab.apply(saved)
-    task = saved["ai_generator"]["note_types"]["Test"]["task"]
-    assert "reasoning_effort" not in task and "fallback_reasoning_effort" not in task
+    assert saved["ai_generator"]["providers"]["claude_cli"]["reasoning_effort"] == "high"
     prompts._ed_provider.setCurrentIndex(prompts._ed_provider.findData("openai"))
-    assert not prompts._ed_effort.isEnabled()
     assert prompts._ed_temperature.isEnabled()
-    assert prompts._ed_fallback_effort.isEnabled()
-    prompts._ed_provider.setCurrentIndex(prompts._ed_provider.findData("codex_cli"))
-    assert prompts._ed_effort.isEnabled()
-    assert prompts._ed_effort.findData("ultra") >= 0
     queue_module = importlib.import_module("effort_smoke.integrations.settings")
     queue = queue_module.IntegrationsTab(copy.deepcopy(saved))
     try:

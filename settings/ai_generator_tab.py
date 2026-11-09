@@ -469,11 +469,6 @@ class AIProvidersBox(QGroupBox):
         self._prov_list.setCurrentRow(row)
         self._add_btn.setVisible(any(self._prov_list.isRowHidden(r) for r in range(self._prov_list.count())))
 
-    def on_effort_changed(self, callback) -> None:
-        for widgets in self._provider_widgets.values():
-            if "reasoning_effort" in widgets:
-                widgets["reasoning_effort"].currentTextChanged.connect(callback)
-
     def _update_provider_item(self, row: int, name: str) -> None:
         item = self._prov_list.item(row)
         if item is None:

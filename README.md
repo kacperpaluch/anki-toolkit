@@ -53,9 +53,8 @@ w zwiniętych sekcjach **Zaawansowane**. Moduły są pogrupowane tak samo jak po
 Oprócz dostawców na klucz API są dwaj dostawcy lokalni — **Codex CLI**
 i **Claude CLI** — którzy generują przez zainstalowanego, zalogowanego klienta
 `codex` albo `claude`, na limitach Twojej subskrypcji zamiast płatnego API.
-Poziom rozumowania (**effort**) ustawiasz domyślnie w **Konta i klucze → Dostawcy AI**, a osobno
-możesz go nadpisać przy prompcie (także dla modelu zapasowego). Opcja „Dziedzicz: medium”
-pokazuje aktualny poziom dostawcy; dostępność poziomów zależy od modelu i wersji CLI.
+Poziom rozumowania (**effort**) ustawiasz przy dostawcy w **Konta i klucze → Dostawcy AI**;
+dostępność poziomów zależy od modelu i wersji CLI.
 
 **Źródła** — [Kolejka słówek i Web Bridge](integrations/README.md).
 Panel 📚 pobiera wiersze z n8n DataTable, wpisuje hasło do notatki, pokazuje

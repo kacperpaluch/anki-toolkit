@@ -21,7 +21,7 @@ from ..common import clean_html_normalized
 from ..common.ui import (
     _expanding_line_edit, _filterable_combo, get_note_type_names,
     get_fields_for_note_type, get_sample_notes, palette, hint_label,
-    collapsible_section, _scrollable, set_effort_choices, list_buttons,
+    collapsible_section, _scrollable, list_buttons,
 )
 from ..ai_generator.template_engine import (
     template_structure_problems, render_template, IF_PATTERN,
@@ -191,8 +191,6 @@ class PromptsTab(QWidget):
                     "fallback_provider": field_cfg.get("fallback_provider", ""),
                     "fallback_model":    field_cfg.get("fallback_model", ""),
                     "temperature":       field_cfg.get("temperature"),
-                    "reasoning_effort": field_cfg.get("reasoning_effort"),
-                    "fallback_reasoning_effort": field_cfg.get("fallback_reasoning_effort"),
                 }
 
         # Default provider for a new prompt: first usable one. "Usable" is a
@@ -301,12 +299,6 @@ class PromptsTab(QWidget):
             "„— domyślna dostawcy” = użyj temperatury z karty dostawcy.\n"
             "Fallback tego promptu również używa tej temperatury."
         )
-        self._ed_effort = QComboBox()
-        self._ed_fallback_effort = QComboBox()
-        for combo in (self._ed_effort, self._ed_fallback_effort):
-            combo.setToolTip(
-                "Poziom rozumowania dla CLI. Dziedzicz = ustawienie właściwego dostawcy.\n"
-                "Dostępność poziomów zależy od modelu i wersji CLI.")
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj przy uzupełnianiu wszystkich pól i w sekwencjach)")
         self._ed_manual_only.setToolTip(
             "Zaznacz, jeśli to pole ma być generowane TYLKO przez jawne\n"
@@ -342,15 +334,13 @@ class PromptsTab(QWidget):
         fb_layout.addWidget(self._ed_fallback_model)
         fb_layout.addWidget(self._btn_fetch_fb_models)
         for combo in (self._ed_target, self._ed_provider, self._ed_model,
-                      self._ed_effort, self._ed_fallback_provider,
-                      self._ed_fallback_model, self._ed_fallback_effort):
+                      self._ed_fallback_provider, self._ed_fallback_model):
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         model_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         fb_model_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         form.addRow("Pole docelowe:", self._ed_target)
         form.addRow("Dostawca AI:", self._ed_provider)
         form.addRow("Model AI:", model_row)
-        form.addRow("Poziom rozumowania:", self._ed_effort)
         editor_form_layout.addLayout(form)
 
         self._task_section, task_body = collapsible_section("Ustawienia zadania")
@@ -362,7 +352,7 @@ class PromptsTab(QWidget):
         task_body.addLayout(task_form)
         self._btn_apply_models = QPushButton("Ustaw te modele we wszystkich promptach…")
         self._btn_apply_models.setToolTip(
-            "Kopiuje dostawcę, model i poziom rozumowania (główne i zapasowe)\n"
+            "Kopiuje dostawcę i model (główne i zapasowe)\n"
             "do promptów widocznych na liście.")
         task_body.addWidget(self._btn_apply_models)
         editor_form_layout.addWidget(self._task_section)
@@ -371,7 +361,6 @@ class PromptsTab(QWidget):
         fallback_form = QFormLayout()
         fallback_form.addRow("Dostawca zapasowy:", self._ed_fallback_provider)
         fallback_form.addRow("Model zapasowy:", fb_model_row)
-        fallback_form.addRow("Poziom rozumowania:", self._ed_fallback_effort)
         fallback_body.addLayout(fallback_form)
         editor_form_layout.addWidget(self._fallback_section)
 
@@ -555,8 +544,6 @@ class PromptsTab(QWidget):
             "model":       self._ed_model.currentText().strip(),
             "prompt":      self._ed_prompt.toPlainText(),
             "manual_only": self._ed_manual_only.isChecked(),
-            "reasoning_effort": self._ed_effort.currentData() or None,
-            "fallback_reasoning_effort": self._ed_fallback_effort.currentData() or None,
             "fallback_provider": self._ed_fallback_provider.currentData() or "",
             "fallback_model":    self._ed_fallback_model.currentText().strip(),
             # Negative = the special "inherit provider default" spinbox value.
@@ -612,11 +599,6 @@ class PromptsTab(QWidget):
             entry.get("fallback_model", ""),
             use_default=False,
         )
-        self._set_effort_choices(entry["provider"], self._ed_effort,
-                                 entry.get("reasoning_effort"))
-        self._set_effort_choices(entry.get("fallback_provider") or entry["provider"],
-                                 self._ed_fallback_effort,
-                                 entry.get("fallback_reasoning_effort"))
         temp = entry.get("temperature")
         self._ed_temperature.setValue(
             temp if isinstance(temp, (int, float))
@@ -669,18 +651,6 @@ class PromptsTab(QWidget):
         if combo is self._ed_model:
             self._validate_prompt()
 
-    def _set_effort_choices(self, provider: str, combo: QComboBox,
-                            selected=None) -> None:
-        set_effort_choices(combo, CLI_REASONING_EFFORTS.get(provider, []),
-                           self._provider_values(provider).get("reasoning_effort"), selected)
-
-    def refresh_provider_defaults(self, *_args) -> None:
-        self._set_effort_choices(self._ed_provider.currentData(), self._ed_effort,
-                                 self._ed_effort.currentData())
-        self._set_effort_choices(
-            self._ed_fallback_provider.currentData() or self._ed_provider.currentData(),
-            self._ed_fallback_effort, self._ed_fallback_effort.currentData())
-
     def _update_temperature_state(self) -> None:
         main = self._ed_provider.currentData()
         fallback = self._ed_fallback_provider.currentData() or main
@@ -696,13 +666,6 @@ class PromptsTab(QWidget):
         self._set_model_choices(
             self._ed_provider.currentData() or "openai", self._ed_model
         )
-
-        self._set_effort_choices(self._ed_provider.currentData(), self._ed_effort)
-        self._set_effort_choices(
-            self._ed_fallback_provider.currentData() or self._ed_provider.currentData(),
-            self._ed_fallback_effort,
-            self._ed_fallback_effort.currentData()
-            if self._ed_fallback_provider.currentData() else None)
         self._update_temperature_state()
 
     def _on_fallback_provider_changed(self, _index: int = -1) -> None:
@@ -713,8 +676,6 @@ class PromptsTab(QWidget):
             fb_provider or main_provider, self._ed_fallback_model,
             use_default=bool(fb_provider),
         )
-
-        self._set_effort_choices(fb_provider or main_provider, self._ed_fallback_effort)
         self._update_temperature_state()
 
     def _fetch_models(self) -> None:
@@ -982,16 +943,13 @@ class PromptsTab(QWidget):
         scope = f"typu „{filter_nt}”" if filter_nt else "wszystkich typów"
         if not askUser(
             f"Ustawić w {len(keys)} promptach {scope}:\n\n"
-            f"model: {source['provider']} / {source['model'] or '— (domyślny dostawcy)'}"
-            f", rozumowanie: {source.get('reasoning_effort') or 'dziedziczone'}\n"
-            f"zapasowy: {source.get('fallback_provider') or source['provider']} / {fb}"
-            f", rozumowanie: {source.get('fallback_reasoning_effort') or 'dziedziczone'}",
+            f"model: {source['provider']} / {source['model'] or '— (domyślny dostawcy)'}\n"
+            f"zapasowy: {source.get('fallback_provider') or source['provider']} / {fb}",
             parent=self,
         ):
             return
         for k in keys:
-            for field in ("provider", "model", "fallback_provider", "fallback_model",
-                          "reasoning_effort", "fallback_reasoning_effort"):
+            for field in ("provider", "model", "fallback_provider", "fallback_model"):
                 self._data[k][field] = source.get(field, "")
 
     def _on_delete(self) -> None:
@@ -1040,8 +998,9 @@ class PromptsTab(QWidget):
                 ("fallback_provider", entry.get("fallback_provider", "") or None),
                 ("fallback_model", entry.get("fallback_model", "") or None),
                 ("temperature", entry.get("temperature")),
-                ("reasoning_effort", entry.get("reasoning_effort") or None),
-                ("fallback_reasoning_effort", entry.get("fallback_reasoning_effort") or None),
+                # Effort is set per provider only; drop overrides of older versions.
+                ("reasoning_effort", None),
+                ("fallback_reasoning_effort", None),
             ):
                 if value is None:
                     field_cfg.pop(key, None)

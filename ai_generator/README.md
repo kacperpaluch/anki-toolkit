@@ -171,7 +171,7 @@ W UI dostawcy są w **Ustawienia → Konta i klucze → Dostawcy AI**. Lista pok
 - **claude_cli** — dropdown `low/medium/high/xhigh/max`; wysyłany jako `--effort`, puste = domyślny poziom CLI. Poziomy zależą od modelu i wersji CLI.
 - **anthropic** — nie ma pola `reasoning_effort` w UI.
 
-W zakładce **Prompty** pola **Poziom rozumowania** (główne i w sekcji **Model zapasowy**) nadpisują ustawienia dostawców osobno dla głównego wywołania i fallbacku (`reasoning_effort`, `fallback_reasoning_effort`). „Dziedzicz: medium” (lub inny poziom dostawcy) usuwa nadpisanie; etykieta aktualizuje się także po niezapisanej zmianie poziomu na stronie Konta i klucze. Pola są aktywne tylko dla Codex CLI i Claude CLI; zmiana dostawcy resetuje wybór do dziedziczenia. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd.
+Poziom rozumowania ustawiasz tylko przy dostawcy. Model zapasowy używa poziomu swojego dostawcy. Poziom musi być obsługiwany przez wybrany model — w przeciwnym razie CLI zgłosi błąd. Starsze nadpisania w promptach (`reasoning_effort`, `fallback_reasoning_effort`) są ignorowane i znikają przy zapisie ustawień.
 
 `max_tokens` jest używany przez Anthropic. Domyślnie `2048`. Zwiększ, jeśli generujesz długie odpowiedzi.
 
@@ -314,8 +314,6 @@ Po kliknięciu **Pobierz** pole modelu (edytowalny QComboBox) wypełnia się lis
 - `fallback_provider` (opcjonalne) — dostawca zapasowy; puste/brak = ten sam dostawca co główny
 - `fallback_model` (opcjonalne) — model zapasowy; puste/brak = brak fallbacku per-prompt (użyty `fallback_model` z dostawcy, jeśli ustawiony). Edytor promptów zostawia puste pole puste; model podpowiada dopiero wybór dostawcy zapasowego
 - `temperature` (opcjonalne) — temperatura tylko dla tego promptu (0.0–2.0); brak = temperatura domyślna dostawcy. Niska (0.0–0.3) dla definicji/faktów, wyższa (0.7–1.0) dla przykładowych zdań; fallback promptu używa tej samej wartości
-- `reasoning_effort` (opcjonalne, tylko CLI) — poziom dla głównego modelu tego promptu; brak/puste = ustawienie dostawcy
-- `fallback_reasoning_effort` (opcjonalne, tylko CLI) — niezależny poziom dla modelu zapasowego; brak/puste = ustawienie dostawcy zapasowego
 - `prompt` — treść prompta z opcjonalnymi szablonami
 
 ## Fallback modeli
@@ -356,7 +354,7 @@ Przykład per-dostawca (ten sam provider, tańszy model):
 ```
 
 Właściwości:
-- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); effort CLI pochodzi z `fallback_reasoning_effort` promptu lub, przy dziedziczeniu, z konfiguracji dostawcy fallbackowego
+- Fallback używa tego samego promptu i temperatury zadania (per-prompt `temperature`, a gdy brak — domyślnej dostawcy fallbackowego); effort CLI pochodzi z konfiguracji dostawcy fallbackowego
 - Jeśli `fallback_provider` jest inny niż główny → używa klucza API dostawcy zapasowego
 - Log zawiera ostrzeżenie: `AI: fallback dla pola 'def': openai/gpt-4o → openai/gpt-4o-mini`
 - Jeśli fallback też zawiedzie → `last_error` zawiera błąd fallbacku z prefixem „Fallback"

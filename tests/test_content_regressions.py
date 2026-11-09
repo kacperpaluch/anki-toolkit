@@ -505,23 +505,19 @@ class TestFieldSplitter(unittest.TestCase):
 
 
 class TestCliPromptEffort(unittest.TestCase):
-    def test_inheritance_cache_and_independent_fallback(self):
+    def test_effort_comes_from_each_provider_only(self):
         fg = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
         config = {"providers": {
             "claude_cli": {"model": "opus", "reasoning_effort": "medium"},
             "codex_cli": {"model": "gpt-test", "reasoning_effort": "low"},
         }, "note_types": {"Test": {"task": {
             "target": "def", "provider": "claude_cli", "prompt": "test",
+            # Overrides left by older versions are ignored.
             "reasoning_effort": "high", "fallback_provider": "codex_cli",
             "fallback_model": "gpt-test", "fallback_reasoning_effort": "xhigh",
         }}}}
         generator = fg.FieldGenerator(config)
-        default = generator._resolve_provider("claude_cli")
-        override = generator._resolve_provider("claude_cli", reasoning_effort="high")
-        self.assertEqual(default.reasoning_effort, "medium")
-        self.assertEqual(override.reasoning_effort, "high")
-        self.assertIsNot(default, override)
-        self.assertIs(override, generator._resolve_provider("claude_cli", reasoning_effort="high"))
+        self.assertIs(generator._resolve_provider("claude_cli"), generator._resolve_provider("claude_cli"))
         note = FakeNote({"def": ""})
         note.note_type = lambda: {"name": "Test"}
         calls = []
@@ -531,13 +527,7 @@ class TestCliPromptEffort(unittest.TestCase):
         with patch.object(fg.PROVIDERS["claude_cli"], "call_api", call), \
              patch.object(fg.PROVIDERS["codex_cli"], "call_api", call):
             self.assertEqual(generator.process_note(note), {"def": "definition"})
-            self.assertEqual(calls, [("ClaudeCLIProvider", "high"), ("CodexCLIProvider", "xhigh")])
-            config["note_types"]["Test"]["task"].pop("fallback_reasoning_effort")
-            note["def"] = ""
-            calls.clear()
-            generator.process_note(note)
-            self.assertEqual(calls[-1], ("CodexCLIProvider", "low"))
-        self.assertEqual(config["providers"]["claude_cli"]["reasoning_effort"], "medium")
+        self.assertEqual(calls, [("ClaudeCLIProvider", "medium"), ("CodexCLIProvider", "low")])
 
     def test_independent_fields_run_in_parallel_after_dependencies(self):
         import threading
