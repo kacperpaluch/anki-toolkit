@@ -64,11 +64,12 @@ def main():
         crashed.clear()
         loaded.clear()
         tabs.set_urls(word_queue.dict_urls(word, cfg))
-        for _tick in range(120):  # up to 30 s for every tab
-            if len(loaded | crashed) == len(labels):
-                break
-            wait(lambda done: QTimer.singleShot(250, done), 1000)
         for index, label in enumerate(labels):
+            tabs.setCurrentIndex(index)  # tabs load when shown, like in the panel
+            for _tick in range(120):  # up to 30 s per tab
+                if index in loaded | crashed:
+                    break
+                wait(lambda done: QTimer.singleShot(250, done), 1000)
             status = "PADŁ" if index in crashed else "OK" if index in loaded else "TIMEOUT"
             buttons = wait(lambda done, i=index: tabs._views[i].page().runJavaScript(
                 BUTTONS, panel._WORLD, done), 5000) or {}

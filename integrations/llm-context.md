@@ -86,7 +86,9 @@ stanem — nie może blokować okna „Dodaj". Stare klucze (np. `drafts`) są i
 - Zakładki biorą się z `link_templates` (etykieta → szablon adresu z `{q}`/`{slug}`),
   a nie z kolumn n8n. `link_columns` to tylko nadpisanie gotowym URL-em z wiersza;
   etykieta bez szablonu nie dostaje zakładki.
-- Wybór słowa ładuje wszystkie zakładki naraz, zaczynając od widocznej.
+- Wybór słowa ładuje tylko widoczną zakładkę; reszta czeka w `_pending` na
+  `currentChanged`. Ładowanie wszystkich naraz służyło usuniętemu AI — nie przywracaj
+  (4× więcej zapytań i pamięci, częstsza weryfikacja Cloudflare).
 - Na diki „→ hasło" stoi przy KAŻDYM `.hws .hw` (wpis bywa listą nagłówków:
   nazwa łacińska, potem „także:"); na Cambridge jeden na wpis
   (`.di-title.dhw, .hw.dhw`). „→ oba" bierze nagłówek równy `?q=`, inaczej pierwszy.

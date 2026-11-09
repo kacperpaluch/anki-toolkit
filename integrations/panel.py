@@ -18,9 +18,9 @@ od chowania jest filtr „Niezrobione”.
 Przyciski: „Oznacz jako zrobione" = odhacz w n8n + skok dalej (koniec z tym hasłem),
 „Pomiń" = skok bez odhaczania (pominięcie).
 
-Wybór słówka ładuje WSZYSTKIE zakładki naraz. Kosztuje to pamięć, bo Chromium
-bierze ~100 MB na zakładkę, ale nie czekasz na wczytanie po każdym kliknięciu
-w zakładkę.
+Wybór słówka ładuje tylko widoczną zakładkę; pozostałe przy pierwszym wejściu.
+Przechodzenie po liście to jedno zapytanie na słowo zamiast czterech (mniej
+pamięci Chromium i rzadsza weryfikacja Cloudflare na Cambridge).
 """
 
 import html
@@ -165,10 +165,7 @@ class _DictTabs(QTabWidget):
             return
         if not self.isTabEnabled(self.currentIndex()):
             self.setCurrentIndex(min(self._pending))
-        # Wszystkie słowniki naraz, zaczynając od widocznego.
-        self._load_current()
-        for index in list(self._pending):
-            self._start_load(index)
+        self._load_current()  # reszta czeka w `_pending` na wejście w zakładkę
 
     def _load_current(self) -> None:
         self._start_load(self.currentIndex())

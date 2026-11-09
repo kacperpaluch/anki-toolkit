@@ -75,8 +75,8 @@ i otwórz panel ponownie.
 
 Adresy powstają z samego hasła (`link_templates`), więc kolumny z URL-ami
 w tabeli nie są potrzebne. `link_columns` to tylko nadpisanie: niepusty URL
-z wiersza wygrywa. Wybór słowa ładuje od razu wszystkie zakładki
-(Chromium bierze ~100 MB na zakładkę).
+z wiersza wygrywa. Wybór słowa ładuje tylko widoczną zakładkę; pozostałe
+wczytują się, gdy na nie przejdziesz.
 
 Na stronach działają przyciski userscriptu. Na diki **→ hasło** stoi przy każdym
 nagłówku wpisu, a **→ oba** bierze nagłówek, którego szukałeś.

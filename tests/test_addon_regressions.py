@@ -181,8 +181,8 @@ class PanelTests(unittest.TestCase):
         self.module.QTimer = types.SimpleNamespace(singleShot=lambda _ms, cb: self.timers.append(cb))
         self.module.mw.taskman = types.SimpleNamespace(run_in_background=lambda job, done, **_: self.jobs.append((job, done)))
 
-    def test_choosing_a_word_starts_every_dictionary(self):
-        """Wszystkie słowniki naraz — bez czekania po kliknięciu w zakładkę."""
+    def test_choosing_a_word_loads_only_the_visible_dictionary(self):
+        """Jedno zapytanie na słowo; reszta czeka na wejście w zakładkę."""
         tabs = self.module._DictTabs.__new__(self.module._DictTabs)
         tabs._labels = ["diki", "Cambridge", "Oxford", "LDoCE"]
         tabs._challenged = set()
@@ -196,9 +196,12 @@ class PanelTests(unittest.TestCase):
         self.module.QUrl = lambda url: url
 
         tabs.set_urls({"diki": "d", "Cambridge": "c", "Oxford": "o", "LDoCE": "l"})
-        self.assertEqual(sorted(loaded), [0, 1, 2, 3])
-        self.assertEqual(loaded[0], 0)          # widoczna zakładka rusza pierwsza
-        self.assertEqual(tabs._pending, {})     # nic nie czeka na kliknięcie
+        self.assertEqual(loaded, [0])           # tylko widoczna zakładka
+        self.assertEqual(tabs._pending, {1: "c", 2: "o", 3: "l"})
+        current[0] = 2
+        tabs._load_current()                    # wejście w zakładkę Oxford
+        self.assertEqual(loaded, [0, 2])
+        self.assertNotIn(2, tabs._pending)
 
         loaded.clear()
         tabs.set_urls({"diki": "d", "Oxford": "", "Cambridge": "", "LDoCE": ""})
