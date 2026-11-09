@@ -626,12 +626,6 @@ class TTSTab(QWidget):
 
     _PREVIEW_TEXT = "Hello, this is a voice sample for text-to-speech preview."
 
-    def _current_voices(self) -> list[str]:
-        text = self._voices.text().strip()
-        if not text:
-            return []
-        return [v.strip() for v in text.split(",") if v.strip()]
-
     def _build_preview_config(self) -> dict:
         """Build a TTS config dict from current (unsaved) UI state."""
         config = {

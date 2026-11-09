@@ -173,12 +173,6 @@ def fetch_models(binary: str = "", home: Optional[Path] = None) -> list[str]:
             if isinstance(m, dict) and m.get("id") and not m.get("hidden")]
 
 
-def fetch_rate_limits(binary: str = "", home: Optional[Path] = None) -> dict:
-    """Zużycie okien limitów planu (`account/rateLimits/read`)."""
-    results = app_server_call([("account/rateLimits/read", {})], binary, home)
-    return (results.get(2) or {}).get("rateLimits") or {}
-
-
 # ----------------------------------------------------------------------
 # Provider
 # ----------------------------------------------------------------------
