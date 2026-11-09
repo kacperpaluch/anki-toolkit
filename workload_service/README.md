@@ -205,8 +205,7 @@ częstym „Ponownie” rozważ prostsze pytanie, kontekst lub rozdzielenie znac
 
 Compose montuje `../user_files` do `/data/user_files` w obu kontenerach. Katalog
 główny repozytorium jest też dodatkiem Anki, więc w checkoutcie z podpiętą
-wtyczką to ten sam `user_files/`, w którym dodatek trzyma historię normalizacji
-audio i stan kolejki słówek. Nazwy plików się nie pokrywają; na serwerze bez
+wtyczką to ten sam `user_files/`, w którym dodatek trzyma stan kolejki słówek. Nazwy plików się nie pokrywają; na serwerze bez
 Anki nie ma to znaczenia.
 Na RPi wszystkie trwałe dane są w **/root/aplikacje/anki-workload/user_files/**:
 kolekcja, token, ustawienia, historia i konfiguracja SMTP. Zrób kopię całego

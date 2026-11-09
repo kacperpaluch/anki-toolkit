@@ -21,7 +21,7 @@ and routes to domain context. Keep this file focused on working agreements.
   (`common.editor_operation.detach_note` / `merge_note`) — never mutate
   `editor.note` from a worker, and never overwrite a field the user edited
   while the operation was running.
-- Background workers may perform HTTP, AI, TTS, parsing, and ffmpeg work.
+- Background workers may perform HTTP, AI, TTS, and parsing work.
   Tasks that never touch the collection pass `uses_collection=False` to
   `mw.taskman.run_in_background`, otherwise a slow call blocks Anki's
   single collection executor.

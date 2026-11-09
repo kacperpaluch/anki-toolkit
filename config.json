@@ -289,13 +289,6 @@
   "web_bridge": {
     "port": 8767
   },
-  "audio_normalizer": {
-    "ffmpeg_path": "",
-    "loudnorm_opts": "loudnorm=I=-14:TP=-1.5:LRA=8",
-    "max_workers": 4,
-    "auto_normalize": false,
-    "show_tooltip": true
-  },
   "html_cleanup": {
     "show_tooltip": true,
     "auto_run_startup": false,

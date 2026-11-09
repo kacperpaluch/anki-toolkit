@@ -4,7 +4,7 @@ from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
 
 from . import ai_generator, dictionary, field_splitter, tts
-from . import audio_normalizer, field_hider, html_cleanup, integrations
+from . import field_hider, html_cleanup, integrations
 from .common import check_config, clear_reports, setup_logging
 
 setup_logging()
@@ -82,7 +82,6 @@ def _setup_menu(*_):
     operations = menu.addMenu("Operacje na kolekcji")
     add_actions(operations, (
         ("Rozdziel pola w kolekcji…", field_splitter.run_on_collection),
-        ("Normalizuj audio (ffmpeg)…", audio_normalizer.confirm_normalization),
         ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup),
     ))
     # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`

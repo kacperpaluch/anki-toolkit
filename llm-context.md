@@ -22,7 +22,6 @@ wczytywanego pakietu i nie mogą być z niego importowane.
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
 | `integrations/` | kolejka n8n, panel słowników, Web Bridge, JS stron słowników (`page_js`) — `integrations/llm-context.md` | `word_queue`, `web_bridge` |
-| `audio_normalizer/` | ffmpeg loudnorm, ręcznie lub przez watcher | `audio_normalizer` |
 | `html_cleanup/` | reguły „znajdź → zamień” przy dodawaniu i dla kolekcji | `html_cleanup` |
 | `field_hider/` | ukrywanie pól tylko w oknie Dodaj | `field_hider` |
 
@@ -66,14 +65,6 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 
 ## Niezmienniki małych modułów
 
-- Audio Normalizer: `logic.process_media_dir()` jest workerem — dostaje ścieżkę
-  i nie dotyka `mw`, kolekcji ani Qt; ścieżka mediów i `media.write_data()`
-  zostają na głównym wątku. Historia `user_files/audio_normalizer_<hash>.json`
-  (mtime_ns + rozmiar, zapis atomowy). Jeden watcher z debounce 3 s, odpinany
-  przy zamykaniu profilu; zdarzenia w trakcie pracy ustawiają ponowny skan.
-  Worker sprawdza anulowanie i niezmienność pliku przed podmianą. Plik roboczy
-  ffmpeg jest unikalny (`mkstemp`) i leży w folderze profilu, nie w mediach;
-  ffmpeg ma limit czasu i jest zabijany przy anulowaniu.
 - HTML Cleanup: `cleaning.clean_field()` jest jedynym silnikiem reguł (Dodaj
   i skan kolekcji); liczniki są kluczowane indeksem reguły z tej samej listy.
   Reguły domyślne są tylko w szablonie `config.json` (`default_rules()` je czyta);
@@ -91,8 +82,7 @@ importuje niczego z dodatku, domyślne ustawienia ma w `worker.DEFAULTS`.
 Własna replika, oficjalny sync, tylko limity nowych; bez bezpośredniego
 dostępu do bazy serwera. Stan i token w `user_files/` —
 Compose montuje `../user_files`, czyli ten sam katalog co dane dodatku; nie
-nadawaj plikom usługi nazw używanych przez dodatek (`audio_normalizer_*.json`,
-`word_queue_*.json`) i odwrotnie.
+nadawaj plikom usługi nazw używanych przez dodatek (`word_queue_*.json`) i odwrotnie.
 
 Usługa: jedyne źródło ustawień to `settings.json` edytowany w panelu (konto: `identity.json`);
 `dashboard.py` czyta historię

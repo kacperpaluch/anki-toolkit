@@ -9,7 +9,7 @@ wymowa i nagrania oraz porządki w kolekcji. Ustawienia są w jednym oknie.
 |---|---|
 | Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, wymowa, **Nagraj audio (TTS)**; w oknie Dodaj także **📚 Kolejka słówek** i **Pokaż/ukryj schowane pola** |
 | Przeglądarka kart → prawy klik → **Anki Toolkit** | To samo dla zaznaczonych notatek, w tym **Wygeneruj pola AI…** i rozdzielanie pól |
-| **Narzędzia → Anki Toolkit** | **Kolejka słówek (n8n)…**, **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, normalizacja audio, czyszczenie HTML) |
+| **Narzędzia → Anki Toolkit** | **Kolejka słówek (n8n)…**, **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, czyszczenie HTML) |
 
 Menu pokazują tylko to, co pasuje do notatki lub zaznaczenia. Po pracy na wielu
 notatkach dostajesz raport z błędami, a **Ustawienia → Diagnostyka** pozwala
@@ -24,7 +24,6 @@ ponowić nieudane notatki.
 | [Nagrania (TTS)](tts/README.md) | Audio dla wyrażeń i zdań przez OpenRouter (np. Kokoro) |
 | [Rozdzielanie pól](field_splitter/README.md) | Części pola (po separatorze) w kolejnych polach |
 | [Kolejka słówek](integrations/README.md) | Słowa z n8n DataTable, cztery słowniki w zakładkach, przyciski userscriptu |
-| [Normalizacja audio](audio_normalizer/README.md) | Wyrównanie głośności przez `ffmpeg`, ręcznie albo dla nowych plików |
 | [Czyszczenie HTML](html_cleanup/README.md) | Reguły „znajdź → zamień” przy dodawaniu notatki i dla kolekcji |
 | [Ukrywanie pól](field_hider/README.md) | Pola pomocnicze schowane w oknie Dodaj |
 
@@ -34,7 +33,8 @@ domyślny i poziom rozumowania każdego dostawcy. Oprócz dostawców API są
 **Codex CLI** i **Claude CLI**, które działają na limitach subskrypcji.
 
 Usunięte funkcje są zachowane w tagach Git: tryb tańszy Batch API
-(`archive/batch-api`) i „Utwórz karty z AI” w kolejce (`archive/ai-senses`).
+(`archive/batch-api`), „Utwórz karty z AI” w kolejce (`archive/ai-senses`)
+i normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`).
 
 ## Instalacja
 
@@ -45,8 +45,8 @@ Pobierz `anki-toolkit-<wersja>.ankiaddon` z
 dwuklikiem albo przez **Narzędzia → Dodatki → Zainstaluj z pliku…**, potem
 uruchom Anki ponownie. Aktualizacja tą samą drogą zachowuje ustawienia i `user_files/`.
 
-Ustawienia profilu są w `meta.json`, a dane robocze (historia normalizacji
-audio, stan kolejki) w `user_files/`. Oba miejsca są poza Gitem. `config.json`
+Ustawienia profilu są w `meta.json`, a dane robocze (stan kolejki)
+w `user_files/`. Oba miejsca są poza Gitem. `config.json`
 to szablon z wartościami domyślnymi. Przy wielu profilach Anki ustawienia są wspólne.
 
 ## Dla deweloperów

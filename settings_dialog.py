@@ -11,7 +11,6 @@ from aqt.qt import (
 )
 from aqt.utils import showWarning, tooltip
 
-from .audio_normalizer.settings import AudioNormalizerTab
 from .common import check_config, get_full_config, save_full_config, set_debug
 from .common.ui import hint_label
 from .field_hider.settings import FieldHiderTab
@@ -50,8 +49,6 @@ PAGES = [
          "Kolejka z n8n, pola notatki i połączenie ze stronami słowników.", IntegrationsTab),
     ]),
     ("Porządki", [
-        ("audio_normalizer", "🎚️", "Normalizacja audio",
-         "Wyrównuje głośność plików audio w kolekcji przez ffmpeg.", AudioNormalizerTab),
         ("html_cleanup", "🧹", "Czyszczenie HTML",
          "Reguły „znajdź → zamień” stosowane przy dodawaniu notatek.", HtmlCleanupTab),
         ("field_hider", "👁", "Ukrywanie pól",

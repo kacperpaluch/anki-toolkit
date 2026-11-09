@@ -131,7 +131,6 @@ mw.form = types.SimpleNamespace(menuTools=QMenu(browser))
 setup = next(n for n in root_source.body if isinstance(n, ast.FunctionDef) and n.name == "_setup_menu")
 namespace.update({"QAction": QAction,
     "integrations": types.SimpleNamespace(open_queue=lambda: None),
-    "audio_normalizer": types.SimpleNamespace(confirm_normalization=lambda: None),
     "html_cleanup": types.SimpleNamespace(confirm_collection_cleanup=lambda: None)})
 exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / "__init__.py"), "exec"), namespace)
 with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
@@ -139,7 +138,7 @@ with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
 tools = mw.form.menuTools.actions()[0].menu()
 assert labels(tools) == ["Kolejka słówek (n8n)…", "Ustawienia…", "Operacje na kolekcji"]
 operations = tools.actions()[-1].menu()
-assert len(labels(operations)) == 3
+assert len(labels(operations)) == 2
 tools.actions()[1].trigger()
 assert opened == [None]
 
