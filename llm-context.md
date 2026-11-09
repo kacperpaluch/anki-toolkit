@@ -16,8 +16,8 @@ pakietu i nie może być z niego importowane.
 | `__init__.py` | import modułów, hooki profilu, jedyny przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`, menu budowane przy kliknięciu z bieżącej notatki), menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), start na „Przegląd”, wiązania między panelami (Konta i klucze → prompty, TTS) | wszystkie |
 | `common/` | konfiguracja (`check_config()` przy otwarciu profilu i Ustawień porównuje typy z szablonem `config.json` i proponuje wartości domyślne), HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress (`load_notes()` czyta duże zaznaczenie Browsera z paskiem i Anuluj), raporty sesji (`reports.record_report(title, text, retry, failed)` — Diagnostyka, czyszczone przy zamknięciu profilu), operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
-| `settings/` | Przegląd (tylko odczyt), Konta i klucze (wszystkie klucze i połączenia: `ai_generator.providers`, klucz TTS, n8n/Cloudflare w `word_queue`), sekwencje (workflowy), prompty AI, TTS, słownik, rozdzielanie, diagnostyka | — |
-| `ai_generator/` | prompty, dostawcy, workflowy — `ai_generator/llm-context.md` | `ai_generator`, `workflows`, `context_menu`, `debug` |
+| `settings/` | Przegląd (tylko odczyt), Konta i klucze (wszystkie klucze i połączenia: `ai_generator.providers`, klucz TTS, n8n/Cloudflare w `word_queue`), sekwencje (workflowy i widoczność PPM), prompty AI, TTS, słownik, rozdzielanie pól (`narzedzia_tab.py`), Diagnostyka (`logs_tab.py`: raporty sesji, logi, tryb debug) | `workflows`, `context_menu`, `debug` (pozostałe sekcje zapisują panele modułów) |
+| `ai_generator/` | prompty, dostawcy, wykonywanie workflowów — `ai_generator/llm-context.md` | `ai_generator` (czyta też `workflows`, `context_menu`) |
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `field_splitter/` | kopiowanie części pola do pól docelowych | `field_splitter` |
@@ -44,8 +44,7 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 - `SettingsDialog` łączy żywe ustawienia dostawców z Konta i klucze z edytorem promptów (domyślne modele) oraz klucz TTS z podglądem głosów.
 - `_unify_forms()` w `settings_dialog.py` rozciąga pola `QFormLayout` i wyrównuje
   formularze do lewej — styl macOS domyślnie zostawia pola w minimalnym rozmiarze.
-  Pola liczbowe z tekstem zamiast minimum („bez limitu”, „auto (z historii)”)
-  ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
+  Pola liczbowe z tekstem zamiast minimum („bez limitu”) ustawiaj przez `common.ui.set_special_value()`, bo macOS ich nie poszerza.
   Edytowalne listy dostają rząd przycisków z `common.ui.list_buttons()` (akcje
   po lewej, ▲▼ po prawej, dwuklik = Edytuj, Delete = Usuń) — nie składaj go ręcznie.
   Dialog edycji wpisu waliduje w `accept()` (zostaje otwarty), nie po `exec()` —

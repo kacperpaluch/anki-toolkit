@@ -63,9 +63,8 @@ PPM na polu w edytorze (gui_hooks.editor_will_show_context_menu → _on_editor_c
       → process_note(note, only_fields={field_name}, overwrite=True)   # nadpisuje nawet pełne
 
 Batch w przeglądarce (menu kontekstowe → Wygeneruj pola AI… → okno wyboru pól):
-  → submenu z `_selected_target_fields(notes, config)` — tylko pasujące pola zaznaczenia; workflow widoczny gdy przynajmniej jeden krok pasuje
-  → "Wszystkie pola automatyczne" → _on_generate_browser() → _run_batch(only_fields=None)
-  → "def" itp.   → _on_generate_field_browser(field) → _run_batch(only_fields={field})
+  → pola okna z `_selected_target_fields(notes, config)` — tylko pasujące pola zaznaczenia; workflow widoczny gdy przynajmniej jeden krok pasuje
+  → `_on_fields_dialog`: puste pola → _run_batch(only_fields={wybrane}); „Nadpisz” → _on_regenerate_browser(fields) → potwierdzenie → _run_batch(overwrite=True)
   → notatki wczytywane z mw.col.get_note(nid) NA GŁÓWNYM WĄTKU (kolekcja Anki jest jednowątkowa); `detach_note()` zamraża model i kopiuje pola/tagi; worker nie odczytuje modelu z kolekcji
   → start_progress() (common/progress.py) = natywny pasek mw.progress.start(max=total, immediate=True) (NIE własny QProgressDialog)
       → celowo: trzyma Anki w stanie "busy", więc timer automatycznego backupu/synchronizacji odkłada się zamiast wyskakiwać własnym modalem NAD paskiem batcha i blokować Anuluj
@@ -129,8 +128,8 @@ Przyciski workflowów w edytorze:
 - Workflow w PPM wymaga co najmniej jednego pasującego kroku; `_workflow_matches`
   sprawdza pola i rodzaj akcji, nie stan ich wypełnienia, dostępność sieci czy
   gotowość dostawcy. Sam przebieg wykonuje oryginalną listę kroków.
-- `_on_regenerate_field_browser()` liczy notatki przez `iter_note_fields` z
-  jednym targetem i `overwrite=True`; potwierdzenie ma `defaultno=True`.
+- `_on_regenerate_browser()` liczy notatki przez `iter_note_fields` z
+  wybranymi targetami i `overwrite=True`; potwierdzenie ma `defaultno=True`.
   Dopiero po zgodzie uruchamia `_run_batch`; inne targety nie są generowane.
   Pusta/nieudana odpowiedź nie usuwa starej treści. Regeneracja używa tego
   samego snapshotu, kontroli profilu/konfliktów i undo co uzupełnianie.
@@ -153,10 +152,10 @@ Przyciski workflowów w edytorze:
   `_run_batch`/`_on_workflow_browser(nids=...)` z tymi samymi polami i trybem,
   wyłącznie dla notatek z błędem.
 - `tests/test_content_regressions.py` sprawdza scope PPM, potwierdzenie,
-  zachowanie starego pola po błędzie i liczniki po konflikcie. Dwa testy Qt:
+  zachowanie starego pola po błędzie i liczniki po konflikcie. Testy Qt:
   `tests/qt_browser_menu_smoke.py` (root dispatcher, menu Narzędzia, widoczność,
   workflowy, okno wyboru pól, raport), `tests/qt_editor_menu_smoke.py` (menu „Toolkit ▾”),
-  `tests/qt_ai_settings_smoke.py` (ustawienia, dziedziczenie, ukrywanie dostawców)
+  `tests/qt_ai_settings_smoke.py` (ustawienia promptów i dostawców, ukrywanie dostawców)
   i `tests/qt_settings_dialog_smoke.py` (całe okno, wiązania między panelami, zapis).
   Korzystają z syntetycznych danych, bez wywołań modeli i zapisu konfiguracji.
 
@@ -254,7 +253,7 @@ else:
         # brak fallbacku — zaloguj błąd
         continue
     # uruchom fallback
-    fb_provider = self._resolve_provider(fb_name, fallback_model)
+    fb_provider = self._resolve_provider(fb_name, fallback_model, temperature)
     result = fb_provider.call_api(prompt)
 ```
 
@@ -273,7 +272,7 @@ Szczegóły:
 - `configure(provider, rpm, max_concurrent, free_only)` — wołane w `FieldGenerator._configure_rate_limit()` podczas rozwiązywania dostawcy; czyta per-provider `rpm`/`max_concurrent`/`rate_limit_free_only`.
 - `slot(provider, model)` — context manager owijający każde `provider.call_api()` (główne + fallback); no-op gdy brak limitu dla danego dostawcy/modelu
 - Pacing trzyma lock kubełka przez `time.sleep`, więc starty pozostają równomiernie rozłożone nawet przy wielu wątkach batcha
-- **TPM (tokeny/min) nie jest egzekwowane** — liczba tokenów znana dopiero po odpowiedzi; sporadyczne przekroczenia łapie backoff 429 w `common/http.post_json`
+- **TPM (tokeny/min) nie jest egzekwowane** — liczba tokenów znana dopiero po odpowiedzi; sporadyczne przekroczenia łapie backoff 429 w `common.http.post_json`
 
 UI: pola **Limit RPM** i **Maks. równoległych** są na karcie każdego dostawcy (`settings/ai_generator_tab.py`); checkbox **„Limit tylko dla modeli :free"** tylko dla OpenRoutera.
 
@@ -322,7 +321,6 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - Edytorowe ścieżki AI/TTS/słownika/workflow dzielą jeden wzorzec: `detach_note()` przed startem workera, `merge_editor_note()` po `saveNow`. Worker nigdy nie mutuje `editor.note` — `FieldGenerator.process_note`, `process_single_note` i `process_note_group` piszą do notatki, którą dostaną
 - Pola konfiguracyjne note-type (`target`, `provider`, `prompt`) są normalizowane przez `safe_str()` z `common.text` przed użyciem; wartości liczbowe (`batch_sleep`, `temperature`) pochodzą z widgetów Qt (zakresy wymuszone w UI) lub z `.get()` z wartością domyślną
 - Throttling: paczki na poziomie przeglądarki (sleep co `batch_limit` notatek) + per-dostawca tempo/jednoczesność przez `RateLimiter.slot()` w `field_generator` (patrz „Rate limiter per dostawca")
-- `_advance_jobs` kończy zadanie po pełnym okrążeniu listy bez pola do wysłania; licznik `_scan_clean` żyje między tickami, bo jeden tick czyta najwyżej 500 notatek.
 - Edytorowe zadania tła (AI, workflow, TTS, słownik) idą z `uses_collection=False`; zapis mediów serializuje backend. Wyjątek z `merge_editor_note()` (np. zamknięte okno „Dodaj”) kończy się tooltipem, nie oknem błędu Anki.
 - `claude_cli._logged_in()` pamięta udany `claude auth status` przez 5 minut; ustawienia sprawdzają status dostawców CLI w tle (`_check_local_status`), z uwzględnieniem wpisanej ścieżki binarki.
 - `common.http`: `fetch_url`/`post_json`/`post_create` traktują każdy `OSError` i `HTTPException` (także zerwanie w trakcie `read()`) jak nieudane żądanie — wywołujący dostają `None`/błąd, nie wyjątek.

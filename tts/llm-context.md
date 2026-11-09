@@ -13,7 +13,7 @@ System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pol
 
 Menu TTS w przeglądarce jest budowane dynamicznie z listy zadań + opcja "Uruchom wszystkie". Jeśli klucz `tasks` nie istnieje (lub nie jest listą), `get_tasks()` zwraca zadania domyślne z `_DEFAULTS`; jawnie zapisana **pusta lista** oznacza "brak zadań".
 
-Dostępne przez submenu `TTS` w menu kontekstowym przeglądarki. Konfiguracja w głównym dialogu ustawień wtyczki (**TTS**) oraz w sekcji `tts` konfiguracji profilu Anki.
+Dostępne przez submenu „Nagraj audio (TTS)” w menu kontekstowym przeglądarki i pozycję „Nagraj audio (TTS)” w menu „Toolkit ▾” edytora. Konfiguracja na stronie **Nagrania (TTS)** okna ustawień oraz w sekcji `tts` konfiguracji.
 
 
 Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; menu filtruje zadania po obecności source/target, a „Uruchom wszystkie” używa przefiltrowanej listy.
@@ -31,7 +31,7 @@ Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; m
 ## Przepływ danych
 
 ```
-Menu `TTS` → zadanie z listy
+Menu „Nagraj audio (TTS)” → zadanie z listy
   → _make_runner(browser, task) → browser.selected_notes()
   → process_task_async(browser, nids, task)  →  _process_batch_async(browser, nids, [task], label)
 Menu → "Uruchom wszystkie"
@@ -69,7 +69,7 @@ _process_batch_async(browser, nids, tasks, label):
             # w trakcie (inna operacja) jest pomijana; inny profil → nic nie zapisuje
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
 
-Przycisk edytora (toolbar)
+Menu „Toolkit ▾” → „Nagraj audio (TTS)”
   → _on_tts_editor(editor)
       → jeśli AI/TTS/słownik/workflow już działa na tym edytorze: tooltip i return
       → editor.saveNow(start) synchronizuje webview → note przed odczytem pól
@@ -100,13 +100,13 @@ get_tasks(config)
 
 `generate_audio()` (`api.py`) stosuje `replacements` i woła `_generate_openrouter()` — POST do `https://openrouter.ai/api/v1/audio/speech` z `Authorization: Bearer`.
 
-Retry (HTTP 429/5xx, timeouty) dzieje się w `common.http.post_json()` — `_generate_openrouter` tylko interpretuje wynik `(bytes|None, err|None)` i rzuca `Exception` gdy `err` niepuste.
+Ponowienia robi `common.http.post_create()`: tylko HTTP 429 i połączenie, które nie zostało wysłane. Timeout i 5xx nie są ponawiane, bo żądanie mogło być już policzone. `_generate_openrouter` interpretuje wynik `(bytes|None, err|None, uncertain)` i rzuca `Exception`, gdy `err` jest niepuste.
 
 ### Proces przykładów (tryb split)
 
 ```
 Pole: "He ran fast.<br><br>She walked slowly.<br><br>They jumped high."
-  → split_separator_regex("<br><br>")  (common/text.py:38)
+  → split_separator_regex("<br><br>")  (common/text.py)
       → kompiluje (?:<br><br>){1,}  (\s* między tokenami, dowolna ilość whitespace)
   → ["He ran fast.", "She walked slowly.", "They jumped high."]
   → każde zdanie → osobny plik audio
