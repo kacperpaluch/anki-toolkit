@@ -5,7 +5,7 @@ Dictionary audio service for fetching pronunciation audio from Oxford, Cambridge
 import urllib.parse
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Optional, Literal
+from typing import Optional
 import logging
 logger = logging.getLogger(__name__)
 from ..common.http import fetch_url, fetch_text
@@ -14,12 +14,6 @@ from ..common.http import fetch_url, fetch_text
 def _normalize_word(word: str) -> str:
     """Normalize a word for filename/URL matching: lowercase, spaces/hyphens → underscore, drop apostrophes."""
     return word.lower().replace(' ', '_').replace('-', '_').replace("'", "")
-
-
-DictionarySource = Literal[
-    "oxford_uk", "oxford_us", "cambridge_uk", "cambridge_us", "diki_uk", "diki_us",
-    "longman_uk", "longman_us"
-]
 
 
 @dataclass
@@ -185,8 +179,9 @@ class DictionaryService:
         base = word.lower().replace(' ', '_').replace("'", "")
         variant = "uk" if source == "diki_uk" else "us"
         sub = "en/mp3" if variant == "uk" else "en-ame/mp3"
-        for candidate in (base.replace('-', '_'), base):
-            audio_url = f"{self.DIKI_BASE_URL}{sub}/{candidate}.mp3"
+        for candidate in dict.fromkeys((base.replace('-', '_'), base)):
+            # Quoted: a raw "café" makes urllib raise and lose the other sources' audio.
+            audio_url = f"{self.DIKI_BASE_URL}{sub}/{urllib.parse.quote(candidate)}.mp3"
             logger.info(f"Fetching Diki.pl audio from: {audio_url}")
             data = fetch_url(audio_url, max_retries=max_retries, timeout=timeout)
             if data:

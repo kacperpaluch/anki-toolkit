@@ -20,12 +20,14 @@ i `p3` — po jednym zdaniu z jego `[sound:…]`.
 ## Reguły
 
 - Kolejne części trafiają do kolejnych pól z listy; nadmiarowe części są pomijane,
-  a nadmiarowe pola zostają nietknięte.
+  a nadmiarowe pola zostają nietknięte, chyba że włączone jest nadpisywanie (niżej).
 - Pola docelowe, których nie ma w typie notatki, są pomijane. Pole źródłowe wpisane
   na listę celów też jest pomijane.
 - Spacje w separatorze pasują do dowolnych odstępów (`<br> <br>` = `<br><br>`),
   kilka separatorów pod rząd liczy się jak jeden, a puste części są pomijane.
-- **Nadpisuj istniejące pola** włączone: pola docelowe zawsze dostają nową treść.
+- **Nadpisuj istniejące pola** włączone: pola docelowe zawsze dostają nową treść,
+  a pola, dla których zabrakło części (źródło skrócone), są czyszczone. Notatka
+  z pustym polem źródłowym zostaje bez zmian.
   Wyłączone: wypełniane są tylko puste pola.
 
 ## Konfiguracja (`field_splitter`)

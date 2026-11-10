@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 HOST, DEFAULT_PORT = "127.0.0.1", 8767  # 8765/8766 to AnkiConnect i jego forki
 MAX_BODY = 1_000_000  # 1 MB — pola słownikowe to kilobajty
+SEPARATOR = "<br><br>"  # między doklejanymi wartościami (append)
 
 # Strony z userscripta. GM_xmlhttpRequest nie wysyła nagłówka Origin (brak → OK);
 # przeglądarka przy cross-origin POST wysyła go ZAWSZE, więc żądania fetch()
@@ -99,14 +100,13 @@ def _join(existing: str, value: str, separator: str) -> str:
     return (base + separator + value) if base else value
 
 
-def _apply_fields(fields: dict, target, append: bool = False, separator: str = "<br><br>",
-                  is_html: bool = False) -> str | None:
+def _apply_fields(fields: dict, target, append: bool = False) -> str | None:
     """Na WĄTKU GŁÓWNYM: wpisz pola do otwartego okna „Dodaj". Zwraca błąd lub None.
 
-    append=True → dokleja do istniejącej treści pola przez `separator` (puste pole
+    append=True → dokleja do istniejącej treści pola przez `SEPARATOR` (puste pole
     dostaje samą wartość). Inaczej nadpisuje. Wartości to zwykły tekst i są
-    escapowane — pola Anki są HTML-em; is_html=True wpisuje je bez zmian.
-    Separator zawsze jest HTML-em.
+    ZAWSZE escapowane — pola Anki są HTML-em, a żądanie może wysłać dowolny
+    skrypt z dozwolonej strony (reklamy), więc surowego HTML-a nie przyjmujemy.
     """
     if not _target_alive(target):
         return "Okno „Dodaj” lub notatka zmieniły się — wyślij dane ponownie."
@@ -117,14 +117,14 @@ def _apply_fields(fields: dict, target, append: bool = False, separator: str = "
         return "Żadne z podanych pól nie istnieje w tym typie notatki: " + ", ".join(fields)
 
     for name in written:
-        value = fields[name] if is_html else html.escape(fields[name], quote=False)
-        note[name] = _join(note[name], value, separator) if append else value
+        value = html.escape(fields[name], quote=False)
+        note[name] = _join(note[name], value, SEPARATOR) if append else value
     editor.loadNote()
     editor.parentWindow.activateWindow()
     return None
 
 
-def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5, is_html=False):
+def _run_on_main_sync(fields, append=False, timeout=5):
     """Save the captured editor before applying; timeout cancels pending callbacks."""
     box = {}
     done = threading.Event()
@@ -136,8 +136,7 @@ def _run_on_main_sync(fields, append=False, separator="<br><br>", timeout=5, is_
             if done.is_set():
                 return
             try:
-                box["error"] = _apply_fields(_resolve(fields, _role_fields()), target,
-                                             append, separator, is_html)
+                box["error"] = _apply_fields(_resolve(fields, _role_fields()), target, append)
             except Exception as error:
                 box["error"] = str(error)
                 logger.exception("web_bridge: apply failed")
@@ -202,11 +201,9 @@ class _Handler(BaseHTTPRequestHandler):
             if not isinstance(fields, dict) or not fields:
                 error = 'Body musi mieć {"fields": {"Nazwa pola": "wartość"}}'
             else:
-                append = bool(body.get("append"))
-                separator = body.get("separator") or "<br><br>"
-                if not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) or not isinstance(separator, str):
-                    raise ValueError("Nazwy pól, wartości i separator muszą być tekstem.")
-                error = _run_on_main_sync(fields, append, separator, is_html=body.get("html") is True)
+                if not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()):
+                    raise ValueError("Nazwy pól i wartości muszą być tekstem.")
+                error = _run_on_main_sync(fields, bool(body.get("append")))
         except Exception as e:  # noqa: BLE001
             error = str(e)
             logger.exception("web_bridge: bad request")

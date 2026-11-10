@@ -69,7 +69,7 @@ class RateLimiter:
 
     ponytail: paces request *starts*, not tokens. A tokens-per-minute cap
     can't be known before the call returns; the 429
-    backoff in post_json() absorbs the occasional overflow. Add token
+    backoff in post_create() absorbs the occasional overflow. Add token
     accounting only if TPM 429s actually persist.
     """
 
@@ -280,17 +280,26 @@ class FieldGenerator:
             note, self._config, only_fields=only_fields, overwrite=overwrite
         ))
 
+        failed: set = set()
         while pending:
             wave, rest, waiting = [], [], set()
             for field_cfg, target_field in pending:
                 refs = referenced_fields(safe_str(field_cfg.get("prompt", "")))
+                if refs & failed:
+                    # Its input was not generated: an empty {{field}} would buy
+                    # a wrong answer that "fill empty fields" never replaces.
+                    failed.add(target_field)
+                    self.last_error = (f"Pole '{target_field}': pominięto, bo nie wygenerowano "
+                                       f"pola {', '.join(sorted(refs & failed))}.")
+                    self.errors.append(self.last_error)
+                    continue
                 (rest if refs & waiting else wave).append((field_cfg, target_field))
                 waiting.add(target_field)
             pending = rest
 
             jobs = [(cfg, target, render_template(safe_str(cfg.get("prompt", "")), fields_map))
                     for cfg, target in wave]
-            if len(jobs) == 1 or workers == 1:
+            if len(jobs) <= 1 or workers == 1:  # 0 jobs: the whole wave was skipped
                 results = [self._generate_field(*job) for job in jobs]
             else:
                 # Own generator per field: provider instances keep last_error,
@@ -305,6 +314,7 @@ class FieldGenerator:
                     fields_map[target_field] = clean_html_normalized(result)  # for dependent fields
                     changed[target_field] = result
                 else:
+                    failed.add(target_field)
                     self.last_error = error
                     self.errors.append(error)
 

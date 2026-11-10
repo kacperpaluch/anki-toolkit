@@ -498,6 +498,18 @@ class TestFieldSplitter(unittest.TestCase):
         self.assertEqual(note["przyklad"], "One<br><br>Two", "pole źródłowe okrojone")
         self.assertEqual(note["p2"], "One")
 
+    def test_shortened_source_clears_leftover_targets_only_when_overwriting(self):
+        fs = _load("field_splitter", "field_splitter/__init__.py")
+        cfg = {"source_field": "przyklad", "separator": "<br><br>",
+               "target_fields": "p1, p2, p3", "overwrite": True}
+        note = FakeNote({"przyklad": "One<br><br>Two", "p1": "One", "p2": "Two", "p3": "Removed"})
+        self.assertTrue(fs._process_note(note, cfg))
+        self.assertEqual(note["p3"], "")
+
+        note["p3"] = "Mine"
+        self.assertFalse(fs._process_note(note, dict(cfg, overwrite=False)))
+        self.assertEqual(note["p3"], "Mine")
+
     def test_split_still_maps_parts_in_order(self):
         result = splitter.split_field_value("A<br><br>B<br><br>C", "<br><br>",
                                             ["p1", "p2", "p3"])
@@ -646,6 +658,43 @@ class TestReviewFixes(unittest.TestCase):
             self.assertIsNone(http.fetch_url("https://x/a.mp3", max_retries=1))
             self.assertIsNone(http.post_json("https://x", b"{}", {}, max_retries=1)[0])
             self.assertTrue(http.post_create("https://x", b"{}", {}, max_retries=1)[2])
+
+    def test_ai_request_is_not_repeated_after_a_timeout(self):
+        _load("ai_generator.field_generator", "ai_generator/field_generator.py")
+        providers = sys.modules[f"{_PKG}.ai_generator.providers"]
+        base = sys.modules[f"{_PKG}.ai_generator.providers.base"]
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request)
+            raise TimeoutError("read timed out")
+        provider = providers.get_provider("openai", {"api_key": "k", "model": "gpt-4o"}, max_retries=3)
+        with patch.object(sys.modules[base.post_create.__module__], "urlopen", opener):
+            self.assertIsNone(provider.call_api("prompt"))
+        self.assertEqual(len(calls), 1, "timeout może ukrywać policzone zapytanie")
+
+    def test_field_depending_on_a_failed_field_is_not_generated(self):
+        generator_module = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
+        note = FakeNote({"ang": "cat", "def": "", "example": ""})
+        note.note_type = lambda: {"name": "Test"}
+        generator = generator_module.FieldGenerator({"note_types": {"Test": {
+            "a": {"target": "def", "provider": "openai", "prompt": "define {{ang}}"},
+            "b": {"target": "example", "provider": "openai", "prompt": "example for {{def}}"},
+        }}})
+        prompts = []
+        provider = types.SimpleNamespace(model="test", last_error="timeout",
+                                         call_api=lambda prompt: prompts.append(prompt))
+        with patch.object(generator, "_resolve_provider", return_value=provider):
+            self.assertEqual(generator.process_note(note), {})
+        self.assertEqual(prompts, ["define cat"])
+        self.assertEqual(len(generator.errors), 2)
+
+    def test_diki_audio_url_is_quoted_and_fetched_once(self):
+        service = _load("dictionary.dictionary_service", "dictionary/dictionary_service.py")
+        urls = []
+        with patch.object(service, "fetch_url", lambda url, **_kwargs: urls.append(url)):
+            self.assertIsNone(service.dictionary_service._fetch_diki_audio("café", "diki_uk"))
+        self.assertEqual(urls, ["https://www.diki.pl/images-common/en/mp3/caf%C3%A9.mp3"])
 
     def test_field_value_inside_if_block_is_not_rendered_twice(self):
         engine = _load("ai_generator.template_engine", "ai_generator/template_engine.py")

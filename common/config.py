@@ -21,12 +21,6 @@ def get_module_config(module_key: str, defaults: dict | None = None) -> dict:
     return cfg
 
 
-def save_module_config(module_key: str, cfg: dict) -> None:
-    full = get_full_config()
-    full[module_key] = cfg
-    save_full_config(full)
-
-
 def update_module_config(module_key: str, changes: dict) -> None:
     """Merge `changes` into one section, keeping keys this caller doesn't know."""
     full = get_full_config()

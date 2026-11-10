@@ -11,7 +11,7 @@ from .openai_compat import (
     extract_message_content,
     is_reasoning_effort_unsupported_error,
 )
-from ...common.http import post_json
+from ...common.http import post_create
 
 
 class BaseProvider(ABC):
@@ -38,8 +38,12 @@ class BaseProvider(ABC):
         self.logger = logging.getLogger(self.__class__.__module__)
 
     def _post(self, url: str, data: dict, headers: dict) -> Optional[bytes]:
-        """POST data dict as JSON with retry. Sets self.last_error on failure."""
-        raw, err = post_json(
+        """POST data dict as JSON. Sets self.last_error on failure.
+
+        A paid request: a timeout or 5xx may hide a completion the provider
+        already billed, so only 429 and unsent requests are repeated.
+        """
+        raw, err, _uncertain = post_create(
             url,
             json.dumps(data).encode("utf-8"),
             headers,

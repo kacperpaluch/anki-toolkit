@@ -91,12 +91,12 @@ class BridgeTests(unittest.TestCase):
             self.assertIsNone(result.result(timeout=1))
         self.assertEqual(self.editor.web.fields, {"ang": "new", "def": "unsaved text"})
 
-    def test_plain_text_is_escaped_unless_html_is_requested(self):
+    def test_values_are_always_escaped(self):
         target = self.module._target
         self.module._apply_fields({"ang": "R&D <b>"}, target, append=True)
         self.assertEqual(self.editor.note["ang"], "word<br><br>R&amp;D &lt;b&gt;")
-        self.module._apply_fields({"def": "<i>x</i>"}, target, is_html=True)
-        self.assertEqual(self.editor.note["def"], "<i>x</i>")
+        self.module._apply_fields({"def": "<i>x</i>"}, target)
+        self.assertEqual(self.editor.note["def"], "&lt;i&gt;x&lt;/i&gt;")
 
     def test_timeout_cancels_queued_start(self):
         self.assertIsNotNone(self.module._run_on_main_sync({"ang": "new"}, timeout=0))

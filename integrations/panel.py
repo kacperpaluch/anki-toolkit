@@ -633,6 +633,7 @@ class WordQueuePanel(QDockWidget):
                 self._style_item(item)
             return
         self._refill_generation += 1  # an older GET must not overwrite this PATCH
+        self._queue_status.setText("")  # that GET's "Pobieranie…" would otherwise stay forever
         self._pending[row_id] = done
         if item is not None:
             self._style_item(item)
@@ -656,7 +657,8 @@ class WordQueuePanel(QDockWidget):
                 tooltip(f"n8n: nie zapisano wiersza {row_id} — {error}", parent=mw, period=5000)
             else:
                 self._marked.add(row_id) if done else self._marked.discard(row_id)
-                self._done_count += 1 if done else -1
+                # Unticking a row done in an earlier session must not show "-1".
+                self._done_count = max(0, self._done_count + (1 if done else -1))
             # Shuffle may have rebuilt the QListWidget while HTTP was running.
             for i in range(self._list.count()):
                 current = self._list.item(i)

@@ -130,7 +130,7 @@ modeli `:free`. Limity obejmują model główny i zapasowy.
 | `skip_tags` | Notatki z tymi tagami są pomijane w całości |
 | `batch_limit`, `batch_sleep` | Przeglądarka: przerwa `batch_sleep` s co `batch_limit` notatek |
 | `parallel_requests` | Równoległe notatki w przeglądarce i pola jednej notatki (1–16) |
-| `max_retries` | Próby przy 429/5xx, timeoutach i błędach połączenia |
+| `max_retries` | Próby przy 429 i braku połączenia. Timeout i 5xx nie są ponawiane, bo zapytanie mogło już zostać policzone |
 | `request_timeout` | Limit czasu żądania HTTP; CLI ma własny `cli_timeout` |
 
 W UI: **Prompty AI → Ogólne** (tagi i sekcja **Zaawansowane**).
@@ -146,7 +146,7 @@ class MojProvider(OpenAICompatProvider):
 ```
 
 Inny format: dziedzicz po `BaseProvider` i zaimplementuj `call_api()`
-(`self._post()` ma retry, gotowe parsery to `_parse_chat_completion()` i `_parse_messages()`).
+(`self._post()` ponawia 429 i niewysłane żądania, gotowe parsery to `_parse_chat_completion()` i `_parse_messages()`).
 Potem dopisz klasę do `PROVIDERS` i `PROVIDER_LABELS`, sekcję dostawcy do `config.json`
 i, dla przycisku **Pobierz**, gałąź w `providers/model_discovery.py`.
 

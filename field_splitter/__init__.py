@@ -69,6 +69,12 @@ def _process_note(note, cfg: dict) -> bool:
         if current != part:
             note[tf] = part
             changed = True
+    if overwrite:
+        # A shortened source must not leave its removed parts in later targets.
+        for tf in targets:
+            if tf not in mapping and tf in field_names and note[tf]:
+                note[tf] = ""
+                changed = True
     return changed
 
 

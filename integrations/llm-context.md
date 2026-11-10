@@ -29,8 +29,9 @@ po `id`, a fallback bez panelu może odhaczyć go po słowie.
 - Userscript wysyła role (`headword`, `meaning`, `definition`, `example`);
   `bridge._resolve` zamienia je na pola z `word_queue` (`word_field`, `ai_fields`)
   na głównym wątku. Nazwy pól nie wracają do userscriptu — jedno źródło to konfiguracja.
-- Wartości są tekstem i są escapowane przed wpisaniem do pola; surowy HTML tylko
-  z `"html": true`. Separator zawsze jest HTML-em.
+- Wartości są tekstem i są ZAWSZE escapowane przed wpisaniem do pola. Mostek nie
+  przyjmuje surowego HTML-a ani własnego separatora (stały `<br><br>`): POST może
+  wysłać dowolny skrypt z dozwolonej strony, np. reklama. Nie przywracaj tych opcji.
 - `_origin_allowed` wpuszcza własny origin po porcie z `_bound_port`, nie po
   samym hoście. Nie rozluźniaj tego do `hostname == "127.0.0.1"`.
 
