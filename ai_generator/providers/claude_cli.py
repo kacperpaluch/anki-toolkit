@@ -73,7 +73,7 @@ def login_status(binary: str = "") -> tuple[bool, str]:
     """
     resolved = find_binary(binary)
     if resolved is None:
-        return False, "nie znaleziono binarki `claude`"
+        return False, "nie znaleziono programu `claude`"
     try:
         proc = subprocess.run(
             [resolved, "auth", "status", "--json"],
@@ -143,7 +143,7 @@ class ClaudeCLIProvider(BaseProvider):
         binary = find_binary(self.options.get("binary_path", ""))
         if binary is None:
             self.last_error = (
-                "Nie znaleziono binarki `claude`. Zainstaluj Claude Code "
+                "Nie znaleziono programu `claude`. Zainstaluj Claude Code "
                 "(https://claude.com/claude-code) albo podaj ścieżkę "
                 "w Ustawienia → Konta i klucze → Claude CLI."
             )

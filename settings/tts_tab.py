@@ -25,7 +25,7 @@ from ..common.ui import (
 
 _MODE_LABELS = {
     "single": "Pojedyncze audio",
-    "split": "Dzielone (split)",
+    "split": "Dzielone",
     "split_audio": "Dzielone — tylko audio",
 }
 
@@ -60,7 +60,7 @@ class TaskEditDialog(QDialog):
         form.addRow("Pole źródłowe:", self._source)
         form.addRow("Pole docelowe:", self._target)
         form.addRow("Tryb:", self._mode)
-        form.addRow("Separator (split):", self._separator)
+        form.addRow("Separator części:", self._separator)
         layout.addLayout(form)
 
         self._on_mode_changed()
@@ -244,7 +244,7 @@ class TTSTab(QWidget):
         self._speed.setRange(0.1, 3.0)
         self._speed.setSingleStep(0.05)
         self._speed.setValue(t.get("speed", 0.9))
-        speed_form.addRow("Szybkość (speed):", self._speed)
+        speed_form.addRow("Szybkość:", self._speed)
         layout.addLayout(speed_form)
 
         # -- Word replacements (applied only to text sent to the engine) --

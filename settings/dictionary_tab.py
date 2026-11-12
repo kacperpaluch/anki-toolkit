@@ -35,7 +35,7 @@ class DictionaryTab(QWidget):
         self._wiktionary_fallback = QCheckBox("Wiktionary jako zapasowe źródło IPA")
         self._wiktionary_fallback.setChecked(d.get("wiktionary_ipa_fallback", True))
         self._wiktionary_fallback.setToolTip(
-            "Gdy Oxford/Cambridge nie znajdzie IPA dla słowa, automatycznie odpyta Wiktionary API.\n"
+            "Gdy Oxford/Cambridge nie znajdzie IPA dla słowa, wtyczka pobierze je z Wiktionary.\n"
             "Wiktionary dostarcza tylko IPA — nie dostarcza audio."
         )
 
@@ -43,7 +43,7 @@ class DictionaryTab(QWidget):
         self._diki_ipa_fallback.setChecked(d.get("diki_ipa_fallback", False))
         self._diki_ipa_fallback.setToolTip(
             "Diki nie zawiera transkrypcji IPA. Po zaznaczeniu tej opcji IPA\n"
-            "zostanie pobrane z wybranego słownika podczas fetchowania z Diki."
+            "zostanie pobrane z wybranego słownika przy pobieraniu wymowy z Diki."
         )
         _IPA_SOURCES = ["wiktionary", "oxford", "cambridge"]
         self._diki_ipa_source = QComboBox()

@@ -149,7 +149,7 @@ def _get_json(url: str, cfg: dict):
     # kolejny (_via_hosts), a nie mielić 3 retry × 10 s przed adresem zapasowym.
     raw = fetch_url(url, headers=_headers(cfg, url), max_retries=1, timeout=5)
     if raw is None:
-        return None, "brak odpowiedzi (szczegóły w Logach)"
+        return None, "brak odpowiedzi (szczegóły w Ustawienia → Diagnostyka)"
     return _json(raw)
 
 
@@ -303,7 +303,7 @@ def add_rows(words: list[str], cfg: dict) -> tuple[list[dict], str | None]:
         matches = [by_word.get(word.strip().casefold(), []) for word in words]
         if not read_error and all(len(found) == 1 for found in matches):
             return [found[0] for found in matches], None
-        return [], f"wynik zapisu niepewny; nie ponowiono POST — {error}"
+        return [], f"wynik zapisu niepewny; zapisu nie ponowiono — {error}"
     return rows, None
 
 

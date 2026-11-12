@@ -108,7 +108,7 @@ def _pick_ai_fields(parent, step: dict | None) -> dict | None:
 
     mode = QComboBox()
     mode.addItem("Wszystkie puste pola", "empty")
-    mode.addItem("Zablokowane pola (manual_only)", "manual")
+    mode.addItem("Pola tylko na żądanie", "manual")
     mode.addItem("Konkretne pola…", "specific")
     fields_edit = _expanding_line_edit("")
     fields_edit.setPlaceholderText("np. p1-nauka, p2-nauka, p3-nauka")

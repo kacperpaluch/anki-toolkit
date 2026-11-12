@@ -52,7 +52,7 @@ def _on_regenerate_browser(browser: Browser, fields: list):
     eligible = [note for note in notes if list(iter_note_fields(
         note, config, only_fields=set(fields), overwrite=True))]
     if not eligible:
-        tooltip("Brak pasujących notatek do regenerowania.")
+        tooltip("Brak pasujących notatek do ponownego generowania.")
         return
     names = ", ".join(f"„{name}”" for name in fields)
     if not askUser(
@@ -63,7 +63,7 @@ def _on_regenerate_browser(browser: Browser, fields: list):
     ):
         return
     _run_batch(browser, [n.id for n in eligible], config,
-               only_fields=set(fields), label=f"Regenerowanie: {', '.join(fields)}",
+               only_fields=set(fields), label=f"Ponowne generowanie: {', '.join(fields)}",
                overwrite=True)
 
 
@@ -98,7 +98,7 @@ def _show_run_report(parent, title, total, done, changed, details, cancelled,
     if failed and retry:
         lines.append("Raport zostaje w Ustawienia → Diagnostyka — stamtąd ponowisz nieudane notatki.")
     if details or conflicts:
-        lines.append("\nSzczegóły — identyfikatory można wyszukać w Browserze przez nid:123:")
+        lines.append("\nSzczegóły — identyfikatory można wyszukać w przeglądarce kart przez nid:123:")
         for nid, kind, reason in sorted(details):
             lines.append(f"nid:{nid} — {'Błąd' if kind == 'error' else 'Pominięto'}: {reason}")
         for nid in sorted(conflicts):

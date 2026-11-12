@@ -177,7 +177,7 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
 
     menu.addSeparator()
     if note[field_name].strip():
-        label = f'Regeneruj „{field_name}” przez AI'
+        label = f'Wygeneruj ponownie „{field_name}” przez AI'
     else:
         label = f'Wygeneruj „{field_name}” przez AI'
     action = QAction(label, menu)

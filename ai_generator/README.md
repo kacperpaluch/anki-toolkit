@@ -8,7 +8,7 @@ modele domyślne i limity dostawców w **Ustawienia → Konta i klucze**.
 
 **Edytor → Toolkit ▾**
 - **Uzupełnij puste pola AI** wypełnia puste pola, które mają prompt. Pomija pola „Tylko na żądanie”.
-- Prawy klik na polu z promptem → **Wygeneruj `pole` przez AI** (puste) albo **Regeneruj** (nadpisuje).
+- Prawy klik na polu z promptem → **Wygeneruj `pole` przez AI** (puste) albo **Wygeneruj ponownie** (nadpisuje).
 - Sekwencje pasujące do notatki. Własny przycisk dostają przez **Toolkit ▾ → Przypnij do paska**.
 
 Generowanie działa w tle na kopii notatki. Jeśli w tym czasie zmienisz jakieś
@@ -50,7 +50,7 @@ w menu, gdy przynajmniej jeden jej krok pasuje do notatki.
 | Klucz | Znaczenie |
 |---|---|
 | klucz zewnętrzny | Nazwa typu notatki, dokładnie jak w Anki |
-| klucz wewnętrzny | Nazwa zadania; kolejność zadań = kolejność generowania |
+| klucz wewnętrzny | Nazwa promptu; kolejność promptów = kolejność generowania |
 | `target` | Pole do wypełnienia |
 | `provider`, `model` | Dostawca i model; pusty model = model domyślny dostawcy |
 | `fallback_provider`, `fallback_model` | Model zapasowy (opcjonalnie) |

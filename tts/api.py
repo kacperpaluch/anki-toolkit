@@ -77,7 +77,7 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
         max_retries=max_retries, timeout=timeout, log=logger,
     )
     if err:
-        raise Exception(f"OpenRouter TTS Error: {err}")
+        raise Exception(f"OpenRouter TTS: {err}")
     raw = _ensure_audio(raw, "OpenRouter TTS")
     logger.debug(
         f"OpenRouter TTS OK: voice={voice}, {len(raw)} B w {time.time() - t0:.1f}s"

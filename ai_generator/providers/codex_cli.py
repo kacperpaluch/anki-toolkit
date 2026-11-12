@@ -108,7 +108,7 @@ def app_server_call(methods: list[tuple[str, dict]], binary: str = "",
     """
     resolved = find_binary(binary)
     if resolved is None:
-        raise RuntimeError("nie znaleziono binarki `codex`")
+        raise RuntimeError("nie znaleziono programu `codex`")
     resolved_home = home or codex_home()
 
     proc = subprocess.Popen(
@@ -188,7 +188,7 @@ class CodexCLIProvider(BaseProvider):
         binary = find_binary(self.options.get("binary_path", ""))
         if binary is None:
             self.last_error = (
-                "Nie znaleziono binarki `codex`. Zainstaluj Codex CLI "
+                "Nie znaleziono programu `codex`. Zainstaluj Codex CLI "
                 "(https://developers.openai.com/codex) albo podaj ścieżkę "
                 "w Ustawienia → Konta i klucze → Codex CLI."
             )

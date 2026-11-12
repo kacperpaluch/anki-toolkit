@@ -54,7 +54,7 @@ def _local_status_text(name: str, configured: str = "", home: str = "") -> tuple
     binary_name = _LOCAL_PROVIDERS.get(name, name)
     binary = mod.find_binary(configured)
     if binary is None:
-        return False, f"✗ Nie znaleziono binarki `{binary_name}`"
+        return False, f"✗ Nie znaleziono programu `{binary_name}`"
     # Codex czyta `auth_mode` z auth.json, Claude woła `claude auth status`;
     # żadna z tych dróg nie zwraca tokenu.
     if name == "codex_cli":
@@ -248,8 +248,8 @@ class AIProvidersBox(QGroupBox):
             fallback_model.setPlaceholderText("np. gpt-4o-mini (puste = bez modelu zapasowego)")
             fallback_model.setToolTip(
                 "Model zapasowy uruchamiany gdy główny model zawiedzie "
-                "(błąd API, rate limit, brak środków, brak treści).\n"
-                "Używa tego samego providera i tego samego klucza API.\n"
+                "(błąd API, limit żądań, brak środków, brak treści).\n"
+                "Używa tego samego dostawcy i tego samego klucza API.\n"
                 "Puste pole = bez modelu zapasowego na poziomie dostawcy.\n"
                 "Prompt może ustawić własny model zapasowy."
             )
@@ -281,7 +281,7 @@ class AIProvidersBox(QGroupBox):
                 binary_path.setPlaceholderText(
                     "puste = wykryj automatycznie (najpierw PATH)")
                 binary_path.setToolTip(
-                    f"Ścieżka do binarki `{binary_name}`. Puste pole = "
+                    f"Ścieżka do programu `{binary_name}`. Puste pole = "
                     "wykrywanie automatyczne: najpierw PATH, potem typowa "
                     "lokalizacja instalacji."
                 )
@@ -322,7 +322,7 @@ class AIProvidersBox(QGroupBox):
                 "rpm", 20 if _is_or else 0)))
             rpm.setToolTip(
                 "Maks. żądań na minutę dla tego dostawcy. Żądania są rozkładane "
-                "równomiernie (60/RPM s odstępu), więc batch nie burstuje.\n"
+                "równomiernie (60/RPM s odstępu), więc nie wychodzą seriami.\n"
                 "0 = bez limitu.\n"
                 "Jeśli dostawca podaje limit jako RPS (żądania/s), pomnóż ×60\n"
                 "(OpenRouter :free: 20 RPM → wpisz 20)."
@@ -357,7 +357,7 @@ class AIProvidersBox(QGroupBox):
                 free_only.setChecked(bool(p.get("rate_limit_free_only", True)))
                 free_only.setToolTip(
                     "Zaznaczone: limit dotyczy tylko modeli z ':free' w nazwie "
-                    "— płatne modele OpenRoutera nie są dławione.\n"
+                    "— płatne modele OpenRoutera nie są ograniczane.\n"
                     "Odznaczone: limit dotyczy wszystkich żądań OpenRoutera."
                 )
                 adv_form.addRow("", free_only)

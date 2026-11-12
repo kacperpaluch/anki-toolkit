@@ -219,12 +219,12 @@ class PromptsTab(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(8, 8, 4, 8)
 
-        left_layout.addWidget(QLabel("Typ notatki → zadanie:"))
+        left_layout.addWidget(QLabel("Typ notatki → prompt:"))
 
         # Filtr po typie notatki — przy wielu typach płaska lista robi się
         # nieczytelna; filtr pokazuje tylko wybrany typ.
         self._filter_combo = QComboBox()
-        self._filter_combo.setToolTip("Pokaż zadania tylko wybranego typu notatki.")
+        self._filter_combo.setToolTip("Pokaż prompty tylko wybranego typu notatki.")
         self._populate_filter()
         left_layout.addWidget(self._filter_combo)
 
@@ -248,8 +248,8 @@ class PromptsTab(QWidget):
         right_layout.setContentsMargins(4, 8, 8, 8)
 
         self._editor_placeholder = QLabel(
-            "Wybierz zadanie z listy po lewej\nalbo kliknij „Dodaj…”,\n"
-            "żeby dodać nowe zadanie AI."
+            "Wybierz prompt z listy po lewej\nalbo kliknij „Dodaj…”,\n"
+            "żeby dodać nowy."
         )
         self._editor_placeholder.setStyleSheet(f"color: {pal['muted']};")
         self._editor_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -264,7 +264,7 @@ class PromptsTab(QWidget):
         self._ed_note_type = _editable_combo(self._note_type_names)
         self._ed_field = _expanding_line_edit()
         self._ed_field.setToolTip(
-            "Identyfikator zadania w konfiguracji — zwykle taki sam jak pole docelowe."
+            "Identyfikator promptu w konfiguracji — zwykle taki sam jak pole docelowe."
         )
         self._ed_target = _editable_combo([])
         self._ed_provider = QComboBox()
@@ -297,7 +297,7 @@ class PromptsTab(QWidget):
             "Temperatura tylko dla tego promptu — niska (0.0–0.3) dla definicji\n"
             "i faktów, wyższa (0.7–1.0) dla przykładowych zdań i zadań kreatywnych.\n"
             "„— domyślna dostawcy” = użyj temperatury z karty dostawcy.\n"
-            "Fallback tego promptu również używa tej temperatury."
+            "Model zapasowy tego promptu również używa tej temperatury."
         )
         self._ed_manual_only = QCheckBox("Tylko na żądanie (pomijaj przy uzupełnianiu wszystkich pól i w sekwencjach)")
         self._ed_manual_only.setToolTip(
@@ -323,7 +323,7 @@ class PromptsTab(QWidget):
         self._ed_fallback_model.setMinimumWidth(200)
         self._ed_fallback_model.setToolTip(
             "Model zapasowy uruchamiany gdy główny model zawiedzie (błąd API,\n"
-            "rate limit, brak środków, brak treści). Puste = bez modelu zapasowego\n"
+            "limit żądań, brak środków, brak treści). Puste = bez modelu zapasowego\n"
             "w prompcie; wtedy używany jest model zapasowy dostawcy."
         )
         self._btn_fetch_fb_models = QPushButton("Pobierz")
@@ -343,10 +343,10 @@ class PromptsTab(QWidget):
         form.addRow("Model AI:", model_row)
         editor_form_layout.addLayout(form)
 
-        self._task_section, task_body = collapsible_section("Ustawienia zadania")
+        self._task_section, task_body = collapsible_section("Ustawienia promptu")
         task_form = QFormLayout()
         task_form.addRow("Typ notatki:", self._ed_note_type)
-        task_form.addRow("Nazwa zadania:", self._ed_field)
+        task_form.addRow("Nazwa promptu:", self._ed_field)
         task_form.addRow("Temperatura (API):", self._ed_temperature)
         task_form.addRow(self._ed_manual_only)
         task_body.addLayout(task_form)
@@ -825,7 +825,7 @@ class PromptsTab(QWidget):
                     problems.append(
                         "Pole "
                         + ", ".join(f"„{t}”" for t in too_late)
-                        + " jest generowane przez późniejsze zadanie — przesuń je "
+                        + " jest generowane przez późniejszy prompt — przesuń go "
                         "wyżej (▲), jeśli prompt ma użyć świeżo wygenerowanej wartości."
                     )
         else:

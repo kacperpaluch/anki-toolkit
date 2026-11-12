@@ -19,8 +19,8 @@ class FieldHiderTab(QWidget):
 
         layout = scroll_panel(self)
         layout.addWidget(hint_label(
-            "Zaznaczone pola są ukryte tylko w oknie „Dodaj” (przycisk 👁 pokazuje je "
-            "tymczasowo). Pozostają widoczne w przeglądarce i podczas edycji istniejących notatek."))
+            "Zaznaczone pola są ukryte tylko w oknie „Dodaj” („Toolkit ▾ → Pokaż schowane pola” pokazuje "
+            "je tymczasowo). Pozostają widoczne w przeglądarce i podczas edycji istniejących notatek."))
         row = QHBoxLayout()
         row.addWidget(QLabel("Typ notatki:"))
         self._type_combo = QComboBox()

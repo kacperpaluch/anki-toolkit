@@ -8,7 +8,7 @@ co dla dostawców AI).
 ## Gdzie to jest
 
 - **Edytor → Toolkit ▾ → Nagraj audio (TTS)** wykonuje wszystkie zadania dla bieżącej notatki.
-- **Prawy klik na polu docelowym** → **Generuj TTS: …** (puste pole) albo **Regeneruj TTS: …**.
+- **Prawy klik na polu docelowym** → **Nagraj audio: …** (puste pole) albo **Nagraj ponownie: …**.
 - **Przeglądarka → prawy klik → Anki Toolkit → Nagraj audio (TTS)** — każde zadanie osobno
   albo **Uruchom wszystkie**. Menu pokazuje tylko zadania, których pola są w zaznaczeniu.
 

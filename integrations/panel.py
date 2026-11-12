@@ -249,7 +249,7 @@ class WordQueuePanel(QDockWidget):
             return True
         except Exception:
             log.exception("word_queue: nie zapisano pliku stanu")
-            tooltip("Kolejka: nie zapisano pliku stanu — sprawdź Logi.", parent=mw)
+            tooltip("Kolejka: nie zapisano pliku stanu — szczegóły w Ustawienia → Diagnostyka.", parent=mw)
             return False
 
     def _owe(self, rows: dict) -> bool:
@@ -452,14 +452,14 @@ class WordQueuePanel(QDockWidget):
                 saved, error = future.result()
             except Exception:  # noqa: BLE001
                 log.exception("word_queue: dopisywanie wierszy rzuciło wyjątkiem")
-                saved, error = [], "wyjątek (szczegóły w Logach)"
+                saved, error = [], "nieoczekiwany błąd (szczegóły w Ustawienia → Diagnostyka)"
             if sip.isdeleted(self):
                 if error:
                     tooltip(f"n8n: {error}. Nie zapisano: {', '.join(fresh)}", parent=mw, period=8000)
                 return
             self._adding -= {word.casefold() for word in fresh}
             if error:
-                tooltip(f"n8n: {error}. Hasła wróciły do pola „własne hasło”.",
+                tooltip(f"n8n: {error}. Hasła wróciły do pola dodawania.",
                         parent=mw, period=8000)
                 typed = self._word_input.text().strip()
                 self._word_input.setText(", ".join(([typed] if typed else []) + fresh))
@@ -637,7 +637,7 @@ class WordQueuePanel(QDockWidget):
                     error = f"oczekiwano 1 wiersza, zmieniono {matched}; odśwież kolejkę"
             except Exception:
                 log.exception("word_queue: PATCH rzucił wyjątkiem")
-                error = "wyjątek (szczegóły w Logach)"
+                error = "nieoczekiwany błąd (szczegóły w Ustawienia → Diagnostyka)"
             self._pending.pop(row_id, None)
             if sip.isdeleted(self) or mw.col is not self._collection:
                 return  # `owed` stays on disk; the next panel retries after refill

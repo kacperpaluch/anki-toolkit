@@ -283,10 +283,10 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
     for task in matching_tasks:
         label = task.get("label", "TTS")
         if has_sound:
-            action_label = f'Regeneruj TTS: {label}'
+            action_label = f'Nagraj ponownie: {label}'
             overwrite = True
         else:
-            action_label = f'Generuj TTS: {label}'
+            action_label = f'Nagraj audio: {label}'
             overwrite = False
         action = QAction(action_label, menu)
         action.triggered.connect(

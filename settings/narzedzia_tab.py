@@ -38,7 +38,7 @@ class FieldSplitterSettings(QWidget):
         form.addRow("Pola docelowe:", self._targets)
         form.addRow("", self._overwrite)
         form.addRow(hint_label(
-            "Ten etap jest dostępny w sekwencjach oraz w menu kontekstowym. "
+            "Ten krok jest dostępny w sekwencjach oraz w menu kontekstowym. "
             "Pole źródłowe nie jest modyfikowane.", small=True,
         ))
         self._panel_layout.addWidget(group)

@@ -190,14 +190,14 @@ class FieldGenerator:
             provider = self._providers[cache_key]
             if provider is None:
                 self.last_error = (
-                    f"Provider '{provider_name}', model '{effective_model}' "
+                    f"Dostawca '{provider_name}', model '{effective_model}' "
                     f"jest błędnie skonfigurowany "
                     f"(szczegóły w logach)."
                 )
             return provider
 
         if provider_cfg is None:
-            self.last_error = (f"Provider '{provider_name}' nie istnieje w sekcji "
+            self.last_error = (f"Dostawca '{provider_name}' nie istnieje w sekcji "
                                f"dostawców AI — sprawdź Ustawienia → Konta i klucze.")
             logger.error(self.last_error)
             self._providers[cache_key] = None
@@ -209,7 +209,7 @@ class FieldGenerator:
         requires_key = getattr(provider_cls, "REQUIRES_API_KEY", True)
         api_key = provider_cfg.get("api_key", "")
         if requires_key and (not api_key or api_key.startswith("YOUR_")):
-            self.last_error = (f"Brak klucza API dla providera '{provider_name}' — "
+            self.last_error = (f"Brak klucza API dla dostawcy '{provider_name}' — "
                                f"uzupełnij w Ustawienia → Konta i klucze.")
             logger.error(self.last_error)
             self._providers[cache_key] = None
@@ -217,7 +217,7 @@ class FieldGenerator:
 
         if not effective_model:
             self.last_error = (
-                f"Brak modelu dla providera '{provider_name}' — wybierz model "
+                f"Brak modelu dla dostawcy '{provider_name}' — wybierz model "
                 f"w konfiguracji promptu."
             )
             logger.error(self.last_error)
@@ -364,12 +364,12 @@ class FieldGenerator:
             provider_error = getattr(provider, "last_error", None)
             if provider_error:
                 error = (
-                    f"Provider '{provider_name}', model '{provider.model}', "
+                    f"Dostawca '{provider_name}', model '{provider.model}', "
                     f"pole '{target_field}': {provider_error}"
                 )
             else:
                 error = (
-                    f"Provider '{provider_name}', model '{provider.model}', "
+                    f"Dostawca '{provider_name}', model '{provider.model}', "
                     f"pole '{target_field}' nie zwrócił treści."
                 )
             logger.error(f"AI: {error}")
@@ -393,12 +393,12 @@ class FieldGenerator:
         provider_error = getattr(fb_provider, "last_error", None)
         if provider_error:
             error = (
-                f"Fallback {fb_name}/{fb_provider.model}, "
+                f"Model zapasowy {fb_name}/{fb_provider.model}, "
                 f"pole '{target_field}': {provider_error}"
             )
         else:
             error = (
-                f"Fallback {fb_name}/{fb_provider.model}, "
+                f"Model zapasowy {fb_name}/{fb_provider.model}, "
                 f"pole '{target_field}' nie zwrócił treści."
             )
         logger.error(f"AI: {error}")
