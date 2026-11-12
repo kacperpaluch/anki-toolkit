@@ -21,17 +21,13 @@ from .settings.ai_generator_tab import AIGeneratorTab
 from .settings.dictionary_tab import DictionaryTab
 from .settings.logs_tab import LogsTab
 from .settings.narzedzia_tab import FieldSplitterSettings
-from .settings.overview_tab import OverviewTab
 from .settings.tts_tab import TTSTab
 from .settings.workflows_tab import WorkflowsTab
 
 # (grupa, [(klucz strony, ikona, tytuł, opis, panel)])
+_last_page = None  # the window reopens where it was left, within one Anki session
+
 PAGES = [
-    ("Start", [
-        ("overview", "🏠", "Przegląd",
-         "Gdzie są funkcje wtyczki i co jest skonfigurowane. Kliknij wiersz, by przejść do strony.",
-         OverviewTab),
-    ]),
     ("Tworzenie kart", [
         ("workflows", "⚙️", "Sekwencje",
          "Nazwane ciągi kroków (AI, wymowa, nagrania, rozdzielanie) — w menu „Toolkit ▾” i prawym kliku.",
@@ -135,9 +131,8 @@ class SettingsDialog(QDialog):
         # Feature panels read keys and provider defaults live from Konta i klucze.
         by_type[AIGeneratorTab]._prompts._provider_settings = accounts.provider_settings
         by_type[TTSTab]._key_settings = accounts.tts_key_settings
-        by_type[OverviewTab].go_to = lambda key: self._sidebar.setCurrentRow(self._rows[key])
         self._sidebar.currentItemChanged.connect(self._show_page)
-        self._sidebar.setCurrentRow(self._rows.get(page, self._rows["overview"]))
+        self._sidebar.setCurrentRow(self._rows.get(page or _last_page, self._rows["workflows"]))
 
         body = QHBoxLayout()
         body.addWidget(self._sidebar)
@@ -154,8 +149,11 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _show_page(self, item, _previous=None):
+        global _last_page
         if item is not None and item.data(Qt.ItemDataRole.UserRole) is not None:
             self._stack.setCurrentIndex(item.data(Qt.ItemDataRole.UserRole))
+            row = self._sidebar.row(item)
+            _last_page = next(key for key, value in self._rows.items() if value == row)
 
     def save(self):
         for panel in self._panels:

@@ -37,17 +37,21 @@ with patch.object(common_config, "mw", mw), patch("aqt.mw", mw):
             patch.object(dialog_module, "tooltip", lambda *a, **k: None):
         dialog = dialog_module.SettingsDialog()
         sidebar = [dialog._sidebar.item(r).text() for r in range(dialog._sidebar.count())]
-        assert sidebar[:2] == ["START", "🏠  Przegląd"], sidebar
+        assert sidebar[:2] == ["TWORZENIE KART", "⚙️  Sekwencje"], sidebar
         assert "🔑  Konta i klucze" in sidebar and "⚙️  Sekwencje" in sidebar
         assert not any("AI Generator" in row or "Workflow" in row for row in sidebar)
-        assert dialog._sidebar.currentRow() == dialog._rows["overview"]
+        assert dialog._sidebar.currentRow() == dialog._rows["workflows"]
 
         by_type = {type(p).__name__: p for p in dialog._panels}
-        rows = {key: text for key, text, _configured in
-                importlib.import_module("dialog_smoke.settings.overview_tab").summary(cfg)}
-        assert rows["workflows"].endswith("Przygotuj fiszki") and "OpenRouter" in rows["accounts"]
-        by_type["OverviewTab"].go_to("accounts")
-        assert dialog._sidebar.currentRow() == dialog._rows["accounts"]
+        # The window reopens on the page it was left on; an explicit page still wins.
+        dialog._sidebar.setCurrentRow(dialog._rows["accounts"])
+        reopened = dialog_module.SettingsDialog()
+        assert reopened._sidebar.currentRow() == reopened._rows["accounts"]
+        reopened.deleteLater()
+        explicit = dialog_module.SettingsDialog("tts")
+        assert explicit._sidebar.currentRow() == explicit._rows["tts"]
+        explicit.deleteLater()
+        dialog._sidebar.setCurrentRow(dialog._rows["accounts"])
 
         accounts = by_type["AccountsTab"]
         # TTS previews use the live OpenRouter key from the providers box.
