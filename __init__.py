@@ -65,9 +65,10 @@ def _show_editor_menu(editor):
                 action.setCheckable(True)
                 action.setChecked(checked[0])
             action.triggered.connect(lambda _checked=False, cb=callback: cb())
+    from .editor_shortcuts import edit_shortcuts, get_shortcuts
     pinned = _pinned()
     # Pinned labels that do not fit this note stay listed, so they can be unpinned.
-    labels = unique([entry[0] for group in groups for entry in group] + pinned)
+    labels = unique([entry[0] for group in groups for entry in group] + pinned + list(get_shortcuts()))
     if labels:
         if menu.actions():
             menu.addSeparator()
@@ -77,21 +78,36 @@ def _show_editor_menu(editor):
             action.setCheckable(True)
             action.setChecked(label in pinned)
             action.triggered.connect(lambda _checked=False, l=label: _toggle_pin(l))
+        menu.addAction("Skróty klawiszowe…").triggered.connect(
+            lambda _checked=False: edit_shortcuts(editor.parentWindow, labels))
     menu.addSeparator()
     menu.addAction("Ustawienia…").triggered.connect(lambda _checked=False: open_settings())
     menu.exec(QCursor.pos())
     menu.deleteLater()
 
 
+def _editor_shortcuts(cuts, editor):
+    from .editor_shortcuts import get_shortcuts
+    for label, keys in get_shortcuts().items():
+        # The third element skips Anki's "a field has focus" check.
+        cuts.append((keys, lambda ed=editor, l=label: _run_pinned(ed, l), True))
+
+
+gui_hooks.editor_did_init_shortcuts.append(_editor_shortcuts)
+
+
 def _editor_buttons(buttons, editor):
+    from .editor_shortcuts import get_shortcuts, native
     editor._atk_pinned = _pinned()
     prefix = dictionary.ACTION_PREFIX
+    shortcuts = get_shortcuts()
     for i, label in enumerate(editor._atk_pinned):
         # Dictionaries get a letter: D = Diki, O = Oxford.
         text = label[len(prefix):][:1].upper() if label.startswith(prefix) else _SHORT.get(label, label)
         buttons.append(editor.addButton(
             None, f"anki_toolkit_pin_{i}", lambda ed=editor, l=label: _run_pinned(ed, l),
-            tip=label, label=text, disables=False))
+            tip=f"{label} ({native(shortcuts[label])})" if label in shortcuts else label,
+            label=text, disables=False))
     buttons.append(editor.addButton(
         None, "anki_toolkit_menu", _show_editor_menu, tip="Anki Toolkit",
         label="Toolkit ▾", disables=False))  # usable before any field has focus

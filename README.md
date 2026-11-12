@@ -9,6 +9,7 @@ wymowa i nagrania oraz porządki w kolekcji. Ustawienia są w jednym oknie.
 |---|---|
 | Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, **Pobierz wymowę: …**, **Nagraj audio (TTS)**; w oknie Dodaj także **📚 Kolejka słówek** i **Pokaż schowane pola** |
 | Edytor → **Toolkit ▾ → Przypnij do paska** | Wybór działań, które mają własny przycisk obok „Toolkit ▾” (domyślnie **D** = Diki, **O** = Oxford). Przypięte znikają z menu; pasek zmienia się po ponownym otwarciu okna |
+| Edytor → **Toolkit ▾ → Skróty klawiszowe…** | Własna kombinacja klawiszy dla każdego działania. Okno odrzuca kombinacje bez Cmd/Ctrl (wpisywałyby znaki), zajęte przez Anki lub inny dodatek i powtórzone; skróty działają po ponownym otwarciu okna |
 | Przeglądarka kart → prawy klik → **Anki Toolkit** | To samo dla zaznaczonych notatek, w tym **Wygeneruj pola AI…** i rozdzielanie pól |
 | **Narzędzia → Anki Toolkit** | **Kolejka słówek (n8n)…**, **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, czyszczenie HTML) |
 

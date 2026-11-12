@@ -2,7 +2,7 @@ from .consts import ADDON_NAME
 from .html import clean_html, clean_html_normalized, strip_sound_tags
 from .text import (
     unique, safe_str, unique_filename, normalize_float,
-    split_separator_regex, plural_pl, apply_word_replacements,
+    split_separator_regex, plural_pl, apply_word_replacements, shortcut_typing_problem,
 )
 from .http import fetch_url, fetch_text, extract_http_error, post_json, RETRYABLE_STATUS_CODES
 from .config import get_full_config, save_full_config, get_module_config, update_module_config, check_config

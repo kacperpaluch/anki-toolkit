@@ -74,3 +74,11 @@ def split_separator_regex(separator: str) -> "re.Pattern":
         re.escape(part) for part in re.split(r"\s+", separator) if part
     ) or re.escape(separator)
     return re.compile(f"(?:{pattern}){{1,}}")
+
+
+def shortcut_typing_problem(keys: str) -> Optional[str]:
+    """Why a portable Qt key combination ("Ctrl+Shift+D") would get in the way of typing."""
+    if "Ctrl+" in keys or "Meta+" in keys or re.fullmatch(r"(Shift\+|Alt\+)*F\d{1,2}", keys):
+        return None
+    # Option + letter types a character on macOS — the Polish ones among them.
+    return "bez Cmd/Ctrl wpisywałby znak w polu (Option + litera to m.in. polskie znaki)"

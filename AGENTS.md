@@ -33,8 +33,9 @@ and routes to domain context. Keep this file focused on working agreements.
   `editor_actions`). Modules register their own editor context-menu, Add Cards
   and profile hooks when imported. Do not add editor toolbar buttons from a
   module — add an `editor_actions` entry instead. The user pins entries to the
-  toolbar by label (`editor.pinned`, „Przypnij do paska”); the root builds those
-  buttons.
+  toolbar by label (`editor.pinned`, „Przypnij do paska”) and gives them keys
+  (`editor.shortcuts`, `editor_shortcuts.py`); the root builds both. Do not
+  hard-code shortcuts for actions.
 - Preserve unknown configuration keys when saving a section.
 - Runtime-generated persistent data belongs in `user_files/`.
 - Never commit `meta.json`, API keys, user data, logs, or generated media.

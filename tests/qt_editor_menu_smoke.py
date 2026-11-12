@@ -10,7 +10,7 @@ import sys
 import types
 from unittest.mock import patch
 
-from aqt.qt import QApplication, QMenu, QWidget
+from aqt.qt import QApplication, QKeySequence, QMenu, QShortcut, QWidget
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = QApplication.instance() or QApplication(["qt-editor-menu-smoke"])
@@ -58,7 +58,7 @@ saved = []
 root_source = ast.parse((ROOT / "__init__.py").read_text())
 editor_code = [n for n in root_source.body
                if getattr(n, "name", "") in ("_editor_groups", "_pinned", "_toggle_pin", "_run_pinned",
-                                             "_show_editor_menu", "_editor_buttons")
+                                             "_show_editor_menu", "_editor_buttons", "_editor_shortcuts")
                or isinstance(n, ast.Assign) and n.targets[0].id == "_SHORT"]
 dictionary.ACTION_PREFIX  # the root reads it from the dictionary module
 tips = []
@@ -94,7 +94,7 @@ with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
     namespace["_show_editor_menu"](editor)
     assert shown[-1] == ["Przygotuj fiszki", "—", "Uzupełnij puste pola AI", "Pobierz wymowę: Diki",
                          "Nagraj audio (TTS)", "—", "📚 Kolejka słówek ☐", "Pokaż schowane pola ☐",
-                         "—", "Przypnij do paska", "—", "Ustawienia…"], shown[-1]
+                         "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
     assert texts(pins[-1]) == [label + " ☐" for label in ALL], texts(pins[-1])
     hider._toggle_hidden_fields(editor)
     namespace["_show_editor_menu"](editor)
@@ -117,7 +117,7 @@ with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
         "Stara sekwencja": "Stara sekwencja", "Toolkit ▾": "Anki Toolkit"}, added
     namespace["_show_editor_menu"](editor)
     assert shown[-1] == ["Uzupełnij puste pola AI", "—", "📚 Kolejka słówek ☐", "Pokaż schowane pola ☑",
-                         "—", "Przypnij do paska", "—", "Ustawienia…"], shown[-1]
+                         "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
     assert texts(pins[-1])[-1] == "Stara sekwencja ☑", texts(pins[-1])  # stale pin stays removable
     with patch.object(dictionary, "_on_fetch_audio_editor", lambda ed, d: ran.append(d)):
         added["D"][1](editor)
@@ -127,8 +127,43 @@ with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
 
     editor.addMode, editor.note = False, Note({"front": "x"})
     namespace["_show_editor_menu"](editor)
-    assert shown[-1] == ["Przypnij do paska", "—", "Ustawienia…"], shown[-1]
+    assert shown[-1] == ["Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
     added["D"][1](editor)
     assert "nie pasuje" in tips[-1], tips
+
+    # Shortcuts: the dialog refuses typing keys, keys held by the window and duplicates.
+    shortcuts = importlib.import_module("editor_smoke.editor_shortcuts")
+    QShortcut(QKeySequence("Ctrl+Shift+T"), widget)  # stands for one of Anki's own
+    warnings = []
+    with patch.object(shortcuts, "showWarning", lambda text, **_kw: warnings.append(text)), \
+            patch.object(shortcuts, "tooltip", lambda *_a, **_kw: None), \
+            patch.object(shortcuts, "update_module_config", namespace["update_module_config"]):
+        dialog = shortcuts.ShortcutsDialog(widget, ["Pobierz wymowę: Diki", "Nagraj audio (TTS)"])
+        diki, tts_edit = dialog._edits.values()
+        for keys, second, reason in (("Alt+A", "", "polskie znaki"), ("Ctrl+Shift+T", "", "zajęty"),
+                                     ("Ctrl+C", "", "edycja tekstu"),
+                                     ("Ctrl+Shift+D", "Ctrl+Shift+D", "„Pobierz wymowę: Diki”")):
+            diki.setKeySequence(QKeySequence(keys))
+            tts_edit.setKeySequence(QKeySequence(second))
+            dialog.accept()
+            assert reason in warnings[-1] and "shortcuts" not in saved[-1], (keys, warnings, saved[-1])
+        tts_edit.clear()
+        dialog.accept()
+        assert saved[-1] == {"shortcuts": {"Pobierz wymowę: Diki": "Ctrl+Shift+D"}}, saved[-1]
+        # Our own live shortcut must not block keeping it.
+        QShortcut(QKeySequence("Ctrl+Shift+D"), widget)
+        again = shortcuts.ShortcutsDialog(widget, ["Pobierz wymowę: Diki"])
+        again.accept()
+        assert len(warnings) == 4, warnings
+    cuts, ran = [], []
+    namespace["_editor_shortcuts"](cuts, editor)
+    assert [(keys, flag) for keys, _fn, flag in cuts] == [("Ctrl+Shift+D", True)], cuts
+    editor.note = Note({"ang": "cat", "def": "", "audio": ""})
+    with patch.object(dictionary, "_on_fetch_audio_editor", lambda ed, d: ran.append(d)):
+        cuts[0][1]()
+    assert ran == [["diki_uk"]], ran
+    added.clear()
+    namespace["_editor_buttons"]([], editor)
+    assert added["D"][0].startswith("Pobierz wymowę: Diki ("), added["D"]
 widget.close()
 print("Qt editor Toolkit menu: OK")
