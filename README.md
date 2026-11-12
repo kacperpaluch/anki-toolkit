@@ -65,13 +65,13 @@ Przed zmianą przeczytaj [AGENTS.md](AGENTS.md) i [llm-context.md](llm-context.m
 Po zmianach w Pythonie:
 
 ```bash
-python3 -m unittest discover -s tests
-python3 -m compileall -q -f .
-git diff --check
+tests/run_all.sh
 ```
 
+Skrypt uruchamia testy jednostkowe, `compileall`, `git diff --check` i smoke testy Qt.
+
 Smoke testy Qt (`tests/qt_*_smoke.py`) używają prawdziwych widżetów i syntetycznych
-notatek, bez modeli, kolekcji i zapisu ustawień. Uruchamiasz je na Qt z Anki:
+notatek, bez modeli, kolekcji i zapisu ustawień. Pojedynczy test uruchamiasz na Qt z Anki:
 
 ```bash
 QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/app_packages \

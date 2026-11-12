@@ -71,10 +71,16 @@ technical options (limits, retries, timeouts, paths) go in a collapsed
 After Python changes, run:
 
 ```bash
-python3 -m unittest discover -s tests
-python3 -m compileall -q -f .
-git diff --check
+tests/run_all.sh
 ```
+
+It runs the unit tests, `compileall`, `git diff --check` and the Qt smoke tests
+(`tests/qt_*_smoke.py`) on the Qt that the installed Anki ships. The smoke tests
+are the only ones that build real windows and menus — do not skip them.
+
+New tests cover the everyday path of a feature first (`tests/test_main_paths.py`:
+real code up to a faked `common.http.urlopen`), then the failure it guards
+against. Do not add tests that only restate a constant.
 
 All tests must pass before committing. Changes involving Qt, Anki hooks, menus,
 or collection behavior also require a smoke test in a running Anki instance when

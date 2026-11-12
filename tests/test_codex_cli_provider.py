@@ -151,9 +151,6 @@ class RetryClassificationTests(unittest.TestCase):
 
 
 class ProviderContractTests(unittest.TestCase):
-    def test_local_provider_needs_no_api_key(self):
-        self.assertFalse(cx.CodexCLIProvider.REQUIRES_API_KEY)
-
     def test_missing_binary_fails_without_running_anything(self):
         p = _provider(binary_path="/nie/ma/takiej/codex")
         self.assertIsNone(p.call_api("cokolwiek"))
@@ -181,10 +178,6 @@ class ProviderContractTests(unittest.TestCase):
             started = time.monotonic()
             self.assertEqual(cx.app_server_call([("x", {})], binary, Path(folder), timeout=1), {})
             self.assertLess(time.monotonic() - started, 10)
-
-    def test_timeout_floor_is_respected(self):
-        # request_timeout 30 s jest liczony pod HTTP; rozumowanie trwa dłużej.
-        self.assertGreaterEqual(cx.MIN_TIMEOUT, 120)
 
 
 if __name__ == "__main__":
