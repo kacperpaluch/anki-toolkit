@@ -7,7 +7,8 @@ wymowa i nagrania oraz porządki w kolekcji. Ustawienia są w jednym oknie.
 
 | Miejsce | Co tam jest |
 |---|---|
-| Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, wymowa, **Nagraj audio (TTS)**; w oknie Dodaj także **📚 Kolejka słówek** i **Pokaż/ukryj schowane pola** |
+| Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, **Pobierz wymowę: …**, **Nagraj audio (TTS)**; w oknie Dodaj także **📚 Kolejka słówek** i **Pokaż schowane pola** |
+| Edytor → **Toolkit ▾ → Przypnij do paska** | Wybór działań, które mają własny przycisk obok „Toolkit ▾” (domyślnie **D** = Diki, **O** = Oxford). Przypięte znikają z menu; pasek zmienia się po ponownym otwarciu okna |
 | Przeglądarka kart → prawy klik → **Anki Toolkit** | To samo dla zaznaczonych notatek, w tym **Wygeneruj pola AI…** i rozdzielanie pól |
 | **Narzędzia → Anki Toolkit** | **Kolejka słówek (n8n)…**, **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, czyszczenie HTML) |
 

@@ -119,6 +119,9 @@ def _on_fetch_audio_editor(editor: Editor, dictionaries: list[str]):
         raise
 
 
+ACTION_PREFIX = "Pobierz wymowę: "  # root turns a pinned "Pobierz wymowę: Diki" into the button "D"
+
+
 def editor_actions(editor: Editor) -> list:
     """(label, callback) per enabled dictionary group, when the note has both fields."""
     note = getattr(editor, "note", None)
@@ -126,7 +129,7 @@ def editor_actions(editor: Editor) -> list:
     if note is None or config.get("source_field", "ang") not in note \
             or config.get("target_field", "audio") not in note:
         return []
-    return [(f"Wymowa: {b.get('label', 'Audio')}",
+    return [(ACTION_PREFIX + b.get("label", "Audio"),
              lambda d=b["dictionaries"]: _on_fetch_audio_editor(editor, d))
             for b in config.get("buttons", []) if b.get("enabled") and b.get("dictionaries")]
 
@@ -177,7 +180,7 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
 
     menu.addSeparator()
     for label, dicts in enabled:
-        action = QAction(f'Pobierz wymowę: {label}', menu)
+        action = QAction(ACTION_PREFIX + label, menu)
         action.triggered.connect(
             lambda _checked=False, ed=editor, d=dicts:
                 _on_fetch_audio_editor(ed, d)

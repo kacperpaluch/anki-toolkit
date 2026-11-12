@@ -4,7 +4,7 @@ Panel 📚 przy oknie **Dodaj**: kolejka słówek z n8n DataTable, cztery słown
 w zakładkach i lokalny Web Bridge, przez który przyciski na stronach słowników
 wpisują dane do otwartej notatki.
 
-Panel otwierasz z **Toolkit ▾ → 📚 Kolejka słówek (pokaż/ukryj)** w oknie **Dodaj** albo
+Panel otwierasz z **Toolkit ▾ → 📚 Kolejka słówek** w oknie **Dodaj** albo
 przez **Narzędzia → Anki Toolkit → Kolejka słówek (n8n)…**. Pola notatki i port
 ustawiasz w **Ustawienia… → Kolejka słówek**, a połączenie z n8n i Cloudflare
 Access w **Ustawienia… → Konta i klucze**.
@@ -23,11 +23,9 @@ dostajesz błąd zamiast niepełnej listy.
 Kliknięcie słowa wpisuje je do pola angielskiego i ładuje słowniki. Gdy notatka
 ma już inne wypełnione pola, panel najpierw pyta o zgodę.
 
-- **Oznacz jako zrobione** odhacza słowo w n8n i przechodzi do następnego (skrót **D**).
-- **Pomiń** przechodzi dalej bez odhaczania (skrót **S**).
+- **Oznacz jako zrobione** odhacza słowo w n8n i przechodzi do następnego.
+- **Następne** przechodzi dalej bez odhaczania.
 - Prawy klik na pozycji: *Oznacz jako zrobione* / *Cofnij odhaczenie*.
-
-Skróty działają, gdy lista ma fokus. Ctrl+Enter zostaje skrótem „Dodaj”.
 
 Po dodaniu notatki wiersz jest odhaczany sam, ale panel **zostaje na słowie**,
 bo jedno hasło często daje kilka kart. Odhaczenie wymaga, żeby pole angielskie

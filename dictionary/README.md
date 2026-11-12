@@ -6,7 +6,7 @@ Krok „Wymowa” jest też dostępny w sekwencjach.
 
 ## Gdzie to jest
 
-- **Edytor → Toolkit ▾ → Wymowa: Diki / Oxford / …** pobiera wymowę w tle i ją odtwarza.
+- **Edytor → przyciski D (Diki), O (Oxford)** albo **Toolkit ▾ → Pobierz wymowę: …** — pobiera wymowę w tle i ją odtwarza. Co jest przyciskiem, ustawiasz w **Toolkit ▾ → Przypnij do paska**.
 - **Prawy klik na polu źródłowym lub docelowym** → **Pobierz wymowę: …**.
 - **Przeglądarka → prawy klik → Anki Toolkit → Pobierz wymowę** — jeden słownik albo
   **Wszystkie włączone słowniki**; praca idzie z paskiem postępu i przyciskiem Anuluj.

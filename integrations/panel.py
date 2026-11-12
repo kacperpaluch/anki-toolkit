@@ -16,7 +16,7 @@ prawym klikiem albo przyciskiem „Oznacz jako zrobione". Nic nie znika z listy 
 od chowania jest filtr „Niezrobione”.
 
 Przyciski: „Oznacz jako zrobione" = odhacz w n8n + skok dalej (koniec z tym hasłem),
-„Pomiń" = skok bez odhaczania (pominięcie).
+„Następne" = skok bez odhaczania.
 
 Wybór słówka ładuje tylko widoczną zakładkę; pozostałe przy pierwszym wejściu.
 Przechodzenie po liście to jedno zapytanie na słowo zamiast czterech (mniej
@@ -38,14 +38,12 @@ from aqt.qt import (
     QDockWidget,
     QHBoxLayout,
     QInputDialog,
-    QKeySequence,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
     QPushButton,
-    QShortcut,
     QSplitter,
     Qt,
     QTabWidget,
@@ -367,11 +365,11 @@ class WordQueuePanel(QDockWidget):
         manual = QHBoxLayout(manual_controls)
         manual.setContentsMargins(0, 0, 0, 0)
         done_btn = QPushButton("Oznacz jako zrobione")
-        done_btn.setToolTip("Oznacz bieżące słowo w n8n i przejdź dalej. Nie tworzy kart. Skrót: D na liście.")
+        done_btn.setToolTip("Oznacz bieżące słowo w n8n i przejdź dalej. Nie tworzy kart.")
         done_btn.clicked.connect(lambda _checked=False: self._done_and_next())
         manual.addWidget(done_btn)
-        next_btn = QPushButton("Pomiń")
-        next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n. Skrót: S na liście.")
+        next_btn = QPushButton("Następne")
+        next_btn.setToolTip("Przejdź do następnego słowa bez oznaczania w n8n.")
         next_btn.clicked.connect(lambda _checked=False: self.advance())
         manual.addWidget(next_btn)
         bar.addWidget(manual_controls)
@@ -380,12 +378,6 @@ class WordQueuePanel(QDockWidget):
         side.addWidget(self._tabs, 1)
         split.addWidget(current)
 
-        # Skróty tylko przy fokusie na liście — w polach tekstowych litery mają się wpisywać,
-        # a Ctrl+Enter należy do „Dodaj”. Strzałki działają w Qt same.
-        for key, button in ((Qt.Key.Key_D, done_btn), (Qt.Key.Key_S, next_btn)):
-            shortcut = QShortcut(QKeySequence(key), self._list)
-            shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
-            shortcut.activated.connect(button.click)  # click() nic nie robi, gdy przycisk wyłączony
         split.setStretchFactor(1, 1)
         split.setSizes([330, 770])
         layout.addWidget(split, 1)

@@ -188,23 +188,6 @@ def _on_editor_context_menu(editor_webview, menu: QMenu) -> None:
     menu.addAction(action)
 
 
-def on_editor_buttons_init(buttons: list, editor: Editor):
-    """Own buttons only for workflows flagged editor_button; the rest is in the Toolkit menu."""
-    from .workflow import get_workflows, run_workflow_editor
-    for i, wf in enumerate(get_workflows()):
-        if not wf.get("editor_button") or not wf.get("steps"):
-            continue
-        wf_name = wf.get("name", "Sekwencja")
-        wf_btn = editor.addButton(
-            None,
-            f"wf_run_{i}",
-            lambda ed=editor, w=wf: run_workflow_editor(ed, w),
-            tip=f"Uruchom sekwencję: {wf_name}",
-            label=wf_name,
-        )
-        buttons.append(wf_btn)
-
-
 def workflow_actions(editor: Editor) -> list:
     """(label, callback) for workflows that fit the editor's note."""
     from .browser_ui import _workflow_matches

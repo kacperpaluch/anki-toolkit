@@ -166,9 +166,6 @@ class WorkflowEditDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._name = _expanding_line_edit(workflow.get("name", "") if workflow else "")
         form.addRow("Nazwa (w menu):", self._name)
-        self._editor_btn = QCheckBox("Osobny przycisk w edytorze (poza menu „Toolkit ▾”)")
-        self._editor_btn.setChecked(bool(workflow.get("editor_button")) if workflow else False)
-        form.addRow(self._editor_btn)
         layout.addLayout(form)
 
         layout.addWidget(QLabel("Kroki (kolejność = kolejność wykonania):"))
@@ -274,7 +271,6 @@ class WorkflowEditDialog(QDialog):
     def get_workflow(self) -> dict:
         return {
             "name": self._name.text().strip(),
-            "editor_button": self._editor_btn.isChecked(),
             "steps": self._steps,
         }
 
@@ -332,9 +328,8 @@ class WorkflowsTab(QWidget):
         self._list.clear()
         for w in self._workflows:
             n_steps = len([s for s in w.get("steps", []) if isinstance(s, dict)])
-            flag = "  ⌨" if w.get("editor_button") else ""
             name = w.get("name", "(bez nazwy)")
-            item = QListWidgetItem(f"{name}  [{n_steps} kroków]{flag}")
+            item = QListWidgetItem(f"{name}  [{n_steps} kroków]")
             item.setToolTip(" → ".join(_step_label(s) for s in w.get("steps", []) if isinstance(s, dict)))
             self._list.addItem(item)
 

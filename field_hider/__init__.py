@@ -56,14 +56,17 @@ def on_editor_load_note(editor) -> None:
 
 
 def _toggle_hidden_fields(editor) -> None:
-    editor.web.eval("document.body.classList.toggle('atk-fh-reveal');")
+    editor._atk_fh_reveal = not getattr(editor, "_atk_fh_reveal", False)  # the menu's check mark
+    editor.web.eval(
+        f"document.body.classList.toggle('atk-fh-reveal', {json.dumps(editor._atk_fh_reveal)});")
 
 
 def editor_actions(editor) -> list:
     """Reveal toggle for the Toolkit editor menu — only in Add Cards."""
     if not getattr(editor, "addMode", False):
         return []
-    return [("Pokaż/ukryj schowane pola", lambda: _toggle_hidden_fields(editor))]
+    return [("Pokaż schowane pola", lambda: _toggle_hidden_fields(editor),
+             getattr(editor, "_atk_fh_reveal", False))]
 
 
 gui_hooks.editor_did_load_note.append(on_editor_load_note)

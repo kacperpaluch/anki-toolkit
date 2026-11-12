@@ -94,11 +94,11 @@ class DictionaryTab(QWidget):
         layout.addWidget(net_group)
         layout.addSpacing(8)
 
-        group = QGroupBox("Słowniki w menu")
+        group = QGroupBox("Słowniki w edytorze i menu")
         btn_layout = QVBoxLayout(group)
         btn_layout.addWidget(QLabel(
-            "Zaznaczone słowniki pojawiają się jako „Wymowa: …” w menu „Toolkit ▾” edytora\n"
-            "i w prawym kliku przeglądarki kart."))
+            "Zaznaczone słowniki pojawiają się jako „Pobierz wymowę: …” w edytorze (menu „Toolkit ▾”\n"
+            "albo przypięty przycisk D, O…) i w prawym kliku przeglądarki kart."))
 
         buttons_cfg = d.get("buttons", [])
         self._btn_checks: dict[str, tuple] = {}

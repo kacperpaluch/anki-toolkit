@@ -155,7 +155,7 @@ def add_to_context_menu(browser: Browser, menu, notes=None):
     for btn_config in _get_enabled_button_configs(config):
         label = btn_config.get("label", "Audio")
         dictionaries = btn_config["dictionaries"]
-        source_action = QAction(f"Pobierz z {label}", browser)
+        source_action = QAction(label, browser)
         source_action.triggered.connect(
             lambda _checked=False, d=dictionaries, lbl=label: _on_fetch_audio_browser_for_button(browser, d, lbl)
         )

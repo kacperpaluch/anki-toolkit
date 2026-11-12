@@ -2,37 +2,96 @@
 from anki.utils import ids2str
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
+from aqt.utils import tooltip
 
 from . import ai_generator, dictionary, field_splitter, tts
 from . import field_hider, html_cleanup, integrations
-from .common import check_config, clear_reports, setup_logging
+from .common import (check_config, clear_reports, get_module_config, setup_logging, unique,
+                     update_module_config)
 
 setup_logging()
 gui_hooks.profile_did_open.append(check_config)  # name hand-edit mistakes up front
 gui_hooks.profile_will_close.append(clear_reports)  # report note ids belong to this profile
 
 
+# Toolbar text of a pinned action; its full label is the tooltip.
+_SHORT = {"Uzupełnij puste pola AI": "AI", "Nagraj audio (TTS)": "TTS",
+          "📚 Kolejka słówek": "📚", "Pokaż schowane pola": "👁"}
+
+
+def _editor_groups(editor):
+    """Actions that fit the current note, grouped: (label, callback[, checked])."""
+    return (ai_generator.workflow_actions(editor),
+            ai_generator.editor_actions(editor) + dictionary.editor_actions(editor)
+            + tts.editor_actions(editor),
+            integrations.editor_actions(editor) + field_hider.editor_actions(editor))
+
+
+def _pinned() -> list:
+    """Labels of the actions the user keeps on the editor toolbar."""
+    return list(get_module_config("editor", {"pinned": []})["pinned"])
+
+
+def _toggle_pin(label):
+    pinned = _pinned()
+    pinned.remove(label) if label in pinned else pinned.append(label)
+    update_module_config("editor", {"pinned": pinned})
+    # Anki builds the toolbar once per editor.
+    tooltip("Anki Toolkit: pasek zmieni się po ponownym otwarciu okna.", period=3000)
+
+
+def _run_pinned(editor, label):
+    for group in _editor_groups(editor):
+        for name, callback, *_ in group:
+            if name == label:
+                return callback()
+    tooltip(f"Anki Toolkit: „{label}” nie pasuje do tej notatki.", period=3000)
+
+
 def _show_editor_menu(editor):
-    """One editor button: actions that fit the current note, grouped."""
+    """The Toolkit button: actions that fit the current note and are not on the toolbar."""
     from aqt.qt import QCursor, QMenu
     from .settings_dialog import open_settings
     menu = QMenu(editor.widget)
-    groups = (ai_generator.workflow_actions(editor),
-              ai_generator.editor_actions(editor) + dictionary.editor_actions(editor)
-              + tts.editor_actions(editor),
-              integrations.editor_actions(editor) + field_hider.editor_actions(editor),
-              [("Ustawienia…", open_settings)])
-    for group in filter(None, groups):
+    groups = _editor_groups(editor)
+    built = getattr(editor, "_atk_pinned", ())  # buttons this editor really has
+    for group in groups:
+        group = [entry for entry in group if entry[0] not in built]
+        if group and menu.actions():
+            menu.addSeparator()
+        for label, callback, *checked in group:
+            action = menu.addAction(label)
+            if checked:  # toggles carry their current state
+                action.setCheckable(True)
+                action.setChecked(checked[0])
+            action.triggered.connect(lambda _checked=False, cb=callback: cb())
+    pinned = _pinned()
+    # Pinned labels that do not fit this note stay listed, so they can be unpinned.
+    labels = unique([entry[0] for group in groups for entry in group] + pinned)
+    if labels:
         if menu.actions():
             menu.addSeparator()
-        for label, callback in group:
-            menu.addAction(label).triggered.connect(lambda _checked=False, cb=callback: cb())
+        pin_menu = menu.addMenu("Przypnij do paska")
+        for label in labels:
+            action = pin_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(label in pinned)
+            action.triggered.connect(lambda _checked=False, l=label: _toggle_pin(l))
+    menu.addSeparator()
+    menu.addAction("Ustawienia…").triggered.connect(lambda _checked=False: open_settings())
     menu.exec(QCursor.pos())
     menu.deleteLater()
 
 
 def _editor_buttons(buttons, editor):
-    ai_generator.on_editor_buttons_init(buttons, editor)  # workflows with their own button
+    editor._atk_pinned = _pinned()
+    prefix = dictionary.ACTION_PREFIX
+    for i, label in enumerate(editor._atk_pinned):
+        # Dictionaries get a letter: D = Diki, O = Oxford.
+        text = label[len(prefix):][:1].upper() if label.startswith(prefix) else _SHORT.get(label, label)
+        buttons.append(editor.addButton(
+            None, f"anki_toolkit_pin_{i}", lambda ed=editor, l=label: _run_pinned(ed, l),
+            tip=label, label=text, disables=False))
     buttons.append(editor.addButton(
         None, "anki_toolkit_menu", _show_editor_menu, tip="Anki Toolkit",
         label="Toolkit ▾", disables=False))  # usable before any field has focus

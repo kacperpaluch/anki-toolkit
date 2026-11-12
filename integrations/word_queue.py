@@ -449,7 +449,8 @@ def editor_actions(editor) -> list:
     """Pozycja menu „Toolkit ▾” tylko w oknie „Dodaj" (panel nie ma sensu w przeglądarce)."""
     if not getattr(editor, "addMode", False):
         return []
-    return [("📚 Kolejka słówek (pokaż/ukryj)", lambda: _toggle_panel(editor.parentWindow))]
+    return [("📚 Kolejka słówek", lambda: _toggle_panel(editor.parentWindow),
+             _panel is not None and _panel.isVisible())]
 
 
 if __name__ == "__main__":  # self-check budowania zapytań (bez Anki i bez sieci)

@@ -6,7 +6,8 @@ from ..ai_generator.providers import PROVIDER_LABELS
 from .ai_generator_tab import used_providers
 
 WHERE = (
-    "• Edytor (Dodaj / Edytuj): przycisk „Toolkit ▾” — sekwencje, AI, wymowa, nagrania.\n"
+    "• Edytor (Dodaj / Edytuj): przycisk „Toolkit ▾” — sekwencje, AI, wymowa, nagrania;\n"
+    "  częste działania przypniesz do paska w „Toolkit ▾ → Przypnij do paska”.\n"
     "• Przeglądarka kart: prawy klik na zaznaczonych notatkach → „Anki Toolkit”.\n"
     "• Narzędzia → Anki Toolkit: kolejka słówek i operacje na całej kolekcji."
 )

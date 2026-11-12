@@ -9,7 +9,7 @@ modele domyślne i limity dostawców w **Ustawienia → Konta i klucze**.
 **Edytor → Toolkit ▾**
 - **Uzupełnij puste pola AI** wypełnia puste pola, które mają prompt. Pomija pola „Tylko na żądanie”.
 - Prawy klik na polu z promptem → **Wygeneruj `pole` przez AI** (puste) albo **Regeneruj** (nadpisuje).
-- Sekwencje pasujące do notatki. Sekwencja z opcją **Osobny przycisk w edytorze** ma też własny przycisk.
+- Sekwencje pasujące do notatki. Własny przycisk dostają przez **Toolkit ▾ → Przypnij do paska**.
 
 Generowanie działa w tle na kopii notatki. Jeśli w tym czasie zmienisz jakieś
 pole, wynik jest pomijany (mógł powstać ze starych danych), a dymek mówi, które pola

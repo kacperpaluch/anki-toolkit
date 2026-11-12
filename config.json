@@ -1,4 +1,10 @@
 {
+  "editor": {
+    "pinned": [
+      "Pobierz wymowę: Diki",
+      "Pobierz wymowę: Oxford"
+    ]
+  },
   "dictionary": {
     "source_field": "ang",
     "target_field": "audio",
@@ -82,7 +88,6 @@
   "workflows": [
     {
       "name": "Generuj fiszkę",
-      "editor_button": true,
       "steps": [
         {
           "module": "ai",
@@ -105,7 +110,6 @@
     },
     {
       "name": "Przygotuj fiszki",
-      "editor_button": false,
       "steps": [
         {
           "module": "ai",
@@ -129,7 +133,6 @@
     },
     {
       "name": "Rozdziel + generuj naukę (p1–p3)",
-      "editor_button": false,
       "steps": [
         {
           "module": "field_splitter",

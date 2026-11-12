@@ -2,7 +2,7 @@
 
 ## Co robi
 
-Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (pozycje „Wymowa: …” w menu „Toolkit ▾”) i przeglądarce przez menu kontekstowe **Anki Toolkit → Pobierz wymowę** dla zaznaczonych notatek.
+Pobiera audio MP3 i transkrypcję IPA dla angielskich słów z czterech słowników online. Działa w edytorze kart (pozycje „Pobierz wymowę: …” w menu „Toolkit ▾”, domyślnie przypięte do paska jako D i O) i przeglądarce przez menu kontekstowe **Anki Toolkit → Pobierz wymowę** dla zaznaczonych notatek.
 
 
 Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.dictionary`; submenu wymaga pól source/target w co najmniej jednej notatce oraz włączonych źródeł.
@@ -13,7 +13,7 @@ Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.diction
 |---|---|
 | `__init__.py` | Re-eksport hooków — importuje z `editor_ui` i `browser_ui` |
 | `service.py` | Logika biznesowa — `ProcessNoteResult`, `process_note_group()` (bez Qt); reużywa istniejące pliki media (`os.path.exists(dict_{source}_{safe_word}.mp3)`, gdzie `safe_word` = czytelna część + 8 znaków SHA-1 dokładnego hasła) i fetchuje tylko brakujące źródła; używa `clean_html_normalized()` z `common` |
-| `editor_ui.py` | Hooki edytora — `editor_actions(editor)` (pozycje menu „Toolkit ▾”, gdy notatka ma oba pola), odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; pobieranie leci na kopii z `detach_note()`, a wynik wraca przez `saveNow(apply)` → `merge_editor_note()` (pole zmienione w trakcie zostaje przy użytkowniku); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
+| `editor_ui.py` | Hooki edytora — `editor_actions(editor)` (pozycje menu „Toolkit ▾”, gdy notatka ma oba pola; `ACTION_PREFIX` pozwala root zrobić z przypiętej pozycji przycisk-literę), odtwarzanie audio; `saveNow(start)` przed fetchowaniem + `run_in_background` (UI nie zamarza) + wspólny guard `common.editor_operation`; pobieranie leci na kopii z `detach_note()`, a wynik wraca przez `saveNow(apply)` → `merge_editor_note()` (pole zmienione w trakcie zostaje przy użytkowniku); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `source_field` lub `target_field` (np. `ang`/`audio`): „Pobierz wymowę: [słownik]" per włączony przycisk (wymaga treści w `source_field`); używa `ADDON_NAME` z `common` |
 | `browser_ui.py` | Hooki przeglądarki — submenu batch; natywny pasek `mw.progress` przez `common.progress` (`start_progress`/`update_progress`/`finish_progress`); używa `ADDON_NAME` z `common` |
 | `dictionary_service.py` | HTTP + HTML scraping dla Oxford, Cambridge, Diki.pl, Longman; używa `fetch_text()` i `fetch_url()` z `common.http` |
 | `ipa_service.py` | HTTP + HTML scraping IPA dla Oxford, Cambridge + Wiktionary REST API; używa `fetch_text()` z `common.http` |
@@ -53,7 +53,7 @@ Kliknięcie przycisku/menu
 
 W przeglądarce submenu `Pobierz wymowę` jest dostępne w menu kontekstowym `Anki Toolkit`:
 - `Wszystkie włączone słowniki` — źródła ze wszystkich aktywnych pozycji `buttons` scalone w JEDNĄ grupę (`unique()`), bo `process_note_group()` pisze do `target_field` tylko gdy jest puste: kolejne grupy w pętli trafiały na własny wynik poprzedniej i cicho się pomijały
-- `Pobierz z {label}` — batch tylko dla jednej skonfigurowanej grupy słowników
+- `{label}` — batch tylko dla jednej skonfigurowanej grupy słowników
 
 Batch działa w tle (`mw.taskman.run_in_background`); notatki są wczytywane (`mw.col.get_note`) na głównym wątku przed startem — kolekcja Anki jest jednowątkowa, wątek roboczy tylko mutuje je w pamięci (ten sam wzorzec co batch AI/TTS), a zapisuje `CollectionOp` na głównym wątku. Postęp przez natywny pasek Anki (`common.progress.start_progress`/`update_progress`/`finish_progress` → `mw.progress`) — trzyma Anki „busy", więc automatyczna kopia zapasowa / sync nie wyskakuje NAD paskiem i nie blokuje Anuluj (kosztem zablokowania całego okna na czas batcha). Anulowanie: `update_progress` czyta `mw.progress.want_cancel()` → ustawia `cancel_flag["cancelled"]`, sprawdzane między notatkami. Po zakończeniu jeden `tooltip` z podsumowaniem (Zaktualizowano: N · Brak audio: M).
 
@@ -86,7 +86,7 @@ Przycisk w edytorze również działa w tle: `editor.saveNow(start)` najpierw za
 - `diki_ipa_fallback` — gdy `true`, przy pobieraniu z Diki moduł próbuje uzupełnić IPA z `diki_ipa_fallback_source`
 - `diki_ipa_fallback_source` — źródło IPA dla Diki (`wiktionary`, `oxford`, `cambridge`); jeśli źródło inne niż Wiktionary zwróci `None`, może zadziałać `wiktionary_ipa_fallback`
 - Każdy przycisk może mieć listę słowników — pobiera UK i US naraz, zapisuje oba `[sound:...]` w jednym polu
-- Te same wpisy `buttons` sterują też submenu w przeglądarce (`Pobierz z Diki`, `Pobierz z Oxford`, itd.)
+- Te same wpisy `buttons` sterują też submenu w przeglądarce (`Diki`, `Oxford`, itd.) i pozycjami edytora
 - `ipa_format`: `"compact"` (jeden zapis gdy UK=US), `"both"`, `"uk_only"`, `"us_only"`
 - IPA jest fetchowane, gdy słownik ma support: Oxford → oxford, Cambridge → cambridge; dla Diki tylko przez opcjonalny fallback `diki_ipa_fallback`; Longman nie ma IPA
 - Wiktionary jest **wyłącznie IPA fallback** — nie dostarcza audio, nie pojawia się w `buttons`
