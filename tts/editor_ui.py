@@ -8,9 +8,8 @@ from aqt.utils import tooltip
 from aqt.qt import QAction, QMenu
 from aqt import gui_hooks
 
-from .config import get_tts_config, get_tasks, validate_config
+from .config import get_tts_config, get_tasks, get_voices, validate_config
 from .processor import build_note_work_items, generate_for_items, apply_results_to_note, process_single_note, has_audio
-from ..common import unique
 from ..common.editor_operation import (
     active_editor_operation,
     begin_editor_operation,
@@ -65,11 +64,7 @@ def _start_tts_editor(editor: Editor, token):
         finish_editor_operation(editor, token)
         return
 
-    voices = unique(config.get("voices", []))
-    if not voices:
-        finish_editor_operation(editor, token)
-        tooltip("Brak skonfigurowanych głosów TTS.")
-        return
+    voices = get_voices(config)
 
     tasks = get_tasks(config)
     if not tasks:
@@ -178,11 +173,7 @@ def _on_tts_field_editor(editor: Editor, task: dict, overwrite: bool):
             finish_editor_operation(editor, token)
             return
 
-        voices = unique(config.get("voices", []))
-        if not voices:
-            finish_editor_operation(editor, token)
-            tooltip("Brak skonfigurowanych głosów TTS.")
-            return
+        voices = get_voices(config)
 
         # Worker writes into a copy; merge_note() keeps whatever the user
         # typed in the meantime.

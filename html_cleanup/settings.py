@@ -13,7 +13,7 @@ from aqt.qt import (
     QWidget,
 )
 
-from ..common.ui import list_buttons
+from ..common.ui import list_buttons, show_check_indicators
 from .cleaning import default_rules
 
 
@@ -52,6 +52,7 @@ class HtmlCleanupTab(QWidget):
         for column in (0, 3, 4, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
+        show_check_indicators(self._table)
         for rule in config["rules"]:
             self._add_row(rule)
         layout.addWidget(self._table, 1)

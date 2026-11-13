@@ -1,7 +1,9 @@
 # Nagrania (TTS) (`tts/`)
 
 Tworzy pliki MP3 przez API TTS OpenRoutera (płatne za znak), np. modelem Kokoro
-(`hexgrad/kokoro-82m`) albo OpenAI TTS. Ustawienia są w **Ustawienia → Nagrania (TTS)**,
+(`hexgrad/kokoro-82m`) albo OpenAI TTS. Modele Gemini i HeyGen zwracają surowy
+dźwięk; wtyczka koduje go do MP3 enkoderem dołączonym do Anki (na Linuksie potrzebny
+systemowy `lame`). Ustawienia są w **Ustawienia → Nagrania (TTS)**,
 a klucz API w **Konta i klucze → Nagrania (TTS) — OpenRouter** (osobny albo ten sam
 co dla dostawców AI).
 
@@ -31,7 +33,9 @@ W trybie `split_audio` pole zostaje zastąpione dopiero po wygenerowaniu całego
 
 ## Głosy i zamiana wyrazów
 
-Każde nagranie losuje głos z listy `voices` (jeden głos = zawsze ten sam).
+Każde nagranie losuje głos z listy `voices` (jeden głos = zawsze ten sam). Pusta lista
+oznacza głos domyślny modelu — tak działają modele bez listy głosów (Fish Audio,
+ByteDance), które odrzucają głosy innych modeli.
 Po **Pobierz** przy modelu pojawia się tabela głosów z checkboxami i przyciskiem
 **▶** do odsłuchu próbki. Głosy Kokoro mają nazwy `<język><płeć>_<imię>`,
 np. `af_bella` (a = amerykański, b = brytyjski; f = kobieta, m = mężczyzna).
@@ -54,11 +58,11 @@ model może trafić do droższego hosta. Dostawcę wymusza ustawienie konta:
 | Klucz | Domyślnie | Znaczenie |
 |---|---|---|
 | `openrouter_api_key` / `use_ai_openrouter_key` | `""` / `false` | Własny klucz albo klucz dostawców AI |
-| `openrouter_model` | `openai/gpt-4o-mini-tts-2025-12-15` | Model TTS |
+| `openrouter_model` | `hexgrad/kokoro-82m` | Model TTS |
 | `openrouter_provider` | `""` | Informacyjnie; OpenRouter go ignoruje (patrz wyżej) |
 | `voices` | głosy Kokoro | Pula głosów do losowania |
 | `replacements` | `{}` | Zamiana wyrazów |
-| `speed` | `0.9` | Tempo mowy (0.1–3.0) |
+| `speed` | `0.9` | Tempo mowy (0.1–3.0); `1.0` nie jest wysyłane — ustaw je dla modeli bez regulacji tempa (ElevenLabs v4, HeyGen, Qwen, AssemblyAI) |
 | `tasks` | dwa przykładowe | `label`, `source_field`, `target_field`, `mode`, opcjonalnie `split_separator` |
 | `max_workers` | `12` | Równoległe nagrania |
 | `max_retries` | `3` | Ponowienia przy 429 i braku połączenia; timeout i 5xx nie są ponawiane (żądanie mogło być już policzone) |

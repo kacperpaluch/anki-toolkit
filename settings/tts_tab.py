@@ -17,6 +17,7 @@ from aqt.sound import av_player
 from ..common.ui import (
     _expanding_line_edit, _scrollable, hint_label,
     collapsible_section, _filterable_combo, get_all_field_names, list_buttons,
+    show_check_indicators,
 )
 
 # ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ class TTSTab(QWidget):
             self._or_model.sizePolicy().horizontalPolicy().Expanding,
             self._or_model.sizePolicy().verticalPolicy(),
         )
-        saved_model = t.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")
+        saved_model = t.get("openrouter_model", "hexgrad/kokoro-82m")
         self._or_model.addItem(saved_model)
         self._or_model.setCurrentText(saved_model)
         self._or_model.currentTextChanged.connect(self._on_or_model_changed)
@@ -208,6 +209,7 @@ class TTSTab(QWidget):
         self._or_voice_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._or_voice_list.verticalHeader().setVisible(False)
         self._or_voice_list.horizontalHeader().setVisible(False)
+        show_check_indicators(self._or_voice_list)
         self._or_voice_list.setMaximumHeight(200)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._or_voice_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -234,6 +236,11 @@ class TTSTab(QWidget):
         self._voices.textChanged.connect(self._on_voices_text_changed)
         self._voices_label = QLabel("Głosy (oddzielone przecinkiem):")
         voices_form.addRow(self._voices_label, self._voices)
+        self._voices_hint = hint_label(
+            "Puste = głos domyślny modelu. Modele bez listy głosów (Fish Audio, "
+            "ByteDance) przyjmują tylko własne ID głosu — głosy innego modelu "
+            "kończą się błędem.", small=True)
+        voices_form.addRow(self._voices_hint)
         layout.addLayout(voices_form)
         self._update_voices_row_visibility()
 
@@ -245,6 +252,10 @@ class TTSTab(QWidget):
         self._speed.setSingleStep(0.05)
         self._speed.setValue(t.get("speed", 0.9))
         speed_form.addRow("Szybkość:", self._speed)
+        speed_form.addRow(hint_label(
+            "1,00 = tempo domyślne modelu, szybkość nie jest wysyłana. Ustaw 1,00 "
+            "dla modeli bez regulacji tempa: ElevenLabs v4, HeyGen, Qwen, AssemblyAI.",
+            small=True))
         layout.addLayout(speed_form)
 
         # -- Word replacements (applied only to text sent to the engine) --
@@ -304,8 +315,8 @@ class TTSTab(QWidget):
         """Text field is the editor until the model's voice checklist is
         loaded; then the checklist takes over."""
         manual = self._or_voice_list.rowCount() == 0
-        self._voices_label.setVisible(manual)
-        self._voices.setVisible(manual)
+        for widget in (self._voices_label, self._voices, self._voices_hint):
+            widget.setVisible(manual)
         for widget in (self._or_voice_list, self._voice_select_row, self._or_voice_hint):
             widget.setVisible(not manual)
 

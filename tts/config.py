@@ -6,7 +6,7 @@ from ..common import get_module_config, unique, normalize_float
 _DEFAULTS = {
     "openrouter_api_key":    "",
     "use_ai_openrouter_key": False,
-    "openrouter_model":      "openai/gpt-4o-mini-tts-2025-12-15",
+    "openrouter_model":      "hexgrad/kokoro-82m",
     "openrouter_provider":   "",
     "voices":                ["af_bella", "af_heart", "bm_lewis"],
     "replacements":          {},
@@ -51,9 +51,13 @@ def config_error(config: dict) -> str | None:
             "Wpisz klucz w Ustawienia → Konta i klucze lub zaznacz "
             "„Użyj klucza OpenRouter z dostawców AI”."
         )
-    if not unique(config.get("voices", [])):
-        return "Nie zaznaczono żadnego głosu (Ustawienia → Nagrania)."
     return None
+
+
+def get_voices(config: dict) -> list[str]:
+    """Voices to pick from; none selected = one request without a voice,
+    which the model answers with its default voice."""
+    return unique(config.get("voices", [])) or [""]
 
 
 def validate_config(config: dict) -> bool:

@@ -24,7 +24,7 @@ Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; m
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu „Nagraj audio (TTS)” w przeglądarce + eksport `editor_actions` (pozycja menu „Toolkit ▾”) |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje płatny POST do `common.http.post_create()` (ponawia tylko 429 i niewysłane połączenie; timeout/5xx = błąd bez ponowienia); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
+| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje płatny POST do `common.http.post_create()` (ponawia tylko 429 i niewysłane połączenie; timeout/5xx = błąd bez ponowienia); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku i poprawny JSON — surowe PCM może zacząć się od `{`) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` **nie rusza notatki przed czasem**: `build_note_work_items(..., overwrite=True)` odkłada stare tagi do `split_contexts["prev"]` (split) i `["old"]` (split_audio), a `apply_results_to_note()` podmienia je wyłącznie tam, gdzie powstał nowy plik (nieudany segment zachowuje swoje nagranie); generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
 | `editor_ui.py` | `editor_actions(editor)` → „Nagraj audio (TTS)” w menu „Toolkit ▾” (gdy notatka ma pola zadania) — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Nagraj audio / Nagraj ponownie: [label]" (ponownie = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(clone, tasks=[task], overwrite=...)` na kopii z `detach_note()`, a wynik wraca przez `merge_editor_note()` |
 
@@ -39,7 +39,7 @@ Menu → "Uruchom wszystkie"
 
 _process_batch_async(browser, nids, tasks, label):
   → config = get_tts_config(); validate_config(config)
-  → voices = unique(config.get("voices", []))
+  → voices = get_voices(config)   # pusta lista → [""] = głos domyślny modelu
   → precollect (główny wątek): dla każdego nid:
       note = mw.col.get_note(nid)
       build_note_work_items(note, tasks, voices)  →  (work_items, split_contexts)
@@ -74,7 +74,7 @@ Menu „Toolkit ▾” → „Nagraj audio (TTS)”
       → jeśli AI/TTS/słownik/workflow już działa na tym edytorze: tooltip i return
       → editor.saveNow(start) synchronizuje webview → note przed odczytem pól
       → _start_tts_editor(editor, token)
-          → validate_config(config), get_tasks(config), unique(voices)
+          → validate_config(config), get_tasks(config), get_voices(config)
           → clone, before = detach_note(note)   # worker nigdy nie rusza editor.note
           → build_note_work_items(clone, tasks, voices)
           → run_in_background(bg_task):
@@ -131,7 +131,7 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 {
   "openrouter_api_key": "",
   "use_ai_openrouter_key": false,
-  "openrouter_model": "openai/gpt-4o-mini-tts-2025-12-15",
+  "openrouter_model": "hexgrad/kokoro-82m",
   "openrouter_provider": "",
   "voices": ["af_bella", "af_heart", "bm_lewis"],
   "replacements": {"sb": "somebody", "sth": "something"},
@@ -161,7 +161,8 @@ W UI (settings/tts_tab.py) przycisk **Pobierz** wywołuje tę funkcję (import z
 
 `validate_config()` (config.py) sprawdza:
 - czy jest klucz OpenRoutera (`openrouter_api_key` albo, przy `use_ai_openrouter_key`, klucz z AI Generatora)
-- czy `voices` nie jest pusta
+
+Pusta lista `voices` nie jest błędem: `get_voices()` zwraca wtedy `[""]`, a `_generate_openrouter()` pomija pole `voice` (głos domyślny modelu). Fish Audio i ByteDance nie mają `supported_voices` i odrzucają `""` oraz cudze nazwy głosów; HeyGen wymaga głosu.
 
 `config_error()` zwraca sam komunikat (bez UI) i jest jedyną kontrolą dozwoloną w wątku roboczym: `process_single_note()` oddaje go jako `(False, błąd)`, więc krok TTS w workflow Browsera trafia do raportu zamiast otwierać okno na każdą notatkę. `validate_config()` (komunikat + `showWarning`) wołają tylko ścieżki startujące na głównym wątku.
 
@@ -172,7 +173,7 @@ POST https://openrouter.ai/api/v1/audio/speech
 Authorization: Bearer {api_key}
 Content-Type: application/json
 {
-  "model": "openai/gpt-4o-mini-tts-2025-12-15",
+  "model": "hexgrad/kokoro-82m",
   "input": "tekst do syntezy",
   "voice": "alloy",
   "speed": 0.9,
@@ -181,7 +182,9 @@ Content-Type: application/json
 → raw MP3 bytes (success) / JSON (error)
 ```
 
-`speed` jest wysyłane tylko gdy ustawione w konfiguracji (niektóre providery go nie obsługują).
+Modele z `_PCM_ONLY_RATES` (`google/` 24 kHz, `heygen/` 44,1 kHz) przyjmują tylko `"response_format": "pcm"` (inaczej 400); `_pcm_to_mp3()` zapisuje je jako tymczasowy WAV (mono, 16 bit, częstotliwość z tabeli, nie z `Content-Type`) i koduje `aqt.sound._encode_mp3` — tym samym `lame`, którym Anki koduje nagrania z mikrofonu (funkcja wewnętrzna Anki; na Linuksie wymaga systemowego `lame`).
+
+`speed` jest pomijane, gdy wynosi 1.0 (domyślne API) — modele bez regulacji tempa (ElevenLabs v4, HeyGen, Qwen, AssemblyAI; sprawdzone 2026-11) odrzucają każde `speed` błędem 400, a `/models` nie zgłasza, kto je obsługuje (`supported_parameters` puste).
 Gdy `openrouter_provider` nie jest pusty, payload dostaje dodatkowo `"provider": {"only": ["…"], "allow_fallbacks": false}`.
 
 **Routing dostawców nie działa na tym endpoincie** (sprawdzone 2026-10-02 na `hexgrad/kokoro-82m`): schemat `SpeechRequest.provider` zna tylko `options`, a `only`/`order`/`ignore`/`sort` i sufiks `:floor` są po cichu ignorowane; bez ograniczeń OpenRouter kierował ruch do droższego hosta (Together zamiast DeepInfra). Działa wyłącznie ograniczenie po stronie konta: guardrail z `allowed_providers`/`ignored_providers` przypisany do klucza API (albo globalna lista ignorowanych). Faktycznego dostawcę żądania pokazuje `GET /api/v1/generation?id=<nagłówek X-Generation-Id>`.

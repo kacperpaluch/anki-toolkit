@@ -17,13 +17,13 @@ from aqt import mw
 from aqt.utils import tooltip
 
 from ..common import (
-    unique_filename, clean_html, clean_html_normalized, split_separator_regex, unique,
+    unique_filename, clean_html, clean_html_normalized, split_separator_regex,
     start_progress, update_progress, finish_progress, strip_sound_tags, load_notes, live_parent,
 )
 
 from ..common.editor_operation import save_detached_notes, snapshot_fields
 from .api import generate_audio
-from .config import get_tts_config, validate_config, get_tasks, config_error
+from .config import get_tts_config, get_voices, validate_config, get_tasks, config_error
 
 logger = logging.getLogger(__name__)
 
@@ -297,9 +297,7 @@ def _process_batch_async(browser, nids: list, tasks: list[dict], label: str):
     if not validate_config(config):
         return
 
-    voices = unique(config.get("voices", []))
-    if not voices:
-        return
+    voices = get_voices(config)
 
     # Collect everything up front (main thread): one entry per note.
     col = mw.col
@@ -459,9 +457,7 @@ def process_single_note(note, config: dict = None,
     if not tasks:
         return False, None
 
-    voices = unique(config.get("voices", []))
-    if not voices:
-        return False, None
+    voices = get_voices(config)
 
     work_items, split_contexts = build_note_work_items(
         note, tasks, voices, overwrite=overwrite

@@ -2,9 +2,12 @@
 
 import json
 import logging
+import os
+import tempfile
 import time
 import urllib.request
 import urllib.parse
+import wave
 
 from ..common import normalize_float, apply_word_replacements
 from ..common.http import post_create, urlopen as safe_urlopen
@@ -20,9 +23,42 @@ def generate_audio(text: str, config: dict, voice: str) -> bytes:
 def _ensure_audio(raw: bytes, label: str) -> bytes:
     """HTTP 200 z pustym ciałem lub JSON-owym błędem zamiast MP3 nie może trafić
     do mediów — [sound:...] w polu blokuje ponowną generację na zawsze."""
-    if not raw or raw.lstrip()[:1] in (b"{", b"["):
+    if not raw or (raw.lstrip()[:1] in (b"{", b"[") and _is_json(raw)):
         raise Exception(f"{label}: odpowiedź nie jest audio (pusta lub JSON)")
     return raw
+
+
+def _is_json(raw: bytes) -> bool:
+    # Raw PCM may start with "{" by chance; only a parseable body is an error.
+    try:
+        json.loads(raw)
+    except ValueError:
+        return False
+    return True
+
+
+# Models that answer 400 to anything but raw PCM, with the rate OpenRouter
+# reports in Content-Type (checked 2026-11). The audio is encoded to MP3 here.
+_PCM_ONLY_RATES = {"google/": 24000, "heygen/": 44100}
+
+
+def _pcm_to_mp3(pcm: bytes, rate: int) -> bytes:
+    """Encode raw PCM with the lame Anki ships for its own recordings."""
+    from aqt.sound import _encode_mp3
+
+    with tempfile.TemporaryDirectory() as folder:
+        wav_path = os.path.join(folder, "speech.wav")
+        mp3_path = os.path.join(folder, "speech.mp3")
+        # shortcut: the rate comes from _PCM_ONLY_RATES, not from Content-Type;
+        # read the header if a model's rate changes.
+        with wave.open(wav_path, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(rate)
+            wav.writeframes(pcm)
+        _encode_mp3(wav_path, mp3_path)  # deletes the WAV
+        with open(mp3_path, "rb") as file:
+            return file.read()
 
 
 def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
@@ -32,16 +68,22 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     if not api_key:
         raise Exception("Brak klucza API OpenRouter (Ustawienia → Konta i klucze).")
 
-    model = config.get("openrouter_model", "openai/gpt-4o-mini-tts-2025-12-15")
+    model = config.get("openrouter_model", "hexgrad/kokoro-82m")
+    pcm_rate = next((rate for prefix, rate in _PCM_ONLY_RATES.items() if model.startswith(prefix)), None)
     payload = {
         "model": model,
         "input": text,
-        "voice": voice,
-        "response_format": "mp3",
+        "response_format": "pcm" if pcm_rate else "mp3",
     }
-    speed = config.get("speed")
-    if speed is not None:
-        payload["speed"] = normalize_float(speed, 0.9)
+    # No voice = the model's default voice; models without a voice list
+    # (Fish Audio, ByteDance) reject an empty string and any foreign name.
+    if voice:
+        payload["voice"] = voice
+    # 1.0 is the API default; omitting it keeps models without speed control
+    # (e.g. ElevenLabs answer 400 to any `speed`) usable.
+    speed = normalize_float(config.get("speed"), 1.0)
+    if speed != 1.0:
+        payload["speed"] = speed
 
     # /audio/speech ignores routing preferences (only, order, ignore, sort) —
     # its schema knows just provider.options — and does not pick the cheapest
@@ -79,6 +121,8 @@ def _generate_openrouter(text: str, config: dict, voice: str) -> bytes:
     if err:
         raise Exception(f"OpenRouter TTS: {err}")
     raw = _ensure_audio(raw, "OpenRouter TTS")
+    if pcm_rate:
+        raw = _pcm_to_mp3(raw, pcm_rate)
     logger.debug(
         f"OpenRouter TTS OK: voice={voice}, {len(raw)} B w {time.time() - t0:.1f}s"
     )
@@ -120,6 +164,8 @@ def fetch_openrouter_tts_models(force: bool = False) -> list[dict]:
         pricing_raw = item.get("pricing", {})
         price_str = pricing_raw.get("prompt") or pricing_raw.get("input") or ""
         prompt_price, pricing_display = _format_character_price(price_str)
+        if normalize_float(pricing_raw.get("completion"), 0) > 0:
+            pricing_display += " + opłata za audio"  # Gemini, ByteDance: billed per output too
         models.append({
             "id": item.get("id", ""),
             "name": item.get("name", item.get("id", "")),

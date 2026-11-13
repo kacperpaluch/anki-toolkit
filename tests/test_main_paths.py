@@ -10,6 +10,7 @@ import tempfile
 import types
 import unittest
 from unittest.mock import patch
+import wave
 
 from test_addon_regressions import load
 from test_content_regressions import _PKG, FakeNote, _load, http
@@ -17,6 +18,7 @@ from test_content_regressions import _PKG, FakeNote, _load, http
 dict_service = _load("dictionary.dictionary_service", "dictionary/dictionary_service.py")
 service = _load("dictionary.service", "dictionary/service.py")
 tts_api = _load("tts.api", "tts/api.py")
+tts_config = _load("tts.config", "tts/config.py")
 _load("ai_generator.field_generator", "ai_generator/field_generator.py")
 import sys
 providers = sys.modules[f"{_PKG}.ai_generator.providers"]
@@ -146,6 +148,44 @@ class PaidRequestTests(unittest.TestCase):
         body = network.body()
         self.assertEqual((body["input"], body["voice"], body["response_format"]),
                          ("give something up", "alloy", "mp3"))
+
+    def test_tts_speed_is_omitted_at_default_for_models_without_speed_control(self):
+        network = Network({"https://openrouter.ai/api/v1/audio/speech": b"ID3-mp3-bytes"})
+        with patch.object(http, "urlopen", network):
+            for speed in (1.0, 0.9):
+                tts_api.generate_audio("hi", {"openrouter_api_key": "or-test", "speed": speed}, "alloy")
+        self.assertNotIn("speed", network.body(0))
+        self.assertEqual(network.body(1)["speed"], 0.9)
+
+    def test_pcm_only_models_get_pcm_encoded_to_mp3_at_their_rate(self):
+        pcm = b"{\x00" * 2400  # a first byte of "{" must not read as a JSON error
+        encoded = []
+
+        def encode_mp3(wav_path, mp3_path):  # stands in for Anki's lame
+            with wave.open(wav_path) as wav:
+                encoded.append((wav.getnchannels(), wav.getsampwidth(), wav.getframerate(),
+                                wav.readframes(wav.getnframes())))
+            with open(mp3_path, "wb") as file:
+                file.write(b"ID3-mp3-bytes")
+
+        network = Network({"https://openrouter.ai/api/v1/audio/speech": pcm})
+        with patch.object(http, "urlopen", network), \
+                patch.object(sys.modules["aqt.sound"], "_encode_mp3", encode_mp3, create=True):
+            for model, voice in (("google/gemini-3.8-flash-tts", "Kore"), ("heygen/heygen-voice-1", "nadine")):
+                config = {"openrouter_api_key": "or-test", "openrouter_model": model}
+                self.assertEqual(tts_api.generate_audio("hi", config, voice), b"ID3-mp3-bytes")
+        self.assertEqual([network.body(i)["response_format"] for i in (0, 1)], ["pcm", "pcm"])
+        self.assertEqual(encoded, [(1, 2, 24000, pcm), (1, 2, 44100, pcm)])
+
+    def test_no_voice_selected_asks_for_the_model_default_voice(self):
+        # Fish Audio and ByteDance list no voices and reject "" as a voice.
+        network = Network({"https://openrouter.ai/api/v1/audio/speech": b"ID3-mp3-bytes"})
+        config = {"openrouter_api_key": "or-test", "openrouter_model": "fish-audio/s1", "voices": []}
+        with patch.object(http, "urlopen", network):
+            for voice in tts_config.get_voices(config):
+                tts_api.generate_audio("hi", config, voice)
+        self.assertEqual(len(network.requests), 1)
+        self.assertNotIn("voice", network.body())
 
 
 class WordQueueInputTests(unittest.TestCase):
