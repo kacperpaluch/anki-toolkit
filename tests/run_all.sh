@@ -4,7 +4,8 @@
 set -e
 cd "$(dirname "$0")/.."
 ANKI_PACKAGES="${ANKI_PACKAGES:-/Applications/Anki.app/Contents/Resources/app_packages}"
-ANKI_PYTHON="${ANKI_PYTHON:-python3.13}"
+# Anki ships .pyc for Python 3.13 only; Homebrew may not have it, uv usually does.
+ANKI_PYTHON="${ANKI_PYTHON:-$(command -v python3.13 || uv python find 3.13)}"
 
 python3 -m unittest discover -s tests
 python3 -m compileall -q -f .

@@ -78,6 +78,9 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/a
   python3.13 tests/qt_browser_menu_smoke.py
 ```
 
+Potrzebny jest dokładnie Python 3.13 (dla niego Anki ma skompilowane `aqt`). Gdy nie ma go
+w `PATH`, `tests/run_all.sh` bierze go z `uv python find 3.13`; inną ścieżkę podasz w `ANKI_PYTHON`.
+
 `tests/live_selectors.py` sprawdza zakładki słowników na żywych stronach (wymaga sieci).
 Przy zmianach hooków, menu lub zapisu kolekcji sprawdź też działanie w Anki.
 
