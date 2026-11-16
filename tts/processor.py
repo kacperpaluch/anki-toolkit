@@ -96,9 +96,15 @@ def build_note_work_items(note, tasks: list[dict], voices: list[str],
                 # into the target in place, so the target stays complete.
                 source_audio = {i: audio_tags(seg) for i, seg in enumerate(raw_segments)
                                 if spoken[i] and has_audio(seg)}
-                old = _old_split_audio(audio_tags(note[target_field]), spoken, source_audio, eligible)
+                target_tags = audio_tags(note[target_field])
+                old = _old_split_audio(target_tags, spoken, source_audio, eligible)
                 if not overwrite and eligible and len(old) == len(eligible):
                     continue  # every segment already has its recording
+                # More tags than this task ever writes: audio added from outside
+                # (e.g. Diki UK+US for one word) — never replace it.
+                expected = len(eligible) + sum(len(v) for v in source_audio.values())
+                if not overwrite and len(target_tags) > expected:
+                    continue
             elif (target_field != source_field and not overwrite
                   and _split_target_complete(splitter.split(note[target_field]), spoken)):
                 continue  # separate copy with audio already made

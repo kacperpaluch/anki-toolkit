@@ -30,6 +30,8 @@ Zadanie ma etykietę, pole źródłowe, pole docelowe i tryb:
 
 Separator to wyrażenie regularne (domyślnie `<br><br>`, dla list zwykle `,`).
 W trybie `split_audio` pole zostaje zastąpione dopiero po wygenerowaniu całego zestawu.
+Pole z większą liczbą nagrań niż fragmentów (np. wymowa UK i US z Diki do jednego
+hasła) jest pomijane; podmienia je tylko regeneracja.
 
 ## Głosy i zamiana wyrazów
 

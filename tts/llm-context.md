@@ -48,7 +48,9 @@ _process_batch_async(browser, nids, tasks, label):
       # tekst do syntezy = _speech_text(): bez HTML (granice bloków/<br> = spacja) i bez [sound:]
       # split_audio: segment z audio w źródle jest KOPIOWANY na swoją pozycję w celu;
       #   `old` mapuje istniejące tagi (układ bieżący: każdy segment, albo starszy:
-      #   tylko generowane); gotowe = każdy eligible ma stary tag; zapis tylko kompletny
+      #   tylko generowane); gotowe = każdy eligible ma stary tag; zapis tylko kompletny;
+      #   więcej tagów niż układ bieżący = audio z zewnątrz (np. Diki UK+US) → pomijane
+      #   bez overwrite; mniej = niedokończone → dogenerowanie
       # split do osobnego pola: pominięte, gdy cel już odwzorowuje źródło z audio
       #   (_split_target_complete); niepusty cel wymaga pełnego wyniku
       all_items.extend(items)   # wszystkie zadania razem, jeden pool na notatkę

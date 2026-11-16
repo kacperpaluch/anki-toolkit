@@ -187,6 +187,15 @@ class TestTtsRegeneration(unittest.TestCase):
         items, _ctx = processor.build_note_work_items(complete, [task], ["v1"])
         self.assertEqual(items, [], "kompletne pole generowane po raz drugi")
 
+    def test_split_audio_keeps_dictionary_audio_with_more_tags_than_segments(self):
+        """Diki daje UK+US do jednego hasła — TTS nie może tego podmienić."""
+        task = {"source_field": "ang", "target_field": "audio",
+                "mode": "split_audio", "split_separator": ","}
+        note = FakeNote({"ang": "give up", "audio": "[sound:uk.mp3][sound:us.mp3]"})
+        self.assertEqual(processor.build_note_work_items(note, [task], ["v"])[0], [])
+        items, _ctx = processor.build_note_work_items(note, [task], ["v"], True)
+        self.assertEqual(len(items), 1, "nadpisywanie na życzenie przestało działać")
+
     def test_separate_split_target_is_not_regenerated(self):
         task = {"source_field": "src", "target_field": "copy", "mode": "split",
                 "split_separator": "<br><br>"}
