@@ -188,12 +188,5 @@ class PaidRequestTests(unittest.TestCase):
         self.assertNotIn("voice", network.body())
 
 
-class WordQueueInputTests(unittest.TestCase):
-    def test_pasted_list_keeps_phrases_whole_and_drops_repeats(self):
-        parse = load("integrations", "word_queue.py").parse_words
-        self.assertEqual(parse("give up, household income;  Mother\nmother\n\n look   after "),
-                         ["give up", "household income", "Mother", "look after"])
-
-
 if __name__ == "__main__":
     unittest.main()

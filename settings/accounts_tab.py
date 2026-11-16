@@ -1,12 +1,12 @@
 """Konta i klucze — every API key and connection in one panel.
 
-Writes only credential/connection keys: `ai_generator.providers`, the TTS
-OpenRouter key and the n8n / Cloudflare part of `word_queue`. The feature
-panels (prompts, TTS, queue) read these live through the callbacks below.
+Writes only credential/connection keys: `ai_generator.providers` and the TTS
+OpenRouter key. The feature panels (prompts, TTS) read these live through the
+callbacks below.
 """
-from aqt.qt import QCheckBox, QFormLayout, QGroupBox, QLineEdit, QVBoxLayout, QWidget
+from aqt.qt import QCheckBox, QFormLayout, QGroupBox, QVBoxLayout, QWidget
 
-from ..common.ui import _api_key_widget, collapsible_section, hint_label, scroll_panel
+from ..common.ui import _api_key_widget, scroll_panel
 from .ai_generator_tab import AIProvidersBox
 
 
@@ -29,35 +29,6 @@ class AccountsTab(QWidget):
         form.addRow("Klucz API:", self._tts_key_box)
         layout.addWidget(tts)
 
-        q = cfg.get("word_queue") or {}
-        queue, body = collapsible_section("Kolejka słówek — połączenie z n8n")
-        form = QFormLayout()
-        self._url = QLineEdit(q.get("n8n_url", ""))
-        self._fallback = QLineEdit(q.get("fallback_url", ""))
-        key_widget, self._key = _api_key_widget(q.get("api_key", ""))
-        self._table = QLineEdit(q.get("table_id", ""))
-        self._word = QLineEdit(q.get("word_column", "Slowko"))
-        self._flag = QLineEdit(q.get("flag_column", "Anki"))
-        for label, widget in (("Adres główny:", self._url), ("Adres zapasowy:", self._fallback),
-                              ("Klucz API n8n:", key_widget), ("ID tabeli:", self._table),
-                              ("Kolumna słowa:", self._word), ("Kolumna flagi:", self._flag)):
-            form.addRow(label, widget)
-        body.addLayout(form)
-        body.addWidget(hint_label("Zmiany połączenia działają po ponownym otwarciu panelu kolejki.", small=True))
-        layout.addWidget(queue)
-
-        access, body = collapsible_section("Kolejka słówek — Cloudflare Access")
-        form = QFormLayout()
-        self._cf_id = QLineEdit(q.get("cf_client_id", ""))
-        self._cf_id.setPlaceholderText("puste = bez Cloudflare Access")
-        secret_widget, self._cf_secret = _api_key_widget(q.get("cf_client_secret", ""))
-        form.addRow("Client ID:", self._cf_id)
-        form.addRow("Client Secret:", secret_widget)
-        body.addLayout(form)
-        body.addWidget(hint_label(
-            "Token jest wysyłany tylko przez HTTPS. Reguła Access dla domeny musi mieć akcję „Service Auth”.",
-            small=True))
-        layout.addWidget(access)
         layout.addStretch()
 
     def provider_settings(self, name: str) -> dict:
@@ -77,14 +48,4 @@ class AccountsTab(QWidget):
         cfg.setdefault("tts", {}).update({
             "openrouter_api_key": self._tts_key.text().strip(),
             "use_ai_openrouter_key": self._tts_use_ai.isChecked(),
-        })
-        cfg.setdefault("word_queue", {}).update({
-            "n8n_url": self._url.text().strip(),
-            "fallback_url": self._fallback.text().strip(),
-            "api_key": self._key.text().strip(),
-            "cf_client_id": self._cf_id.text().strip(),
-            "cf_client_secret": self._cf_secret.text().strip(),
-            "table_id": self._table.text().strip(),
-            "word_column": self._word.text().strip(),
-            "flag_column": self._flag.text().strip(),
         })

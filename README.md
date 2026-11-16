@@ -1,17 +1,17 @@
 # Anki Toolkit
 
-Jeden dodatek do Anki do tworzenia kart: kolejka słówek, treść pól z AI,
+Jeden dodatek do Anki do tworzenia kart: treść pól z AI,
 wymowa i nagrania oraz porządki w kolekcji. Ustawienia są w jednym oknie.
 
 ## Gdzie kliknąć
 
 | Miejsce | Co tam jest |
 |---|---|
-| Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, **Pobierz wymowę: …**, **Nagraj audio (TTS)**; w oknie Dodaj także **📚 Kolejka słówek** i **Pokaż schowane pola** |
+| Edytor (Dodaj / Edytuj) → przycisk **Toolkit ▾** | Działania dla bieżącej notatki: sekwencje, **Uzupełnij puste pola AI**, **Pobierz wymowę: …**, **Nagraj audio (TTS)**; w oknie Dodaj także **Pokaż schowane pola** |
 | Edytor → **Toolkit ▾ → Przypnij do paska** | Wybór działań, które mają własny przycisk obok „Toolkit ▾” (domyślnie **D** = Diki, **O** = Oxford). Przypięte znikają z menu; pasek zmienia się po ponownym otwarciu okna |
 | Edytor → **Toolkit ▾ → Skróty klawiszowe…** | Własna kombinacja klawiszy dla każdego działania. Okno odrzuca kombinacje bez Cmd/Ctrl (wpisywałyby znaki), zajęte przez Anki lub inny dodatek i powtórzone; skróty działają po ponownym otwarciu okna |
 | Przeglądarka kart → prawy klik → **Anki Toolkit** | To samo dla zaznaczonych notatek, w tym **Wygeneruj pola AI…** i rozdzielanie pól |
-| **Narzędzia → Anki Toolkit** | **Kolejka słówek (n8n)…**, **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, czyszczenie HTML) |
+| **Narzędzia → Anki Toolkit** | **Ustawienia…** i **Operacje na kolekcji** (rozdzielanie pól, czyszczenie HTML) |
 
 Menu pokazują tylko to, co pasuje do notatki lub zaznaczenia. Po pracy na wielu
 notatkach dostajesz raport z błędami, a **Ustawienia → Diagnostyka** pozwala
@@ -25,17 +25,16 @@ ponowić nieudane notatki.
 | [Wymowa ze słowników](dictionary/README.md) | Audio MP3 i IPA dla pojedynczych słów z czterech słowników |
 | [Nagrania (TTS)](tts/README.md) | Audio dla wyrażeń i zdań przez OpenRouter (np. Kokoro) |
 | [Rozdzielanie pól](field_splitter/README.md) | Części pola (po separatorze) w kolejnych polach |
-| [Kolejka słówek](integrations/README.md) | Słowa z n8n DataTable, cztery słowniki w zakładkach, przyciski userscriptu |
 | [Czyszczenie HTML](html_cleanup/README.md) | Reguły „znajdź → zamień” przy dodawaniu notatki i dla kolekcji |
 | [Ukrywanie pól](field_hider/README.md) | Pola pomocnicze schowane w oknie Dodaj |
 
-Klucze API i połączenia (dostawcy AI, OpenRouter dla nagrań, n8n, Cloudflare
-Access) są na stronie **Ustawienia → Konta i klucze**. Tam też wybierasz model
+Klucze API (dostawcy AI, OpenRouter dla nagrań) są na stronie **Ustawienia → Konta i klucze**. Tam też wybierasz model
 domyślny i poziom rozumowania każdego dostawcy. Oprócz dostawców API są
 **Codex CLI** i **Claude CLI**, które działają na limitach subskrypcji.
 
 Usunięte funkcje są zachowane w tagach Git: tryb tańszy Batch API
 (`archive/batch-api`), „Utwórz karty z AI” w kolejce (`archive/ai-senses`),
+kolejka słówek z n8n ze słownikami w zakładkach, mostkiem i userscriptem (`archive/word-queue`),
 normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`) i Workload
 Service, czyli automatyczne limity nowych kart przez synchronizację (`archive/workload-service`).
 
@@ -48,7 +47,7 @@ Pobierz `anki-toolkit-<wersja>.ankiaddon` z
 dwuklikiem albo przez **Narzędzia → Dodatki → Zainstaluj z pliku…**, potem
 uruchom Anki ponownie. Aktualizacja tą samą drogą zachowuje ustawienia i `user_files/`.
 
-Ustawienia profilu są w `meta.json`, a dane robocze (stan kolejki)
+Ustawienia profilu są w `meta.json`, a dane robocze
 w `user_files/`. Oba miejsca są poza Gitem. `config.json`
 to szablon z wartościami domyślnymi. Przy wielu profilach Anki ustawienia są wspólne.
 
@@ -81,7 +80,6 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=/Applications/Anki.app/Contents/Resources/a
 Potrzebny jest dokładnie Python 3.13 (dla niego Anki ma skompilowane `aqt`). Gdy nie ma go
 w `PATH`, `tests/run_all.sh` bierze go z `uv python find 3.13`; inną ścieżkę podasz w `ANKI_PYTHON`.
 
-`tests/live_selectors.py` sprawdza zakładki słowników na żywych stronach (wymaga sieci).
 Przy zmianach hooków, menu lub zapisu kolekcji sprawdź też działanie w Anki.
 
 Paczkę buduje się z zatwierdzonego kodu:

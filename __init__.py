@@ -1,11 +1,11 @@
-"""Anki Toolkit — one add-on: card content, word queue and upkeep."""
+"""Anki Toolkit — one add-on: card content and upkeep."""
 from anki.utils import ids2str
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
 from aqt.utils import tooltip
 
 from . import ai_generator, dictionary, field_splitter, tts
-from . import field_hider, html_cleanup, integrations
+from . import field_hider, html_cleanup
 from .common import (check_config, clear_reports, get_module_config, setup_logging, unique,
                      update_module_config)
 
@@ -16,7 +16,7 @@ gui_hooks.profile_will_close.append(clear_reports)  # report note ids belong to 
 
 # Toolbar text of a pinned action; its full label is the tooltip.
 _SHORT = {"Uzupełnij puste pola AI": "AI", "Nagraj audio (TTS)": "TTS",
-          "📚 Kolejka słówek": "📚", "Pokaż schowane pola": "👁"}
+          "Pokaż schowane pola": "👁"}
 
 
 def _editor_groups(editor):
@@ -24,7 +24,7 @@ def _editor_groups(editor):
     return (ai_generator.workflow_actions(editor),
             ai_generator.editor_actions(editor) + dictionary.editor_actions(editor)
             + tts.editor_actions(editor),
-            integrations.editor_actions(editor) + field_hider.editor_actions(editor))
+            field_hider.editor_actions(editor))
 
 
 def _pinned() -> list:
@@ -151,7 +151,6 @@ def _setup_menu(*_):
             target.addAction(action)
 
     add_actions(menu, (
-        ("Kolejka słówek (n8n)…", integrations.open_queue),
         ("Ustawienia…", open_settings),
     ))
     operations = menu.addMenu("Operacje na kolekcji")

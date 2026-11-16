@@ -23,7 +23,7 @@ cfg = json.loads((ROOT / "config.json").read_text())
 cfg["ai_generator"]["note_types"] = {"English": {"def": {"target": "def", "provider": "openrouter"}}}
 cfg["ai_generator"]["providers"]["openrouter"]["api_key"] = "sk-or-test"
 cfg["tts"].update({"use_ai_openrouter_key": True, "future_tts_key": "keep"})
-cfg["word_queue"].update({"n8n_url": "https://n8n.example", "future_queue_key": "keep"})
+cfg["word_queue"] = {"n8n_url": "https://n8n.example"}  # archived feature, still in old profiles
 cfg["workflows"] = [{"name": "Przygotuj fiszki", "steps": [{"module": "ai", "action": "generate"}]}]
 
 mw = types.SimpleNamespace(col=None, addonManager=types.SimpleNamespace(getConfig=lambda _: copy.deepcopy(cfg)))
@@ -58,13 +58,12 @@ with patch.object(common_config, "mw", mw), patch("aqt.mw", mw):
         assert by_type["TTSTab"]._build_preview_config()["openrouter_api_key"] == "sk-or-test"
         accounts.providers._provider_widgets["openrouter"]["api_key"].setText("sk-or-new")
         assert by_type["TTSTab"]._build_preview_config()["openrouter_api_key"] == "sk-or-new"
-        accounts._url.setText("https://n8n.changed")
 
         dialog.save()
         out = saved[-1]
         assert out["ai_generator"]["providers"]["openrouter"]["api_key"] == "sk-or-new"
-        assert out["word_queue"]["n8n_url"] == "https://n8n.changed"
-        assert out["word_queue"]["future_queue_key"] == "keep" and out["tts"]["future_tts_key"] == "keep"
+        assert out["word_queue"] == {"n8n_url": "https://n8n.example"}
+        assert out["tts"]["future_tts_key"] == "keep"
         assert out["tts"]["use_ai_openrouter_key"] is True
         assert out["ai_generator"]["note_types"]["English"]["def"]["provider"] == "openrouter"
         dialog.deleteLater()

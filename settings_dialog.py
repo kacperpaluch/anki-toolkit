@@ -15,7 +15,6 @@ from .common import check_config, get_full_config, save_full_config, set_debug
 from .common.ui import hint_label
 from .field_hider.settings import FieldHiderTab
 from .html_cleanup.settings import HtmlCleanupTab
-from .integrations.settings import IntegrationsTab
 from .settings.accounts_tab import AccountsTab
 from .settings.ai_generator_tab import AIGeneratorTab
 from .settings.dictionary_tab import DictionaryTab
@@ -40,10 +39,6 @@ PAGES = [
         ("field_splitter", "✂️", "Rozdzielanie pól",
          "Kopiuje kolejne części pola źródłowego do pól docelowych.", FieldSplitterSettings),
     ]),
-    ("Źródła", [
-        ("integrations", "📚", "Kolejka słówek",
-         "Kolejka z n8n, pola notatki i połączenie ze stronami słowników.", IntegrationsTab),
-    ]),
     ("Porządki", [
         ("html_cleanup", "🧹", "Czyszczenie HTML",
          "Reguły „znajdź → zamień” stosowane przy dodawaniu notatek.", HtmlCleanupTab),
@@ -52,7 +47,7 @@ PAGES = [
     ]),
     ("Konfiguracja", [
         ("accounts", "🔑", "Konta i klucze",
-         "Wszystkie klucze API i połączenia: dostawcy AI, nagrania, n8n.", AccountsTab),
+         "Wszystkie klucze API i połączenia: dostawcy AI i nagrania.", AccountsTab),
         ("logs", "🩺", "Diagnostyka", "Ostatnie operacje (z ponowieniem nieudanych), logi wtyczki i tryb debugowania.", LogsTab),
     ]),
 ]

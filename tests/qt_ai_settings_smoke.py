@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = QApplication.instance() or QApplication(["qt-ai-settings-smoke"])
 for name, path in (("effort_smoke", ROOT),
                    ("effort_smoke.settings", ROOT / "settings"),
-                   ("effort_smoke.ai_generator", ROOT / "ai_generator"),
-                   ("effort_smoke.integrations", ROOT / "integrations")):
+                   ("effort_smoke.ai_generator", ROOT / "ai_generator")):
     package = types.ModuleType(name)
     package.__path__ = [str(path)]
     sys.modules[name] = package
@@ -52,19 +51,6 @@ try:
     assert saved["ai_generator"]["providers"]["claude_cli"]["reasoning_effort"] == "high"
     prompts._ed_provider.setCurrentIndex(prompts._ed_provider.findData("openai"))
     assert prompts._ed_temperature.isEnabled()
-    queue_module = importlib.import_module("effort_smoke.integrations.settings")
-    queue = queue_module.IntegrationsTab(copy.deepcopy(saved))
-    try:
-        queue._pl.setText("polski")
-        queue.apply(saved)
-        assert saved["word_queue"]["ai_fields"]["pl"] == "polski"
-        original_field = queue._field.text()
-        queue._field.clear()
-        assert queue.validate()
-        queue._field.setText(original_field)
-        assert queue.validate() is None
-    finally:
-        queue.close()
     # Unused providers are hidden until added; the claude_cli prompt and codex fallback keep theirs.
     rows = {name: r for r, name in enumerate(module._PROVIDER_NAMES)}
     hidden = [n for n, r in rows.items() if accounts.providers._prov_list.isRowHidden(r)]
@@ -72,7 +58,7 @@ try:
     for name in hidden:
         accounts.providers._add_provider(rows[name])
     assert not accounts.providers._add_btn.isVisibleTo(accounts.providers)
-    print("Qt AI settings and word queue smoke: OK")
+    print("Qt AI settings smoke: OK")
 finally:
     tab.close()
     accounts.close()
