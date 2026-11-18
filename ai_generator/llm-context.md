@@ -118,9 +118,9 @@ Przyciski workflowów w edytorze:
   jawny scope istniejących pól + `overwrite=True` pozwala pokazać także pełne
   pola, ale nadal respektuje konfigurację typu, obecność targetu i `skip_tags`.
   Dodatkowo wymaga wskazanego providera i rozdziela `manual_only`.
-- „Wszystkie puste pola automatyczne” używa
+- „Uzupełnij puste pola AI” w edytorze i krok AI z `fields: "empty"` używają
   `only_fields=None`, żeby nie włączać przypadkiem pól ręcznych o tej samej
-  nazwie w innym typie notatki.
+  nazwie w innym typie notatki. Okno Browsera zawsze podaje jawną listę pól.
 - `context_menu.ai_fields` steruje automatycznym AI;
   `ai_blocked` jest zachowanym kluczem konfiguracji dla pól „tylko na żądanie”.
   Obie flagi ograniczają też listę regenerowania. Root respektuje `dictionary/tts`. Nie są to flagi
@@ -162,7 +162,7 @@ Przyciski workflowów w edytorze:
 ## Konfiguracja
 
 Konfiguracja edytowalna przez **Narzędzia → Anki Toolkit…** (grupa „Tworzenie kart”):
-- Strona **Sekwencje** (w UI „sekwencja” = workflow) — lista nazwanych workflowów (nazwa, flaga przycisku edytora, kroki z parametrami) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
+- Strona **Sekwencje** (w UI „sekwencja” = workflow) — lista nazwanych workflowów (nazwa i kroki z parametrami; przycisk na pasku edytora daje „Przypnij do paska” w root) + widoczność wbudowanych sekcji menu PPM (`context_menu`)
 - Strona **Prompty AI → Prompty** — dwupanelowy edytor: lista typ notatki/zadanie po lewej, edytor (nazwa zadania, target, dostawca, model, temperatura, prompt) po prawej; ustawienia zadania i model zapasowy w zwijanych sekcjach; treść promptu rozciąga się, a rozwinięty formularz można przewijać; temperatura per prompt z wartością specjalną „— domyślna dostawcy" (dziedziczenie z karty dostawcy); model jest edytowalnym comboboxem z pobieraniem listy z API i filtrowaniem po dowolnym fragmencie nazwy; przycisk „Ustaw te modele we wszystkich promptach…” (`_on_apply_models_to_all`) kopiuje provider/model/fallback_provider/fallback_model bieżącego promptu do promptów widocznych wg filtra typu notatki — tylko w `self._data`, zapis przy `apply()`; „Pobierz” dla `claude_cli` używa klucza dostawcy `anthropic` (tylko do listy pełnych ID); typ notatki i pole docelowe to edytowalne comboboxy z danymi z kolekcji, przycisk „Wstaw pole ▾" wstawia `{{pole}}` w pozycji kursora, przycisk „Wstaw warunek ▾" wstawia szkielet `{% if pole %}…{% else %}…{% endif %}` (zaznaczony tekst trafia do gałęzi „if"), a walidacja na żywo ostrzega o nieistniejącym typie notatki, polu docelowym i nieznanych `{{polach}}` w prompcie (targety wcześniejszych zadań tego typu notatki są uznawane za znane) oraz o błędach struktury bloków `{% if %}` (niedomknięty/osierocony/podwójny else/zagnieżdżony — `template_engine.template_structure_problems()`, czysta funkcja działająca bez kolekcji)
 - Strona **Prompty AI → Ogólne** — `skip_tags` i zwinięta sekcja Zaawansowane (limity batcha, równoległość, retry, timeout).
 - Strona **Konta i klucze** (`settings/accounts_tab.py`) — `AIProvidersBox` z `ai_generator_tab.py`: lista dostawców (✓ = gotowy; nieużywani wg `used_providers()` ukryci do „+ Dodaj dostawcę”) z formularzem: klucz API albo status CLI, model domyślny, „Poziom rozumowania”; temperatura, fallback, RPM/równoległość, ścieżka binarki, limit czasu i instrukcja systemowa w zwiniętej sekcji Zaawansowane. Ukrycie wiersza nie zmienia zapisu — `apply()` zapisuje wszystkich dostawców. `SettingsDialog` podpina `AccountsTab.provider_settings` pod edytor promptów (domyślne modele). `max_tokens` ustawia się tylko w `config.json`.
@@ -299,7 +299,7 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 ## Zależności
 
 - Stdlib: `json`, `re`, `logging`
-- Anki API: `mw.addonManager.getConfig`, `mw.col.get_note`, `mw.col.update_note`, `mw.taskman.run_in_background`, `mw.taskman.run_on_main`, `mw.progress.start/update/finish/want_cancel` (natywny pasek batcha)
+- Anki API: `mw.addonManager.getConfig`, `mw.col.get_note`, `mw.taskman.run_in_background`; pasek batcha (`mw.progress`) i zapis (`CollectionOp`, `update_note`) idą przez `common.progress` i `common.editor_operation`
 - Własne: `common.ADDON_NAME`, `common.clean_html_normalized`, `common.safe_str`, `common.http.post_create` (płatny POST bez ponowień niepewnych)
 - Batch używa natywnego paska `mw.progress` (nie `QProgressDialog`) — trzyma Anki „busy", więc automatyczny backup/sync się odkłada i nie zasłania przycisku Anuluj
 - Brak pip packages

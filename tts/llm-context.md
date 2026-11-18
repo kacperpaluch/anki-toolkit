@@ -2,8 +2,8 @@
 
 ## Co robi
 
-Generuje pliki audio MP3 przez API TTS OpenRoutera (płatne per znak). Lokalny
-serwer Kokoro został usunięty; model Kokoro jest dostępny przez OpenRoutera.
+Generuje pliki audio MP3 przez API TTS OpenRoutera (płatne per znak), np.
+modelem Kokoro.
 
 System **zadań TTS** (`tasks` w konfiguracji) zastępuje sztywno zakodowane pola. Każde zadanie definiuje:
 - `label` — etykieta w menu
@@ -24,7 +24,7 @@ Root dispatcher przekazuje zaznaczone notatki i respektuje `context_menu.tts`; m
 |---|---|
 | `__init__.py` | Hooki Anki — dynamiczne submenu „Nagraj audio (TTS)” w przeglądarce + eksport `editor_actions` (pozycja menu „Toolkit ▾”) |
 | `config.py` | Konfiguracja: `_DEFAULTS`, `get_tts_config()`, `validate_config()`, `get_tasks()`, `resolve_openrouter_key()` — używa `common.config.get_module_config()` |
-| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje płatny POST do `common.http.post_create()` (ponawia tylko 429 i niewysłane połączenie; timeout/5xx = błąd bez ponowienia); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku i poprawny JSON — surowe PCM może zacząć się od `{`) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` używa `urllib.request` bezpośrednio (GET, jednorazowy); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
+| `api.py` | API TTS: `generate_audio()` (**na wejściu woła `apply_word_replacements(text, config["replacements"])`** — jedyny chokepoint, więc zamiana działa dla wszystkich trybów/ścieżek: single/split/split_audio, batch, edytor, PPM, workflow), `_generate_openrouter()` deleguje płatny POST do `common.http.post_create()` (ponawia tylko 429 i niewysłane połączenie; timeout/5xx = błąd bez ponowienia); po udanym POST `_ensure_audio(raw, label)` odrzuca odpowiedź pustą lub JSON-ową (`{`/`[` na początku i poprawny JSON — surowe PCM może zacząć się od `{`) — HTTP 200 bez audio zapisałoby śmieciowy MP3, a `[sound:...]` w polu blokuje ponowną generację na zawsze. `fetch_openrouter_tts_models()` i `fetch_openrouter_tts_providers()` robią jednorazowy GET przez `common.http.urlopen` (bez ponowień); loguje DEBUG (parametry/czas żądania) i WARNING (retry) — widoczne w Ustawienia → Diagnostyka |
 | `processor.py` | Wspólne building blocks + batch: `build_note_work_items()`, `generate_for_items()`, `apply_results_to_note()`; `process_task_async()` / `process_tasks_async(browser, nids, tasks)` (batch z natywnym paskiem `mw.progress` przez `common.progress` i `CollectionOp`); `process_single_note(note, config=None, tasks=None, overwrite=False) -> (changed, error)` (używane przez workflow i PPM w edytorze) — `tasks` filtruje do podzbioru zadań, `overwrite=True` **nie rusza notatki przed czasem**: `build_note_work_items(..., overwrite=True)` odkłada stare tagi do `split_contexts["prev"]` (split) i `["old"]` (split_audio), a `apply_results_to_note()` podmienia je wyłącznie tam, gdzie powstał nowy plik (nieudany segment zachowuje swoje nagranie); generuje równolegle przez `ThreadPoolExecutor(max_workers)`; **przy błędach generowania zwraca `(False, error_msg)` — NIE rzuca `Exception`** (workflow/edytor zamieniają to w tooltip) |
 | `editor_ui.py` | `editor_actions(editor)` → „Nagraj audio (TTS)” w menu „Toolkit ▾” (gdy notatka ma pola zadania) — `saveNow(start)`, wspólny guard `common.editor_operation`, `validate_config()`, własny batch work items w tle (`run_in_background`); rejestruje `gui_hooks.editor_will_show_context_menu` → PPM na `target_field` zadania TTS: „Nagraj audio / Nagraj ponownie: [label]" (ponownie = `overwrite=True`); `_on_tts_field_editor` woła `process_single_note(clone, tasks=[task], overwrite=...)` na kopii z `detach_note()`, a wynik wraca przez `merge_editor_note()` |
 
@@ -66,7 +66,8 @@ _process_batch_async(browser, nids, tasks, label):
   → on_done (główny wątek):
       → finish_progress()   # PRZED CollectionOp (dwa mw.progress = „already busy")
       → grouped per nid → apply_results_to_note() na notatkach, z których zbudowano plan
-      → common.editor_operation.save_detached_notes(browser, col, changed_notes, before, summary)
+      → common.editor_operation.save_detached_notes(browser, col, changed_notes, before, summary,
+            title=label, retry=..., failed=...)   # tooltip + raport sesji (Diagnostyka)
             # CollectionOp: świeże notatki, tylko zmienione pola; notatka zmieniona
             # w trakcie (inna operacja) jest pomijana; inny profil → nic nie zapisuje
       → brak mw.reset() — CollectionOp sam odświeża kolekcję (jeden krok undo)
@@ -197,7 +198,7 @@ Generowane losowo przez `unique_filename()` z `common.text`: `tts_` + 12 znaków
 
 ## Zależności
 
-- Stdlib: `urllib.request` (GET w `fetch_openrouter_tts_models`), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
+- Stdlib: `urllib.request`/`urllib.parse` (GET modeli i dostawców przez `common.http.urlopen`), `wave`, `tempfile` (PCM → MP3), `json`, `concurrent.futures`, `random`, `re`, `time`, `logging`
 - Anki API: `mw.col.get_note`, `mw.col.update_note`, `mw.col.update_notes` (przez `CollectionOp`), `mw.col.media.write_data`, `mw.taskman`, `CollectionOp`
 - Własne: `common.config` (get_module_config), `common.text` (normalize_float, unique_filename, unique, split_separator_regex), `common.html` (clean_html_normalized, strip_sound_tags), `common.editor_operation` (save_detached_notes), `common.http` (post_create — płatny POST bez ponowień niepewnych; używany przez `_generate_openrouter`)
 - OpenRouter: tylko klucz API, żadnych lokalnych zależności

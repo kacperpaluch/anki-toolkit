@@ -11,7 +11,9 @@ Krok „Wymowa” jest też dostępny w sekwencjach.
 - **Przeglądarka → prawy klik → Anki Toolkit → Pobierz wymowę** — jeden słownik albo
   **Wszystkie włączone słowniki**; praca idzie z paskiem postępu i przyciskiem Anuluj.
 
-Pozycje w menu to grupy zaznaczone w sekcji **Słowniki w menu**.
+Pozycje w menu to grupy zaznaczone w sekcji **Słowniki w edytorze i menu**.
+Podsumowanie pracy w przeglądarce trafia też do **Ustawienia → Diagnostyka**,
+gdzie **Ponów nieudane** powtarza notatki z błędem.
 
 ## Co jest pobierane
 

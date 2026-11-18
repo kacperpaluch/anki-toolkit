@@ -28,7 +28,7 @@ ponowić nieudane notatki.
 | [Czyszczenie HTML](html_cleanup/README.md) | Reguły „znajdź → zamień” przy dodawaniu notatki i dla kolekcji |
 
 Klucze API (dostawcy AI, OpenRouter dla nagrań) są na stronie **Ustawienia → Konta i klucze**. Tam też wybierasz model
-domyślny i poziom rozumowania każdego dostawcy. Oprócz dostawców API są
+domyślny każdego dostawcy i poziom rozumowania (poza Anthropic). Oprócz dostawców API są
 **Codex CLI** i **Claude CLI**, które działają na limitach subskrypcji.
 
 Usunięte funkcje są zachowane w tagach Git: tryb tańszy Batch API

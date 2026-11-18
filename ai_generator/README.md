@@ -85,8 +85,8 @@ kopiuje dostawcę i model (główne i zapasowe) do promptów widocznych na liśc
 | `codex_cli` | bez klucza — `codex login` | subskrypcja ChatGPT |
 | `claude_cli` | bez klucza — `claude auth login` | subskrypcja Claude (Pro/Max) |
 
-Przy każdym dostawcy ustawiasz model domyślny i **poziom rozumowania**. Poziom
-dotyczy wszystkich promptów tego dostawcy, a model zapasowy używa poziomu swojego
+Przy każdym dostawcy ustawiasz model domyślny, a poza Anthropic także **poziom
+rozumowania**. Poziom dotyczy wszystkich promptów tego dostawcy, a model zapasowy używa poziomu swojego
 dostawcy. W sekcji **Zaawansowane** są temperatura, model zapasowy dostawcy,
 limity RPM i równoległości oraz (dla CLI) ścieżka binarki i limit czasu.
 Przycisk **Pobierz** ściąga listę modeli; lista jest zapamiętywana w konfiguracji.
@@ -105,6 +105,8 @@ i zużywają limity subskrypcji. Dodatek nie widzi tokenu logowania.
   w sandboksie `read-only`, w pustym katalogu, bez konfiguracji użytkownika i bez zapisu sesji.
 - `claude_cli` przyjmuje alias (`haiku`, `sonnet`, `opus`, `fable`) albo pełne ID modelu.
   `system_prompt` zastępuje prompt Claude Code, co obniża narzut do ok. 280 tokenów na fiszkę.
+- `codex_home` (tylko w `config.json`) wskazuje katalog logowania Codexa; puste =
+  `$CODEX_HOME` albo `~/.codex`.
 - `codex_cli` dodaje do każdego wywołania kilka tysięcy tokenów preambuły, a konto
   ChatGPT zwykle odrzuca modele `*-codex-*`.
 
