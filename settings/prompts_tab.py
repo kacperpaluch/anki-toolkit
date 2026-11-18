@@ -998,9 +998,6 @@ class PromptsTab(QWidget):
                 ("fallback_provider", entry.get("fallback_provider", "") or None),
                 ("fallback_model", entry.get("fallback_model", "") or None),
                 ("temperature", entry.get("temperature")),
-                # Effort is set per provider only; drop overrides of older versions.
-                ("reasoning_effort", None),
-                ("fallback_reasoning_effort", None),
             ):
                 if value is None:
                     field_cfg.pop(key, None)

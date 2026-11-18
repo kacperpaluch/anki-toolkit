@@ -26,7 +26,7 @@ def iter_note_fields(note: Note, config: dict,
                      overwrite: bool = False):
     """Yield (field_cfg, target_field) for each field eligible for generation.
 
-    Shared selection logic for the sync generator and the batch backfill:
+    Shared selection logic for the generator and the editor/Browser menus:
     honors skip_tags, the note-type config, only_fields, manual_only (only in
     auto mode, i.e. only_fields=None) and the empty-field skip.
     """

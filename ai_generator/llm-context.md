@@ -212,7 +212,7 @@ Zmiana kluczy API i promptów **nie wymaga restartu Anki** — każde uruchomien
 - `providers.<name>.max_concurrent` — maks. równoległych żądań do dostawcy (semafor); `0`/brak = bez limitu; darmowe API zwykle wymagają `1`
 - `providers.openrouter.rate_limit_free_only` — gdy `true` (domyślnie dla OpenRoutera), limit dotyczy tylko modeli z `:free` w nazwie; gdy `false`, wszystkich żądań. Pole istnieje tylko dla OpenRoutera; inni dostawcy zawsze dławią wszystko.
 - `providers.openai.reasoning_effort` / `providers.openrouter.reasoning_effort` — dropdown z wartościami `none/minimal/low/medium/high/xhigh`; wysyłany tylko dla modeli OpenAI reasoning (`o1/o3/o4`, `gpt-5+`); dla tych modeli nie wysyłane `temperature`; fallback automatyczny przy HTTP 400
-- Effort CLI: tylko z konfiguracji dostawcy (`claude_cli` → `--effort`, `codex_cli` → `-c model_reasoning_effort`); fallback używa poziomu swojego dostawcy. Stare klucze promptu `reasoning_effort`/`fallback_reasoning_effort` są ignorowane, a `PromptsTab.apply` je usuwa. Temperatura pozostaje zapisana, ale jest nieaktywna przy głównym i zapasowym CLI.
+- Effort CLI: tylko z konfiguracji dostawcy (`claude_cli` → `--effort`, `codex_cli` → `-c model_reasoning_effort`); fallback używa poziomu swojego dostawcy. Temperatura pozostaje zapisana, ale jest nieaktywna przy głównym i zapasowym CLI.
 - Bez globalnego cache generatora: każde uruchomienie tworzy świeży `FieldGenerator(get_config())` (edytor per klik, workflow per przebieg, batch per notatka) — konfiguracja działa od razu po zapisie ustawień, bez resetu
 - Każdy prompt zapisuje `provider` i `model`; starsze wpisy bez `model` używają `providers.<provider>.model`. Instancje providerów są cache'owane per `(provider, model, temperature)` w obrębie jednej instancji `FieldGenerator`.
 - `note_types.<nt>.<klucz>.temperature` (opcjonalne) — temperatura per prompt; brak klucza = `providers.<provider>.temperature` (temperatura domyślna dostawcy). Fallback promptu używa tej samej per-prompt temperatury (własność zadania, nie modelu). UI: Prompty → QDoubleSpinBox „Temperatura" z wartością specjalną „— domyślna dostawcy" (minimum -0.05; wartość ujemna = dziedzicz, klucz nie jest zapisywany)
@@ -323,8 +323,4 @@ Rozbiór odpowiedzi jest wspólny: `BaseProvider._parse_chat_completion()` dla f
 - Throttling: paczki na poziomie przeglądarki (sleep co `batch_limit` notatek) + per-dostawca tempo/jednoczesność przez `RateLimiter.slot()` w `field_generator` (patrz „Rate limiter per dostawca")
 - Edytorowe zadania tła (AI, workflow, TTS, słownik) idą z `uses_collection=False`; zapis mediów serializuje backend. Wyjątek z `merge_editor_note()` (np. zamknięte okno „Dodaj”) kończy się tooltipem, nie oknem błędu Anki.
 - `claude_cli._logged_in()` pamięta udany `claude auth status` przez 5 minut; ustawienia sprawdzają status dostawców CLI w tle (`_check_local_status`), z uwzględnieniem wpisanej ścieżki binarki.
-- `common.http`: `fetch_url`/`post_json`/`post_create` traktują każdy `OSError` i `HTTPException` (także zerwanie w trakcie `read()`) jak nieudane żądanie — wywołujący dostają `None`/błąd, nie wyjątek.
-
-## Usunięte
-
-Batch API (tryb tańszy) usunięto; kod jest w tagu Git `archive/batch-api`.
+- `common.http`: `fetch_url`/`post_create` traktują każdy `OSError` i `HTTPException` (także zerwanie w trakcie `read()`) jak nieudane żądanie — wywołujący dostają `None`/błąd, nie wyjątek.

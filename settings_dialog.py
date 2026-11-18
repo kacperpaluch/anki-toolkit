@@ -84,7 +84,7 @@ def _page(icon: str, title: str, description: str, panel: QWidget) -> QWidget:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, page: str | None = None):
+    def __init__(self):
         super().__init__(mw)
         self.setWindowTitle("Anki Toolkit — Ustawienia")
         self.resize(1080, 680)
@@ -121,7 +121,7 @@ class SettingsDialog(QDialog):
         by_type[AIGeneratorTab]._prompts._provider_settings = accounts.provider_settings
         by_type[TTSTab]._key_settings = accounts.tts_key_settings
         self._sidebar.currentItemChanged.connect(self._show_page)
-        self._sidebar.setCurrentRow(self._rows.get(page or _last_page, self._rows["workflows"]))
+        self._sidebar.setCurrentRow(self._rows.get(_last_page, self._rows["workflows"]))
 
         body = QHBoxLayout()
         body.addWidget(self._sidebar)
@@ -165,13 +165,12 @@ class SettingsDialog(QDialog):
         super().reject()
 
 
-def open_settings(page: str | None = None) -> bool:
-    """True, gdy zapisano — wywołujący może wtedy przeliczyć swój widok."""
+def open_settings() -> None:
     if not check_config():
         tooltip("Ustawienia nie zostały otwarte — popraw wartości w config.json.", parent=mw)
-        return False
-    dialog = SettingsDialog(page)
+        return
+    dialog = SettingsDialog()
     try:
-        return dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.exec()
     finally:
         dialog.deleteLater()  # parented to mw: without this every opening stays alive

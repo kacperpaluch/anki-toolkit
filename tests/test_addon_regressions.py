@@ -30,9 +30,7 @@ def load(addon, filename="__init__.py"):
     mw = types.SimpleNamespace(col=object(), addonManager=types.SimpleNamespace(getConfig=lambda _: {}))
     modules["aqt"].mw = mw
     modules["aqt"].gui_hooks = types.SimpleNamespace(**{
-        name: [] for name in ("editor_did_load_note", "editor_did_init_buttons", "profile_did_open",
-                             "profile_will_close", "main_window_did_init", "browser_will_show_context_menu",
-                             "sync_did_finish", "add_cards_did_init", "add_cards_will_add_note")})
+        name: [] for name in ("profile_did_open", "add_cards_did_init", "add_cards_will_add_note")})
     modules["aqt.qt"].__getattr__ = lambda _: Widget
     modules["aqt.qt"].sip = types.SimpleNamespace(isdeleted=lambda obj: getattr(obj, "deleted", False))
     modules["aqt.utils"].__getattr__ = lambda _: lambda *a, **k: None

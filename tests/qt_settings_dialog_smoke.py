@@ -23,7 +23,7 @@ cfg = json.loads((ROOT / "config.json").read_text())
 cfg["ai_generator"]["note_types"] = {"English": {"def": {"target": "def", "provider": "openrouter"}}}
 cfg["ai_generator"]["providers"]["openrouter"]["api_key"] = "sk-or-test"
 cfg["tts"].update({"use_ai_openrouter_key": True, "future_tts_key": "keep"})
-cfg["word_queue"] = {"n8n_url": "https://n8n.example"}  # archived feature, still in old profiles
+cfg["future_module"] = {"option": "keep"}  # a section no panel knows, e.g. from another version
 cfg["workflows"] = [{"name": "Przygotuj fiszki", "steps": [{"module": "ai", "action": "generate"}]}]
 
 mw = types.SimpleNamespace(col=None, addonManager=types.SimpleNamespace(getConfig=lambda _: copy.deepcopy(cfg)))
@@ -43,15 +43,11 @@ with patch.object(common_config, "mw", mw), patch("aqt.mw", mw):
         assert dialog._sidebar.currentRow() == dialog._rows["workflows"]
 
         by_type = {type(p).__name__: p for p in dialog._panels}
-        # The window reopens on the page it was left on; an explicit page still wins.
+        # The window reopens on the page it was left on.
         dialog._sidebar.setCurrentRow(dialog._rows["accounts"])
         reopened = dialog_module.SettingsDialog()
         assert reopened._sidebar.currentRow() == reopened._rows["accounts"]
         reopened.deleteLater()
-        explicit = dialog_module.SettingsDialog("tts")
-        assert explicit._sidebar.currentRow() == explicit._rows["tts"]
-        explicit.deleteLater()
-        dialog._sidebar.setCurrentRow(dialog._rows["accounts"])
 
         accounts = by_type["AccountsTab"]
         # TTS previews use the live OpenRouter key from the providers box.
@@ -62,7 +58,7 @@ with patch.object(common_config, "mw", mw), patch("aqt.mw", mw):
         dialog.save()
         out = saved[-1]
         assert out["ai_generator"]["providers"]["openrouter"]["api_key"] == "sk-or-new"
-        assert out["word_queue"] == {"n8n_url": "https://n8n.example"}
+        assert out["future_module"] == {"option": "keep"}
         assert out["tts"]["future_tts_key"] == "keep"
         assert out["tts"]["use_ai_openrouter_key"] is True
         assert out["ai_generator"]["note_types"]["English"]["def"]["provider"] == "openrouter"

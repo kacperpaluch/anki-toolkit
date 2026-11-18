@@ -34,8 +34,9 @@ domyślny i poziom rozumowania każdego dostawcy. Oprócz dostawców API są
 Usunięte funkcje są zachowane w tagach Git: tryb tańszy Batch API
 (`archive/batch-api`), „Utwórz karty z AI” w kolejce (`archive/ai-senses`),
 kolejka słówek z n8n ze słownikami w zakładkach, mostkiem i userscriptem (`archive/word-queue`),
-normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`) i Workload
-Service, czyli automatyczne limity nowych kart przez synchronizację (`archive/workload-service`).
+normalizacja audio przez `ffmpeg` (`archive/audio-normalizer`), Workload
+Service, czyli automatyczne limity nowych kart przez synchronizację (`archive/workload-service`),
+rozdzielanie pól (`archive/field-splitter`) i ukrywanie pól w oknie Dodaj (`archive/field-hider`).
 
 ## Instalacja
 
@@ -44,10 +45,9 @@ Wymaga Anki 25.09 lub nowszego.
 Pobierz `anki-toolkit-<wersja>.ankiaddon` z
 [Releases](https://github.com/kacperpaluch/anki-toolkit/releases) i otwórz go
 dwuklikiem albo przez **Narzędzia → Dodatki → Zainstaluj z pliku…**, potem
-uruchom Anki ponownie. Aktualizacja tą samą drogą zachowuje ustawienia i `user_files/`.
+uruchom Anki ponownie. Aktualizacja tą samą drogą zachowuje ustawienia.
 
-Ustawienia profilu są w `meta.json`, a dane robocze
-w `user_files/`. Oba miejsca są poza Gitem. `config.json`
+Ustawienia profilu są w `meta.json`, poza Gitem. `config.json`
 to szablon z wartościami domyślnymi. Przy wielu profilach Anki ustawienia są wspólne.
 
 ## Dla deweloperów

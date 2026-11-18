@@ -278,19 +278,19 @@ class TestIpaMarkup(unittest.TestCase):
 class TestSafeRedirects(unittest.TestCase):
     def _follow(self, url):
         import urllib.request
-        request = urllib.request.Request("https://n8n.example/rows", headers={
-            "X-N8N-API-KEY": "key", "CF-Access-Client-Secret": "secret", "User-Agent": "ua"})
+        request = urllib.request.Request("https://api.example/v1/messages", headers={
+            "X-Api-Key": "key", "Authorization": "Bearer secret", "User-Agent": "ua"})
         new = http._SafeRedirectHandler().redirect_request(request, None, 302, "Found", {}, url)
         return {k.lower(): v for k, v in new.header_items()}
 
     def test_credentials_stay_with_their_origin(self):
         self.assertEqual(self._follow("https://login.example/"), {"user-agent": "ua"})
-        self.assertIn("x-n8n-api-key", self._follow("https://n8n.example:443/other"))
+        self.assertIn("x-api-key", self._follow("https://api.example:443/other"))
 
     def test_https_downgrade_is_refused(self):
         import urllib.error
         with self.assertRaises(urllib.error.HTTPError):
-            self._follow("http://n8n.example/rows")
+            self._follow("http://api.example/v1/messages")
 
 
 class TestBrowserBatchMerge(unittest.TestCase):
@@ -462,13 +462,10 @@ class TestHttpRequests(unittest.TestCase):
             return BytesIO(b'{}')
         with patch.object(http, 'urlopen', opener):
             http.fetch_url('https://x/rows')
-            http.post_json('https://x/rows', b'{}', {})
-            http.post_json('https://x/rows', b'{}', {}, method='PATCH')
             http.post_create('https://x/rows', b'{}', {})
-            http.post_json('https://x/rows', b'{}', {'User-Agent': 'custom'})
+            http.post_create('https://x/rows', b'{}', {'User-Agent': 'custom'})
         self.assertTrue(calls[0].get_header('User-agent'))
-        self.assertEqual([r.get_header('User-agent') for r in calls[:4]],
-                         [calls[0].get_header('User-agent')] * 4)
+        self.assertEqual(calls[1].get_header('User-agent'), calls[0].get_header('User-agent'))
         self.assertEqual(calls[-1].get_header('User-agent'), 'custom')
 
     def test_create_request_is_not_repeated_after_a_timeout(self):
@@ -497,9 +494,7 @@ class TestCliPromptEffort(unittest.TestCase):
             "codex_cli": {"model": "gpt-test", "reasoning_effort": "low"},
         }, "note_types": {"Test": {"task": {
             "target": "def", "provider": "claude_cli", "prompt": "test",
-            # Overrides left by older versions are ignored.
-            "reasoning_effort": "high", "fallback_provider": "codex_cli",
-            "fallback_model": "gpt-test", "fallback_reasoning_effort": "xhigh",
+            "fallback_provider": "codex_cli", "fallback_model": "gpt-test",
         }}}}
         generator = fg.FieldGenerator(config)
         self.assertIs(generator._resolve_provider("claude_cli"), generator._resolve_provider("claude_cli"))
@@ -628,7 +623,6 @@ class TestReviewFixes(unittest.TestCase):
             def read(self): raise ConnectionResetError("reset")
         with patch.object(http, "urlopen", lambda request, timeout: Broken()):
             self.assertIsNone(http.fetch_url("https://x/a.mp3", max_retries=1))
-            self.assertIsNone(http.post_json("https://x", b"{}", {}, max_retries=1)[0])
             self.assertTrue(http.post_create("https://x", b"{}", {}, max_retries=1)[2])
 
     def test_ai_request_is_not_repeated_after_a_timeout(self):

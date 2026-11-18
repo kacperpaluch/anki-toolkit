@@ -149,5 +149,3 @@ Inny format: dziedzicz po `BaseProvider` i zaimplementuj `call_api()`
 (`self._post()` ponawia 429 i niewysłane żądania, gotowe parsery to `_parse_chat_completion()` i `_parse_messages()`).
 Potem dopisz klasę do `PROVIDERS` i `PROVIDER_LABELS`, sekcję dostawcy do `config.json`
 i, dla przycisku **Pobierz**, gałąź w `providers/model_discovery.py`.
-
-Batch API (tryb tańszy) usunięto; kod jest w tagu Git `archive/batch-api`.

@@ -21,8 +21,8 @@ _DEFAULT_HEADERS = {
 
 
 # Headers that may follow a redirect to another origin. Everything else
-# (API keys, Cloudflare Access secrets, Authorization) stays with the origin
-# the user configured — urllib would otherwise forward it anywhere.
+# (API keys, Authorization) stays with the origin the user configured —
+# urllib would otherwise forward it anywhere.
 _CROSS_ORIGIN_HEADERS = {"user-agent", "accept", "accept-language"}
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
@@ -56,17 +56,10 @@ def urlopen(request, timeout):
     return _OPENER.open(request, timeout=timeout)
 
 
-def fetch_url(
-    url: str,
-    data: Optional[bytes] = None,
-    headers: Optional[dict] = None,
-    max_retries: int = 3,
-    timeout: int = 10,
-) -> Optional[bytes]:
-    effective_headers = dict(_DEFAULT_HEADERS, **(headers or {}))
+def fetch_url(url: str, max_retries: int = 3, timeout: int = 10) -> Optional[bytes]:
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(url, data=data, headers=effective_headers)
+            req = urllib.request.Request(url, headers=_DEFAULT_HEADERS)
             with urlopen(req, timeout=timeout) as response:
                 return response.read()
         except urllib.error.HTTPError as e:
@@ -94,14 +87,8 @@ def fetch_url(
     return None
 
 
-def fetch_text(
-    url: str,
-    data: Optional[bytes] = None,
-    headers: Optional[dict] = None,
-    max_retries: int = 3,
-    timeout: int = 10,
-) -> Optional[str]:
-    raw = fetch_url(url, data=data, headers=headers, max_retries=max_retries, timeout=timeout)
+def fetch_text(url: str, max_retries: int = 3, timeout: int = 10) -> Optional[str]:
+    raw = fetch_url(url, max_retries=max_retries, timeout=timeout)
     if raw is None:
         return None
     return raw.decode("utf-8", errors="replace")
@@ -170,56 +157,3 @@ def post_create(
             log.error(f"Connection error POST {url}: {e}")
             return None, f"Connection error: {e}", True
     return None, "request failed after retries", False
-
-
-def post_json(
-    url: str,
-    payload: bytes,
-    headers: dict,
-    *,
-    max_retries: int = 3,
-    timeout: int = 30,
-    method: str = "POST",
-    log: Optional[logging.Logger] = None,
-) -> tuple[Optional[bytes], Optional[str]]:
-    """POST raw bytes with retry on 429/5xx and connection errors.
-
-    `method` overrides the verb (e.g. "PATCH") — body, headers and retry
-    behaviour are identical.
-
-    Returns (response_bytes, None) on success, (None, error_message) on failure.
-    HTTP error messages come from extract_http_error() (parses JSON body for
-    error.message when available); connection errors get a plain string.
-    """
-    if log is None:
-        log = logger
-    for attempt in range(max_retries):
-        try:
-            req = urllib.request.Request(url, data=payload, headers=dict(_DEFAULT_HEADERS, **headers), method=method)
-            with urlopen(req, timeout=timeout) as response:
-                return response.read(), None
-        except urllib.error.HTTPError as e:
-            if e.code in RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
-                delay = 2 ** (attempt + 1)
-                log.warning(
-                    f"HTTP {e.code} {method} {url}, retrying in {delay}s "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                time.sleep(delay)
-                continue
-            err = extract_http_error(e)
-            log.error(f"{method} {url} failed: {err}")
-            return None, err
-        except (OSError, http.client.HTTPException) as e:  # incl. resets while reading the body
-            if attempt < max_retries - 1:
-                delay = 2 ** (attempt + 1)
-                log.warning(
-                    f"Connection error {method} {url}: {e}, retrying in {delay}s "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                time.sleep(delay)
-                continue
-            err = f"Connection error: {e}"
-            log.error(err)
-            return None, err
-    return None, "request failed after retries"

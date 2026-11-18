@@ -138,14 +138,11 @@ def _setup_menu(*_):
     for title, callback in (("Anki Toolkit…", open_settings),
                             ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup)):
         action = QAction(title, mw.form.menuTools)
-        # QAction passes checked(bool), never a settings page name.
+        # QAction passes checked(bool); the callbacks take no arguments.
         action.triggered.connect(lambda _checked=False, callback=callback: callback())
         mw.form.menuTools.addAction(action)
-    # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`
-    # (`open_settings() and None` dawało False po „Anuluj”).
-    def config_action():
-        open_settings()
-    mw.addonManager.setConfigAction(__name__, config_action)
+    # Anki otwiera edytor JSON, gdy akcja zwróci False — open_settings zwraca None.
+    mw.addonManager.setConfigAction(__name__, open_settings)
 
 
 if hasattr(gui_hooks, "main_window_did_init"):

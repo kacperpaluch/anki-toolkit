@@ -25,7 +25,6 @@ cfg["ai_generator"]["note_types"] = {"Test": {"task": {
     "target": "def", "provider": "claude_cli", "model": "opus", "prompt": "test",
     "temperature": 0.55,
     "fallback_provider": "codex_cli", "fallback_model": "gpt-test",
-    "reasoning_effort": "high", "fallback_reasoning_effort": "xhigh",
     "unknown_setting": "preserve",
 }}}
 tab = module.AIGeneratorTab(copy.deepcopy(cfg))
@@ -44,8 +43,6 @@ try:
     tab.apply(saved)
     accounts.apply(saved)
     task = saved["ai_generator"]["note_types"]["Test"]["task"]
-    # Effort is set per provider only: old per-prompt overrides are dropped on save.
-    assert "reasoning_effort" not in task and "fallback_reasoning_effort" not in task
     assert task["unknown_setting"] == "preserve"
     assert task["temperature"] == 0.55
     assert saved["ai_generator"]["providers"]["claude_cli"]["reasoning_effort"] == "high"

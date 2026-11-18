@@ -122,7 +122,7 @@ with patch.object(ai, "mw", mw), patch.object(ai, "get_config", lambda: config["
 # Check Tools grouping and the settings callback's QAction(bool) boundary.
 settings_module = types.ModuleType("menu_smoke.settings_dialog")
 opened = []
-settings_module.open_settings = lambda page=None: opened.append(page)
+settings_module.open_settings = lambda: opened.append(True)  # a passed checked(bool) would raise
 manager.setConfigAction = lambda *_: None
 mw.form = types.SimpleNamespace(menuTools=QMenu(browser))
 setup = next(n for n in root_source.body if isinstance(n, ast.FunctionDef) and n.name == "_setup_menu")
@@ -134,7 +134,7 @@ with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
 tools = mw.form.menuTools
 assert labels(tools) == ["Anki Toolkit…", "Wyczyść HTML w kolekcji…"]
 tools.actions()[0].trigger()
-assert opened == [None]
+assert opened == [True]
 
 workflows_tab = importlib.import_module("menu_smoke.settings.workflows_tab")
 tab = workflows_tab.WorkflowsTab(config)
