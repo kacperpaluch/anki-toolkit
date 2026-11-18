@@ -13,7 +13,7 @@ pakietu i nie może być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
-| `__init__.py` | import modułów, hooki profilu, przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback[, zaznaczone])]`, trzeci element robi z pozycji przełącznik z ptaszkiem; menu budowane przy kliknięciu z bieżącej notatki) oraz przypięte przyciski: `editor.pinned` to lista etykiet akcji ustawiana w podmenu „Przypnij do paska”; przycisk szuka akcji po etykiecie wśród pasujących do notatki, a gdy jej nie ma, pokazuje tooltip; menu pomija tylko przyciski faktycznie zbudowane w tym edytorze (`editor._atk_pinned`), bo Anki buduje pasek raz; zmiana etykiety akcji albo nazwy sekwencji odpina ją, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
+| `__init__.py` | import modułów, hooki profilu, przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`; menu budowane przy kliknięciu z bieżącej notatki) oraz przypięte przyciski: `editor.pinned` to lista etykiet akcji ustawiana w podmenu „Przypnij do paska”; przycisk szuka akcji po etykiecie wśród pasujących do notatki, a gdy jej nie ma, pokazuje tooltip; menu pomija tylko przyciski faktycznie zbudowane w tym edytorze (`editor._atk_pinned`), bo Anki buduje pasek raz; zmiana etykiety akcji albo nazwy sekwencji odpina ją, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `editor_shortcuts.py` | skróty klawiszowe edytora ustawiane przez użytkownika (okno z „Toolkit ▾ → Skróty klawiszowe…”): etykieta akcji → kombinacja; `accept()` odrzuca kombinacje bez Ctrl/Meta (`common.shortcut_typing_problem`), zajęte w oknie edytora i głównym (QAction, QShortcut, przyciski, standardowe klawisze edycji) oraz powtórzone; skrótów formatowania z JS edytora Qt nie widzi; rejestracja przez `editor_did_init_shortcuts` w root, więc zmiana działa po ponownym otwarciu okna | `editor` |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), otwiera się na ostatnio oglądanej stronie (w ramach sesji Anki, `_last_page`), wiązania między panelami (Konta i klucze → prompty, TTS) | wszystkie |
 | `common/` | konfiguracja (`check_config()` przy otwarciu profilu i Ustawień porównuje typy z szablonem `config.json` i proponuje wartości domyślne), HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress (`load_notes()` czyta duże zaznaczenie Browsera z paskiem i Anuluj), raporty sesji (`reports.record_report(title, text, retry, failed)` — Diagnostyka, czyszczone przy zamknięciu profilu), operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |
@@ -22,7 +22,6 @@ pakietu i nie może być z niego importowane.
 | `dictionary/` | audio i IPA ze słowników — `dictionary/llm-context.md` | `dictionary` |
 | `tts/` | TTS przez OpenRouter — `tts/llm-context.md` | `tts` |
 | `html_cleanup/` | reguły „znajdź → zamień” przy dodawaniu i dla kolekcji | `html_cleanup` |
-| `field_hider/` | ukrywanie pól tylko w oknie Dodaj | `field_hider` |
 
 Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
 
@@ -69,5 +68,3 @@ Przed zmianą czytaj `AGENTS.md`, a potem tylko kontekst właściwego modułu.
   `with_rules()` uzupełnia brakujący klucz i zachowuje pustą listę. `MAX_PASSES`/`MAX_FIELD_CHARS` ograniczają
   rozrost; `_clean_note` zbiera zmiany przed mutacją, a `ValueError` limitu dotyczy całej notatki: Dodaj ją przepuszcza bez czyszczenia, skan kolekcji pomija. Skan kolekcji przez
   `CollectionOp` (jeden krok undo). Regex jest walidowany tylko w `validate()` panelu.
-- Field Hider: hook `editor_did_load_note` działa wyłącznie przy `editor.addMode`;
-  pozycja „Pokaż schowane pola” w menu „Toolkit ▾” tylko przełącza klasę CSS (stan ptaszka w `editor._atk_fh_reveal`); `indices_to_hide()` jest czysta.

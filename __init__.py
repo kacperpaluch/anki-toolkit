@@ -5,7 +5,7 @@ from aqt.qt import QAction, QTimer
 from aqt.utils import tooltip
 
 from . import ai_generator, dictionary, tts
-from . import field_hider, html_cleanup
+from . import html_cleanup
 from .common import (check_config, clear_reports, get_module_config, setup_logging, unique,
                      update_module_config)
 
@@ -15,16 +15,14 @@ gui_hooks.profile_will_close.append(clear_reports)  # report note ids belong to 
 
 
 # Toolbar text of a pinned action; its full label is the tooltip.
-_SHORT = {"Uzupełnij puste pola AI": "AI", "Nagraj audio (TTS)": "TTS",
-          "Pokaż schowane pola": "👁"}
+_SHORT = {"Uzupełnij puste pola AI": "AI", "Nagraj audio (TTS)": "TTS"}
 
 
 def _editor_groups(editor):
-    """Actions that fit the current note, grouped: (label, callback[, checked])."""
+    """Actions that fit the current note, grouped: (label, callback)."""
     return (ai_generator.workflow_actions(editor),
             ai_generator.editor_actions(editor) + dictionary.editor_actions(editor)
-            + tts.editor_actions(editor),
-            field_hider.editor_actions(editor))
+            + tts.editor_actions(editor))
 
 
 def _pinned() -> list:
@@ -42,7 +40,7 @@ def _toggle_pin(label):
 
 def _run_pinned(editor, label):
     for group in _editor_groups(editor):
-        for name, callback, *_ in group:
+        for name, callback in group:
             if name == label:
                 return callback()
     tooltip(f"Anki Toolkit: „{label}” nie pasuje do tej notatki.", period=3000)
@@ -59,12 +57,8 @@ def _show_editor_menu(editor):
         group = [entry for entry in group if entry[0] not in built]
         if group and menu.actions():
             menu.addSeparator()
-        for label, callback, *checked in group:
-            action = menu.addAction(label)
-            if checked:  # toggles carry their current state
-                action.setCheckable(True)
-                action.setChecked(checked[0])
-            action.triggered.connect(lambda _checked=False, cb=callback: cb())
+        for label, callback in group:
+            menu.addAction(label).triggered.connect(lambda _checked=False, cb=callback: cb())
     from .editor_shortcuts import edit_shortcuts, get_shortcuts
     pinned = _pinned()
     # Pinned labels that do not fit this note stay listed, so they can be unpinned.

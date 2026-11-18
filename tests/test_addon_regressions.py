@@ -129,18 +129,13 @@ class OtherAddonsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.clean_field("f", "x" * 1000, [{"find": "(.+)", "to": r"\1" * 2000, "regex": True}])
 
-    def test_field_hider_indices_follow_note_type_order(self):
-        module = load("field_hider")
-        self.assertEqual(module.indices_to_hide(["front", "back", "audio"], ["back", "audio"]), [1, 2])
-        self.assertEqual(module.indices_to_hide(["front"], ["missing"]), [])
-
     def test_section_config_keeps_unknown_keys(self):
-        module = load("field_hider")
+        module = load("html_cleanup")
         mw = module.get_module_config.__globals__["mw"]  # common.config reads the profile
         mw.addonManager.getConfig = lambda _: {
-            "field_hider": {"hidden_fields": {"Basic": ["Back"]}, "future_option": True}}
+            "html_cleanup": {"rules": [], "future_option": True}}
         self.assertEqual(module.get_config()["future_option"], True)
-        self.assertEqual(module.get_config()["hidden_fields"], {"Basic": ["Back"]})
+        self.assertEqual(module.get_config()["rules"], [])
 
 
 if __name__ == "__main__":

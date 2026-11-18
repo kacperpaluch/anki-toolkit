@@ -13,7 +13,6 @@ from aqt.utils import showWarning, tooltip
 
 from .common import check_config, get_full_config, save_full_config, set_debug
 from .common.ui import hint_label
-from .field_hider.settings import FieldHiderTab
 from .html_cleanup.settings import HtmlCleanupTab
 from .settings.accounts_tab import AccountsTab
 from .settings.ai_generator_tab import AIGeneratorTab
@@ -39,8 +38,6 @@ PAGES = [
     ("Porządki", [
         ("html_cleanup", "🧹", "Czyszczenie HTML",
          "Reguły „znajdź → zamień” stosowane przy dodawaniu notatek.", HtmlCleanupTab),
-        ("field_hider", "👁", "Ukrywanie pól",
-         "Pola pomocnicze schowane tylko w oknie „Dodaj”.", FieldHiderTab),
     ]),
     ("Konfiguracja", [
         ("accounts", "🔑", "Konta i klucze",

@@ -14,7 +14,7 @@ from aqt.qt import QApplication, QKeySequence, QMenu, QShortcut, QWidget
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = QApplication.instance() or QApplication(["qt-editor-menu-smoke"])
-for suffix in ("", "ai_generator", "dictionary", "tts", "field_hider"):
+for suffix in ("", "ai_generator", "dictionary", "tts"):
     name = "editor_smoke" + ("." + suffix if suffix else "")
     package = types.ModuleType(name)
     package.__path__ = [str(ROOT / suffix)]
@@ -23,9 +23,6 @@ for suffix in ("", "ai_generator", "dictionary", "tts", "field_hider"):
 ai = importlib.import_module("editor_smoke.ai_generator.editor_ui")
 dictionary = importlib.import_module("editor_smoke.dictionary.editor_ui")
 tts = importlib.import_module("editor_smoke.tts.editor_ui")
-hider = sys.modules["editor_smoke.field_hider"]
-exec(compile((ROOT / "field_hider/__init__.py").read_text(), str(ROOT / "field_hider/__init__.py"), "exec"),
-     hider.__dict__)
 common = importlib.import_module("editor_smoke.common")
 workflow = importlib.import_module("editor_smoke.ai_generator.workflow")
 settings_module = types.ModuleType("editor_smoke.settings_dialog")
@@ -61,7 +58,7 @@ editor_code = [n for n in root_source.body
                or isinstance(n, ast.Assign) and n.targets[0].id == "_SHORT"]
 dictionary.ACTION_PREFIX  # the root reads it from the dictionary module
 tips = []
-namespace = {"__package__": "editor_smoke", "dictionary": dictionary, "tts": tts, "field_hider": hider,
+namespace = {"__package__": "editor_smoke", "dictionary": dictionary, "tts": tts,
              "unique": common.unique, "tooltip": lambda text, **_kw: tips.append(text),
              "get_module_config": common.get_module_config,
              "update_module_config": lambda key, changes: (saved.append(changes),
@@ -81,8 +78,7 @@ def fake_exec(menu, *_args):
     pins.append({a.text(): a for a in menu.actions() if a.menu()}["Przypnij do paska"].menu())
 
 pins = []
-ALL = ["Przygotuj fiszki", "Uzupełnij puste pola AI", "Pobierz wymowę: Diki", "Nagraj audio (TTS)",
-       "Pokaż schowane pola"]
+ALL = ["Przygotuj fiszki", "Uzupełnij puste pola AI", "Pobierz wymowę: Diki", "Nagraj audio (TTS)"]
 widget = QWidget()
 with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
         patch.object(common.config, "mw", mw), patch.object(dictionary, "mw", mw), \
@@ -92,12 +88,8 @@ with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
     # Nothing pinned: every fitting action is in the menu and can be pinned.
     namespace["_show_editor_menu"](editor)
     assert shown[-1] == ["Przygotuj fiszki", "—", "Uzupełnij puste pola AI", "Pobierz wymowę: Diki",
-                         "Nagraj audio (TTS)", "—", "Pokaż schowane pola ☐",
-                         "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
+                         "Nagraj audio (TTS)", "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
     assert texts(pins[-1]) == [label + " ☐" for label in ALL], texts(pins[-1])
-    hider._toggle_hidden_fields(editor)
-    namespace["_show_editor_menu"](editor)
-    assert "Pokaż schowane pola ☑" in shown[-1], shown[-1]
 
     # Pinning from the submenu saves the label; the open editor keeps its menu until reopened.
     for label in ("Pobierz wymowę: Diki", "Nagraj audio (TTS)", "Przygotuj fiszki", "Stara sekwencja"):
@@ -115,8 +107,7 @@ with patch.object(QMenu, "exec", fake_exec), patch.object(workflow, "mw", mw), \
         "D": "Pobierz wymowę: Diki", "TTS": "Nagraj audio (TTS)", "Przygotuj fiszki": "Przygotuj fiszki",
         "Stara sekwencja": "Stara sekwencja", "Toolkit ▾": "Anki Toolkit"}, added
     namespace["_show_editor_menu"](editor)
-    assert shown[-1] == ["Uzupełnij puste pola AI", "—", "Pokaż schowane pola ☑",
-                         "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
+    assert shown[-1] == ["Uzupełnij puste pola AI", "—", "Przypnij do paska", "Skróty klawiszowe…", "—", "Ustawienia…"], shown[-1]
     assert texts(pins[-1])[-1] == "Stara sekwencja ☑", texts(pins[-1])  # stale pin stays removable
     with patch.object(dictionary, "_on_fetch_audio_editor", lambda ed, d: ran.append(d)):
         added["D"][1](editor)
