@@ -11,7 +11,8 @@ wymowa i nagrania oraz porządki w kolekcji. Ustawienia są w jednym oknie.
 | Edytor → **Toolkit ▾ → Przypnij do paska** | Wybór działań, które mają własny przycisk obok „Toolkit ▾” (domyślnie **D** = Diki, **O** = Oxford). Przypięte znikają z menu; pasek zmienia się po ponownym otwarciu okna |
 | Edytor → **Toolkit ▾ → Skróty klawiszowe…** | Własna kombinacja klawiszy dla każdego działania. Okno odrzuca kombinacje bez Cmd/Ctrl (wpisywałyby znaki), zajęte przez Anki lub inny dodatek i powtórzone; skróty działają po ponownym otwarciu okna |
 | Przeglądarka kart → prawy klik → **Anki Toolkit** | To samo dla zaznaczonych notatek, w tym **Wygeneruj pola AI…** |
-| **Narzędzia → Anki Toolkit** | **Ustawienia…** i **Operacje na kolekcji** (czyszczenie HTML) |
+| **Narzędzia → Anki Toolkit…** | Okno ustawień |
+| **Narzędzia → Wyczyść HTML w kolekcji…** | Czyszczenie HTML w całej kolekcji (z potwierdzeniem) |
 
 Menu pokazują tylko to, co pasuje do notatki lub zaznaczenia. Po pracy na wielu
 notatkach dostajesz raport z błędami, a **Ustawienia → Diagnostyka** pozwala

@@ -2,8 +2,8 @@
 
 Katalog główny repozytorium jest dodatkiem Anki (w `addons21` symlink
 `anki-toolkit` → repo). Ma jedno `manifest.json`, jeden `config.json` (szablon
-z sekcjami modułów), jedno menu **Narzędzia → Anki Toolkit** i jedno okno
-ustawień. Konfiguracja profilu i dane runtime należą do `meta.json` oraz
+z sekcjami modułów) i jedno okno ustawień, otwierane przez **Narzędzia → Anki
+Toolkit…**. Konfiguracja profilu i dane runtime należą do `meta.json` oraz
 `user_files/` i nie mogą trafić do Git.
 
 ## Układ
@@ -13,7 +13,7 @@ pakietu i nie może być z niego importowane.
 
 | Ścieżka | Zakres | Sekcje configu |
 |---|---|---|
-| `__init__.py` | import modułów, hooki profilu, przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`; menu budowane przy kliknięciu z bieżącej notatki) oraz przypięte przyciski: `editor.pinned` to lista etykiet akcji ustawiana w podmenu „Przypnij do paska”; przycisk szuka akcji po etykiecie wśród pasujących do notatki, a gdy jej nie ma, pokazuje tooltip; menu pomija tylko przyciski faktycznie zbudowane w tym edytorze (`editor._atk_pinned`), bo Anki buduje pasek raz; zmiana etykiety akcji albo nazwy sekwencji odpina ją, menu Narzędzia (porządki w „Operacje na kolekcji”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
+| `__init__.py` | import modułów, hooki profilu, przycisk edytora „Toolkit ▾” (moduły wystawiają `editor_actions(editor) -> [(etykieta, callback)]`; menu budowane przy kliknięciu z bieżącej notatki) oraz przypięte przyciski: `editor.pinned` to lista etykiet akcji ustawiana w podmenu „Przypnij do paska”; przycisk szuka akcji po etykiecie wśród pasujących do notatki, a gdy jej nie ma, pokazuje tooltip; menu pomija tylko przyciski faktycznie zbudowane w tym edytorze (`editor._atk_pinned`), bo Anki buduje pasek raz; zmiana etykiety akcji albo nazwy sekwencji odpina ją, menu Narzędzia („Anki Toolkit…” = ustawienia, „Wyczyść HTML w kolekcji…”) i PPM Browsera (wspólne zaznaczenie, widoczność sekcji) | — |
 | `editor_shortcuts.py` | skróty klawiszowe edytora ustawiane przez użytkownika (okno z „Toolkit ▾ → Skróty klawiszowe…”): etykieta akcji → kombinacja; `accept()` odrzuca kombinacje bez Ctrl/Meta (`common.shortcut_typing_problem`), zajęte w oknie edytora i głównym (QAction, QShortcut, przyciski, standardowe klawisze edycji) oraz powtórzone; skrótów formatowania z JS edytora Qt nie widzi; rejestracja przez `editor_did_init_shortcuts` w root, więc zmiana działa po ponownym otwarciu okna | `editor` |
 | `settings_dialog.py` | wspólne okno: pogrupowany pasek boczny nad panelami modułów (`PAGES`), otwiera się na ostatnio oglądanej stronie (w ramach sesji Anki, `_last_page`), wiązania między panelami (Konta i klucze → prompty, TTS) | wszystkie |
 | `common/` | konfiguracja (`check_config()` przy otwarciu profilu i Ustawień porównuje typy z szablonem `config.json` i proponuje wartości domyślne), HTTP (wspólny domyślny User-Agent, bez przenoszenia sekretów przy przekierowaniu, `post_create` bez ponowień niepewnych), HTML, logi, progress (`load_notes()` czyta duże zaznaczenie Browsera z paskiem i Anuluj), raporty sesji (`reports.record_report(title, text, retry, failed)` — Diagnostyka, czyszczone przy zamknięciu profilu), operacje edytora i zapis batchy Browsera (`save_detached_notes`, opcjonalny callback raportu po zapisie), widżety ustawień | — |

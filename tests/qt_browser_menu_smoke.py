@@ -131,10 +131,8 @@ namespace.update({"QAction": QAction,
 exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / "__init__.py"), "exec"), namespace)
 with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
     namespace["_setup_menu"]()
-tools = mw.form.menuTools.actions()[0].menu()
-assert labels(tools) == ["Ustawienia…", "Operacje na kolekcji"]
-operations = tools.actions()[-1].menu()
-assert labels(operations) == ["Wyczyść HTML w kolekcji…"]
+tools = mw.form.menuTools
+assert labels(tools) == ["Anki Toolkit…", "Wyczyść HTML w kolekcji…"]
 tools.actions()[0].trigger()
 assert opened == [None]
 

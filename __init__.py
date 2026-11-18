@@ -135,21 +135,12 @@ gui_hooks.browser_will_show_context_menu.append(_context)
 def _setup_menu(*_):
     from .settings_dialog import open_settings
 
-    menu = mw.form.menuTools.addMenu("Anki Toolkit")
-    def add_actions(target, entries):
-        for title, callback in entries:
-            action = QAction(title, target)
-            # QAction passes checked(bool), never a settings page name.
-            action.triggered.connect(lambda _checked=False, callback=callback: callback())
-            target.addAction(action)
-
-    add_actions(menu, (
-        ("Ustawienia…", open_settings),
-    ))
-    operations = menu.addMenu("Operacje na kolekcji")
-    add_actions(operations, (
-        ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup),
-    ))
+    for title, callback in (("Anki Toolkit…", open_settings),
+                            ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup)):
+        action = QAction(title, mw.form.menuTools)
+        # QAction passes checked(bool), never a settings page name.
+        action.triggered.connect(lambda _checked=False, callback=callback: callback())
+        mw.form.menuTools.addAction(action)
     # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`
     # (`open_settings() and None` dawało False po „Anuluj”).
     def config_action():

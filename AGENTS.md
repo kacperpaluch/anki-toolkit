@@ -43,8 +43,9 @@ and routes to domain context. Keep this file focused on working agreements.
 
 ## UI architecture
 
-The repository root is the add-on. There is one **Tools → Anki Toolkit** submenu and
-one settings window (`settings_dialog.py`). Its grouped sidebar lists panels
+The repository root is the add-on. It adds two Tools entries: **Anki Toolkit…**
+opens the one settings window (`settings_dialog.py`) and **Wyczyść HTML w
+kolekcji…** cleans the collection. The window’s grouped sidebar lists panels
 from `settings/*.py` and each module's `settings.py`; a panel reads the full
 config in `__init__`, writes only its own sections in `apply(cfg)` and may veto
 saving with `validate()`.

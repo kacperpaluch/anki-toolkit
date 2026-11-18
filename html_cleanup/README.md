@@ -6,9 +6,9 @@ Czyści HTML w polach notatek według reguł, które definiujesz sam.
 
 - Notatki dodawane przez okno **Dodaj** są czyszczone automatycznie przed
   zapisaniem.
-- Reguły edytujesz w **Narzędzia → Anki Toolkit → Ustawienia… → Czyszczenie
-  HTML**, a całą kolekcję czyścisz przez **Narzędzia → Anki Toolkit → Operacje na kolekcji → Wyczyść
-  HTML w kolekcji…**.
+- Reguły edytujesz w **Narzędzia → Anki Toolkit… → Czyszczenie
+  HTML**, a całą kolekcję czyścisz przez **Narzędzia → Wyczyść HTML w
+  kolekcji…**.
 - Opcja **Czyść całą kolekcję przy otwarciu profilu** uruchamia ten sam skan
   automatycznie; **Pokazuj podsumowanie po czyszczeniu** steruje dymkiem.
 - Czyszczenie całej kolekcji to jeden krok **Edycja → Cofnij**.
