@@ -20,7 +20,6 @@ _CONTEXT_LABELS = {
     "tts": "Nagraj audio (TTS)",
     "ai_fields": "Wygeneruj pola AI… — pola automatyczne",
     "ai_blocked": "Wygeneruj pola AI… — pola tylko na żądanie",
-    "field_splitter": "Rozdziel pole",
 }
 
 # Fallback dictionary buttons if none configured yet (mirrors config.json).
@@ -52,8 +51,6 @@ def _step_label(step: dict) -> str:
         return f"Słownik: {', '.join(dicts)}" if dicts else "Słownik: (wszystkie)"
     if mod == "tts":
         return "TTS: wygeneruj audio"
-    if mod == "field_splitter":
-        return "Rozdziel pole źródłowe → docelowe"
     return f"{mod}/{step.get('action', '?')}"
 
 
@@ -179,7 +176,6 @@ class WorkflowEditDialog(QDialog):
                 ("+ AI", "ai", "generate"),
                 ("+ Wymowa", "dictionary", "fetch"),
                 ("+ Nagranie", "tts", "generate"),
-                ("+ Rozdziel", "field_splitter", "split"),
             )],
             edit=self._edit_step, remove=self._remove_step,
             move=lambda d: self._move_up() if d < 0 else self._move_down()))

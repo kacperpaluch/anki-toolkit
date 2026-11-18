@@ -19,7 +19,6 @@ from .settings.accounts_tab import AccountsTab
 from .settings.ai_generator_tab import AIGeneratorTab
 from .settings.dictionary_tab import DictionaryTab
 from .settings.logs_tab import LogsTab
-from .settings.narzedzia_tab import FieldSplitterSettings
 from .settings.tts_tab import TTSTab
 from .settings.workflows_tab import WorkflowsTab
 
@@ -29,15 +28,13 @@ _last_page = None  # the window reopens where it was left, within one Anki sessi
 PAGES = [
     ("Tworzenie kart", [
         ("workflows", "⚙️", "Sekwencje",
-         "Nazwane ciągi kroków (AI, wymowa, nagrania, rozdzielanie) — w menu „Toolkit ▾” i prawym kliku.",
+         "Nazwane ciągi kroków (AI, wymowa, nagrania) — w menu „Toolkit ▾” i prawym kliku.",
          WorkflowsTab),
         ("ai_generator", "🤖", "Prompty AI",
          "Co AI wpisuje w które pole notatki. Klucze i modele dostawców: „Konta i klucze”.", AIGeneratorTab),
         ("tts", "🔊", "Nagrania (TTS)", "Głosy i zadania nagrań przez OpenRouter.", TTSTab),
         ("dictionary", "📖", "Wymowa ze słowników",
          "Audio i IPA z Diki, Oxford, Cambridge i Longman.", DictionaryTab),
-        ("field_splitter", "✂️", "Rozdzielanie pól",
-         "Kopiuje kolejne części pola źródłowego do pól docelowych.", FieldSplitterSettings),
     ]),
     ("Porządki", [
         ("html_cleanup", "🧹", "Czyszczenie HTML",

@@ -4,8 +4,7 @@ Każdy test pilnuje jednego błędu, który realnie gubił treść, pieniądze a
 wyniki:
   * regeneracja TTS kasowała stare audio zanim nowe powstało,
   * częściowo udany `split_audio` wyglądał na gotowy i nie dało się go dokończyć,
-  * wynik z wątku roboczego nadpisywał tekst wpisany w międzyczasie w edytorze,
-  * Field Splitter kasował pole źródłowe wpisane na listę celów.
+  * wynik z wątku roboczego nadpisywał tekst wpisany w międzyczasie w edytorze.
 """
 
 import importlib.util
@@ -77,7 +76,7 @@ def _load(name: str, relative: str):
         pkg = types.ModuleType(_PKG)
         pkg.__path__ = [str(ROOT)]
         sys.modules[_PKG] = pkg
-    for sub in ("common", "tts", "ai_generator", "field_splitter", "dictionary"):
+    for sub in ("common", "tts", "ai_generator", "dictionary"):
         key = f"{_PKG}.{sub}"
         if key in sys.modules:
             continue
@@ -103,7 +102,6 @@ def _load(name: str, relative: str):
 
 processor = _load("tts.processor", "tts/processor.py")
 editor_operation = _load("common.editor_operation", "common/editor_operation.py")
-splitter = _load("field_splitter.splitting", "field_splitter/splitting.py")
 http = _load("common.http", "common/http.py")
 ipa = _load("dictionary.ipa_service", "dictionary/ipa_service.py")
 
@@ -491,40 +489,6 @@ class TestHttpRequests(unittest.TestCase):
         self.assertEqual((len(calls), uncertain), (3, False))  # 429 = odrzucone, wolno ponowić
 
 
-# ---------------------------------------------------------------------------
-# Field Splitter
-# ---------------------------------------------------------------------------
-
-class TestFieldSplitter(unittest.TestCase):
-    def test_source_field_is_never_a_target(self):
-        fs = _load("field_splitter", "field_splitter/__init__.py")
-        note = FakeNote({"przyklad": "One<br><br>Two", "p2": ""})
-        cfg = {"source_field": "przyklad", "separator": "<br><br>",
-               "target_fields": "przyklad, p2", "overwrite": True}
-
-        fs._process_note(note, cfg)
-
-        self.assertEqual(note["przyklad"], "One<br><br>Two", "pole źródłowe okrojone")
-        self.assertEqual(note["p2"], "One")
-
-    def test_shortened_source_clears_leftover_targets_only_when_overwriting(self):
-        fs = _load("field_splitter", "field_splitter/__init__.py")
-        cfg = {"source_field": "przyklad", "separator": "<br><br>",
-               "target_fields": "p1, p2, p3", "overwrite": True}
-        note = FakeNote({"przyklad": "One<br><br>Two", "p1": "One", "p2": "Two", "p3": "Removed"})
-        self.assertTrue(fs._process_note(note, cfg))
-        self.assertEqual(note["p3"], "")
-
-        note["p3"] = "Mine"
-        self.assertFalse(fs._process_note(note, dict(cfg, overwrite=False)))
-        self.assertEqual(note["p3"], "Mine")
-
-    def test_split_still_maps_parts_in_order(self):
-        result = splitter.split_field_value("A<br><br>B<br><br>C", "<br><br>",
-                                            ["p1", "p2", "p3"])
-        self.assertEqual(result, {"p1": "A", "p2": "B", "p3": "C"})
-
-
 class TestCliPromptEffort(unittest.TestCase):
     def test_effort_comes_from_each_provider_only(self):
         fg = _load("ai_generator.field_generator", "ai_generator/field_generator.py")
@@ -599,7 +563,6 @@ class TestBrowserAiActions(unittest.TestCase):
         matches = self.browser._workflow_matches
         self.assertTrue(matches([self.note], [{"module": "ai", "action": "generate"}], self.config, {}))
         self.assertFalse(matches([self.note], [{"module": "ai", "action": "generate", "fields": ["missing"]}], self.config, {}))
-        self.assertFalse(matches([self.note], [{"module": "field_splitter", "action": "split"}], self.config, {}))
 
     def test_regeneration_confirmation_and_scope(self):
         b = types.SimpleNamespace(selected_notes=lambda: [1, 2])

@@ -123,7 +123,7 @@ Przyciski workflowów w edytorze:
   nazwie w innym typie notatki.
 - `context_menu.ai_fields` steruje automatycznym AI;
   `ai_blocked` jest zachowanym kluczem konfiguracji dla pól „tylko na żądanie”.
-  Obie flagi ograniczają też listę regenerowania. Root respektuje `dictionary/tts/field_splitter`. Nie są to flagi
+  Obie flagi ograniczają też listę regenerowania. Root respektuje `dictionary/tts`. Nie są to flagi
   wyłączające moduły, przyciski edytora lub kroki workflow.
 - Workflow w PPM wymaga co najmniej jednego pasującego kroku; `_workflow_matches`
   sprawdza pola i rodzaj akcji, nie stan ich wypełnienia, dostępność sieci czy

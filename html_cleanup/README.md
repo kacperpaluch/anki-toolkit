@@ -31,7 +31,7 @@ Kolejność ma znaczenie — `▲`/`▼` ją zmieniają. Domyślne pięć reguł
 w polu `ang`, skrócenie trzech i więcej `<br>` do `<br><br>` oraz obcięcie
 brzegowych `<br>`) przywraca przycisk **Przywróć domyślne**. Zachowują one
 granice także przy zagnieżdżonych blokach, a `<br><br>` — separator przykładów
-używany przez Field Splitter i TTS — zostaje nietknięty. Zmiana domyślnych
+używany przez TTS — zostaje nietknięty. Zmiana domyślnych
 reguł nie dotyka list już zapisanych w profilu; przywróć domyślne, żeby ją
 przejąć.
 Reguły domyślne pochodzą z szablonu `config.json`. Pusta lista wyłącza

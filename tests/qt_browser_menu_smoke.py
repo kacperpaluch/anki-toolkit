@@ -15,7 +15,7 @@ import aqt.utils
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = QApplication.instance() or QApplication(["qt-browser-menu-smoke"])
-for suffix in ("", "ai_generator", "dictionary", "tts", "field_splitter"):
+for suffix in ("", "ai_generator", "dictionary", "tts"):
     name = "menu_smoke" + ("." + suffix if suffix else "")
     package = types.ModuleType(name)
     package.__path__ = [str(ROOT / suffix)]
@@ -29,8 +29,6 @@ source = ast.parse((ROOT / "tts/__init__.py").read_text())
 selected = [n for n in source.body if not isinstance(n, ast.ImportFrom)
             or n.module != "editor_ui"]
 exec(compile(ast.Module(body=selected, type_ignores=[]), str(ROOT / "tts/__init__.py"), "exec"), tts.__dict__)
-splitter = sys.modules["menu_smoke.field_splitter"]
-exec(compile((ROOT / "field_splitter/__init__.py").read_text(), str(ROOT / "field_splitter/__init__.py"), "exec"), splitter.__dict__)
 workflow = importlib.import_module("menu_smoke.ai_generator.workflow")
 common = importlib.import_module("menu_smoke.common")
 
@@ -70,7 +68,7 @@ mw = types.SimpleNamespace(col=types.SimpleNamespace(
 root_source = ast.parse((ROOT / "__init__.py").read_text())
 context = next(n for n in root_source.body if isinstance(n, ast.FunctionDef) and n.name == "_context")
 namespace = {"__package__": "menu_smoke", "mw": mw, "ai_generator": ai, "ids2str": lambda ids: str(tuple(ids)),
-             "dictionary": dictionary, "tts": tts, "field_splitter": splitter}
+             "dictionary": dictionary, "tts": tts}
 exec(compile(ast.Module(body=[context], type_ignores=[]), str(ROOT / "__init__.py"), "exec"), namespace)
 
 def labels(menu): return [a.text() for a in menu.actions() if not a.isSeparator()]
@@ -85,7 +83,6 @@ with patch.object(ai, "mw", mw), patch.object(ai, "get_config", lambda: config["
      patch.object(common.config, "mw", mw), patch.object(dictionary, "mw", mw):
     menu = build(); sub = menu.actions()[0].menu()
     assert labels(sub)[:2] == ["Przygotuj fiszki", "Wygeneruj pola AI…"]
-    assert "Rozdziel pole" not in " ".join(labels(sub))
     tts_menu = next(a.menu() for a in sub.actions() if a.text() == "Nagraj audio (TTS)")
     assert labels(tts_menu) == ["Audio"]
     menu.close()
@@ -110,7 +107,7 @@ with patch.object(ai, "mw", mw), patch.object(ai, "get_config", lambda: config["
     assert calls[0][0] == "run" and calls[0][1]["only_fields"] == {"def"}
     assert calls[1:] == [("regen", ["def"])]
 
-    config["context_menu"] = {"dictionary": False, "tts": False, "field_splitter": False}
+    config["context_menu"] = {"dictionary": False, "tts": False}
     menu = build(); sub = menu.actions()[0].menu()
     assert "Nagraj audio (TTS)" not in labels(sub) and "Pobierz wymowę" not in labels(sub)
     menu.close()
@@ -137,7 +134,7 @@ with patch.dict(sys.modules, {"menu_smoke.settings_dialog": settings_module}):
 tools = mw.form.menuTools.actions()[0].menu()
 assert labels(tools) == ["Ustawienia…", "Operacje na kolekcji"]
 operations = tools.actions()[-1].menu()
-assert len(labels(operations)) == 2
+assert labels(operations) == ["Wyczyść HTML w kolekcji…"]
 tools.actions()[0].trigger()
 assert opened == [None]
 

@@ -32,16 +32,9 @@ class DefaultRuleTests(unittest.TestCase):
         value, _counts = cleaning.clean_field("def", "<div>a<div>b</div></div>", self.rules)
         self.assertEqual(value, "a<br>b")
 
-
-    def test_example_separator_survives_for_the_splitter(self):
-        spec = importlib.util.spec_from_file_location(
-            "standalone_splitting", _PATH.parents[1] / "field_splitter" / "splitting.py")
-        splitting = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(splitting)
+    def test_example_separator_survives(self):
         value, _counts = cleaning.clean_field("przyklad", "ex one<br><br><br>ex two<br><br>", self.rules)
         self.assertEqual(value, "ex one<br><br>ex two")
-        parts = splitting.split_field_value(value, "<br><br>", ["p1", "p2"])
-        self.assertEqual(parts, {"p1": "ex one", "p2": "ex two"})
 
 
 class RuleEngineTests(unittest.TestCase):

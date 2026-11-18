@@ -26,7 +26,7 @@ notatki z błędem.
 
 ## Sekwencje
 
-Sekwencja to nazwany ciąg kroków: **AI**, **Wymowa**, **Nagranie**, **Rozdziel**.
+Sekwencja to nazwany ciąg kroków: **AI**, **Wymowa**, **Nagranie**.
 Ustawiasz ją w **Ustawienia → Sekwencje**. Tam też włączasz i wyłączasz sekcje
 menu prawego kliku. W edytorze kroki idą po kolei. W przeglądarce notatki są
 przetwarzane równolegle, a kroki jednej notatki po kolei. Sekwencja jest widoczna

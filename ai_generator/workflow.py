@@ -33,7 +33,6 @@ DEFAULT_CONTEXT_MENU = {
     "tts": True,           # "TTS"
     "ai_fields": True,     # "Uzupełnij puste pola AI"
     "ai_blocked": True,    # "Generuj pola tylko na żądanie"
-    "field_splitter": True,  # "Rozdziel pole"
 }
 
 
@@ -109,13 +108,6 @@ def execute_step(note, step: dict, ai_generator=None) -> tuple[bool, Optional[st
     if module == "tts" and action == "generate":
         from ..tts.processor import process_single_note
         return process_single_note(note)
-
-    if module == "field_splitter" and action == "split":
-        from ..field_splitter import _get_config as _fs_get_config, _process_note as _fs_process
-        try:
-            return _fs_process(note, _fs_get_config()), None
-        except Exception as e:
-            return False, str(e)
 
     return False, None
 

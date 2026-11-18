@@ -356,7 +356,6 @@ def _selected_target_fields(notes, config, manual_only=False):
 def _workflow_matches(notes, steps, ai_config, full_config):
     from .workflow import _resolve_ai_fields
     from ..tts.config import get_tasks
-    from ..field_splitter.splitting import parse_target_fields
     for step in steps:
         module = step.get("module")
         if module == "ai" and step.get("action") == "generate":
@@ -370,12 +369,6 @@ def _workflow_matches(notes, steps, ai_config, full_config):
         elif module == "tts" and step.get("action") == "generate":
             if any(task.get("source_field", "") in n and task.get("target_field", "") in n
                    for task in get_tasks(full_config.get("tts", {})) for n in notes):
-                return True
-        elif module == "field_splitter" and step.get("action") == "split":
-            cfg = full_config.get("field_splitter", {})
-            source = cfg.get("source_field", "przyklad")
-            targets = parse_target_fields(cfg.get("target_fields", "p1, p2, p3, p4, p5"))
-            if any(source in n and any(t != source and t in n for t in targets) for n in notes):
                 return True
     return False
 

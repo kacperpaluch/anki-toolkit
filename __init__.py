@@ -4,7 +4,7 @@ from aqt import gui_hooks, mw
 from aqt.qt import QAction, QTimer
 from aqt.utils import tooltip
 
-from . import ai_generator, dictionary, field_splitter, tts
+from . import ai_generator, dictionary, tts
 from . import field_hider, html_cleanup
 from .common import (check_config, clear_reports, get_module_config, setup_logging, unique,
                      update_module_config)
@@ -128,8 +128,7 @@ def _context(browser, menu):
     sub = menu.addMenu("Anki Toolkit")
     cm = get_context_menu()
     ai_generator.add_to_context_menu(browser, sub, notes=notes)
-    for key, module in (("dictionary", dictionary), ("tts", tts),
-                        ("field_splitter", field_splitter)):
+    for key, module in (("dictionary", dictionary), ("tts", tts)):
         if cm.get(key, True):
             module.add_to_context_menu(browser, sub, notes=notes)
     if sub.isEmpty():
@@ -155,7 +154,6 @@ def _setup_menu(*_):
     ))
     operations = menu.addMenu("Operacje na kolekcji")
     add_actions(operations, (
-        ("Rozdziel pola w kolekcji…", field_splitter.run_on_collection),
         ("Wyczyść HTML w kolekcji…", html_cleanup.confirm_collection_cleanup),
     ))
     # Anki otwiera edytor JSON, gdy akcja zwróci False — stąd zawsze `None`

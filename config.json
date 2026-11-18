@@ -122,31 +122,9 @@
           "action": "generate"
         },
         {
-          "module": "field_splitter",
-          "action": "split"
-        },
-        {
           "module": "ai",
           "action": "generate",
           "fields": "manual"
-        }
-      ]
-    },
-    {
-      "name": "Rozdziel + generuj naukę (p1–p3)",
-      "steps": [
-        {
-          "module": "field_splitter",
-          "action": "split"
-        },
-        {
-          "module": "ai",
-          "action": "generate",
-          "fields": [
-            "p1-nauka",
-            "p2-nauka",
-            "p3-nauka"
-          ]
         }
       ]
     }
@@ -155,14 +133,7 @@
     "dictionary": true,
     "tts": true,
     "ai_fields": true,
-    "ai_blocked": true,
-    "field_splitter": true
-  },
-  "field_splitter": {
-    "source_field": "przyklad",
-    "separator": "<br><br>",
-    "target_fields": "p1, p2, p3, p4, p5",
-    "overwrite": true
+    "ai_blocked": true
   },
   "ai_generator": {
     "skip_tags": [
